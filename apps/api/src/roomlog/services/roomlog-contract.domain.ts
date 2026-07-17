@@ -63,6 +63,7 @@ type AcceptedTradeContractPlan = {
 type ContractOcrResult = {
   source: "openai" | "mock";
   summary: string;
+  clauseSummary: string;
   highlights: string[];
   items: ContractExtraction["items"];
   helpNotes: ContractExtraction["helpNotes"];
@@ -77,21 +78,18 @@ type OpenAiContractOcrField = {
 };
 
 type OpenAiContractOcrFields = {
-  contractStartDate?: OpenAiContractOcrField;
-  contractEndDate?: OpenAiContractOcrField;
   depositBaseAmount?: OpenAiContractOcrField;
   depositConversionAmount?: OpenAiContractOcrField;
   depositFinalAmount?: OpenAiContractOcrField;
-  rentBaseAmount?: OpenAiContractOcrField;
-  rentConversionAmount?: OpenAiContractOcrField;
-  maintenanceFee?: OpenAiContractOcrField;
-  paymentDay?: OpenAiContractOcrField;
-  landlordAccount?: OpenAiContractOcrField;
-  address?: OpenAiContractOcrField;
+  specialTerms?: OpenAiContractOcrField;
   autoRenewal?: OpenAiContractOcrField;
   restorationDuty?: OpenAiContractOcrField;
   repairDuty?: OpenAiContractOcrField;
 };
+
+const DOCUMENT_ABSENT_CONTRACT_VALUE = "문서에 없음";
+const IMPORTANT_CONTRACT_OCR_LABELS = new Set(["보증금", "특약", "자동연장", "원상복구", "수선 책임"]);
+const OPTIONAL_CONTRACT_CLAUSE_LABELS = new Set(["특약", "자동연장", "원상복구", "수선 책임"]);
 
 export class RoomlogContractDomain {
   constructor(
@@ -458,6 +456,7 @@ export class RoomlogContractDomain {
     const privacy = this.findContractPrivacy(contract);
     const room = this.findRoom(contract.roomId);
     const tenant = this.contractTenant(contract);
+    const currentDocument = this.currentContractDocument(contract);
     const tenantName = tenant?.name ?? row.tenantName;
     const deletionRequests = this.managerContracts(managerId)
       .filter((item) => item.deletion === "requested")
@@ -480,6 +479,7 @@ export class RoomlogContractDomain {
 
     return {
       row,
+      currentDocument,
       extraction: this.presentContractExtraction(extraction),
       privacy: this.presentContractPrivacy(privacy),
       tenant: {
@@ -497,7 +497,11 @@ export class RoomlogContractDomain {
           ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
           : "관리자 수동값 없음",
         paymentDay: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "관리자 수동값 없음",
-        account: this.extractionValue(extraction, "임대인 계좌") ?? ""
+        account: this.extractionValue(extraction, "임대인 계좌") ?? "",
+        specialTerms: this.extractionValue(extraction, "특약") ?? "",
+        autoRenewal: this.extractionValue(extraction, "자동연장") ?? "",
+        restorationDuty: this.extractionValue(extraction, "원상복구") ?? "",
+        repairDuty: this.extractionValue(extraction, "수선 책임") ?? ""
       },
       inventory: contract.optionInventory?.length
         ? [...contract.optionInventory]
@@ -520,45 +524,39 @@ export class RoomlogContractDomain {
       (item) => item.id === contract.extractionId || item.contractId === contract.id
     );
     const extraction = storedExtraction ?? this.findContractExtraction(contract);
-    const needsCheck = extraction.items.filter((item) => item.needsCheck);
+    const needsCheck = this.contractReviewExtractionItems(extraction.items).filter((item) => item.needsCheck);
 
     if (needsCheck.length > 0 && input.confirmNeedsCheck !== true) {
       throw new BadRequestException("확인 필요 항목을 원문과 대조했다는 확인이 필요합니다.");
     }
 
-    if (!contract.startDate) {
-      throw new BadRequestException("계약 시작일을 입력해주세요.");
-    }
-    if (!contract.endDate) {
-      throw new BadRequestException("계약 종료일을 입력해주세요.");
-    }
-    if (contract.monthlyRent === undefined) {
-      throw new BadRequestException("월세를 입력해주세요.");
-    }
-    if (contract.maintenanceFee === undefined) {
-      throw new BadRequestException("관리비를 입력해주세요.");
-    }
+    const monthlyRent = contract.monthlyRent === undefined
+      ? undefined
+      : this.requireNonNegativeInteger(contract.monthlyRent, "월세");
+    const maintenanceFee = contract.maintenanceFee === undefined
+      ? undefined
+      : this.requireNonNegativeInteger(contract.maintenanceFee, "관리비");
 
-    const monthlyRent = this.requireNonNegativeInteger(contract.monthlyRent, "월세");
-    const maintenanceFee = this.requireNonNegativeInteger(contract.maintenanceFee, "관리비");
-
-    const startDateKey = this.contractDateKey(contract.startDate, "계약 시작일");
-    const endDateKey = this.contractDateKey(contract.endDate, "계약 종료일");
-    if (this.timeOf(endDateKey) < this.timeOf(startDateKey)) {
+    const startDateKey = contract.startDate
+      ? this.contractDateKey(contract.startDate, "계약 시작일")
+      : undefined;
+    const endDateKey = contract.endDate
+      ? this.contractDateKey(contract.endDate, "계약 종료일")
+      : undefined;
+    if (startDateKey && endDateKey && this.timeOf(endDateKey) < this.timeOf(startDateKey)) {
       throw new BadRequestException("계약 종료일은 시작일보다 빠를 수 없습니다.");
     }
-    if (endDateKey < this.todayInSeoulKey()) {
+    if (endDateKey && endDateKey < this.todayInSeoulKey()) {
       throw new BadRequestException("이미 종료된 계약은 활성화할 수 없습니다.");
     }
 
-    const totalAmount = monthlyRent + maintenanceFee;
-    if (!Number.isSafeInteger(totalAmount)) {
-      throw new BadRequestException("월세와 관리비 합계는 안전한 원 단위 정수여야 합니다.");
-    }
-    if (totalAmount > 0) {
-      if (contract.paymentDay === undefined) {
-        throw new BadRequestException("납부일을 입력해주세요.");
+    if (monthlyRent !== undefined && maintenanceFee !== undefined) {
+      const totalAmount = monthlyRent + maintenanceFee;
+      if (!Number.isSafeInteger(totalAmount)) {
+        throw new BadRequestException("월세와 관리비 합계는 안전한 원 단위 정수여야 합니다.");
       }
+    }
+    if (contract.paymentDay !== undefined) {
       this.requirePaymentDay(contract.paymentDay);
     }
 
@@ -686,10 +684,11 @@ export class RoomlogContractDomain {
     return {
       source: "mock",
       summary,
+      clauseSummary: "OCR 실패로 특약성 조항 확인 필요",
       highlights: [
         `${summary} · ${document?.fileName ?? "계약서 원본"} 기준`,
         "실제 OCR 값은 추출되지 않았습니다.",
-        "기존 DB 계약값 불러오기 또는 수동 입력으로 보강하세요."
+        "보증금과 특약성 조항은 원문 확인 후 수동 입력으로 보강하세요."
       ],
       helpNotes: [
         {
@@ -699,17 +698,13 @@ export class RoomlogContractDomain {
         },
         {
           clause: "관리자 확정 필요",
-          plain: "기존 DB 계약값을 불러오거나 원문을 보며 직접 입력한 뒤 확정해야 합니다.",
+          plain: "계약서 원문을 보며 보증금과 특약성 조항을 직접 입력한 뒤 확정해야 합니다.",
           source: "계약서 검토 워크플로"
         }
       ],
       items: [
         missingItem("보증금", "money"),
-        missingItem("월세", "money"),
-        missingItem("관리비", "money"),
-        missingItem("납부일", "money"),
-        missingItem("계약 기간", "term"),
-        missingItem("상세 주소", "term", true),
+        missingItem("특약", "responsibility"),
         missingItem("자동연장", "term"),
         missingItem("원상복구", "responsibility"),
         missingItem("수선 책임", "responsibility")
@@ -734,6 +729,7 @@ export class RoomlogContractDomain {
       sourceLine,
       ...result.highlights.filter(Boolean)
     ].slice(0, 6);
+    extraction.clauseSummary = result.clauseSummary || this.buildContractClauseSummary(result.items);
     extraction.helpNotes = result.helpNotes.length
       ? result.helpNotes
       : [
@@ -744,7 +740,11 @@ export class RoomlogContractDomain {
           }
         ];
 
+    this.keepContractReviewExtractionItems(extraction);
     result.items.slice(0, 16).forEach((item) => this.setOcrExtractionItem(extraction, item, result.source));
+    if (result.source === "openai") {
+      this.markMissingOptionalClausesAsDocumentAbsent(extraction, result.items);
+    }
 
     contract.review = "pending";
     if (contract.lifecycle === "unregistered") {
@@ -783,11 +783,14 @@ export class RoomlogContractDomain {
         model,
         instructions: [
           "너는 한국 주택 임대차 계약서 OCR 검토 보조자다.",
-          "계약서 이미지나 PDF에서 보증금, 월세, 관리비, 납부일, 계약 기간, 주소, 자동연장, 원상복구, 수선 책임을 추출한다.",
+          "계약서 이미지나 PDF에서 보증금, 특약, 자동연장, 원상복구, 수선 책임처럼 원문 확인이 중요한 항목만 추출한다.",
           "복합 금액은 한 문장으로 뭉치지 말고 기본 금액, 전환 금액, 최종 금액처럼 세부 필드로 나누어 판단한다.",
-          "계약 기간은 시작일과 종료일을 각각 따로 읽은 뒤 사람이 보기 쉬운 기간 문장으로 요약한다.",
+          "월세, 관리비, 납부일, 주소, 계약 기간, 계좌처럼 DB에 이미 있는 매물·계약 기본값은 추출 대상에서 제외한다.",
           "불확실하거나 원문 재확인이 필요한 항목은 needsCheck를 true로 둔다.",
-          "민감한 계좌번호, 상세주소 일부는 masked=true로 표시한다.",
+          "특약, 자동연장, 원상복구, 수선 책임 조항이 원문에 명시되어 있지 않으면 value를 '문서에 없음', needsCheck를 false로 둔다.",
+          "clauseSummary에는 특약, 자동연장, 원상복구, 수선 책임만 대상으로 대시보드에 바로 보여줄 60자 이내 한 줄 요약을 넣는다.",
+          "특약성 조항이 모두 원문에 없으면 clauseSummary는 '특약성 조항 없음'으로 둔다.",
+          "문서가 흐리거나 일부 영역을 읽지 못해 없는지 판단할 수 없을 때만 value를 빈 문자열로 두고 needsCheck를 true로 둔다.",
           "반드시 한국어 JSON만 반환한다."
         ].join("\n"),
         input: [
@@ -832,6 +835,7 @@ export class RoomlogContractDomain {
     return {
       source: "openai",
       summary: parsed.summary || `${document.fileName}에서 계약 핵심 항목을 추출했습니다.`,
+      clauseSummary: parsed.clauseSummary,
       highlights: parsed.highlights,
       items: parsed.items,
       helpNotes: parsed.helpNotes,
@@ -936,7 +940,11 @@ export class RoomlogContractDomain {
   ) {
     const contract = this.findManagerContract(managerId, contractId);
     const deposit = this.optionalManualText(input.deposit, "보증금");
-    const account = this.optionalManualText(input.account, "임대인 계좌");
+    const specialTerms = this.optionalManualText(input.specialTerms, "특약");
+    const autoRenewal = this.optionalManualText(input.autoRenewal, "자동연장");
+    const restorationDuty = this.optionalManualText(input.restorationDuty, "원상복구");
+    const repairDuty = this.optionalManualText(input.repairDuty, "수선 책임");
+    if (input.account !== undefined) this.optionalManualText(input.account, "임대인 계좌");
     const monthlyRent = this.optionalNonNegativeInteger(input.monthlyRent, "월세");
     const maintenanceFee = this.optionalNonNegativeInteger(input.maintenanceFee, "관리비");
     const paymentDay = input.paymentDay === undefined
@@ -949,6 +957,7 @@ export class RoomlogContractDomain {
       ? undefined
       : this.optionalContractDate(input.endDate, "계약 종료일");
     const extraction = this.ensureContractExtraction(contract);
+    this.keepContractReviewExtractionItems(extraction);
 
     if (input.monthlyRent !== undefined) contract.monthlyRent = monthlyRent;
     if (input.maintenanceFee !== undefined) contract.maintenanceFee = maintenanceFee;
@@ -959,37 +968,10 @@ export class RoomlogContractDomain {
     contract.updatedAt = now();
 
     this.upsertExtractionItem(extraction, "보증금", deposit, "money");
-    this.upsertExtractionItem(
-      extraction,
-      "월세",
-      contract.monthlyRent !== undefined
-        ? `${contract.monthlyRent.toLocaleString("ko-KR")}원`
-        : undefined,
-      "money"
-    );
-    this.upsertExtractionItem(
-      extraction,
-      "관리비",
-      contract.maintenanceFee !== undefined
-        ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
-        : undefined,
-      "money"
-    );
-    this.upsertExtractionItem(
-      extraction,
-      "납부일",
-      contract.paymentDay ? `매월 ${contract.paymentDay}일` : undefined,
-      "money"
-    );
-    if (input.startDate !== undefined || input.endDate !== undefined) {
-      this.upsertExtractionItem(
-        extraction,
-        "계약 기간",
-        `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`,
-        "term"
-      );
-    }
-    this.upsertExtractionItem(extraction, "임대인 계좌", account, "money", true);
+    this.upsertExtractionItem(extraction, "특약", specialTerms, "responsibility");
+    this.upsertExtractionItem(extraction, "자동연장", autoRenewal, "term");
+    this.upsertExtractionItem(extraction, "원상복구", restorationDuty, "responsibility");
+    this.upsertExtractionItem(extraction, "수선 책임", repairDuty, "responsibility");
     this.persistStore();
 
     return this.getManagerContractDetail(managerId, contract.id);
@@ -1226,15 +1208,15 @@ export class RoomlogContractDomain {
       confirmed: contract.review === "confirmed",
       highlights: [
         "새 계약서가 등록되었습니다. 원문 대조 후 확정하세요.",
-        "돈·기간·책임 항목은 관리자 확정 전까지 참고본입니다.",
-        "민감정보는 기본 마스킹 상태로 보관됩니다."
+        "매물 DB 기본값은 그대로 두고 보증금·특약성 조항만 검토합니다.",
+        "계약서 원문 확인이 필요한 핵심 항목은 관리자 확정 전까지 참고본입니다."
       ],
       items: [
-        { label: "월세", value: contract.monthlyRent !== undefined ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
-        { label: "관리비", value: contract.maintenanceFee !== undefined ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
-        { label: "납부일", value: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미확인", group: "money", needsCheck: true },
-        { label: "계약 기간", value: `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`, group: "term", needsCheck: true },
-        { label: "원상복구", value: "원문 확인 필요", group: "responsibility", needsCheck: true }
+        { label: "보증금", value: "원문 확인 필요", group: "money", needsCheck: true },
+        { label: "특약", value: "원문 확인 필요", group: "responsibility", needsCheck: true },
+        { label: "자동연장", value: "원문 확인 필요", group: "term", needsCheck: true },
+        { label: "원상복구", value: "원문 확인 필요", group: "responsibility", needsCheck: true },
+        { label: "수선 책임", value: "원문 확인 필요", group: "responsibility", needsCheck: true }
       ],
       helpNotes: [
         {
@@ -1290,44 +1272,40 @@ export class RoomlogContractDomain {
       confirmed: contract.review === "confirmed",
       highlights: [
         "거래 계약 수락 조건으로 생성한 관리자 검토 초안입니다.",
-        "보증금과 월세는 당사자가 수락한 조건이며 관리자 확정 전 참고값입니다.",
-        "관리비·납부일·기간 등 누락 조건은 관리자가 확인해야 합니다."
+        "매물 DB 기본값은 그대로 두고 보증금·특약성 조항만 검토합니다.",
+        "계약서 원문 확인이 필요한 핵심 항목은 관리자 확정 전까지 참고본입니다."
       ],
       items: [
         {
-          label: "월세",
-          value: contract.monthlyRent !== undefined
-            ? `${contract.monthlyRent.toLocaleString("ko-KR")}원`
-            : "미확인",
+          label: "보증금",
+          value: depositKrw !== undefined ? `${depositKrw.toLocaleString("ko-KR")}원` : "미확인",
           group: "money",
           needsCheck: true,
           evidence: "거래 계약 수락 조건"
         },
         {
-          label: "관리비",
-          value: contract.maintenanceFee !== undefined
-            ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
-            : "미확인",
-          group: "money",
+          label: "특약",
+          value: "미확인",
+          group: "responsibility",
           needsCheck: true,
           evidence: "거래 계약에서 확인되지 않은 조건"
         },
         {
-          label: "납부일",
-          value: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미확인",
-          group: "money",
-          needsCheck: true,
-          evidence: "거래 계약에서 확인되지 않은 조건"
-        },
-        {
-          label: "계약 기간",
-          value: `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`,
+          label: "자동연장",
+          value: "미확인",
           group: "term",
           needsCheck: true,
           evidence: "거래 계약에서 확인되지 않은 조건"
         },
         {
-          label: "책임 조건",
+          label: "원상복구",
+          value: "미확인",
+          group: "responsibility",
+          needsCheck: true,
+          evidence: "거래 계약에서 확인되지 않은 조건"
+        },
+        {
+          label: "수선 책임",
           value: "미확인",
           group: "responsibility",
           needsCheck: true,
@@ -1343,17 +1321,6 @@ export class RoomlogContractDomain {
       ],
       createdAt: contract.tradeAcceptedAt ?? contract.createdAt
     };
-
-    if (depositKrw !== undefined) {
-      this.upsertExtractionItem(
-        extraction,
-        "보증금",
-        `${depositKrw.toLocaleString("ko-KR")}원`,
-        "money",
-        false,
-        "거래 계약 수락 조건"
-      );
-    }
 
     return extraction;
   }
@@ -1569,8 +1536,8 @@ export class RoomlogContractDomain {
         needsCheck: true,
         masked: item.masked || existing.masked,
         evidence: item.evidence
-          ? `${item.evidence} · OCR 미확인으로 기존 DB 계약값 유지`
-          : "OCR 미확인으로 기존 DB 계약값 유지"
+          ? `${item.evidence} · OCR 미확인으로 기존 저장값 유지`
+          : "OCR 미확인으로 기존 저장값 유지"
       });
       return;
     }
@@ -1583,8 +1550,16 @@ export class RoomlogContractDomain {
     return !normalized || normalized === "미확인" || normalized === "원문 확인 필요" || normalized === "관리자 수동값 없음";
   }
 
+  private contractReviewExtractionItems(items: ContractExtraction["items"]) {
+    return items.filter((item) => IMPORTANT_CONTRACT_OCR_LABELS.has(item.label));
+  }
+
+  private keepContractReviewExtractionItems(extraction: ContractExtraction) {
+    extraction.items = this.contractReviewExtractionItems(extraction.items);
+  }
+
   private isMockExtractionEvidence(evidence?: string) {
-    return /mock OCR|OCR 미확인으로 기존 DB 계약값 유지|실제 OCR 실패\/미설정/i.test(evidence ?? "");
+    return /mock OCR|OCR 미확인으로 기존 (?:DB 계약값|저장값) 유지|실제 OCR 실패\/미설정/i.test(evidence ?? "");
   }
 
   // 통합 계정 모델: 초대는 "기존 로그인 계정에 관계를 붙이는 루트"이므로
@@ -1938,13 +1913,15 @@ export class RoomlogContractDomain {
     this.assertManagerCanAccessRoom(managerId, contract.roomId);
     const room = this.findRoom(contract.roomId);
     const extraction = this.findContractExtraction(contract);
-    const needsCheckCount = extraction.items.filter((item) => item.needsCheck).length;
+    const needsCheckCount = this.contractReviewExtractionItems(extraction.items).filter((item) => item.needsCheck).length;
     const origin = this.contractOrigin(contract);
 
     return {
       contract: this.presentContract(contract),
       tenantName: this.contractTenant(contract)?.name ?? "미연결 임차인",
       buildingName: room.buildingName,
+      depositSummary: this.extractionValue(extraction, "보증금"),
+      clauseSummary: extraction.clauseSummary || this.buildContractClauseSummary(extraction.items),
       origin,
       statusLabel: this.contractStatusLabel(contract, needsCheckCount),
       slaOverdue: this.isContractReviewSlaOverdue(contract),
@@ -2053,7 +2030,7 @@ export class RoomlogContractDomain {
               at: extraction.createdAt,
               actor: "Roomlog",
               action: "관리자 확인 필요 표시",
-              detail: `${extraction.items.filter((item) => item.needsCheck).length}개 거래 조건 관리자 확인 필요`
+              detail: `${this.contractReviewExtractionItems(extraction.items).filter((item) => item.needsCheck).length}개 핵심 항목 관리자 확인 필요`
             },
         {
           at: contract.tradeAcceptedAt ?? contract.createdAt,
@@ -2076,7 +2053,7 @@ export class RoomlogContractDomain {
             at: extraction.createdAt,
             actor: "AI OCR",
             action: "확인 필요 표시",
-            detail: `${extraction.items.filter((item) => item.needsCheck).length}개 항목 관리자 대조 필요`
+            detail: `${this.contractReviewExtractionItems(extraction.items).filter((item) => item.needsCheck).length}개 핵심 항목 관리자 대조 필요`
           },
       {
         at: contract.createdAt,
@@ -2138,6 +2115,35 @@ export class RoomlogContractDomain {
 
   private extractionValue(extraction: ContractExtraction, label: string) {
     return extraction.items.find((item) => item.label === label)?.value;
+  }
+
+  private buildContractClauseSummary(items: ContractExtraction["items"]) {
+    const clauseItems = items.filter((item) => this.isOptionalContractClauseLabel(item.label));
+    const needsCheck = clauseItems.filter((item) => item.needsCheck);
+
+    if (needsCheck.length > 0) {
+      return `${needsCheck.map((item) => item.label).slice(0, 2).join("·")} 확인 필요`;
+    }
+
+    const presentClauses = clauseItems.filter(
+      (item) => !this.isMissingExtractionValue(item.value) && !this.isDocumentAbsentContractValue(item.value)
+    );
+
+    if (presentClauses.length === 0) return "특약성 조항 없음";
+
+    return presentClauses
+      .slice(0, 2)
+      .map((item) => `${item.label}: ${this.compactContractClauseSummary(item.value)}`)
+      .join(" · ");
+  }
+
+  private compactContractClauseSummary(value: string) {
+    return value
+      .replace(/\s+/g, " ")
+      .replace(/합니다|한다|하여야 한다|하여야 합니다/g, "")
+      .replace(/[.。]+$/g, "")
+      .trim()
+      .slice(0, 42);
   }
 
   private currentContractDocument(contract: Contract) {
@@ -2216,20 +2222,20 @@ export class RoomlogContractDomain {
       .join(", ") || "없음";
 
     return [
-      "첨부된 임대차 계약서 원본에서 Roomlog 계약 검토 테이블에 넣을 항목을 추출해줘.",
+      "첨부된 임대차 계약서 원본에서 Roomlog 계약 핵심 검토 테이블에 넣을 항목만 추출해줘.",
       `파일명: ${document.fileName ?? "계약서 원본"}`,
       `관리 호실: ${room.buildingName} ${this.displayUnitId(room)}`,
-      `등록 주소: ${room.address}`,
-      `등록 월세: ${this.currencyLabel(contract.monthlyRent) ?? "미등록"}`,
-      `등록 관리비: ${this.currencyLabel(contract.maintenanceFee) ?? "미등록"}`,
-      `등록 납부일: ${contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미등록"}`,
-      `등록 계약기간: ${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`,
+      `등록 DB 기본값: 주소 ${room.address}, 월세 ${this.currencyLabel(contract.monthlyRent) ?? "미등록"}, 관리비 ${this.currencyLabel(contract.maintenanceFee) ?? "미등록"}, 납부일 ${contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미등록"}, 계약기간 ${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`,
       `기존 추출값: ${knownItems}`,
-      "권장 label은 보증금, 월세, 관리비, 납부일, 임대인 계좌, 계약 기간, 상세 주소, 자동연장, 원상복구, 수선 책임이다.",
-      "fields에는 contractStartDate, contractEndDate, depositBaseAmount, depositConversionAmount, depositFinalAmount, rentBaseAmount, rentConversionAmount, maintenanceFee, paymentDay, landlordAccount, address, autoRenewal, restorationDuty, repairDuty를 가능한 범위에서 채워줘.",
-      "문서에 없는 값은 추측하지 말고 value를 빈 문자열로 두고 needsCheck를 true로 둬.",
-      "계약서의 표나 조항에 여러 금액이 있으면 항목별 의미를 evidence에 적고, finalAmount가 명확하지 않으면 기본/전환 값을 모두 유지해.",
-      "금액은 원 단위 문자열로, 날짜는 YYYY.MM.DD 형식으로 정리해줘.",
+      "등록 DB 기본값은 비교 참고용일 뿐 추출하거나 items에 넣지 마. 월세, 관리비, 납부일, 주소, 계약 기간, 계좌는 제외한다.",
+      "권장 label은 보증금, 특약, 자동연장, 원상복구, 수선 책임이다.",
+      "fields에는 depositBaseAmount, depositConversionAmount, depositFinalAmount, specialTerms, autoRenewal, restorationDuty, repairDuty를 가능한 범위에서 채워줘.",
+      "clauseSummary에는 특약, 자동연장, 원상복구, 수선 책임을 합쳐 대시보드에 표시할 한 줄 요약을 넣어줘. 예: '특약: 미납 관리비·원상복구비 정산', '원상복구·수선 책임 확인 필요', '특약성 조항 없음'.",
+      "보증금이 문서에 없거나 읽히지 않으면 추측하지 말고 value를 빈 문자열로 두고 needsCheck를 true로 둬.",
+      "특약, 자동연장, 원상복구, 수선 책임이 원문에 명시되어 있지 않으면 value는 반드시 '문서에 없음', needsCheck는 false로 둬.",
+      "조항이 없는지 판단할 수 없을 만큼 흐리거나 가려졌다면 value를 빈 문자열로 두고 needsCheck를 true로 둬.",
+      "계약서의 표나 조항에 여러 보증금이 있으면 항목별 의미를 evidence에 적고, finalAmount가 명확하지 않으면 기본/전환 값을 모두 유지해.",
+      "금액은 원 단위 문자열로 정리해줘.",
       "원문에서 근거 문장을 evidence에 짧게 넣어줘."
     ].join("\n");
   }
@@ -2247,17 +2253,10 @@ export class RoomlogContractDomain {
       additionalProperties: false
     };
     const fieldsProperties = [
-      "contractStartDate",
-      "contractEndDate",
       "depositBaseAmount",
       "depositConversionAmount",
       "depositFinalAmount",
-      "rentBaseAmount",
-      "rentConversionAmount",
-      "maintenanceFee",
-      "paymentDay",
-      "landlordAccount",
-      "address",
+      "specialTerms",
       "autoRenewal",
       "restorationDuty",
       "repairDuty"
@@ -2271,6 +2270,7 @@ export class RoomlogContractDomain {
       additionalProperties: false,
       properties: {
         summary: { type: "string" },
+        clauseSummary: { type: "string" },
         highlights: {
           type: "array",
           items: { type: "string" }
@@ -2311,7 +2311,7 @@ export class RoomlogContractDomain {
           }
         }
       },
-      required: ["summary", "highlights", "items", "fields", "helpNotes"]
+      required: ["summary", "clauseSummary", "highlights", "items", "fields", "helpNotes"]
     };
   }
 
@@ -2345,6 +2345,7 @@ export class RoomlogContractDomain {
 
     return {
       summary: this.stringValue(parsed.summary) || "계약 OCR 분석 완료",
+      clauseSummary: this.stringValue(parsed.clauseSummary) || this.buildContractClauseSummary(mergedItems),
       highlights: this.stringArray(parsed.highlights).slice(0, 5),
       items: this.validateOpenAiOcrItems(mergedItems),
       helpNotes: this.normalizeOpenAiHelpNotes(parsed.helpNotes)
@@ -2363,32 +2364,26 @@ export class RoomlogContractDomain {
       fields: Array<OpenAiContractOcrField | undefined>,
       masked = false
     ) => {
-      const cleanValue = itemValue.trim();
+      const cleanValue = this.normalizeContractOcrItemValue(label, itemValue, fields);
       if (!cleanValue) return;
-      const activeFields = fields.filter((item) => Boolean(item?.value?.trim()));
+      const activeFields = fields.filter((field): field is OpenAiContractOcrField =>
+        this.hasActiveOcrField(field, label)
+      );
 
       const evidence = activeFields
         .map((item) => item?.evidence?.trim())
         .filter(Boolean)
         .join(" / ");
+      const documentAbsent = this.isDocumentAbsentContractValue(cleanValue);
       items.push({
         label,
         value: cleanValue,
         group,
-        needsCheck: activeFields.some((item) => item?.needsCheck !== false),
+        needsCheck: documentAbsent ? false : activeFields.some((item) => item?.needsCheck !== false),
         evidence: evidence || "OpenAI OCR 세부 필드 추출",
         masked: masked || activeFields.some((item) => item?.masked === true)
       });
     };
-
-    const startDate = field("contractStartDate");
-    const endDate = field("contractEndDate");
-    addItem(
-      "계약 기간",
-      [startDate?.value, endDate?.value].filter(Boolean).join(" ~ "),
-      "term",
-      [startDate, endDate]
-    );
 
     const depositBase = field("depositBaseAmount");
     const depositConversion = field("depositConversionAmount");
@@ -2404,29 +2399,8 @@ export class RoomlogContractDomain {
       [depositBase, depositConversion, depositFinal]
     );
 
-    const rentBase = field("rentBaseAmount");
-    const rentConversion = field("rentConversionAmount");
-    addItem(
-      "월세",
-      this.joinLabeledOcrValues([
-        ["기본", rentBase?.value],
-        ["전환 후", rentConversion?.value]
-      ]),
-      "money",
-      [rentBase, rentConversion]
-    );
-
-    const maintenanceFee = field("maintenanceFee");
-    addItem("관리비", maintenanceFee?.value ?? "", "money", [maintenanceFee]);
-
-    const paymentDay = field("paymentDay");
-    addItem("납부일", this.normalizePaymentDayOcrValue(paymentDay?.value), "money", [paymentDay]);
-
-    const landlordAccount = field("landlordAccount");
-    addItem("임대인 계좌", landlordAccount?.value ?? "", "money", [landlordAccount], true);
-
-    const address = field("address");
-    addItem("상세 주소", address?.value ?? "", "term", [address], true);
+    const specialTerms = field("specialTerms");
+    addItem("특약", specialTerms?.value ?? "", "responsibility", [specialTerms]);
 
     const autoRenewal = field("autoRenewal");
     addItem("자동연장", autoRenewal?.value ?? "", "term", [autoRenewal]);
@@ -2465,12 +2439,13 @@ export class RoomlogContractDomain {
       }
 
       const existing = merged[index];
-      if (this.isMissingExtractionValue(existing.value) || !this.isMissingExtractionValue(fieldItem.value)) {
+      const replacingMissingExisting = this.isMissingExtractionValue(existing.value);
+      if (replacingMissingExisting || !this.isMissingExtractionValue(fieldItem.value)) {
         merged[index] = {
           ...existing,
           ...fieldItem,
           evidence: [existing.evidence, fieldItem.evidence].filter(Boolean).join(" / "),
-          needsCheck: existing.needsCheck || fieldItem.needsCheck,
+          needsCheck: replacingMissingExisting ? fieldItem.needsCheck : existing.needsCheck || fieldItem.needsCheck,
           masked: existing.masked || fieldItem.masked
         };
       }
@@ -2567,12 +2542,68 @@ export class RoomlogContractDomain {
       .join("; ");
   }
 
-  private normalizePaymentDayOcrValue(value?: string) {
-    const cleanValue = value?.trim();
-    if (!cleanValue) return "";
+  private markMissingOptionalClausesAsDocumentAbsent(
+    extraction: ContractExtraction,
+    resultItems: ContractExtraction["items"]
+  ) {
+    const resultLabels = new Set(resultItems.map((item) => item.label));
 
-    const day = cleanValue.match(/\d{1,2}/)?.[0];
-    return day ? `매월 ${day}일` : cleanValue;
+    for (const label of OPTIONAL_CONTRACT_CLAUSE_LABELS) {
+      if (resultLabels.has(label)) continue;
+
+      this.setExtractionItem(extraction, {
+        label,
+        value: DOCUMENT_ABSENT_CONTRACT_VALUE,
+        group: label === "자동연장" ? "term" : "responsibility",
+        needsCheck: false,
+        masked: false,
+        evidence: "성공한 OCR에서 해당 조항을 찾지 못했습니다."
+      });
+    }
+  }
+
+  private hasActiveOcrField(field: OpenAiContractOcrField | undefined, label: string) {
+    if (!field) return false;
+
+    return Boolean(field.value?.trim()) || Boolean(field.evidence?.trim()) || this.isOptionalContractClauseLabel(label);
+  }
+
+  private normalizeContractOcrItemValue(
+    label: string,
+    value: string,
+    fields: Array<OpenAiContractOcrField | undefined> = []
+  ) {
+    const cleanValue = value.trim();
+    if (!this.isOptionalContractClauseLabel(label)) return cleanValue;
+    if (this.isDocumentAbsentContractValue(cleanValue)) return DOCUMENT_ABSENT_CONTRACT_VALUE;
+
+    const explicitlyAbsent = fields.some(
+      (field) =>
+        field?.needsCheck === false &&
+        (
+          this.isDocumentAbsentContractValue(field.value) ||
+          /없|미기재|명시되어 있지|해당 조항 없음|해당 항목 없음/.test(field.evidence ?? "")
+        )
+    );
+
+    if (explicitlyAbsent) return DOCUMENT_ABSENT_CONTRACT_VALUE;
+    if (!cleanValue && fields.some((field) => field && field.needsCheck !== false)) return "미확인";
+
+    return cleanValue;
+  }
+
+  private isOptionalContractClauseLabel(label: string) {
+    return OPTIONAL_CONTRACT_CLAUSE_LABELS.has(label);
+  }
+
+  private isDocumentAbsentContractValue(value?: string) {
+    const normalized = value?.replace(/\s+/g, "").trim();
+    return (
+      normalized === "문서에없음" ||
+      normalized === "해당없음" ||
+      normalized === "해당사항없음" ||
+      normalized === "없음"
+    );
   }
 
   private normalizeOpenAiOcrItems(value: unknown): ContractExtraction["items"] {
@@ -2584,14 +2615,15 @@ export class RoomlogContractDomain {
       if (!this.isRecord(rawItem)) continue;
 
       const label = this.normalizeOcrLabel(this.stringValue(rawItem.label));
-      const itemValue = this.stringValue(rawItem.value);
-      if (!label || !itemValue) continue;
+      const itemValue = this.normalizeContractOcrItemValue(label, this.stringValue(rawItem.value));
+      if (!label || !itemValue || !this.isImportantContractOcrLabel(label)) continue;
+      const documentAbsent = this.isDocumentAbsentContractValue(itemValue);
 
       items.push({
         label,
         value: itemValue,
         group: this.normalizeOcrGroup(this.stringValue(rawItem.group), label),
-        needsCheck: typeof rawItem.needsCheck === "boolean" ? rawItem.needsCheck : true,
+        needsCheck: documentAbsent ? false : typeof rawItem.needsCheck === "boolean" ? rawItem.needsCheck : true,
         evidence: this.stringValue(rawItem.evidence) || "OpenAI OCR 추출",
         masked: typeof rawItem.masked === "boolean" ? rawItem.masked : this.shouldMaskOcrLabel(label)
       });
@@ -2625,6 +2657,7 @@ export class RoomlogContractDomain {
     const compact = label.replace(/\s+/g, "");
 
     if (/보증|보증금|임대보증금/.test(compact)) return "보증금";
+    if (/특약|특별약정|특별조건|중요조항/.test(compact)) return "특약";
     if (/월세|차임|임대료/.test(compact)) return "월세";
     if (/관리비|공용관리/.test(compact)) return "관리비";
     if (/납부|지급일|입금일/.test(compact)) return "납부일";
@@ -2638,9 +2671,13 @@ export class RoomlogContractDomain {
     return label.trim().slice(0, 32);
   }
 
+  private isImportantContractOcrLabel(label: string) {
+    return IMPORTANT_CONTRACT_OCR_LABELS.has(label);
+  }
+
   private normalizeOcrGroup(group: string, label: string): ExtractionGroup {
     if (group === "money" || group === "term" || group === "responsibility") return group;
-    if (["보증금", "월세", "관리비", "납부일", "임대인 계좌"].includes(label)) return "money";
+    if (label === "보증금") return "money";
     if (["계약 기간", "상세 주소", "자동연장"].includes(label)) return "term";
 
     return "responsibility";

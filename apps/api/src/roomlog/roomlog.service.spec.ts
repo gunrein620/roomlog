@@ -3811,6 +3811,66 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("tracks manager ticket reads only after the manager opens the ticket", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "미확인 배지 누수",
+      description: "욕실 천장에서 물이 떨어집니다.",
+      location: "301호 욕실",
+    });
+
+    const beforeRead = service
+      .listTicketsForManager("landlord-demo")
+      .find((ticket) => ticket.id === created.ticket.id);
+
+    assert.equal(beforeRead?.isManagerUnread, true);
+    assert.equal(beforeRead?.managerReadAt, undefined);
+
+    const read = service.markManagerTicketRead("landlord-demo", created.ticket.id);
+
+    assert.equal(read.isManagerUnread, false);
+    assert.ok(read.managerReadAt);
+    assert.equal(
+      service.getTicketDetailForManager("landlord-demo", created.ticket.id).isManagerUnread,
+      false,
+    );
+
+    const readAgain = service.markManagerTicketRead("landlord-demo", created.ticket.id);
+    assert.equal(readAgain.isManagerUnread, false);
+    assert.ok(readAgain.managerReadAt);
+  });
+
+  it("does not let another manager mark an out-of-scope ticket read", () => {
+    const service = new RoomlogService();
+    const otherManager = service.signup({
+      email: "ticket-read-other-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "외부 관리자",
+      phone: "010-6777-1001",
+      role: "LANDLORD",
+      buildingName: "외부 읽음 빌라",
+      roomNo: "901호",
+      address: "서울시 성동구 외부읽음로 9",
+    } as any);
+    const created = service.createComplaint("tenant-demo", {
+      title: "관리 범위 읽음 검증",
+      description: "301호 현관문이 잠기지 않습니다.",
+      location: "301호 현관",
+    });
+
+    assert.throws(
+      () => service.markManagerTicketRead(otherManager.userId, created.ticket.id),
+      /접근/,
+    );
+    assert.equal(
+      service
+        .listTicketsForManager("landlord-demo")
+        .find((ticket) => ticket.id === created.ticket.id)?.isManagerUnread,
+      true,
+    );
+  });
+
   it("exposes an explicit ticket kind to manager clients", () => {
     const service = new RoomlogService();
     const generalComplaint = service.createComplaint("tenant-demo", {
@@ -6011,8 +6071,9 @@ describe("RoomlogService", () => {
     assert.equal(tenantPrivacy.maskingEnabled, true);
     const managerDashboard = service.getManagerContractDashboard("landlord-demo");
     assert.equal(managerDashboard.rows.some((row) => row.contract.id === "ct_demo_302"), true);
+    const reviewLabels = new Set(["보증금", "특약", "자동연장", "원상복구", "수선 책임"]);
     assert.equal(
-      managerDashboard.counts.needsCheck >= tenantExtraction.items.filter((item) => item.needsCheck).length,
+      managerDashboard.counts.needsCheck >= tenantExtraction.items.filter((item) => item.needsCheck && reviewLabels.has(item.label)).length,
       true
     );
 

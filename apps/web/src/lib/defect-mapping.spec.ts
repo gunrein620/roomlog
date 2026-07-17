@@ -34,3 +34,15 @@ describe("ticket kind mapping", () => {
     assert.equal(toTicket(teamComplaint({ category: "누수" })).type, "defect");
   });
 });
+
+describe("ticket room mapping", () => {
+  it("maps the real building name and normalizes the room number", () => {
+    const complaint = teamComplaint({ category: "누수" });
+    complaint.room = { buildingName: "정글빌라", roomNo: "301호" };
+
+    const ticket = toTicket(complaint);
+
+    assert.equal(ticket.buildingName, "정글빌라");
+    assert.equal(ticket.unitId, "301");
+  });
+});

@@ -73,7 +73,7 @@ export const demoListings = [
     complexPrice: "매4.6억",
     image: "/listing-bedroom.jpg",
     gallery: ["/listing-bedroom.jpg", "/listing-building.jpg", "/listing-studio.jpg", "/listing-loft.jpg"],
-    badges: ["확인매물", "헛걸음 보상"],
+    badges: ["확인매물"],
     tags: ["고층", "보안/안전", "큰길가", "엘리베이터", "주차"],
     score: "안심 96",
     updated: "오늘확인",
@@ -99,14 +99,18 @@ export type TradeListing = {
   id: string;
   ownerId: string;
   ownerName: string;
+  roomId?: string;
   title: string;
   roomType: string;
-  tradeType: "월세" | "전세" | "매매";
+  tradeType: "월세" | "반전세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
   detailAddress?: string;
   buildingName?: string;
+  exclusiveAreaM2?: number;
+  floorInfo?: string;
+  maintenanceFeeManwon?: number;
   description: string;
   status: string;
   createdAt: string;
@@ -141,18 +145,37 @@ export function monthlyDealLabel(depositManwon: number, monthlyRentManwon: numbe
 }
 
 export function tradePriceLabel(listing: TradeListing): string {
-  if (listing.tradeType === "월세") return `월세 ${monthlyDealLabel(listing.depositManwon, listing.monthlyRentManwon)}`;
+  if (listing.tradeType === "월세" || listing.tradeType === "반전세") {
+    return `${listing.tradeType} ${monthlyDealLabel(listing.depositManwon, listing.monthlyRentManwon)}`;
+  }
   if (listing.tradeType === "전세") return `전세 ${formatManwonAmount(listing.depositManwon)}`;
   return `매매 ${formatManwonAmount(listing.depositManwon)}`;
+}
+
+/** 사진 미등록 매물의 정직한 플레이스홀더 — 남의 집 목업 사진으로 오인되지 않게. */
+export const LISTING_PHOTO_PLACEHOLDER = "/listing-photo-placeholder.svg";
+
+/** createdAt 기준 상대 등록 시점 라벨 — "방금 등록" 하드코딩 대신 실제 경과 시간을 보여준다. */
+export function listingRegisteredAgoLabel(createdAt: string, now: Date = new Date()): string {
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime())) return "등록일 확인 중";
+  const elapsedMs = now.getTime() - created.getTime();
+  if (elapsedMs < 60 * 60 * 1000) return "방금 등록";
+  const hours = Math.floor(elapsedMs / (60 * 60 * 1000));
+  if (hours < 24) return `${hours}시간 전 등록`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}일 전 등록`;
+  return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(created) + " 등록";
 }
 
 // 직접등록 매물을 홈 카드/상세가 쓰는 쇼케이스 매물 형태로 투영한다.
 // 미확인 값은 "확인 중"으로 두고, 문의는 listingNo의 TRADE- 접두어로 서버 매물임을 식별한다.
 export function tradeListingToCard(listing: TradeListing): Listing {
-  // 업로드된 실제 사진이 있으면 그걸 쓰고, 없으면 기존 목업으로 폴백한다(데모 매물 보호).
+  // 업로드된 실제 사진이 있으면 그걸 쓰고, 없으면 "사진 준비 중" 플레이스홀더 —
+  // 남의 집 목업 사진이 실매물 사진처럼 보이면 안심 거래 신뢰를 해친다.
   const uploaded = Array.isArray(listing.images) ? listing.images.filter((url) => typeof url === "string" && url) : [];
-  const image = uploaded[0] ?? "/listing-studio.jpg";
-  const gallery = uploaded.length > 0 ? uploaded : ["/listing-studio.jpg", "/listing-bedroom.jpg"];
+  const image = uploaded[0] ?? LISTING_PHOTO_PLACEHOLDER;
+  const gallery = uploaded.length > 0 ? uploaded : [LISTING_PHOTO_PLACEHOLDER];
   const floorPlan3D =
     listing.floorPlan && Array.isArray(listing.floorPlan.walls3D) && listing.floorPlan.walls3D.length > 0
       ? listing.floorPlan
@@ -172,9 +195,11 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     // 카드 배지("집주인 직접")와 겹치지 않게 스펙은 방 종류만 — 중복 문구 정리.
     spec: listing.roomType,
     roomType: listing.roomType,
-    sizeLabel: "확인 중",
-    floorLabel: "확인 중",
-    maintenanceFee: "확인 중",
+    // 등록 폼에서 입력한 스펙(면적/층/관리비)을 그대로 보여준다 — 미입력만 "확인 중".
+    sizeLabel: listing.exclusiveAreaM2 ? `${listing.exclusiveAreaM2}m²` : "확인 중",
+    floorLabel: listing.floorInfo?.trim() || "확인 중",
+    maintenanceFee:
+      listing.maintenanceFeeManwon != null ? `${listing.maintenanceFeeManwon}만원` : "확인 중",
     viewCount: "새 매물",
     unitCount: "확인 중",
     complexPrice: "확인 중",
@@ -184,7 +209,7 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     // 등록 폼에서 고른 옵션(에어컨·CCTV 등)을 태그로 노출 — 상세 태그가 실데이터가 된다.
     tags: [listing.tradeType, listing.roomType, ...options, ...(floorPlan3D ? ["3D 투어"] : [])],
     score: "안심 확인중",
-    updated: "방금 등록",
+    updated: listingRegisteredAgoLabel(listing.createdAt),
     broker: `${listing.ownerName} (집주인)`,
     verification: "집주인 직접 등록",
     response: "채팅 문의 가능",
@@ -197,14 +222,15 @@ export function tradeListingToCard(listing: TradeListing): Listing {
 }
 
 export const getListingPriceRows = (listing: Listing) => {
-  const monthlyMatch = listing.price.match(/월세\s*([\d,]+)\s*만?\s*\/\s*([\d,]+)\s*만?/);
+  // "반전세 1000만 / 50만"이 /전세/ 정규식에 먼저 걸리지 않게 보증금/월세형(월세·반전세)을 먼저 판별한다.
+  const monthlyMatch = listing.price.match(/(반전세|월세)\s*([\d,]+)\s*만?\s*\/\s*([\d,]+)\s*만?/);
   const jeonseMatch = listing.price.match(/전세\s*(.+)/);
 
   if (monthlyMatch) {
     return [
-      ["거래유형", "월세"],
-      ["보증금", `${monthlyMatch[1]}만원`],
-      ["월세", `${monthlyMatch[2]}만원`],
+      ["거래유형", monthlyMatch[1]],
+      ["보증금", `${monthlyMatch[2]}만원`],
+      ["월세", `${monthlyMatch[3]}만원`],
       ["관리비", listing.maintenanceFee],
       ["입주가능일", listing.floorLabel.includes("고층") ? "즉시입주" : "협의 가능"],
       ["계약기간", "12개월 이상"]
@@ -223,7 +249,8 @@ export const getListingPriceRows = (listing: Listing) => {
 
 export const getListingBuildingRows = (listing: Listing) => [
   ["건물유형", listing.roomType],
-  ["세부주소", listingDetailAddressLabel(listing)],
+  // 세부주소는 있을 때만 행을 만든다 — "세부주소 없음"을 정보처럼 노출하지 않는다.
+  ...(listing.detailAddress?.trim() ? [["세부주소", listing.detailAddress.trim()]] : []),
   ["면적", listing.sizeLabel],
   ["해당층/전체층", listing.floorLabel],
   ["주차", listing.tags.includes("주차") ? "가능" : "문의"],
@@ -234,6 +261,9 @@ export const getListingBuildingRows = (listing: Listing) => [
 // 업로드 사진은 절대 URL(API 정적서빙/S3) — next/image 최적화기는 사설 IP(dev의 localhost/api)를
 // 차단하므로 절대 URL 사진은 unoptimized로 브라우저가 직접 로드하게 한다(번들 목업은 그대로 최적화).
 export const isRemotePhoto = (src: string) => /^https?:\/\//.test(src);
+
+// 등록 폼의 매물유형 드롭다운 — 홈 카테고리(전체 제외)와 같은 구성. 등록값이 카테고리 필터·카운트에 그대로 잡힌다.
+export const listingRoomTypes = ["원룸", "투룸", "오피스텔", "아파트", "빌라", "단기임대"];
 
 // 등록 폼에서 선택 가능한 옵션 목록 — API(trade.service ALLOWED_LISTING_OPTIONS)와 같은 값·순서.
 // 데모 매물 상세는 options가 없어 이 목록 전체를 폴백으로 보여준다.
@@ -270,7 +300,7 @@ export const mapListings = [
     meta: "오피스텔 · 30.0m² · 14층",
     distance: "강남역 도보 7분 · 보안 우수",
     updated: "오늘확인",
-    flags: ["헛걸음 보상", "고층", "주차"],
+    flags: ["고층", "주차"],
     image: "/listing-building.jpg",
     lat: 37.4902,
     lng: 126.9908,

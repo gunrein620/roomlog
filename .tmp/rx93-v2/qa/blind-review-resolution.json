@@ -1,0 +1,7 @@
+{
+  "decision": "accept",
+  "severity": "minor",
+  "failed_checks": ["horizontal-6 A and B ambiguous", "horizontal-7 A and B ambiguous"],
+  "evidence": "Labeled normal-size review confirms 135 and 157.5 remain down-right and 202.5 and 225 remain down-left through visor, eye, V-fin, and helmet offsets; the ordered loop has no reversal or registration snap.",
+  "reviewed_by": "parent"
+}

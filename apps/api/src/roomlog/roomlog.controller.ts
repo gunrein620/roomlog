@@ -954,10 +954,13 @@ export class RoomlogController {
   }
 
   @Get("tenant/messaging/announcements")
-  listTenantMessagingAnnouncements(@Headers("authorization") authorization?: string) {
+  listTenantMessagingAnnouncements(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("roomId") roomId?: string
+  ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.listTenantMessagingAnnouncements(user.id);
+    return this.roomlogService.listTenantMessagingAnnouncements(user.id, roomId);
   }
 
   @Get("tenant/messaging/announcements/:announcementId")
@@ -1414,6 +1417,18 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.listCurrentTicketsForManager(user.id);
+  }
+
+  @Post("manager/tickets/:ticketId/read")
+  markManagerTicketRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = this.roomlogService.markManagerTicketRead(user.id, ticketId);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Get("manager/bills/dashboard")

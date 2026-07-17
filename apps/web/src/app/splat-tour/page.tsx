@@ -1,5 +1,5 @@
 // three.js는 SSR 대상이 아니다 — 클라 전용 동적 로드(ssr:false)는 tour-viewer-client에서 처리한다.
-// (레포의 서버/클라 경계 함정은 prototype/docs/DOMAIN-RECIPE.md '함정' 절 참고.)
+// (레포의 서버/클라 경계 함정은 CLAUDE.md '서버/클라 경계 함정' 참고.)
 
 import TourViewerClient from "./tour-viewer-client";
 import TourTuningPanel from "./tour-tuning-panel";

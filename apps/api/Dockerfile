@@ -17,7 +17,7 @@ RUN mkdir -p /usr/local/share/ca-certificates
 COPY apps/api/certs/aws-rds-global-bundle.pem /usr/local/share/ca-certificates/aws-rds-global-bundle.pem
 ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
 
-FROM base AS deps
+FROM base AS builder
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
@@ -30,33 +30,29 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --filter api --frozen-lockfile --store-dir /pnpm/store
 RUN pnpm --filter api exec prisma generate --schema ../../prisma/schema.prisma
 
-FROM deps AS builder
-
 COPY packages/types packages/types
 COPY apps/api apps/api
+COPY scripts/reconstruct scripts/reconstruct
 
 RUN pnpm --filter api build
+RUN pnpm --filter api deploy --legacy --prod /prod/api
+RUN builder_client_root="$(dirname "$(dirname "$(readlink -f apps/api/node_modules/@prisma/client)")")" \
+    && deployed_client_root="$(dirname "$(dirname "$(readlink -f /prod/api/node_modules/@prisma/client)")")" \
+    && cp -R "$builder_client_root/.prisma" "$deployed_client_root/.prisma"
 
 FROM base AS runner
 
 ENV NODE_ENV=production
 ENV PORT=4000
 
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY apps/api/package.json apps/api/package.json
-COPY packages/types/package.json packages/types/package.json
-COPY prisma prisma
-COPY prisma.config.ts prisma.config.ts
-
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --filter api --prod --frozen-lockfile --store-dir /pnpm/store
-RUN pnpm --filter api exec prisma generate --schema ../../prisma/schema.prisma
-
-COPY apps/api/scripts ./apps/api/scripts
-COPY apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql ./apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql
+COPY --from=builder /prod/api /app/apps/api
+COPY --from=builder /app/apps/api/dist /app/apps/api/dist
+COPY --from=builder /app/prisma /app/prisma
 COPY --from=builder /app/packages/types ./packages/types
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
+# GPU 오케스트레이터가 SSM으로 원격에 실을 재구성 스크립트(base64 인라인 소스). buildJobCommand가 /app/scripts/reconstruct에서 읽는다.
+COPY --from=builder /app/scripts/reconstruct /app/scripts/reconstruct
+RUN ln -sfn /app/packages/types /app/apps/api/node_modules/@roomlog/types
 
 EXPOSE 4000
 
-CMD ["pnpm", "--filter", "api", "start:prod"]
+CMD ["node", "apps/api/dist/main"]

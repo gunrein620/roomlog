@@ -589,10 +589,19 @@ enum AiFeedbackStatus {
 }
 
 enum SplatAssetStatus {
-  PROCESSING // 영상만 접수됨 — spz 생성 전. fileUrl 빈 문자열, videoUrl에 원본 영상
+  PROCESSING // 원본 소스(영상/캡처 zip)만 접수됨 — spz 생성 전. fileUrl 빈 문자열, videoUrl에 원본
   UPLOADED // 파일만 존재, 도면 정합 전
   REGISTERED // 2점 정합 완료 — transform 존재, 하이브리드 기능 해금
-  FAILED
+  FAILED // 재구성 실패 — SplatAsset.jobError에 사유
+}
+
+// GPU 재구성 잡 상태 (SplatAsset.jobState) — 계약: packages/types/src/splat-pipeline.ts
+enum SplatReconstructionJobState {
+  QUEUED // 접수됨, GPU 배정 대기
+  GPU_STARTING // 인스턴스 기동/SSM 온라인 대기
+  RUNNING // 재구성 실행 중 (jobCommandId로 추적)
+  DONE // spz 콜백 수신, 자산 UPLOADED로 승격됨
+  FAILED // 재시도 소진 — jobError에 사유
 }
 
 model UserAccount {
@@ -629,6 +638,7 @@ model UserAccount {
   vendorPaymentAuditEvents   VendorPaymentAuditEvent[]  @relation("VendorPaymentAuditActor")
   managedDomainEvents        DomainEventOutbox[]        @relation("DomainEventManager")
   actedDomainEvents          DomainEventOutbox[]        @relation("DomainEventActor")
+  managerTicketReads         ManagerTicketRead[]
   creditAccount              CreditAccount?             @relation("ManagerCreditAccount")
   autoPayPolicy              AutoPayPolicy?             @relation("ManagerAutoPayPolicy")
 
@@ -672,6 +682,7 @@ model Room {
   intakeSessions       IntakeSession[]
   moveInChecklistItems MoveInChecklistItem[]
   bills                Bill[]
+  tradeListings        TradeListing[]
 
   @@unique([buildingName, roomNo])
   @@index([landlordId])
@@ -1591,10 +1602,23 @@ model Ticket {
   feedback  AiFeedback[]
   analysis  AiAnalysis?
   history   StatusHistory[]
+  managerReads ManagerTicketRead[]
 
   @@index([roomId, status])
   @@index([assignedVendorId, status])
   @@index([priority, status])
+}
+
+model ManagerTicketRead {
+  managerId String
+  ticketId  String
+  readAt    DateTime @default(now())
+
+  manager UserAccount @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  ticket  Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([managerId, ticketId])
+  @@index([managerId, readAt])
 }
 
 model AiAnalysis {
@@ -2123,13 +2147,20 @@ model SplatAsset {
   fileUrl           String // .spz/.sog 경로
   fileKind          String           @default("spz")
   sizeBytes         Int?
-  videoUrl          String? // PROCESSING 접수 시 원본 영상 경로
+  videoUrl          String? // PROCESSING 접수 시 원본 소스(영상 또는 캡처 zip) 경로 — 종류는 fileKind로 구분
   status            SplatAssetStatus @default(UPLOADED)
   transform         Json? // SplatTransform (tour-types.ts). null이면 미정합
   registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용
   capturedAt        DateTime? // 촬영 시각 메타 (§7 편향 표기용)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  // GPU 재구성 잡 추적 — 별도 Job 모델 대신 자산당 최신 잡만 기록(개인 임대인 스케일, 이력은 로그로)
+  jobState     SplatReconstructionJobState? // null = 파이프라인 무관 자산(직접 spz 업로드)
+  jobError     String? // FAILED 사유(2KB 절단) — 마이페이지 실패 안내 원천
+  jobAttempts  Int       @default(0)
+  jobCommandId String? // SSM RunCommand id — api 재기동 후 재부착·디버깅용
+  jobStartedAt DateTime?
 
   room      Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
   floorPlan FloorPlan? @relation(fields: [floorPlanId], references: [id])
@@ -2147,6 +2178,7 @@ model TradeListing {
   id                String   @id
   ownerId           String
   ownerName         String
+  roomId            String?
   title             String
   roomType          String
   tradeType         String // "월세" | "전세" | "매매"
@@ -2155,6 +2187,9 @@ model TradeListing {
   location          String
   detailAddress     String?
   buildingName      String? // 건물명 — 관리 화면의 건물별 그룹 보기 기준
+  exclusiveAreaM2      Float? // 전용면적(m²) — 상세 스펙 표시용
+  floorInfo            String? // 층수 표기(예: "4층 / 16층")
+  maintenanceFeeManwon Int? // 관리비(만원)
   description       String   @default("")
   options           String[] @default([]) // 옵션(에어컨·세탁기 등) — 허용 목록은 서비스에서 검증
   images            String[] @default([])
@@ -2165,6 +2200,39 @@ model TradeListing {
   createdAt         DateTime
   updatedAt         DateTime @default(now()) @updatedAt
 
+  room              Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
   @@index([status, createdAt])
   @@index([ownerId])
+  @@index([roomId])
+}
+
+// ─── 임차인 가구 배치(트랙 C) — docs/tenant-furniture-fit.md ──────────────────
+// 임차인 계정 소유 가구 인벤토리(RoomPlan 스캔·직접입력·Object Capture 메시). 여러 매물에서 재사용.
+// category/source는 문자열(타입은 packages/types/src/tenant-furniture.ts가 강제). sizeMm는 3컬럼.
+model TenantFurniture {
+  id            String   @id
+  ownerTenantId String
+  category      String // TenantFurnitureCategory
+  label         String?
+  widthMm       Int
+  depthMm       Int
+  heightMm      Int
+  source        String // TenantFurnitureSource: roomplan|object-capture|manual|catalog
+  meshUrl       String? // Object Capture GLB(C-2). null이면 회색 박스 렌더
+  createdAt     DateTime @default(now())
+
+  @@index([ownerTenantId])
+}
+
+// 임차인이 특정 매물 방(splat 정합 프레임)에 자기 가구를 놓은 배치안. 매물×임차인 1개.
+model TenantFurniturePlacement {
+  id        String   @id
+  tenantId  String
+  listingId String
+  items     Json // TenantFurniturePlacementItem[] (furnitureId, position[x,z], rotation)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, listingId])
+  @@index([tenantId])
 }

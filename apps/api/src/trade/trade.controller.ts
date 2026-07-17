@@ -1,9 +1,9 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFiles, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query, UploadedFiles, UseInterceptors } from "@nestjs/common";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogService } from "../roomlog/roomlog.service";
 import { TradeContractBillingBridge } from "./trade-contract-billing-bridge.service";
-import { TradeService, type TradeListingInput, type TradeThread } from "./trade.service";
+import { TradeService, type TradeListing, type TradeListingInput, type TradeThread } from "./trade.service";
 
 type UploadedImageFile = { buffer: Buffer; originalname: string; mimetype: string };
 
@@ -30,13 +30,35 @@ export class TradeController {
     });
   }
 
+  private ensureRoomForListing(listing: TradeListing): TradeListing {
+    const room = this.roomlogService.ensureRoomFromTradeListing(listing.ownerId, {
+      roomId: listing.roomId,
+      title: listing.title,
+      location: listing.location,
+      detailAddress: listing.detailAddress,
+      buildingName: listing.buildingName
+    });
+
+    return this.tradeService.attachListingRoom(listing.ownerId, listing.id, room.id);
+  }
+
   @Get("listings/public")
   listPublicListings() {
     return this.tradeService.listPublicListings();
   }
 
+  // 기본은 전체 반환(공개 매물 브라우징이 이 경로를 씀 — 스코프 걸면 깨진다).
+  // ?mine=1 + Bearer면 소유자 매물만 — 마이페이지 배지·앱 매물 픽커용(fail-closed: 토큰 없으면 던짐).
   @Get("listings")
-  listListings() {
+  listListings(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("mine") mine?: string
+  ) {
+    if (mine === "1" || mine === "true") {
+      return this.tradeService
+        .listListingsByOwner(this.user(authorization).id)
+        .map((listing) => this.ensureRoomForListing(listing));
+    }
     return this.tradeService.listListings();
   }
 
@@ -47,14 +69,16 @@ export class TradeController {
   ) {
     const user = this.user(authorization);
     const listing = this.tradeService.createListing(user, body);
-    await this.tradeService.ensureListingDurability();
-    const listingLocation = [listing.location, listing.detailAddress].filter(Boolean).join(" ");
-    // 첫 매물 등록이 곧 임대인 관계 생성 — 마이페이지 임대인 가드("관리 중인 집 연결 필요")가 풀린다.
-    this.roomlogService.ensureLandlordRoomFromListing(user.id, {
-      title: listing.title,
-      location: listingLocation
-    });
-    return listing;
+    try {
+      await this.tradeService.ensureListingDurability();
+      const linked = this.ensureRoomForListing(listing);
+      await this.tradeService.ensureListingDurability();
+      return linked;
+    } catch (error) {
+      this.tradeService.deleteListing(user, listing.id);
+      await this.tradeService.ensureListingDurability();
+      throw error;
+    }
   }
 
   /** 매물 수정 — 소유자 전용(서비스에서 검증). 전달된 필드만 갱신. */
@@ -64,7 +88,10 @@ export class TradeController {
     @Param("listingId") listingId: string,
     @Body() body: Partial<TradeListingInput>
   ) {
-    const listing = this.tradeService.updateListing(this.user(authorization), listingId, body);
+    const user = this.user(authorization);
+    const listing = this.ensureRoomForListing(
+      this.tradeService.updateListing(user, listingId, body)
+    );
     await this.tradeService.ensureListingDurability();
     return listing;
   }

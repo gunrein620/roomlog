@@ -726,6 +726,13 @@ describe("PrismaStoreProjector", () => {
             updatedAt: now
           }
         ],
+        managerTicketReads: [
+          {
+            managerId,
+            ticketId,
+            readAt: now
+          }
+        ],
         repairs: [
           {
             id: repairId,
@@ -794,7 +801,8 @@ describe("PrismaStoreProjector", () => {
           feedback,
           repair,
           message,
-          history
+          history,
+          managerTicketRead
         ] = await Promise.all([
           prisma.vendorInvite.findUnique({ where: { id: vendorInviteId } }),
           prisma.tenantInvite.findUnique({ where: { id: tenantInviteId } }),
@@ -803,7 +811,10 @@ describe("PrismaStoreProjector", () => {
           prisma.aiFeedback.findUnique({ where: { id: feedbackId } }),
           prisma.repairRequest.findUnique({ where: { id: repairId } }),
           prisma.ticketMessage.findUnique({ where: { id: messageId } }),
-          prisma.statusHistory.findUnique({ where: { id: historyId } })
+          prisma.statusHistory.findUnique({ where: { id: historyId } }),
+          prisma.managerTicketRead.findUnique({
+            where: { managerId_ticketId: { managerId, ticketId } }
+          })
         ]);
 
         assert.equal(vendorInvite?.businessName, "초대 설비");
@@ -814,7 +825,17 @@ describe("PrismaStoreProjector", () => {
         assert.equal(repair?.vendorId, vendorId);
         assert.equal(message?.messageText, "업체를 배정했습니다.");
         assert.equal(history?.actorRole, "LANDLORD");
+        assert.equal(managerTicketRead?.managerId, managerId);
+
+        const loaded = await projector.load();
+        assert.equal(
+          loaded?.managerTicketReads?.find(
+            (read) => read.managerId === managerId && read.ticketId === ticketId
+          )?.readAt,
+          now
+        );
       } finally {
+        await prisma.managerTicketRead.deleteMany({ where: { ticketId } });
         await prisma.statusHistory.deleteMany({ where: { ticketId } });
         await prisma.ticketMessage.deleteMany({ where: { ticketId } });
         await prisma.repairRequest.deleteMany({ where: { ticketId } });

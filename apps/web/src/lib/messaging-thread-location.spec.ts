@@ -13,6 +13,14 @@ const detailPage = readFileSync(
   path.join(webRoot, "app/manager/messaging/04/page.tsx"),
   "utf8",
 );
+const buildingFilter = readFileSync(
+  path.join(webRoot, "app/manager/messaging/00/BuildingFilter.tsx"),
+  "utf8",
+);
+const messagingLayout = readFileSync(
+  path.join(webRoot, "app/manager/messaging/layout.tsx"),
+  "utf8",
+);
 
 test("formats a messaging thread with its building and unit", () => {
   assert.equal(
@@ -40,6 +48,11 @@ test("uses the shared location label on manager messaging list and detail pages"
   assert.match(detailPage, /title=\{`\$\{locationLabel\} 채팅 스레드`\}/);
   assert.match(detailPage, /\{locationLabel\}<\/Badge>/);
   assert.match(detailPage, /aria-label=\{`\$\{locationLabel\}/);
+});
+
+test("uses the natural manager messaging context copy", () => {
+  assert.match(messagingLayout, /context="관리 중인 집과 소통"/);
+  assert.doesNotMatch(messagingLayout, /관리 중인 집 · 소통/);
 });
 
 test("hides the connected-work note while keeping the context title", () => {
@@ -77,11 +90,35 @@ test("removes non-working messaging actions and their empty side rail", () => {
   assert.match(detailPage, /<Button type="submit">답장 보내기<\/Button>/);
 });
 
-test("keeps the reply-needed badge balanced on exactly two accessible lines", () => {
-  assert.match(listPage, /aria-label="답장 필요"/);
-  assert.match(listPage, /<span>답장<\/span>/);
-  assert.match(listPage, /<span>필요<\/span>/);
-  assert.match(listPage, /whiteSpace: "nowrap"/);
+test("places compact reply status beside the building and title-content search", () => {
+  assert.match(listPage, /className="manager-messaging-toolbar"/);
+  assert.match(listPage, /alignItems: "flex-start"/);
+  assert.match(listPage, /<BuildingFilter/);
+  assert.match(buildingFilter, /minHeight: "var\(--space-xxl\)"/);
+  assert.match(listPage, /flex: "0 1 420px"/);
+  assert.match(listPage, /maxWidth: "100%"/);
+  assert.match(listPage, /aria-label="제목 및 내용 검색"/);
+  assert.match(listPage, /placeholder="제목\/내용 검색"/);
+  assert.match(listPage, /height: "var\(--space-xxl\)"/);
+  assert.match(listPage, /fontSize: "var\(--fs-caption\)"/);
+  assert.match(listPage, /<Button[\s\S]*type="submit"[\s\S]*검색[\s\S]*<\/Button>/);
+  assert.match(listPage, /marginInlineStart: "auto"/);
+  assert.match(listPage, /<Badge emphasis>답장 필요 \{needsReply\}건<\/Badge>/);
+  assert.doesNotMatch(listPage, /대화 내 검색만 제공하며 전역 검색은 셸 소유입니다\./);
+  assert.doesNotMatch(listPage, /aria-label="티켓 검색"/);
+});
+
+test("keeps communication tickets fixed and truncates only overflowing message content", () => {
+  assert.match(listPage, /height: 206/);
+  assert.match(listPage, /overflow: "hidden"/);
+  assert.match(
+    listPage,
+    /data-testid="manager-thread-message"[\s\S]*whiteSpace: "nowrap"[\s\S]*textOverflow: "ellipsis"/,
+  );
+  assert.doesNotMatch(
+    listPage,
+    /data-testid="manager-thread-title"[^>]*textOverflow: "ellipsis"/,
+  );
 });
 
 test("replaces messaging tabs with the building ticket filter", () => {

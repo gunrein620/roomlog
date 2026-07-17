@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 
@@ -6,6 +6,13 @@ const composeSource = readFileSync("../../docker-compose.yml", "utf8");
 const envExampleSource = readFileSync("../../.env.example", "utf8");
 const readmeSource = readFileSync("../../README.md", "utf8");
 const rootPackageSource = readFileSync("../../package.json", "utf8");
+const deployWorkflowSource = readFileSync("../../.github/workflows/deploy.yml", "utf8");
+const migrationBootstrapSource = readFileSync("scripts/migrate-database.mjs", "utf8");
+const apiPrismaConfigSource = readFileSync("prisma.config.mjs", "utf8");
+const migrationSources = readdirSync("../../prisma/migrations", { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => readFileSync(`../../prisma/migrations/${entry.name}/migration.sql`, "utf8"))
+  .join("\n");
 
 describe("Docker Postgres local database wiring", () => {
   it("uses PostgreSQL 18.3 and creates a local test database in Compose", () => {
@@ -26,5 +33,120 @@ describe("Docker Postgres local database wiring", () => {
     assert.match(rootPackageSource, /db:test:push/);
     assert.match(rootPackageSource, /prisma migrate diff --from-empty --to-schema prisma\/schema\.prisma --script/);
     assert.match(rootPackageSource, /docker exec -i roomlog-postgres psql/);
+  });
+
+  it("documents a dedicated non-system production database", () => {
+    assert.match(
+      envExampleSource,
+      /DATABASE_URL=postgresql:\/\/roomlog_admin:YOUR_PASSWORD@roomlog-db\.xxxxxx\.ap-northeast-2\.rds\.amazonaws\.com:5432\/roomlog\?sslmode=require/
+    );
+    assert.doesNotMatch(
+      envExampleSource,
+      /DATABASE_URL=postgresql:\/\/roomlog_admin:[^\n]+\/postgres\?sslmode=require/
+    );
+  });
+
+  it("uses the publicly readable user-mappings view for RDS catalog inspection", () => {
+    assert.match(migrationBootstrapSource, /SELECT 1 FROM pg_user_mappings/);
+    assert.doesNotMatch(migrationBootstrapSource, /SELECT 1 FROM pg_user_mapping\n/);
+  });
+
+  it("carries required vendor activation secrets into the production environment", () => {
+    for (const key of ["VENDOR_ACTIVATION_KEY_PEPPER", "VENDOR_ACTIVATION_SESSION_SECRET"]) {
+      assert.match(envExampleSource, new RegExp(`^${key}=$`, "m"));
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`${key}: "\\$\\{\\{ secrets\\.${key} \\}\\}"`)
+      );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`${key}="\\$\\(read_prod_env_key ${key}\\)"`)
+      );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`:\\s+"\\$\\{${key}:\\?${key} secret is required\\}"`)
+      );
+      assert.match(deployWorkflowSource, new RegExp(`^\\s+${key}=\\$\\{${key}\\}$`, "m"));
+    }
+    assert.match(
+      deployWorkflowSource,
+      /ROBOFLOW_API_KEY\|VENDOR_ACTIVATION_KEY_PEPPER\|VENDOR_ACTIVATION_SESSION_SECRET/
+    );
+  });
+
+  it("carries optional GPU orchestrator secrets into the production environment", () => {
+    for (const key of [
+      "GPU_PIPELINE_ENABLED",
+      "GPU_INSTANCE_ID",
+      "GPU_REGION",
+      "GPU_WORKER_SECRET",
+    ]) {
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`${key}: "\\$\\{\\{ secrets\\.${key} \\}\\}"`)
+      );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`${key}="\\$\\(read_prod_env_key ${key}\\)"`)
+      );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`echo "${key}=\\$\\{${key}\\}" >> \\.env\\.production`)
+      );
+    }
+    assert.match(
+      deployWorkflowSource,
+      /GPU_PIPELINE_ENABLED\|GPU_INSTANCE_ID\|GPU_REGION\|GPU_WORKER_SECRET/
+    );
+  });
+
+  it("migrates the GPU reconstruction job state tracked by the Prisma schema", () => {
+    assert.match(migrationSources, /CREATE TYPE "SplatReconstructionJobState" AS ENUM/);
+    for (const column of [
+      "jobState",
+      "jobError",
+      "jobAttempts",
+      "jobCommandId",
+      "jobStartedAt",
+    ]) {
+      assert.match(migrationSources, new RegExp(`ADD COLUMN(?: IF NOT EXISTS)? "${column}"`));
+    }
+  });
+
+  it("prevents the migration container from consuming the remote deploy script stdin", () => {
+    assert.match(
+      deployWorkflowSource,
+      /compose -f docker-compose\.prod\.yml run --rm migration < \/dev\/null/
+    );
+  });
+
+  it("runs the packaged Prisma CLI without pnpm workspace repair", () => {
+    assert.match(migrationBootstrapSource, /const apiRoot = join\(repositoryRoot, "apps\/api"\)/);
+    assert.match(
+      migrationBootstrapSource,
+      /const prismaExecutable = join\(apiRoot, "node_modules\/\.bin\/prisma"\)/
+    );
+    assert.match(migrationBootstrapSource, /spawnSync\(\s*prismaExecutable,/);
+    assert.match(migrationBootstrapSource, /\[\.\.\.args, "--config", "prisma\.config\.mjs"\]/);
+    assert.match(migrationBootstrapSource, /cwd: apiRoot/);
+    assert.doesNotMatch(migrationBootstrapSource, /spawnSync\(\s*"pnpm",/);
+    assert.match(apiPrismaConfigSource, /schema: "\.\.\/\.\.\/prisma\/schema\.prisma"/);
+  });
+});
+
+describe("Migration Postgres version contract", () => {
+  it("accepts any PostgreSQL 18.3+ minor but rejects other majors", async () => {
+    // 정확 핀(=== 180003)은 RDS 마이너 자동 패치만으로 배포가 깨졌다 — 18.x 범위 허용을 고정한다.
+    const { assertSupportedPostgresVersion } = await import("../../scripts/migrate-database.mjs");
+
+    assert.doesNotThrow(() => assertSupportedPostgresVersion("180003")); // 18.3
+    assert.doesNotThrow(() => assertSupportedPostgresVersion("180004")); // 18.4 마이너 패치
+    assert.doesNotThrow(() => assertSupportedPostgresVersion(180012));
+
+    assert.throws(() => assertSupportedPostgresVersion("180002"), /requires PostgreSQL 18\.3\+/); // 18.2
+    assert.throws(() => assertSupportedPostgresVersion("170005"), /requires PostgreSQL 18\.3\+/); // 17.x
+    assert.throws(() => assertSupportedPostgresVersion("190000"), /requires PostgreSQL 18\.3\+/); // 19 메이저
+    assert.throws(() => assertSupportedPostgresVersion(undefined), /requires PostgreSQL 18\.3\+/);
+    assert.throws(() => assertSupportedPostgresVersion("not-a-number"), /requires PostgreSQL 18\.3\+/);
   });
 });

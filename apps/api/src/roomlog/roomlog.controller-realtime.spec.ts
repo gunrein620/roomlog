@@ -64,4 +64,31 @@ describe("roomlog complaint realtime activity", () => {
       { event: "roomlog:activity", payload: { kind: "ticket" } },
     ]);
   });
+
+  it("broadcasts ticket activity after a manager marks a ticket read", () => {
+    const service = new RoomlogService();
+    const broadcasts: BroadcastRecord[] = [];
+    const realtime = {
+      broadcast(event: string, payload: Record<string, unknown>) {
+        broadcasts.push({ event, payload });
+      },
+    } as RealtimeGateway;
+    const controller = new RoomlogController(service, realtime);
+    const auth = service.login({
+      email: "manager@roomlog.test",
+      password: "password123!",
+    });
+    const ticket = service.createComplaint("tenant-demo", {
+      title: "관리인 읽음 실시간 검증",
+      description: "싱크대 아래에서 물이 새고 있습니다.",
+      location: "301호 주방",
+    }).ticket;
+
+    broadcasts.length = 0;
+    controller.markManagerTicketRead(`Bearer ${auth.accessToken}`, ticket.id);
+
+    assert.deepEqual(broadcasts, [
+      { event: "roomlog:activity", payload: { kind: "ticket" } },
+    ]);
+  });
 });

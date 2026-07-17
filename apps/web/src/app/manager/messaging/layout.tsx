@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function ManagerMessagingLayout({ children }: { children: ReactNode }) {
   await requireUser("LANDLORD");
   return (
-    <ManagerAppShell title={<MessagingShellTitle />} context="관리 중인 집 · 소통">
+    <ManagerAppShell title={<MessagingShellTitle />} context="관리 중인 집과 소통">
       {children}
     </ManagerAppShell>
   );

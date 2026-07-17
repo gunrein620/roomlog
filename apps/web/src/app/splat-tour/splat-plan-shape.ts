@@ -140,6 +140,20 @@ export function isNearAnyPlanWall(
   });
 }
 
+/**
+ * 서버 저장된 도면 초안(floorPlanDraft)의 서버 FloorPlan id를 읽는다.
+ * 에디터가 서버 저장에 성공하면 `{ ...payload, id: saved.id }`로 기록하고,
+ * 실패 시엔 `status: "LOCAL_DRAFT"`로 남긴다 — 후자는 서버에 없으므로 연결 대상에서 제외한다.
+ * register 픽 화면이 정합 저장 때 이 id를 실어 SplatAsset.floorPlanId를 채운다.
+ */
+export function readFloorPlanDraftServerId(storage: Pick<Storage, "getItem">): string | null {
+  const payload = readStoragePayload(storage, "floorPlanDraft");
+  if (!payload) return null;
+  if (payload.status === "LOCAL_DRAFT") return null;
+
+  return typeof payload.id === "string" && payload.id.trim() !== "" ? payload.id.trim() : null;
+}
+
 function readFloorPlanDraft(storage: Pick<Storage, "getItem">): StorageCandidate | null {
   const payload = readStoragePayload(storage, "floorPlanDraft");
   if (!payload) return null;

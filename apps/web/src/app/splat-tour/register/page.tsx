@@ -1,21 +1,23 @@
 "use client";
 
-import { Canvas, useThree } from "@react-three/fiber";
-import { MapControls } from "@react-three/drei";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef } from "react";
 import { SplatScene, loadSplatTuningProfile, type SplatTuningProfile } from "../splat-scene";
 import { composeWithPickViewTuning, solveSimilarity } from "../similarity-solve";
-import { SPLAT_CLIP_ROOM } from "../splat-clip";
 import {
   loadPlanWallsFromBrowser,
   persistTourUploadPlanWalls,
   planWallFootprint,
   planWallsFromPayload,
+  readFloorPlanDraftServerId,
   wallsToPlanBounds
 } from "../splat-plan-shape";
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
-import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
+import { PICK_DRAG_THRESHOLD_PX, pointerTravelPx, rayPlaneIntersectionXZ } from "../register-pick";
+import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl, type SplatAsset } from "@/lib/splat-asset-api";
+import { fetchOwnerListings, resolveRegisterPlanSource } from "@/lib/owner-tour-assets";
 
 // ③(b) 도면–splat 2점 정합 도구. 탑다운 정사영으로 splat 바닥 모서리 2곳을 클릭하고,
 // 오른쪽 도면에서 같은 모서리 2곳을 클릭하면 solveSimilarity가 닫힌해로 transform을
@@ -28,7 +30,7 @@ const POINT_COLORS = ["#2563eb", "#dc2626"]; // A, B
 
 type PickView = "splat" | "plan";
 
-type PlanSource = "placeholder" | "storage" | "upload";
+type PlanSource = "placeholder" | "storage" | "upload" | "listing-db";
 
 type AssetBanner = {
   tone: "info" | "warning" | "error";
@@ -42,6 +44,18 @@ export default function Page() {
   const [planSource, setPlanSource] = useState<PlanSource>("placeholder");
   const [planMessage, setPlanMessage] = useState("");
   const [splatReady, setSplatReady] = useState(false);
+  // splat 로드 실패(대개 S3 CORS/네트워크). 참이면 검정 폴백 대신 에러 오버레이를 덮어 오해·오클릭을 막는다.
+  const [splatError, setSplatError] = useState(false);
+  // 천장 클립(픽 뷰 전용) — 밀폐 스캔이 외부 카메라에서 검은 상자로만 보이는 문제. 기본 ON, 바닥 기준 1.6m 위 절단.
+  const [ceilingCutOn, setCeilingCutOn] = useState(true);
+  const [ceilingHeight, setCeilingHeight] = useState(1.6);
+  // 오빗 컨트롤 인스턴스 — "위에서 보기" 버튼이 탑다운 프리셋으로 되돌릴 때 reset()을 호출한다.
+  const orbitRef = useRef<ElementRef<typeof OrbitControls>>(null);
+  // 탑다운 복귀: 생성 시점(카메라 [0,8,0]·zoom 140·target 원점)으로 되돌린다.
+  const resetToTopDown = () => orbitRef.current?.reset();
+  // 정합 저장 시 자산에 붙일 서버 도면 id. 서버 저장된 floorPlanDraft를 쓸 때만 값이 생긴다.
+  // 업로드/플레이스홀더 도면은 서버 id가 없어 null → 이 경우 가구 연결은 만들어지지 않는다.
+  const [planServerId, setPlanServerId] = useState<string | null>(null);
 
   // 실도면: 도면 에디터 저장본(localStorage)이 있으면 자동 로드. 업로드가 오면 그쪽이 이긴다.
   useEffect(() => {
@@ -49,6 +63,8 @@ export default function Page() {
     if (stored) {
       setPlanWalls(stored.walls);
       setPlanSource("storage");
+      // 에디터 저장본(floor-plan-draft)일 때만 서버 id가 존재한다. 거주자 디자인은 서버 도면이 아님.
+      setPlanServerId(stored.source === "floor-plan-draft" ? readFloorPlanDraftServerId(window.localStorage) : null);
     }
   }, []);
 
@@ -61,6 +77,7 @@ export default function Page() {
       }
       setPlanWalls(walls);
       setPlanSource("upload");
+      setPlanServerId(null); // 업로드 도면은 서버 FloorPlan이 아님 — 가구 연결 대상에서 제외
       setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
       setPreview(false);
       // 뷰어(벽 대체·걷기 경계·미니맵)와 공유 — 투어 페이지는 새로고침 시 이 도면을 읽는다.
@@ -88,9 +105,37 @@ export default function Page() {
     setAssetId(queryAssetId);
     setAssetBanner({ tone: "info", message: `자산 ${queryAssetId} · 조회 중` });
 
+    // 자산이 연결된 매물의 도면(walls3D 스냅샷)을 픽 화면 도면으로 자동 세팅한다.
+    // 우선순위: 자산에 이미 서버 도면(floorPlanId)이 붙어 있으면 그 연결을 존중(매물 스냅샷으로 덮지 않음),
+    // 없으면 매물 스냅샷 > localStorage > placeholder. (resolveRegisterPlanSource가 판정)
+    const applyListingFloorPlan = async (asset: SplatAsset) => {
+      if (asset.floorPlanId) {
+        // 서버 도면이 이미 연결됨 — 저장 시 그 연결을 유지하도록 서버 id만 존중하고 도면은 덮지 않는다.
+        setPlanServerId(asset.floorPlanId);
+        return;
+      }
+      if (!asset.listingId) return;
+      const listings = await fetchOwnerListings();
+      if (cancelled) return;
+      const listing = (listings ?? []).find((item) => item.id === asset.listingId);
+      const decision = resolveRegisterPlanSource(
+        asset,
+        planWallsFromPayload({ walls: listing?.floorPlan?.walls3D ?? [] })
+      );
+      if (decision.source !== "listing-db") return;
+      setPlanWalls(decision.walls);
+      setPlanSource("listing-db");
+      setPlanServerId(null); // 매물 임베드 스냅샷은 서버 FloorPlan row가 아님 — 가구 연결 대상 아님
+      setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
+      setPreview(false);
+      setPlanMessage(`매물 도면 사용 중 (벽 ${decision.walls.length}개)`);
+    };
+
     getSplatAsset(queryAssetId)
       .then((asset) => {
         if (cancelled) return;
+
+        void applyListingFloorPlan(asset);
 
         const prefix = `자산 ${asset.id} · ${asset.status}`;
         if (asset.fileUrl) {
@@ -137,6 +182,7 @@ export default function Page() {
     setSaveState("idle");
     setSaveMessage("");
     setSplatReady(false);
+    setSplatError(false);
   }, [splatSrc]);
 
   // 픽 씬(SplatScene transform=null)이 같은 프로파일로 splat을 배치하므로, 솔버 결과를
@@ -196,9 +242,14 @@ export default function Page() {
     setSaveState("saving");
     setSaveMessage("");
     try {
-      await registerSplatAsset(assetId.trim(), transform, pairs);
+      // planServerId가 있으면(서버 저장된 도면으로 정합) 자산에 붙여 공개 뷰어가 그 가구를 받게 한다.
+      await registerSplatAsset(assetId.trim(), transform, pairs, planServerId ?? undefined);
       setSaveState("saved");
-      setSaveMessage("정합 결과를 저장했습니다 (status: REGISTERED).");
+      setSaveMessage(
+        planServerId
+          ? "정합 결과를 저장했습니다 (status: REGISTERED · 도면 가구 연결됨)."
+          : "정합 결과를 저장했습니다 (status: REGISTERED)."
+      );
     } catch (error) {
       setSaveState("error");
       setSaveMessage(error instanceof Error ? error.message : "저장 실패");
@@ -224,14 +275,25 @@ export default function Page() {
           <PaneTitle step="1" label="splat 탑다운 — 바닥 모서리 클릭" picks={splatPicks.length} />
           <div style={canvasWrap}>
             <Canvas orthographic camera={{ position: [0, 8, 0], zoom: 140, near: 0.1, far: 100 }}>
-              <TopDownRig />
-              {/* 탑다운 전용 컨트롤: 휠=확대, 드래그=이동. 회전은 잠근다(픽 좌표는 XZ 정사영 전제). */}
-              <MapControls enableRotate={false} makeDefault minZoom={40} maxZoom={600} />
+              {/* 자유 시점: 드래그=회전/틸트, 우드래그=이동, 휠=확대. 시작·복귀는 탑다운([0,8,0]).
+                  픽은 카메라와 무관한 바닥 평면 레이캐스트라(rayPlaneIntersectionXZ) 각도가 좌표에 영향 없음. */}
+              <OrbitControls
+                ref={orbitRef}
+                makeDefault
+                enableDamping
+                minZoom={40}
+                maxZoom={600}
+                minPolarAngle={0}
+                maxPolarAngle={Math.PI / 2 - 0.05}
+                target={[0, 0, 0]}
+              />
               <SplatScene
                 defaultFitMode="native"
                 src={splatSrc}
                 transform={preview ? transform : null}
+                ceilingClipHeightMeters={ceilingCutOn ? ceilingHeight : null}
                 onLoaded={() => setSplatReady(true)}
+                onError={() => setSplatError(true)}
               />
               <PickPlane onPick={(x, z) => addPick("splat", { x, y: z })} />
               {splatPicks.map((p, i) => (
@@ -248,11 +310,46 @@ export default function Page() {
                 </group>
               ))}
             </Canvas>
-            {!splatReady ? (
+            {splatError ? (
+              // 로드 실패: 검정 폴백을 덮어 "정합할 3D가 실제로 떠 있는 것처럼" 보이는 오해와 오클릭을 막는다.
+              // 대개 S3 CORS 미설정 또는 네트워크 오류 — 콘솔의 "Failed to load Spark splat scene"이 원인.
+              <div style={errorOverlay}>
+                <strong style={{ fontSize: 15 }}>3D를 불러오지 못했습니다</strong>
+                <span style={{ fontSize: 13, opacity: 0.9 }}>
+                  spz 파일을 가져오지 못했습니다 (네트워크·저장소 접근 오류). 정합할 3D가 없어 이 단계를 진행할 수 없습니다.
+                </span>
+                <span style={{ fontSize: 12, opacity: 0.75 }}>브라우저 콘솔의 “Failed to load Spark splat scene” 로그를 확인하세요.</span>
+              </div>
+            ) : !splatReady ? (
               // 페인트 전 빈 화면에 클릭하는 사고 방지 — 로드 완료까지 클릭을 막고 안내한다.
               <div style={loadingOverlay}>splat 로딩 중… (수십 초 걸릴 수 있어요)</div>
             ) : null}
-            <span style={hint}>클릭 = 점 찍기 (A→B, 3번째 클릭 = 처음부터) · 드래그 = 이동 · 휠 = 확대</span>
+            <button type="button" style={topDownBtn} onClick={resetToTopDown} title="탑다운 시점으로 되돌리기">
+              위에서 보기
+            </button>
+            {/* 천장 클립: 밀폐 스캔은 외부 카메라에서 검은 상자로만 보이므로, 바닥 기준 높이 위를 잘라 내부를 드러낸다. */}
+            <div style={ceilingPanel}>
+              <label style={ceilingToggle}>
+                <input type="checkbox" checked={ceilingCutOn} onChange={(event) => setCeilingCutOn(event.target.checked)} />
+                천장 자르기
+              </label>
+              {ceilingCutOn ? (
+                <label style={ceilingSliderRow}>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={2.6}
+                    step={0.1}
+                    value={ceilingHeight}
+                    aria-label="천장 자르기 높이(m)"
+                    onChange={(event) => setCeilingHeight(Number(event.target.value))}
+                    style={{ width: 96 }}
+                  />
+                  <span style={{ minWidth: 34, textAlign: "right" }}>{ceilingHeight.toFixed(1)}m</span>
+                </label>
+              ) : null}
+            </div>
+            <span style={hint}>클릭 = 점 찍기 (A→B, 3번째 = 처음부터) · 드래그 = 회전 · 우드래그 = 이동 · 휠 = 확대</span>
           </div>
         </section>
 
@@ -275,9 +372,11 @@ export default function Page() {
             <span style={muted}>
               {planSource === "upload"
                 ? planMessage
-                : planSource === "storage"
-                  ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
-                  : planMessage || "도면 없음 — 3×4m 플레이스홀더 사용 중"}
+                : planSource === "listing-db"
+                  ? `매물 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                  : planSource === "storage"
+                    ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                    : planMessage || "도면 없음 — 정합 건너뜀 (3D는 그대로 표시)"}
             </span>
           </div>
           <PlanPicker walls={planWalls} picks={planPicks} onPick={(x, y) => addPick("plan", { x, y })} />
@@ -333,37 +432,42 @@ export default function Page() {
   );
 }
 
-// 탑다운 정사영: 카메라를 위에서 아래(-Y)로 내려다보게 세팅. up을 -Z로 두어 화면 위=방 안쪽.
-function TopDownRig() {
-  const camera = useThree((s) => s.camera);
-  useEffect(() => {
-    camera.up.set(0, 0, -1);
-    camera.position.set(0, 8, 0);
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-  }, [camera]);
-  return null;
-}
-
-// y=0 바닥 평면. onClick의 event.point가 월드 교차점을 직접 준다(수동 언프로젝트 불필요).
-// onPointerDown이 아니라 onClick + delta 가드: MapControls 드래그(팬) 시작이 픽으로 오인되지 않게.
+// y=0 바닥 평면. 클릭 광선을 이 평면과 analytic하게 교차시켜(rayPlaneIntersectionXZ) 카메라 각도와
+// 무관하게 XZ를 픽한다. 오빗 회전 후에도 좌표가 정확하다. 넉넉한 크기라 틸트 상태 클릭도 평면 위에 떨어진다.
+// onPointerDown이 아니라 onClick + delta 가드: 회전/이동 드래그가 픽으로 오인되지 않게.
 function PickPlane({ onPick }: { onPick: (x: number, z: number) => void }) {
+  // pointerdown 화면 좌표를 직접 기록해 click 시점 이동거리를 잰다. R3F의 event.delta는 OrbitControls가
+  // pointermove를 소비하면 0으로 새어(실측: 세로 180px 드래그가 픽으로 등록) 신뢰할 수 없다.
+  const downRef = useRef<{ x: number; y: number } | null>(null);
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
+      onPointerDown={(event) => {
+        downRef.current = { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY };
+      }}
       onClick={(event) => {
-        if (event.delta > 4) return; // 드래그였다 — 픽 아님
+        const down = downRef.current;
+        downRef.current = null;
+        // 드래그(회전/이동)면 픽 금지 — 직접 측정한 pointerdown→click 픽셀 이동으로 판정.
+        if (down) {
+          if (pointerTravelPx(down, { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) > PICK_DRAG_THRESHOLD_PX) return;
+        } else if (event.delta > PICK_DRAG_THRESHOLD_PX) {
+          return; // pointerdown을 놓친 경우의 폴백(기존 R3F delta 가드)
+        }
         event.stopPropagation();
-        onPick(event.point.x, event.point.z);
+        // 광선-바닥 교차가 정석. 평행/뒤쪽 등 실패 시 mesh 교차점(event.point)으로 폴백.
+        const hit = rayPlaneIntersectionXZ(event.ray) ?? { x: event.point.x, z: event.point.z };
+        onPick(hit.x, hit.z);
       }}
     >
-      <planeGeometry args={[40, 40]} />
+      <planeGeometry args={[80, 80]} />
       <meshBasicMaterial color="#38bdf8" transparent opacity={0.06} />
     </mesh>
   );
 }
 
-// 도면 2D SVG. 실벽(walls)이 있으면 발자국 폴리곤을 그리고, 없으면 3m×4m 플레이스홀더 사각형.
+// 도면 2D SVG. 실벽(walls)이 있으면 발자국 폴리곤을 그린다. 도면이 없으면 가짜
+// 플레이스홀더 박스를 깔지 않고 "도면 없음" 빈 상태를 보여준다(정합 건너뜀).
 // 클릭 → 도면 프레임 미터 좌표(투어 월드와 동일 프레임 — 벽·가구·미니맵이 쓰는 그 좌표계).
 function PlanPicker({
   walls,
@@ -374,11 +478,22 @@ function PlanPicker({
   picks: Point2[];
   onPick: (x: number, y: number) => void;
 }) {
-  const bounds = walls && walls.length > 0 ? wallsToPlanBounds(walls) : null;
-  const minX = bounds ? bounds.minX : -SPLAT_CLIP_ROOM.width / 2;
-  const minZ = bounds ? bounds.minZ : -SPLAT_CLIP_ROOM.depth / 2;
-  const width = bounds ? bounds.width : SPLAT_CLIP_ROOM.width;
-  const depth = bounds ? bounds.depth : SPLAT_CLIP_ROOM.depth;
+  if (!walls || walls.length === 0) {
+    return (
+      <div style={canvasWrap}>
+        <div style={planEmptyState}>
+          <strong style={{ fontSize: 14, color: "#334155" }}>도면 없음</strong>
+          <span>정합할 도면이 없어 이 단계를 건너뜁니다. 3D는 그대로 표시됩니다.</span>
+          <span style={{ fontSize: 12 }}>매물에 도면을 추가하면 이 자산과 정합할 수 있어요.</span>
+        </div>
+      </div>
+    );
+  }
+  const bounds = wallsToPlanBounds(walls);
+  const minX = bounds.minX;
+  const minZ = bounds.minZ;
+  const width = bounds.width;
+  const depth = bounds.depth;
   // 큰 도면이 패널을 넘지 않게 스케일 캡 (기본 70px/m)
   const scale = Math.min(PLAN_PX_PER_M, 520 / Math.max(width, 0.5), 420 / Math.max(depth, 0.5));
   const w = width * scale;
@@ -399,21 +514,17 @@ function PlanPicker({
           onPick(Number(x.toFixed(3)), Number(y.toFixed(3)));
         }}
       >
-        {walls && walls.length > 0 ? (
-          walls.map((wall) => (
-            <polygon
-              key={wall.id}
-              points={planWallFootprint(wall)
-                .map((c) => `${pad + (c.x - minX) * scale},${pad + (c.z - minZ) * scale}`)
-                .join(" ")}
-              fill="#cbd5e1"
-              stroke="#64748b"
-              strokeWidth={1}
-            />
-          ))
-        ) : (
-          <rect x={pad} y={pad} width={w} height={h} fill="none" stroke="#94a3b8" strokeWidth={2} rx={6} />
-        )}
+        {walls.map((wall) => (
+          <polygon
+            key={wall.id}
+            points={planWallFootprint(wall)
+              .map((c) => `${pad + (c.x - minX) * scale},${pad + (c.z - minZ) * scale}`)
+              .join(" ")}
+            fill="#cbd5e1"
+            stroke="#64748b"
+            strokeWidth={1}
+          />
+        ))}
         {picks.map((p, i) => (
           <circle
             key={i}
@@ -455,6 +566,22 @@ const canvasWrap: CSSProperties = {
 };
 const footer: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
 const muted: CSSProperties = { color: "#64748b", fontSize: 13 };
+const planEmptyState: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  height: "100%",
+  minHeight: 200,
+  padding: 24,
+  color: "#64748b",
+  fontSize: 13,
+  border: "1px dashed #cbd5e1",
+  borderRadius: 8,
+  background: "var(--surface, #f8fafc)"
+};
 const assetBannerStyle: CSSProperties = {
   border: "1px solid",
   borderRadius: 8,
@@ -480,6 +607,37 @@ const assetBannerTone: Record<AssetBanner["tone"], CSSProperties> = {
   }
 };
 const hint: CSSProperties = { position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "#64748b" };
+const topDownBtn: CSSProperties = {
+  position: "absolute",
+  top: 8,
+  right: 8,
+  zIndex: 2,
+  background: "#0f172a",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  padding: "7px 12px",
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: "pointer"
+};
+const ceilingPanel: CSSProperties = {
+  position: "absolute",
+  top: 8,
+  left: 8,
+  zIndex: 2,
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  background: "rgba(15, 23, 42, 0.82)",
+  color: "#fff",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 700
+};
+const ceilingToggle: CSSProperties = { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" };
+const ceilingSliderRow: CSSProperties = { display: "flex", alignItems: "center", gap: 6 };
 const loadingOverlay: CSSProperties = {
   position: "absolute",
   inset: 0,
@@ -491,6 +649,22 @@ const loadingOverlay: CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
   zIndex: 1
+};
+const errorOverlay: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  padding: 24,
+  // 검정 폴백 위를 확실히 덮도록 로딩(zIndex 1)보다 위. 반투명 어둠 위에 흰 텍스트로 "실패"를 분명히.
+  background: "rgba(15, 23, 42, 0.82)",
+  color: "#f8fafc",
+  // 코너 컨트롤(위에서 보기·천장 자르기 = zIndex 2)까지 덮는다 — 로드 실패 시 그 버튼들은 무의미.
+  zIndex: 3
 };
 const badge: CSSProperties = {
   background: "#0f172a",

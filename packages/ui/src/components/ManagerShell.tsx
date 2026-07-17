@@ -7,6 +7,8 @@ export interface ManagerShellProps {
   subnav?: ReactNode;
   headerActions?: ReactNode;
   rightRail?: ReactNode;
+  /** 페이지가 자체 제목을 제공할 때 공용 상단 헤더를 숨긴다. */
+  hideHeader?: boolean;
   /** 데스크톱에서 사이드바를 접은 상태로 렌더 (토글 상태는 호출측이 관리). */
   navCollapsed?: boolean;
   /** opt-in 테마 토큰(packages/ui/src/tokens.css의 .theme-*)을 워크스페이스 루트에 얹는다. */
@@ -21,6 +23,7 @@ export function ManagerShell({
   subnav,
   headerActions,
   rightRail,
+  hideHeader = false,
   navCollapsed = false,
   theme,
   children,
@@ -38,13 +41,15 @@ export function ManagerShell({
     <div className={rootClassName}>
       {nav ? <aside className="manager-workspace__sidebar">{nav}</aside> : null}
       <section className="manager-workspace__content">
-        <header className="manager-workspace__header">
-          <div className="manager-workspace__heading">
-            <h1 className="manager-workspace__title">{title}</h1>
-            {context ? <div className="manager-workspace__context">{context}</div> : null}
-          </div>
-          {headerActions ? <div className="manager-workspace__header-actions">{headerActions}</div> : null}
-        </header>
+        {!hideHeader ? (
+          <header className="manager-workspace__header">
+            <div className="manager-workspace__heading">
+              <h1 className="manager-workspace__title">{title}</h1>
+              {context ? <div className="manager-workspace__context">{context}</div> : null}
+            </div>
+            {headerActions ? <div className="manager-workspace__header-actions">{headerActions}</div> : null}
+          </header>
+        ) : null}
         {subnav ? <div className="manager-workspace__subnav">{subnav}</div> : null}
         <div className="manager-workspace__body">
           <main className="manager-workspace__main">{children}</main>
