@@ -357,7 +357,9 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     [workspace.ledgerEntries],
   );
   const topupOrders = useMemo(
-    () => [...workspace.topupOrders].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    () => [...workspace.topupOrders]
+      .filter((order) => order.status !== "READY")
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [workspace.topupOrders],
   );
 
@@ -824,7 +826,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
           <span className={styles.countBadge}>{workspace.paymentRequests.length}건</span>
         </div>
         {workspace.paymentRequests.length > 0 ? (
-          <div className={styles.paymentList}>
+          <div className={styles.paymentList} tabIndex={0} aria-label="업체 지급 요청 목록">
             {workspace.paymentRequests.map((request, index) => (
               <article className={styles.paymentCard} key={request.id}>
                 <div className={styles.requestMain}>
@@ -918,7 +920,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
                     || order.status === "RECONCILIATION_REQUIRED";
                   return (
                     <article className={styles.topupRow} key={order.orderId}>
-                      <div><strong>{won(order.amount)}</strong><span>{formatDate(order.createdAt)} · {order.method ?? "결제수단 확인 전"}</span>{order.failureReason ? <small>{userFacingFailure(order.failureReason)}</small> : null}</div>
+                      <div><strong>{won(order.amount)}</strong><span>{formatDate(order.createdAt)}{order.method ? ` · ${order.method}` : ""}</span>{order.failureReason ? <small>{userFacingFailure(order.failureReason)}</small> : null}</div>
                       <span className={order.status === "APPROVED" ? styles.statusPositive : styles.statusNeutral}>{topupStatusLabel[order.status]}</span>
                       {reconcilable ? (
                         <button

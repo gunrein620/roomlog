@@ -303,15 +303,14 @@
 
 .policySettings,
 .policyActions {
-  min-height: calc(var(--touch-target) + var(--space-md));
+  min-height: calc(var(--control-compact-size) + var(--space-lg));
   display: flex;
   align-items: center;
-  padding: var(--space-md) var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
   border-top: 1px solid var(--border);
 }
 
 .policySettings {
-  block-size: calc(var(--touch-target) + var(--space-xl));
   background: var(--surface-container-low);
 }
 
@@ -325,7 +324,7 @@
 }
 
 .limitField {
-  width: min(100%, var(--content-readable-max));
+  width: min(100%, var(--content-narrow-max));
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, .45fr);
   align-items: center;
@@ -343,9 +342,15 @@
 }
 
 .limitField > span {
+  min-height: var(--control-compact-size);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  padding: 0 var(--space-md);
+}
+
+.policyActions .primaryButton {
+  min-height: var(--control-compact-size);
   padding: 0 var(--space-md);
 }
 
@@ -418,7 +423,8 @@
 .limitField:focus-within,
 .noteField input:focus-visible,
 .historyScroll:focus-visible,
-.topupScroll:focus-visible {
+.topupScroll:focus-visible,
+.paymentList:focus-visible {
   outline: 0;
   box-shadow: var(--focus-ring);
 }
@@ -435,6 +441,8 @@
 .paymentList {
   display: grid;
   gap: var(--space-sm);
+  overflow-y: auto;
+  padding-right: var(--space-xs);
 }
 
 .paymentCard {
@@ -535,7 +543,8 @@
 }
 
 .historyScroll,
-.topupScroll {
+.topupScroll,
+.paymentList {
   --history-visible-rows: 8;
   --history-max-height: calc(
     var(--touch-target) + var(--touch-target) + var(--touch-target) + var(--touch-target)
