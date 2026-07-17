@@ -32,6 +32,8 @@ export interface TeamManagerTicket {
   directHandling?: TicketDirectHandling | null;
   selfRepair?: TicketSelfRepairSummary | null;
   aiFeedback?: TeamAiFeedback[];
+  managerReadAt?: string;
+  isManagerUnread?: boolean;
   /** 팀 Ticket.category(하자/소음/납부…) — presentTicket이 ticket 필드를 spread하므로 함께 온다 */
   category?: string;
   /** API 응답 경계에서 확정된 티켓 종류 */

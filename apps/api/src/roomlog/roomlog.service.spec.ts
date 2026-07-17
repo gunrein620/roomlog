@@ -3971,6 +3971,46 @@ describe("RoomlogService", () => {
     assert.ok(readAgain.managerReadAt);
   });
 
+  it("projects linked ticket unread state into manager messaging threads", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "소통 허브 미확인 배지",
+      description: "욕실 환풍기가 작동하지 않습니다.",
+      location: "301호 욕실",
+    });
+    service.createTenantMessagingThread("tenant-demo", {
+      context: "defect",
+      contextRef: created.ticket.id,
+      contextLabel: created.ticket.title,
+      body: "접수한 민원 상태를 확인해주세요.",
+    });
+    const beforeRead = service
+      .listManagerMessagingThreads("landlord-demo")
+      .find((thread) => thread.contextRef === created.ticket.id);
+
+    assert.ok(beforeRead);
+    assert.equal(beforeRead.isManagerTicketUnread, true);
+    assert.equal(
+      service.getManagerMessagingThread("landlord-demo", beforeRead.id)
+        .isManagerTicketUnread,
+      true,
+    );
+
+    service.markManagerTicketRead("landlord-demo", created.ticket.id);
+
+    assert.equal(
+      service
+        .listManagerMessagingThreads("landlord-demo")
+        .find((thread) => thread.id === beforeRead.id)?.isManagerTicketUnread,
+      false,
+    );
+    assert.equal(
+      service.getManagerMessagingThread("landlord-demo", beforeRead.id)
+        .isManagerTicketUnread,
+      false,
+    );
+  });
+
   it("does not let another manager mark an out-of-scope ticket read", () => {
     const service = new RoomlogService();
     const otherManager = service.signup({

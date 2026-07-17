@@ -33,13 +33,13 @@ import { TenantVendorConnectionCard } from "./TenantVendorConnectionCard";
 import { TenantVendorWorkflowPanel } from "./TenantVendorWorkflowPanel";
 import { tenantVendorConnectionEligible } from "./tenant-vendor-connection";
 import {
-  createTenantComplaintDraftLoadGuard,
   createTenantComplaintDraftMutationGuard,
   deleteTenantComplaintDraft,
   loadTenantComplaintDraft,
   mergeTenantComplaintDraftImageUrls,
   saveTenantComplaintDraft,
   serializeTenantComplaintDraftOccurredAt,
+  type TenantComplaintDraft,
   type TenantComplaintDraftImage
 } from "@/lib/tenant-complaint-draft";
 
@@ -865,10 +865,10 @@ export default function TenantMyPage({
   const [landlordChatDraft, setLandlordChatDraft] = useState("");
   const [isLandlordMessageSending, setIsLandlordMessageSending] = useState(false);
   const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
+  const [savedRequestDraft, setSavedRequestDraft] = useState<TenantComplaintDraft | null>(null);
   const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
   const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
   const requestImagesRef = useRef<RequestImagePreview[]>([]);
-  const requestDraftLoadGuardRef = useRef(createTenantComplaintDraftLoadGuard());
   const requestDraftMutationGuardRef = useRef(createTenantComplaintDraftMutationGuard());
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [isLoadingRequestDraft, setIsLoadingRequestDraft] = useState(false);
@@ -950,6 +950,26 @@ export default function TenantMyPage({
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [loadLandlordUnreadCount, selectedTenantRoomId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSavedRequestDraft(null);
+    if (!selectedTenantRoomId) return () => {
+      cancelled = true;
+    };
+
+    void loadTenantComplaintDraft(selectedTenantRoomId)
+      .then((draft) => {
+        if (!cancelled) setSavedRequestDraft(draft);
+      })
+      .catch(() => {
+        if (!cancelled) setSavedRequestDraft(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTenantRoomId]);
 
   // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
   const ai = useTenantAiAssistant({
@@ -1208,38 +1228,37 @@ export default function TenantMyPage({
       typeof attachment.url === "string" && attachment.url.trim().length > 0
     ) ?? [];
 
-  const openRequestSheet = async () => {
+  const openNewRequestSheet = () => {
     setRequestError("");
-    setIsRequestSheetOpen(true);
-    if (!selectedTenantRoomId) return;
-
-    const loadToken = requestDraftLoadGuardRef.current.begin(selectedTenantRoomId);
     setRequestDraft(EMPTY_REQUEST_DRAFT);
+    // 긴급도·방문 가능 시간은 임시저장에 포함되지 않는 즉석 입력 — 새 작성은 항상 빈 값에서 시작한다.
+    setRequestUrgency(undefined);
+    setRequestAvailableTimes("");
     clearRequestImages();
-    setIsLoadingRequestDraft(true);
-    try {
-      const draft = await loadTenantComplaintDraft(selectedTenantRoomId);
-      if (!requestDraftLoadGuardRef.current.isCurrent(loadToken)) return;
-      if (!draft) return;
-      setRequestDraft({
-        category: draft.category,
-        title: draft.title,
-        occurredAt: draft.occurredAt ? dateTimeLocalValue(draft.occurredAt) : "",
-        description: draft.description
-      });
-      setRequestImages(draft.attachmentUrls.map((url) => ({
-        id: `draft-image-${crypto.randomUUID()}`,
-        url,
-        uploadedUrl: url
-      })));
-    } catch (error) {
-      if (!requestDraftLoadGuardRef.current.isCurrent(loadToken)) return;
-      setRequestError(error instanceof Error ? error.message : "임시 저장 내용을 불러오지 못했습니다.");
-    } finally {
-      if (requestDraftLoadGuardRef.current.isCurrent(loadToken)) {
-        setIsLoadingRequestDraft(false);
-      }
-    }
+    setIsLoadingRequestDraft(false);
+    setIsRequestSheetOpen(true);
+  };
+
+  const openSavedRequestSheet = () => {
+    if (!savedRequestDraft) return;
+    setRequestError("");
+    setRequestDraft({
+      category: savedRequestDraft.category,
+      title: savedRequestDraft.title,
+      occurredAt: savedRequestDraft.occurredAt ? dateTimeLocalValue(savedRequestDraft.occurredAt) : "",
+      description: savedRequestDraft.description
+    });
+    // 임시저장엔 긴급도·방문 가능 시간이 없으므로 이전 세션 값이 새어들지 않게 초기화.
+    setRequestUrgency(undefined);
+    setRequestAvailableTimes("");
+    clearRequestImages();
+    setRequestImages(savedRequestDraft.attachmentUrls.map((url) => ({
+      id: `draft-image-${crypto.randomUUID()}`,
+      url,
+      uploadedUrl: url
+    })));
+    setIsLoadingRequestDraft(false);
+    setIsRequestSheetOpen(true);
   };
 
   const openRepairDetailSheet = async (request: TenantRepairRequest) => {
@@ -1418,7 +1437,6 @@ export default function TenantMyPage({
   };
 
   const closeRequestSheet = (resetDraft = false) => {
-    requestDraftLoadGuardRef.current.invalidate();
     setIsLoadingRequestDraft(false);
     setIsRequestSheetOpen(false);
     setRequestError("");
@@ -1471,6 +1489,7 @@ export default function TenantMyPage({
         description: requestDraft.description,
         attachmentUrls
       });
+      setSavedRequestDraft(saved);
       clearRequestImages();
       setRequestImages(saved.attachmentUrls.map((url) => ({
         id: `draft-image-${crypto.randomUUID()}`,
@@ -1495,6 +1514,7 @@ export default function TenantMyPage({
     setIsSavingRequestDraft(true);
     try {
       await deleteTenantComplaintDraft(selectedTenantRoomId);
+      setSavedRequestDraft(null);
       closeRequestSheet(true);
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : "임시 저장 내용을 삭제하지 못했습니다.");
@@ -1523,6 +1543,7 @@ export default function TenantMyPage({
         description: requestDraft.description,
         attachmentUrls
       });
+      setSavedRequestDraft(stagedDraft);
       const requestSubmissionId = stagedDraft.id;
       clearRequestImages();
       setRequestImages(stagedDraft.attachmentUrls.map((url) => ({
@@ -1553,6 +1574,7 @@ export default function TenantMyPage({
         setRequestError(data?.message || "요청을 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
         return;
       }
+      setSavedRequestDraft(null);
       setIsRequestSheetOpen(false);
       setRequestDraft(EMPTY_REQUEST_DRAFT);
       setRequestUrgency(undefined);
@@ -1747,10 +1769,17 @@ export default function TenantMyPage({
       <section className="tenant-history-card" aria-label="민원/하자 이력">
         <header className="tenant-section-head">
           <h3>민원/하자 이력</h3>
-          <button type="button" onClick={openRequestSheet}>
-            신규 요청하기
-            <span aria-hidden="true">+</span>
-          </button>
+          <div className="tenant-section-actions">
+            {savedRequestDraft ? (
+              <button type="button" onClick={openSavedRequestSheet}>
+                임시 저장
+              </button>
+            ) : null}
+            <button type="button" onClick={openNewRequestSheet}>
+              신규 요청하기
+              <span aria-hidden="true">+</span>
+            </button>
+          </div>
         </header>
         <div className="tenant-history-list">
           {repairHistory.map((item, index) => {

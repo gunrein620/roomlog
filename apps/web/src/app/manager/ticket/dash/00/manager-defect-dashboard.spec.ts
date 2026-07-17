@@ -138,6 +138,17 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /initialTemplate/);
   assert.match(componentSource, /markManagerTicketRead/);
   assert.match(componentSource, /void markManagerTicketRead\(row\.ticket\.id\)/);
+  assert.match(
+    componentSource,
+    /data-unread=\{row\.isManagerUnread \? "true" : undefined\}/,
+  );
+  assert.match(componentSource, />미확인<\/span>/);
+  assert.match(
+    componentSource,
+    /markManagerTicketRead\(row\.ticket\.id\)[\s\S]*setLocallyReadTicketIds/,
+  );
+  assert.match(cssSource, /manager-defect-dashboard__unread-badge/);
+  assert.match(cssSource, /tr\[data-unread="true"\]/);
   assert.match(componentSource, /disabled/);
   assert.match(componentSource, /row\.buildingName \?\? "—"/);
   assert.match(componentSource, /const buildings/);

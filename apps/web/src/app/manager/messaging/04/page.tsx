@@ -90,7 +90,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   return (
     <>
-      <ManagerThreadReadReceipt threadId={thread.id} />
+      <ManagerThreadReadReceipt
+        threadId={thread.id}
+        ticketId={thread.context === "defect" ? thread.contextRef : undefined}
+      />
       <MessageAutoRefresh intervalMs={3000} />
       <ScreenHeader
         eyebrow="M-MSG-04"
