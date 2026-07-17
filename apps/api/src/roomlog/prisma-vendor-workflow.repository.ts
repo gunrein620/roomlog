@@ -700,6 +700,39 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       : null;
   }
 
+  async listTenantPayableWorkflows(
+    tenantId: string
+  ): Promise<TenantVendorWorkflowView[]> {
+    const normalizedTenantId = requiredText(
+      tenantId,
+      "임차인 정보를 확인해 주세요."
+    );
+    const rows = await this.prisma.repairRequest.findMany({
+      where: {
+        costBearer: "TENANT",
+        paymentRequest: {
+          is: {
+            payerRole: "TENANT",
+            payerUserId: normalizedTenantId,
+            status: "PENDING_APPROVAL",
+            NOT: { lastAttemptMode: "DIRECT" }
+          }
+        },
+        ticket: {
+          tenantId: normalizedTenantId,
+          tenant: { role: "TENANT", status: "ACTIVE" },
+          complaint: { tenantId: normalizedTenantId },
+          room: { tenants: { some: { tenantId: normalizedTenantId } } }
+        }
+      },
+      include: this.jobInclude(),
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
+    return rows.map((row) =>
+      this.projectTenantWorkflowRow(row, row.ticket.complaintId)
+    );
+  }
+
   async reviewTenantEstimate(
     tenantId: string,
     repairId: string,
@@ -2404,6 +2437,8 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
     return {
       complaintId,
       repairId: row.id,
+      title: row.title,
+      publicLocation: `${row.ticket.room.buildingName} ${publicRoomNo(row.ticket.room.roomNo)}`,
       status: row.status,
       vendor: {
         businessName: row.vendor.businessName,
@@ -2415,6 +2450,13 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       ...(latestEstimate ? { latestEstimate: mapJobEstimate(latestEstimate) } : {}),
       ...(publicCompletion ? { latestCompletion: publicCompletion } : {}),
       ...(row.paymentRequest ? { paymentRequest: mapJobPayment(row.paymentRequest) } : {}),
+      ...(row.paymentRequest?.repairPaymentOrders[0]
+        ? {
+            latestRepairPaymentOrder: publicRepairPaymentOrder(
+              mapRepairPaymentOrder(row.paymentRequest.repairPaymentOrders[0])
+            )
+          }
+        : {}),
       updatedAt: row.updatedAt.toISOString()
     };
   }

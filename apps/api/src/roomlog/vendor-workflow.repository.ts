@@ -149,6 +149,9 @@ export interface VendorWorkflowRepository {
     tenantId: string,
     complaintId: string
   ): Promise<TenantVendorWorkflowView | null>;
+  listTenantPayableWorkflows(
+    tenantId: string
+  ): Promise<TenantVendorWorkflowView[]>;
   reviewTenantEstimate(
     tenantId: string,
     repairId: string,

@@ -86,6 +86,8 @@ export type TenantVendorCompletionDecisionInput =
 export interface TenantVendorWorkflowView {
   complaintId: string;
   repairId: string;
+  title: string;
+  publicLocation: string;
   status: string;
   vendor: TenantPartnerVendorPublicView;
   scheduledAt?: string;

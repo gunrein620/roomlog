@@ -296,6 +296,14 @@ export class RoomlogVendorWorkflowDomain {
     ));
   }
 
+  async listTenantPayableWorkflows(
+    tenantId: string
+  ): Promise<TenantVendorWorkflowView[]> {
+    return this.execute(() => this.repository.listTenantPayableWorkflows(
+      normalizeIdentifier(tenantId, "임차인 정보가 올바르지 않습니다.")
+    ));
+  }
+
   async reviewTenantEstimate(
     tenantId: string,
     repairId: string,

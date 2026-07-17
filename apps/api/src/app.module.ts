@@ -7,6 +7,7 @@ import { RoomlogModule } from "./roomlog/roomlog.module";
 import { SplatAssetModule } from "./splat-asset/splat-asset.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { TradeModule } from "./trade/trade.module";
+import { AgentToolsModule } from "./agent-tools/agent-tools.module";
 
 @Module({
   imports: [
@@ -17,7 +18,8 @@ import { TradeModule } from "./trade/trade.module";
     ListingsModule,
     SplatAssetModule,
     TradeModule,
-    RealtimeModule
+    RealtimeModule,
+    AgentToolsModule
   ]
 })
 export class AppModule {}
