@@ -7592,12 +7592,15 @@ p {
 }
 
 .tenant-defect-messages ul {
+  /* column-reverse + 역순 렌더로 스크롤이 항상 최신(하단)에 붙는다 — 쌓여도 카드가 안 길어짐 */
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: 8px;
   margin: 0;
-  padding: 0;
+  padding: 0 4px 0 0;
   list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
 }
 
 .tenant-defect-messages li {

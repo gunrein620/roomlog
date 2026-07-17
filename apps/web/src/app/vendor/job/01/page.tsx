@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
 import { getVendorWorkflowJob, nextVendorJobRoute } from "@/lib/vendor-workflow-api";
+import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
 import {
   AttachmentGallery,
   Body,
@@ -53,6 +54,8 @@ export default async function Page({
             표시하지 않습니다.
           </p>
         </Card>
+        {/* 세입자·관리자 새 메시지를 화면 새로고침 없이 반영 (입력 중엔 갱신 보류) */}
+        <MessageAutoRefresh intervalMs={8000} />
         <VendorJobChat job={job} readOnly={source === "DEMO"} />
         <WorkflowEstimateSummary job={job} />
       </Body>

@@ -305,8 +305,18 @@ export function VendorJobChat({
       {job.messages.length === 0 ? (
         <p style={{ ...mutedStyle, margin: 0 }}>아직 진행 메시지가 없습니다.</p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-          {job.messages.map((message, index) => {
+        <div
+          style={{
+            display: "flex",
+            // column-reverse + 역순 렌더: 스크롤이 항상 최신(하단)에 붙고, 쌓여도 카드가 안 길어진다.
+            flexDirection: "column-reverse",
+            gap: "var(--space-sm)",
+            maxHeight: 360,
+            overflowY: "auto",
+            paddingRight: "var(--space-xs)",
+          }}
+        >
+          {[...job.messages].reverse().map((message, index) => {
             const mine = message.senderRole === "VENDOR";
             return (
               <div

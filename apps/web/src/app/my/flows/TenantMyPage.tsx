@@ -1290,6 +1290,28 @@ export default function TenantMyPage({
     }
   };
 
+  // 상세 시트가 열려 있는 동안 업체·관리자 새 메시지를 실시간 반영 (2D broadcast 수신).
+  useEffect(() => {
+    const complaintId = selectedRepairRequest?.id;
+    if (!complaintId) return;
+    const onActivity = (payload: unknown) => {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "kind" in payload &&
+        (payload as { kind?: string }).kind === "ticket"
+      ) {
+        void refreshComplaintDetail(complaintId);
+      }
+    };
+    const socket = getRealtimeSocket();
+    socket.on("roomlog:activity", onActivity);
+    return () => {
+      socket.off("roomlog:activity", onActivity);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRepairRequest?.id]);
+
   // 이의제기·완료확인 뒤 상세를 다시 읽어 확정/피드백/메시지 상태를 맞춘다. 실패 시 기존 표시 유지.
   const refreshComplaintDetail = async (complaintId: string) => {
     try {
@@ -2300,7 +2322,8 @@ export default function TenantMyPage({
                   <strong>진행 메시지</strong>
                   {detailMessages.length > 0 ? (
                     <ul>
-                      {detailMessages.slice(-8).map((message, index) => {
+                      {/* CSS column-reverse와 짝: 역순 렌더로 최신이 항상 하단·스크롤 고정 */}
+                      {[...detailMessages].reverse().map((message, index) => {
                         const senderLabel =
                           message.senderRole === "TENANT"
                             ? "나"
