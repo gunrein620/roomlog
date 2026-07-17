@@ -30,10 +30,25 @@ function optional(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function positiveNumber(formData: FormData, key: string, label: string) {
-  const value = Number(required(formData, key));
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`${label}을 확인해 주세요.`);
-  return value;
+const MAX_DATABASE_INT = 2_147_483_647;
+
+function positiveInteger(value: string, label: string) {
+  const parsed = Number(value.trim());
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_DATABASE_INT) {
+    throw new Error(`${label}을 확인해 주세요.`);
+  }
+  return parsed;
+}
+
+function positiveIntegerField(formData: FormData, key: string, label: string) {
+  return positiveInteger(required(formData, key), label);
+}
+
+function repeatedStrings(formData: FormData, key: string) {
+  return formData.getAll(key).map((value) => {
+    if (typeof value !== "string") throw new Error("견적 항목 형식을 확인해 주세요.");
+    return value.trim();
+  });
 }
 
 function errorMessage(error: unknown) {
@@ -71,28 +86,52 @@ function estimateInput(formData: FormData): VendorEstimateDraftInput {
   }
   if (responseType !== "FIXED_ESTIMATE") throw new Error("회신 유형을 확인해 주세요.");
 
-  const lineItems: Extract<VendorEstimateDraftInput, { responseType: "FIXED_ESTIMATE" }>["lineItems"] = [];
-  for (const suffix of ["1", "2"]) {
-    const description = optional(formData, `lineDescription${suffix}`);
-    const rawAmount = optional(formData, `lineAmount${suffix}`);
-    if (!description && !rawAmount) continue;
-    if (!description) throw new Error("견적 항목명을 입력해 주세요.");
-    const unitAmount = Number(rawAmount);
-    if (!Number.isFinite(unitAmount) || unitAmount <= 0) {
-      throw new Error("견적 항목 금액을 확인해 주세요.");
-    }
-    lineItems.push({
-      category: suffix === "1" ? "MATERIAL" : "LABOR",
-      description,
-      quantity: 1,
-      unitAmount,
-    });
+  const categories = repeatedStrings(formData, "lineCategory");
+  const descriptions = repeatedStrings(formData, "lineDescription");
+  const quantities = repeatedStrings(formData, "lineQuantity");
+  const unitAmounts = repeatedStrings(formData, "lineUnitAmount");
+  const itemCount = categories.length;
+  if (
+    itemCount === 0 ||
+    descriptions.length !== itemCount ||
+    quantities.length !== itemCount ||
+    unitAmounts.length !== itemCount
+  ) {
+    throw new Error("견적 항목 형식을 확인해 주세요.");
   }
-  if (lineItems.length === 0) throw new Error("견적 항목을 한 개 이상 입력해 주세요.");
+
+  const allowedCategories = ["VISIT", "LABOR", "MATERIAL"] as const;
+  const lineItems: Extract<VendorEstimateDraftInput, { responseType: "FIXED_ESTIMATE" }>["lineItems"] =
+    categories.map((category, index) => {
+      if (!allowedCategories.includes(category as (typeof allowedCategories)[number])) {
+        throw new Error(`견적 항목 ${index + 1}의 카테고리를 확인해 주세요.`);
+      }
+      const description = descriptions[index];
+      if (!description) throw new Error(`견적 항목 ${index + 1}의 항목명을 입력해 주세요.`);
+      const quantity = positiveInteger(quantities[index], `견적 항목 ${index + 1}의 수량`);
+      const unitAmount = positiveInteger(unitAmounts[index], `견적 항목 ${index + 1}의 단가`);
+      const lineAmount = quantity * unitAmount;
+      if (!Number.isSafeInteger(lineAmount) || lineAmount > MAX_DATABASE_INT) {
+        throw new Error(`견적 항목 ${index + 1}의 금액이 허용 범위를 초과했습니다.`);
+      }
+      return {
+        category: category as (typeof allowedCategories)[number],
+        description,
+        quantity,
+        unitAmount,
+      };
+    });
+  const totalAmount = lineItems.reduce(
+    (sum, lineItem) => sum + lineItem.quantity * lineItem.unitAmount,
+    0,
+  );
+  if (!Number.isSafeInteger(totalAmount) || totalAmount > MAX_DATABASE_INT) {
+    throw new Error("총 견적 금액이 허용 범위를 초과했습니다.");
+  }
   return {
     responseType,
     workDescription: required(formData, "workDescription"),
-    estimatedDurationMinutes: positiveNumber(formData, "estimatedDurationMinutes", "예상 작업 시간"),
+    estimatedDurationMinutes: positiveIntegerField(formData, "estimatedDurationMinutes", "예상 작업 시간"),
     lineItems,
   };
 }

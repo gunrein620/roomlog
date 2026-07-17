@@ -6018,6 +6018,19 @@ export class RoomlogService implements OnModuleDestroy {
   updateTicket(managerId: string, ticketId: string, input: Partial<Pick<Ticket, "category" | "priority" | "responsibilityHint" | "aiSummary">>) {
     const ticket = this.findTicket(ticketId);
     this.assertManagerCanAccessTicket(managerId, ticket);
+
+    if (input.responsibilityHint !== undefined) {
+      if (!this.isResponsibilityHint(input.responsibilityHint)) {
+        throw new BadRequestException("책임 가능성 값이 올바르지 않습니다.");
+      }
+
+      const analysis = this.store.analyses[ticket.id];
+      if (!analysis) {
+        throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
+      }
+      analysis.responsibilityHint = input.responsibilityHint;
+    }
+
     Object.assign(ticket, input, { updatedAt: now() });
     this.addMessageInternal(ticket.id, ticket.complaintId, managerId, "LANDLORD", "AI 분석 값을 검토했습니다.");
     this.persistStore();

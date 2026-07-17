@@ -3811,6 +3811,23 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("keeps manager responsibility updates aligned with the ticket analysis", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "세면대 배수구 이물질 막힘",
+      description: "사용 중 흘려보낸 이물질 때문에 세면대 물이 내려가지 않습니다.",
+      location: "욕실 세면대",
+      availableTimes: "평일 저녁"
+    });
+
+    const updated = service.updateTicket("landlord-demo", created.ticket.id, {
+      responsibilityHint: "임차인 책임 가능성"
+    });
+
+    assert.equal(updated.responsibilityHint, "임차인 책임 가능성");
+    assert.equal(updated.analysis.responsibilityHint, "임차인 책임 가능성");
+  });
+
   it("tracks manager ticket reads only after the manager opens the ticket", () => {
     const service = new RoomlogService();
     const created = service.createComplaint("tenant-demo", {
