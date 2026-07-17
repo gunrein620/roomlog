@@ -5,6 +5,8 @@ import type {
   RepairJob,
   RepairStage,
   ResponsibilityVerdict,
+  TicketAiFeedback,
+  TicketResponsibilityDecision,
   Ticket,
   TicketStatus,
   Urgency,
@@ -12,6 +14,8 @@ import type {
 import { Badge, Button, Card } from "@roomlog/ui";
 import { stripScreenId } from "@/lib/screen-id";
 import { buildTicketTimeline } from "@/lib/ticket-timeline";
+import { ManagerMutationForm } from "../../_components/ManagerMutationForm";
+import type { ManagerMutationAction } from "../../_components/manager-mutation-state";
 
 export const dashRoutes = {
   "00": "/manager/ticket/dash/00",
@@ -66,7 +70,7 @@ export const urgencyLabel: Record<Urgency, string> = {
 
 export const responsibilityLabel: Record<ResponsibilityVerdict, string> = {
   landlord_likely: "임대인 책임 가능성",
-  tenant_likely: "세입자 책임 가능성",
+  tenant_likely: "임차인 책임 가능성",
   unclear: "판단 어려움",
 };
 
@@ -194,7 +198,19 @@ export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: Repa
   );
 }
 
-export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | null }) {
+export function ResponsibilityCard({
+  analysis,
+  ticketId,
+  aiFeedback = [],
+  responsibilityDecision,
+  decisionAction,
+}: {
+  analysis?: DefectAnalysis | null;
+  ticketId: string;
+  aiFeedback?: TicketAiFeedback[];
+  responsibilityDecision?: TicketResponsibilityDecision;
+  decisionAction: ManagerMutationAction;
+}) {
   if (!analysis) {
     return (
       <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
@@ -205,19 +221,88 @@ export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | n
   }
 
   const percent = Math.round(analysis.confidence * 100);
+  const openAppeals = aiFeedback.filter(
+    (feedback) => feedback.target === "RESPONSIBILITY" && feedback.status === "OPEN",
+  );
+  const decisionLabel = responsibilityDecision?.responsibility === "TENANT" ? "임차인" : "임대인";
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", padding: "var(--space-md)" }}>
       <div style={sectionTitle}>AI 책임 검토</div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>
         {responsibilityLabel[analysis.responsibility]} {percent}%
       </div>
-      <div style={{ ...row, justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div style={row}>
-          <Button variant="secondary">추가 정보 입력</Button>
-          {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
-        </div>
+      <div style={{ ...row, justifyContent: "space-between" }}>
+        {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
         <div style={muted}>AI 책임 검토는 참고용입니다.</div>
       </div>
+
+      {openAppeals.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+          }}
+        >
+          <strong style={{ fontSize: "var(--fs-caption)" }}>OPEN 책임 판단 이의제기</strong>
+          {openAppeals.map((feedback) => (
+            <div key={feedback.id} style={muted}>{feedback.reason}</div>
+          ))}
+        </div>
+      ) : null}
+
+      {responsibilityDecision ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <strong>관리자 확정: {decisionLabel} 책임</strong>
+          <div style={muted}>{responsibilityDecision.note}</div>
+        </div>
+      ) : null}
+
+      <ManagerMutationForm action={decisionAction}>
+        <input type="hidden" name="ticketId" value={ticketId} />
+        <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+          <label style={{ display: "grid", gap: "var(--space-xs)", fontSize: "var(--fs-caption)" }}>
+            관리자 책임 확정
+            <select
+              name="responsibility"
+              defaultValue={responsibilityDecision?.responsibility ?? "LANDLORD"}
+              style={{
+                minHeight: "var(--touch-target)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                background: "var(--surface-container-lowest)",
+                color: "var(--on-surface)",
+                padding: "0 var(--space-sm)",
+              }}
+            >
+              <option value="TENANT">임차인 책임</option>
+              <option value="LANDLORD">임대인 책임</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: "var(--space-xs)", fontSize: "var(--fs-caption)" }}>
+            세입자에게 보이는 사유
+            <textarea
+              name="note"
+              required
+              defaultValue={responsibilityDecision?.note}
+              style={{
+                minHeight: "calc(var(--touch-target) * 2)",
+                resize: "vertical",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                background: "var(--surface-container-lowest)",
+                color: "var(--on-surface)",
+                padding: "var(--space-sm)",
+                font: "inherit",
+              }}
+            />
+          </label>
+          <Button type="submit">관리자 확정 저장</Button>
+        </div>
+      </ManagerMutationForm>
     </Card>
   );
 }

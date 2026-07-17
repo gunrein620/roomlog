@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button, Input } from "@roomlog/ui";
 import { ROUTES } from "@/lib/nav";
+import type { Urgency } from "@roomlog/types";
+import { createDefectComplaintAction } from "./actions";
 
 // T-DEF-01 · 하자 신고 작성
 // 챗봇형 접수 초안. 필수 그룹(내용·위치·시점) 완료 시 "다음: 사진 첨부"(→02 신규) 활성.
@@ -24,15 +26,13 @@ export default function Page() {
   const [occurredAt, setOccurredAt] = useState("");
   const [recurring, setRecurring] = useState<"yes" | "no" | null>(null);
   const [visitTime, setVisitTime] = useState("");
-
-  const requiredDone =
-    content.trim() !== "" && location.trim() !== "" && occurredAt.trim() !== "";
+  const [urgency, setUrgency] = useState<Urgency | null>(null);
 
   // 챗봇 턴 진행률: 필수 3칸 중 채운 칸 비율 (고정 페이지 수 아님)
   const filled = [content, location, occurredAt].filter((v) => v.trim() !== "").length;
 
   return (
-    <>
+    <form action={createDefectComplaintAction} style={{ display: "contents" }}>
       <header
         style={{
           flex: "none",
@@ -96,6 +96,8 @@ export default function Page() {
             <label style={fieldLabel}>① 어떤 하자인가요?</label>
             <Input
               value={content}
+              name="content"
+              required
               onChange={(e) => setContent(e.target.value)}
               placeholder="하자 내용 입력"
             />
@@ -104,6 +106,8 @@ export default function Page() {
             <label style={fieldLabel}>② 어디에서 발생했나요?</label>
             <Input
               value={location}
+              name="location"
+              required
               onChange={(e) => setLocation(e.target.value)}
               placeholder="발생 위치 입력"
             />
@@ -112,6 +116,9 @@ export default function Page() {
             <label style={fieldLabel}>③ 언제부터 그랬나요?</label>
             <Input
               value={occurredAt}
+              name="occurredAt"
+              type="datetime-local"
+              required
               onChange={(e) => setOccurredAt(e.target.value)}
               placeholder="발생 시점 입력"
             />
@@ -164,9 +171,34 @@ export default function Page() {
             </label>
             <Input
               value={visitTime}
+              name="availableTimes"
               onChange={(e) => setVisitTime(e.target.value)}
               placeholder="방문 가능 시간 (선택)"
             />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+            <span style={{ ...fieldLabel, color: "var(--on-surface-variant)" }}>
+              긴급도 (선택)
+            </span>
+            <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+              {([
+                [1, "1 즉시"],
+                [2, "2 빠른 처리"],
+                [3, "3 일반"],
+                [4, "4 문의성"],
+              ] as const).map(([value, label]) => (
+                <label key={value} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--fs-caption)" }}>
+                  <input
+                    type="radio"
+                    name="urgency"
+                    value={value}
+                    checked={urgency === value}
+                    onChange={() => setUrgency(value)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
           </div>
         </section>
       </div>
@@ -178,24 +210,8 @@ export default function Page() {
           borderTop: "1px solid var(--border)",
         }}
       >
-        {requiredDone ? (
-          <Link href={ROUTES["T-DEF-02"]} style={{ textDecoration: "none", display: "block" }}>
-            <Button fullWidth>다음: 사진 첨부</Button>
-          </Link>
-        ) : (
-          <Button
-            fullWidth
-            disabled
-            style={{
-              background: "var(--surface-container-high)",
-              color: "var(--on-surface-variant)",
-              cursor: "not-allowed",
-            }}
-          >
-            다음: 사진 첨부
-          </Button>
-        )}
+        <Button type="submit" fullWidth>접수 후 사진 첨부</Button>
       </footer>
-    </>
+    </form>
   );
 }

@@ -620,6 +620,9 @@ export class PrismaStoreProjector implements StoreProjector {
         priority: ticket.priority,
         status: ticket.status,
         responsibilityHint: ticket.responsibilityHint,
+        responsibilityDecidedById: optional(ticket.responsibilityDecidedById),
+        responsibilityDecidedAt: asIso(ticket.responsibilityDecidedAt),
+        responsibilityDecisionNote: optional(ticket.responsibilityDecisionNote),
         aiSummary: ticket.aiSummary,
         dueAt: asIso(ticket.dueAt),
         createdAt: asIso(ticket.createdAt) ?? new Date().toISOString(),
@@ -1866,6 +1869,9 @@ export class PrismaStoreProjector implements StoreProjector {
             priority: ticket.priority,
             status: ticket.status,
             responsibilityHint: ticket.responsibilityHint,
+            responsibilityDecidedById: ticket.responsibilityDecidedById,
+            responsibilityDecidedAt: asDate(ticket.responsibilityDecidedAt),
+            responsibilityDecisionNote: ticket.responsibilityDecisionNote,
             aiSummary: ticket.aiSummary,
             dueAt: asDate(ticket.dueAt),
             createdAt: asDate(ticket.createdAt),
@@ -1880,6 +1886,10 @@ export class PrismaStoreProjector implements StoreProjector {
           existingTicket.category !== ticket.category ||
           existingTicket.priority !== ticket.priority ||
           existingTicket.responsibilityHint !== ticket.responsibilityHint ||
+          optional(existingTicket.responsibilityDecidedById) !== ticket.responsibilityDecidedById ||
+          asIso(existingTicket.responsibilityDecidedAt) !== ticket.responsibilityDecidedAt ||
+          optional(existingTicket.responsibilityDecisionNote) !==
+            ticket.responsibilityDecisionNote ||
           existingTicket.aiSummary !== ticket.aiSummary ||
           existingTicket.dueAt?.getTime() !== asDate(ticket.dueAt)?.getTime()
         ) {
@@ -1893,6 +1903,9 @@ export class PrismaStoreProjector implements StoreProjector {
             category: ticket.category,
             priority: ticket.priority,
             responsibilityHint: ticket.responsibilityHint,
+            responsibilityDecidedById: ticket.responsibilityDecidedById,
+            responsibilityDecidedAt: asDate(ticket.responsibilityDecidedAt),
+            responsibilityDecisionNote: ticket.responsibilityDecisionNote,
             aiSummary: ticket.aiSummary,
               dueAt: asDate(ticket.dueAt)
             }

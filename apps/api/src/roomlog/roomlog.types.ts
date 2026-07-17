@@ -1143,6 +1143,9 @@ export type Ticket = {
   priority: number;
   status: TicketStatus;
   responsibilityHint: string;
+  responsibilityDecidedById?: string;
+  responsibilityDecidedAt?: string;
+  responsibilityDecisionNote?: string;
   aiSummary: string;
   dueAt?: string;
   createdAt: string;
@@ -2196,6 +2199,12 @@ export type CreateComplaintInput = {
   attachmentUrls?: string[];
   occurredAt?: string;
   availableTimes?: string;
+  urgency?: 1 | 2 | 3 | 4;
+};
+
+export type DecideTicketResponsibilityInput = {
+  responsibility: "TENANT" | "LANDLORD";
+  note: string;
 };
 
 export type CreateIntakeSessionInput = {

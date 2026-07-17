@@ -30,6 +30,39 @@ export type ResponsibilityVerdict =
   | "landlord_likely" // 임대인 책임 가능성
   | "unclear"; // 판단 어려움
 
+/** 관리자가 확정한 책임 주체. AI 가능성 값과 별도 축이다. */
+export type ResponsibilityDecisionValue = "TENANT" | "LANDLORD";
+
+export interface TicketResponsibilityDecision {
+  responsibility: ResponsibilityDecisionValue;
+  decidedById: string;
+  decidedAt: string;
+  note: string;
+}
+
+export type TicketAiFeedbackTarget =
+  | "SUMMARY"
+  | "CATEGORY"
+  | "PRIORITY"
+  | "RESPONSIBILITY"
+  | "COMPLETION";
+
+export interface TicketAiFeedback {
+  id: string;
+  ticketId: string;
+  complaintId: string;
+  target: TicketAiFeedbackTarget;
+  targetLabel: string;
+  originalValue: string;
+  reason: string;
+  requestedAction?: string;
+  status: "OPEN" | "REVIEWED";
+  managerReviewNote?: string;
+  correctedValue?: string;
+  reviewedAt?: string;
+  createdAt: string;
+}
+
 /** 긴급도 1~4순위 (1=즉시) */
 export type Urgency = 1 | 2 | 3 | 4;
 
@@ -79,6 +112,30 @@ export interface ManagerTicketReplyInput {
   messageText?: string;
 }
 
+export interface DecideTicketResponsibilityInput {
+  responsibility: ResponsibilityDecisionValue;
+  note: string;
+}
+
+export interface SubmitTicketAiFeedbackInput {
+  target: TicketAiFeedbackTarget;
+  reason: string;
+  requestedAction?: string;
+  attachmentUrls?: string[];
+}
+
+export interface CreateDefectComplaintInput {
+  title: string;
+  description: string;
+  location: string;
+  roomId?: string;
+  clientRequestId?: string;
+  attachmentUrls?: string[];
+  occurredAt?: string;
+  availableTimes?: string;
+  urgency?: Urgency;
+}
+
 export interface ManagerReplyDraftResult {
   ticketId: string;
   complaintId: string;
@@ -114,6 +171,8 @@ export interface Ticket {
   disposition?: TicketDisposition;
   /** 반려/보류 사유 (관리인 기록). 자동 발송 금지 원칙에 따라 통보는 별도. */
   dispositionReason?: string;
+  /** 관리자 확정 메타. AI 책임 가능성 분석과 혼동하지 않는다. */
+  responsibilityDecision?: TicketResponsibilityDecision;
 }
 
 /**

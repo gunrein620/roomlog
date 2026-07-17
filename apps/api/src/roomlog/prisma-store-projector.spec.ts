@@ -225,6 +225,9 @@ describe("PrismaStoreProjector", () => {
             priority: 2,
             status: "RECEIVED",
             responsibilityHint: "판단 어려움",
+            responsibilityDecidedById: "manager-projection",
+            responsibilityDecidedAt: now,
+            responsibilityDecisionNote: "프로젝션 책임 확정 사유",
             aiSummary: "싱크대 하부 누수 확인 필요",
             createdAt: now,
             updatedAt: now
@@ -278,6 +281,9 @@ describe("PrismaStoreProjector", () => {
         assert.equal(complaint?.clientRequestId, `draft-${suffix}`);
         assert.equal(complaint?.requestFingerprint, `fingerprint-${suffix}`);
         assert.equal(ticket?.complaintId, complaintId);
+        assert.equal(ticket?.responsibilityDecidedById, "manager-projection");
+        assert.equal(ticket?.responsibilityDecidedAt?.toISOString(), now);
+        assert.equal(ticket?.responsibilityDecisionNote, "프로젝션 책임 확정 사유");
         assert.equal(analysis?.summary, "싱크대 하부 누수 확인 필요");
       } finally {
         await prisma.intakeMessage.deleteMany({ where: { sessionId } });
@@ -456,6 +462,9 @@ describe("PrismaStoreProjector", () => {
             priority: 1,
             status: "ADDITIONAL_INFO_REQUESTED",
             responsibilityHint: "판단 어려움",
+            responsibilityDecidedById: "manager-load",
+            responsibilityDecidedAt: now,
+            responsibilityDecisionNote: "로드 책임 확정 사유",
             aiSummary: "콜봇 천장 누수 접수",
             createdAt: now,
             updatedAt: now
@@ -513,6 +522,18 @@ describe("PrismaStoreProjector", () => {
         assert.equal(
           loaded.tickets.find((ticket) => ticket.id === ticketId)?.status,
           "ADDITIONAL_INFO_REQUESTED"
+        );
+        assert.equal(
+          loaded.tickets.find((ticket) => ticket.id === ticketId)?.responsibilityDecidedById,
+          "manager-load"
+        );
+        assert.equal(
+          loaded.tickets.find((ticket) => ticket.id === ticketId)?.responsibilityDecidedAt,
+          now
+        );
+        assert.equal(
+          loaded.tickets.find((ticket) => ticket.id === ticketId)?.responsibilityDecisionNote,
+          "로드 책임 확정 사유"
         );
         assert.equal(loaded.analyses[ticketId]?.photoAnalysis?.comparisonStatus, "추가 사진 필요");
       } finally {

@@ -2,14 +2,22 @@
 // 팀 응답은 presentTicket(ticket-centric: {...ticket, complaint, room, analysis, repairs, assignedVendor}).
 // 하자(complaint-centric) 매퍼(defect-mapping)를 그대로 재사용하려고 TeamComplaint로 어댑트한다
 // → status/stage/responsibility/urgency 매핑·교정(적대검토 반영)을 단일 소스로 공유.
-import type { Ticket, TicketType, DefectAnalysis, RepairJob, ManagerQueueSummary } from "@roomlog/types";
+import type {
+  Ticket,
+  TicketType,
+  DefectAnalysis,
+  RepairJob,
+  ManagerQueueSummary,
+  TicketResponsibilityDecision,
+} from "@roomlog/types";
 import {
   toTicket,
   toAnalysis,
   toRepair,
   type TeamComplaint,
   type TeamAnalysis,
-  type TeamRepair
+  type TeamRepair,
+  type TeamAiFeedback,
 } from "./defect-mapping";
 
 export interface TeamManagerTicket {
@@ -18,6 +26,8 @@ export interface TeamManagerTicket {
   status: string;
   priority: number;
   responsibilityHint: string;
+  responsibilityDecision?: TicketResponsibilityDecision;
+  aiFeedback?: TeamAiFeedback[];
   /** 팀 Ticket.category(하자/소음/납부…) — presentTicket이 ticket 필드를 spread하므로 함께 온다 */
   category?: string;
   /** API 응답 경계에서 확정된 티켓 종류 */
@@ -55,6 +65,8 @@ function asComplaint(t: TeamManagerTicket): TeamComplaint {
       status: t.status,
       priority: t.priority,
       responsibilityHint: t.responsibilityHint,
+      responsibilityDecision: t.responsibilityDecision,
+      aiFeedback: t.aiFeedback,
       category: t.category,
       kind: t.kind,
       analysis: t.analysis,

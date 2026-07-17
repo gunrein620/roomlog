@@ -95,6 +95,41 @@ describe("roomlog complaint realtime activity", () => {
       },
     ]);
   });
+
+  it("broadcasts ticket activity after a manager finalizes responsibility", () => {
+    const service = new RoomlogService();
+    const broadcasts: BroadcastRecord[] = [];
+    const realtime = {
+      broadcast(event: string, payload: Record<string, unknown>) {
+        broadcasts.push({ event, payload });
+      },
+    } as RealtimeGateway;
+    const controller = new RoomlogController(service, realtime);
+    const auth = service.login({
+      email: "manager@roomlog.test",
+      password: "password123!",
+    });
+    const ticket = service.createComplaint("tenant-demo", {
+      title: "책임 확정 실시간 검증",
+      description: "세면대 배수구 상태를 확인해 주세요.",
+      location: "301호 욕실",
+    }).ticket;
+
+    broadcasts.length = 0;
+    const result = controller.decideTicketResponsibility(
+      `Bearer ${auth.accessToken}`,
+      ticket.id,
+      {
+        responsibility: "LANDLORD",
+        note: "노후 배관 문제로 확인했습니다.",
+      },
+    );
+
+    assert.equal(result.responsibilityDecision.responsibility, "LANDLORD");
+    assert.deepEqual(broadcasts, [
+      { event: "roomlog:activity", payload: { kind: "ticket" } },
+    ]);
+  });
 });
 
 describe("tenant complaint draft controller", () => {

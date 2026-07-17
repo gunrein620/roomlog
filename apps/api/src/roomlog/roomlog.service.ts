@@ -230,6 +230,7 @@ import {
   StartManagerConversationInput,
   StatusHistory,
   SubmitTenantAiFeedbackInput,
+  DecideTicketResponsibilityInput,
   TeamBill,
   TeamBillCreationData,
   TeamBillCreationUnavailableReason,
@@ -6038,6 +6039,71 @@ export class RoomlogService implements OnModuleDestroy {
     return this.presentTicket(ticket);
   }
 
+  decideTicketResponsibility(
+    managerId: string,
+    ticketId: string,
+    input: DecideTicketResponsibilityInput
+  ) {
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+
+    if (!(["TENANT", "LANDLORD"] as const).includes(input.responsibility as never)) {
+      throw new BadRequestException("책임 주체를 선택해주세요.");
+    }
+
+    const note = input.note?.trim() ?? "";
+    if (!note) {
+      throw new BadRequestException("세입자에게 보이는 책임 판단 사유를 입력해주세요.");
+    }
+
+    const analysis = this.store.analyses[ticket.id];
+    if (!analysis) {
+      throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
+    }
+
+    const decidedAt = now();
+    const responsibilityLabel = input.responsibility === "TENANT" ? "임차인" : "임대인";
+    const responsibilityHint: AiAnalysis["responsibilityHint"] =
+      input.responsibility === "TENANT" ? "임차인 책임 가능성" : "임대인 책임 가능성";
+
+    ticket.responsibilityHint = responsibilityHint;
+    ticket.responsibilityDecidedById = managerId;
+    ticket.responsibilityDecidedAt = decidedAt;
+    ticket.responsibilityDecisionNote = note;
+    ticket.updatedAt = decidedAt;
+    analysis.responsibilityHint = responsibilityHint;
+    analysis.reasons = Array.from(
+      new Set([...(analysis.reasons ?? []), `관리자 책임 판단 확정: ${responsibilityLabel} 책임`])
+    );
+
+    for (const feedback of this.store.aiFeedback.filter(
+      (item) =>
+        item.ticketId === ticket.id &&
+        item.target === "RESPONSIBILITY" &&
+        item.status === "OPEN"
+    )) {
+      feedback.status = "REVIEWED";
+      feedback.managerReviewNote = note;
+      feedback.correctedValue = `관리자 확정: ${responsibilityLabel} 책임`;
+      feedback.reviewedByUserId = managerId;
+      feedback.reviewedAt = decidedAt;
+      feedback.updatedAt = decidedAt;
+    }
+
+    const complaint = this.findComplaint(ticket.complaintId);
+    complaint.updatedAt = decidedAt;
+    this.addMessageInternal(
+      ticket.id,
+      ticket.complaintId,
+      managerId,
+      "LANDLORD",
+      `책임 판단 확정: ${responsibilityLabel} 책임 — ${note}`
+    );
+    this.persistStore();
+
+    return this.presentTicket(ticket);
+  }
+
   reviewTenantAiFeedback(
     managerId: string,
     ticketId: string,
@@ -10054,6 +10120,10 @@ export class RoomlogService implements OnModuleDestroy {
     if (input.clientRequestId !== undefined && !input.clientRequestId.trim()) {
       throw new BadRequestException("접수 요청 식별자가 올바르지 않습니다.");
     }
+
+    if (input.urgency !== undefined && ![1, 2, 3, 4].includes(input.urgency)) {
+      throw new BadRequestException("긴급도는 1부터 4 사이로 입력해주세요.");
+    }
   }
 
   private complaintRequestFingerprint(roomId: string, input: CreateComplaintInput) {
@@ -10065,6 +10135,7 @@ export class RoomlogService implements OnModuleDestroy {
         location: input.location,
         occurredAt: input.occurredAt ?? null,
         availableTimes: input.availableTimes ?? null,
+        urgency: input.urgency ?? null,
         attachmentUrls: input.attachmentUrls ?? []
       }))
       .digest("hex");
@@ -12046,7 +12117,8 @@ export class RoomlogService implements OnModuleDestroy {
                 : lower.includes("door")
                   ? "도어락"
                   : "설비";
-    const priority = isEmergency ? 1 : isLeak || isBoiler ? 2 : 3;
+    const aiPriority = isEmergency ? 1 : isLeak || isBoiler ? 2 : 3;
+    const priority = Math.min(aiPriority, input.urgency ?? aiPriority);
     const responsibilityHint = tenantHint ? "임차인 책임 가능성" : "임대인 책임 가능성";
 
     return {
@@ -12058,7 +12130,10 @@ export class RoomlogService implements OnModuleDestroy {
       confidenceScore: category === "설비" ? 0.62 : 0.78,
       reasons: [
         `${category} 관련 표현이 신고 내용에서 확인됨`,
-        priority === 1 ? "긴급 키워드가 포함됨" : "관리자 검토 후 일정 조율 가능"
+        aiPriority === 1 ? "긴급 키워드가 포함됨" : "관리자 검토 후 일정 조율 가능",
+        ...(input.urgency !== undefined
+          ? [`세입자 지정 긴급도 ${input.urgency}순위 반영`]
+          : [])
       ],
       recommendedAction:
         priority === 1
@@ -12840,6 +12915,18 @@ export class RoomlogService implements OnModuleDestroy {
 
     return {
       ...ticket,
+      responsibilityDecision:
+        ticket.responsibilityDecidedById &&
+        ticket.responsibilityDecidedAt &&
+        ticket.responsibilityDecisionNote
+          ? {
+              responsibility:
+                ticket.responsibilityHint === "임차인 책임 가능성" ? "TENANT" : "LANDLORD",
+              decidedById: ticket.responsibilityDecidedById,
+              decidedAt: ticket.responsibilityDecidedAt,
+              note: ticket.responsibilityDecisionNote
+            }
+          : undefined,
       kind: this.ticketKindFromCategory(ticket.category),
       complaint,
       room,

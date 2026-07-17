@@ -4,8 +4,11 @@ import type {
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerTicketReplyInput,
+  DecideTicketResponsibilityInput,
   RepairJob,
   Ticket,
+  TicketAiFeedback,
+  TicketResponsibilityDecision,
 } from "@roomlog/types";
 import { ApiError, ApiPayloadError, serverFetch } from "./server-api";
 import {
@@ -37,6 +40,8 @@ export type ManagerTicketDetail = {
   analysis: DefectAnalysis | null;
   repair: RepairJob | null;
   attachmentUrls: string[];
+  aiFeedback: TicketAiFeedback[];
+  responsibilityDecision?: TicketResponsibilityDecision;
 };
 
 type ManagerTicketDetailLoaders = {
@@ -58,11 +63,14 @@ export async function managerTicketByIdOrNull(
 }
 
 function toManagerTicketDetail(ticket: TeamManagerTicket): ManagerTicketDetail {
+  const mappedTicket = toManagerTicket(ticket);
   return {
-    ticket: toManagerTicket(ticket),
+    ticket: mappedTicket,
     analysis: toManagerAnalysis(ticket),
     repair: toManagerRepair(ticket),
     attachmentUrls: managerTicketAttachmentUrls(ticket),
+    aiFeedback: ticket.aiFeedback ?? [],
+    responsibilityDecision: mappedTicket.responsibilityDecision,
   };
 }
 
@@ -221,6 +229,19 @@ export async function sendManagerTicketReply(
 ): Promise<unknown> {
   return serverFetch(
     `/manager/tickets/${encodeURIComponent(ticketId)}/replies`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function decideManagerTicketResponsibility(
+  ticketId: string,
+  input: DecideTicketResponsibilityInput,
+): Promise<TeamManagerTicket> {
+  return serverFetch<TeamManagerTicket>(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/responsibility-decision`,
     {
       method: "POST",
       body: JSON.stringify(input),

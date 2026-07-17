@@ -1,7 +1,11 @@
 import Link from "next/link";
-import { Badge, Button, Card, Input } from "@roomlog/ui";
+import { Badge, Button, Card } from "@roomlog/ui";
 import { routeFor, withId } from "@/lib/nav";
-import { DEMO_TICKET_ID, getRepair, getTicket } from "@/lib/defect-api";
+import { getTenantDefectDetail } from "@/lib/defect-api";
+import {
+  openManagerConversationAction,
+  submitResponsibilityFeedbackAction,
+} from "./actions";
 
 // T-DEF-11 · 내 신고 현황(hub) — 접수·검토(티켓)와 수리 진행(수리) 섹션을 라벨로 분리해 한 화면에.
 // 진입은 단일(11), 표시만 분리 — #3 데이터 분리 원칙 유지.
@@ -56,12 +60,19 @@ function formatVisit(iso?: string) {
 export default async function Page({
   searchParams
 }: {
-  searchParams: Promise<{ id?: string }>;
+  searchParams: Promise<{ id?: string; appealed?: string }>;
 }) {
-  const { id } = await searchParams;
-  const [ticket, repair] = await Promise.all([getTicket(id), getRepair(id)]);
+  const { id, appealed } = await searchParams;
+  const detail = await getTenantDefectDetail(id);
+  const { ticket, repair, responsibilityDecision } = detail;
   // 임차인책임 경로 여부 — repairJobId 존재 = 수리 트랙이 열려 있음(#3 데이터 분리 기준).
   const isTenantPath = Boolean(ticket.repairJobId);
+  const appealSubmitted =
+    appealed === "1" ||
+    detail.aiFeedback.some(
+      (feedback) => feedback.target === "RESPONSIBILITY" && feedback.status === "OPEN",
+    );
+  const decisionLabel = responsibilityDecision?.responsibility === "TENANT" ? "임차인" : "임대인";
 
   return (
     <>
@@ -112,6 +123,23 @@ export default async function Page({
           <div style={{ fontSize: "var(--fs-body)", color: "var(--on-surface-variant)" }}>
             {TICKET_STATUS_LABEL[ticket.status]} · 관리자 검토 진행
           </div>
+          {responsibilityDecision ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-xs)",
+                padding: "var(--space-sm)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+              }}
+            >
+              <strong>관리자 확정: {decisionLabel} 책임</strong>
+              <span style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)" }}>
+                {responsibilityDecision.note}
+              </span>
+            </div>
+          ) : null}
           {!isTenantPath && (
             <Link
               href={withId(routeFor("T-DEF-09"), id)}
@@ -130,7 +158,7 @@ export default async function Page({
           {isTenantPath ? (
             <>
               <div style={{ fontSize: "var(--fs-body)", color: "var(--on-surface-variant)" }}>
-                {REPAIR_STAGE_LABEL[repair.stage]} · {repair.vendorName ?? "업체 미정"} · {formatVisit(repair.scheduledAt)}
+                {repair ? REPAIR_STAGE_LABEL[repair.stage] : "수리 대기"} · {repair?.vendorName ?? "업체 미정"} · {formatVisit(repair?.scheduledAt)}
               </div>
               <Link
                 href={withId(routeFor("T-DEF-08"), id)}
@@ -144,6 +172,39 @@ export default async function Page({
               이 건은 관리자가 처리 중이라 별도 수리 단계가 없어요
             </div>
           )}
+        </Card>
+
+        <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          <div style={sectionLabelStyle}>책임 판단 이의제기</div>
+          <div style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)" }}>
+            AI 가능성 또는 관리자 확정에 이견이 있으면 근거를 남겨 다시 검토받을 수 있어요.
+          </div>
+          <form action={submitResponsibilityFeedbackAction} style={{ display: "grid", gap: "var(--space-sm)" }}>
+            <input type="hidden" name="complaintId" value={detail.complaintId} />
+            <textarea
+              name="reason"
+              required
+              aria-label="책임 판단 이의제기 사유"
+              placeholder="이의제기 사유를 입력해 주세요"
+              style={{
+                minHeight: "calc(var(--touch-target) * 2)",
+                resize: "vertical",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                background: "var(--surface-container-lowest)",
+                color: "var(--on-surface)",
+                padding: "var(--space-sm)",
+                font: "inherit",
+              }}
+            />
+            <Button type="submit" variant="secondary">관리자 재검토 요청</Button>
+          </form>
+          {appealSubmitted ? (
+            <form action={openManagerConversationAction}>
+              <input type="hidden" name="roomId" value={detail.roomId ?? ""} />
+              <Button type="submit" fullWidth>관리자와 대화하기</Button>
+            </form>
+          ) : null}
         </Card>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -178,19 +239,6 @@ export default async function Page({
         </div>
       </div>
 
-      <div
-        style={{
-          flex: "none",
-          padding: "var(--space-sm) var(--page-margin)",
-          borderTop: "1px solid var(--border)",
-          display: "flex",
-          gap: "var(--space-sm)",
-          alignItems: "center",
-        }}
-      >
-        <Input placeholder="메시지 입력…" style={{ flex: 1, borderRadius: "var(--radius-full)" }} />
-        <Button style={{ flex: "none", borderRadius: "var(--radius-full)", padding: "0 var(--space-lg)" }}>보내기</Button>
-      </div>
     </>
   );
 }

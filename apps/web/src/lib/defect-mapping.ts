@@ -8,6 +8,8 @@ import type {
   RepairJob,
   RepairStage,
   ResponsibilityVerdict,
+  TicketAiFeedback,
+  TicketResponsibilityDecision,
   TicketType,
   Urgency
 } from "@roomlog/types";
@@ -38,6 +40,8 @@ export interface TeamTicket {
   status: string;
   priority: number;
   responsibilityHint: string;
+  responsibilityDecision?: TicketResponsibilityDecision;
+  aiFeedback?: TeamAiFeedback[];
   /** 팀 Ticket.category(하자/소음/납부…) — 하자 민원 vs 일반 민원 구분 근거 */
   category?: string;
   /** API가 확정한 티켓 종류. 구버전 응답은 category fallback을 사용한다. */
@@ -45,6 +49,11 @@ export interface TeamTicket {
   analysis?: TeamAnalysis;
   repairs?: TeamRepair[];
   assignedVendor?: { businessName?: string };
+}
+export interface TeamAiFeedback extends TicketAiFeedback {
+  tenantId?: string;
+  attachmentUrls?: string[];
+  updatedAt?: string;
 }
 export interface TeamComplaint {
   id: string;
@@ -54,8 +63,9 @@ export interface TeamComplaint {
   occurredAt?: string;
   createdAt: string;
   updatedAt: string;
-  room?: { buildingName?: string; roomNo?: string };
+  room?: { id?: string; buildingName?: string; roomNo?: string };
   ticket: TeamTicket;
+  aiFeedback?: TeamAiFeedback[];
 }
 
 // 팀 TicketStatus(11) → 프로토타입 TicketStatus(7, 접수·검토 트랙만). 수리 트랙은 RepairJob로 분리.
@@ -137,7 +147,26 @@ export function toTicket(c: TeamComplaint): Ticket {
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
     analysisId: c.ticket.analysis ? `${c.ticket.id}-analysis` : undefined,
-    repairJobId: repair?.id
+    repairJobId: repair?.id,
+    responsibilityDecision: c.ticket.responsibilityDecision,
+  };
+}
+
+export function toTicketAiFeedback(feedback: TeamAiFeedback): TicketAiFeedback {
+  return {
+    id: feedback.id,
+    ticketId: feedback.ticketId,
+    complaintId: feedback.complaintId,
+    target: feedback.target,
+    targetLabel: feedback.targetLabel,
+    originalValue: feedback.originalValue,
+    reason: feedback.reason,
+    requestedAction: feedback.requestedAction,
+    status: feedback.status,
+    managerReviewNote: feedback.managerReviewNote,
+    correctedValue: feedback.correctedValue,
+    reviewedAt: feedback.reviewedAt,
+    createdAt: feedback.createdAt
   };
 }
 

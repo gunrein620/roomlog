@@ -14,6 +14,7 @@ import {
 } from "../../_components/ticket-manager-ui";
 import { AttachmentThumbnailGallery } from "./AttachmentThumbnailGallery";
 import { TicketDetailBackButton } from "./TicketDetailBackButton";
+import { decideResponsibilityAction } from "./actions";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -70,7 +71,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             )}
           </Card>
 
-          <ResponsibilityCard analysis={analysis} />
+          <ResponsibilityCard
+            analysis={analysis}
+            ticketId={ticket.id}
+            aiFeedback={detail.aiFeedback}
+            responsibilityDecision={detail.responsibilityDecision}
+            decisionAction={decideResponsibilityAction}
+          />
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitle}>임차인 입력·첨부</div>

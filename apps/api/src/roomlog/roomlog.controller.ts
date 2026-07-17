@@ -60,6 +60,7 @@ import {
   CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
   DeletionState,
+  DecideTicketResponsibilityInput,
   EscalateMoveoutDisputeInput,
   FinalizeIntakeInput,
   FloorPlanOpeningDetectionInput,
@@ -2082,6 +2083,19 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.updateTicket(user.id, ticketId, body);
+  }
+
+  @Post("manager/tickets/:ticketId/responsibility-decision")
+  decideTicketResponsibility(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: DecideTicketResponsibilityInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = this.roomlogService.decideTicketResponsibility(user.id, ticketId, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Post("manager/tickets/:ticketId/request-info")

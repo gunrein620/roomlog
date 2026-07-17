@@ -3828,6 +3828,109 @@ describe("RoomlogService", () => {
     assert.equal(updated.analysis.responsibilityHint, "임차인 책임 가능성");
   });
 
+  it("finalizes responsibility with synchronized hints, reviewed feedback, and a tenant-visible message", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "세면대 배수구 막힘",
+      description: "사용 중 세면대 물이 내려가지 않아 확인이 필요합니다.",
+      location: "욕실 세면대"
+    });
+    const responsibilityFeedback = service.submitTenantAiFeedback(
+      "tenant-demo",
+      created.complaint.id,
+      {
+        target: "RESPONSIBILITY",
+        reason: "입주 전부터 배수가 느렸으므로 임차인 책임으로 보기 어렵습니다."
+      }
+    );
+    const priorityFeedback = service.submitTenantAiFeedback("tenant-demo", created.complaint.id, {
+      target: "PRIORITY",
+      reason: "물이 전혀 내려가지 않아 빠른 확인이 필요합니다."
+    });
+
+    assert.throws(
+      () =>
+        service.decideTicketResponsibility("landlord-demo", created.ticket.id, {
+          responsibility: "TENANT",
+          note: "   "
+        }),
+      /사유/
+    );
+
+    const decided = service.decideTicketResponsibility("landlord-demo", created.ticket.id, {
+      responsibility: "TENANT",
+      note: "배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+    });
+
+    assert.equal(decided.responsibilityHint, "임차인 책임 가능성");
+    assert.equal(decided.analysis.responsibilityHint, "임차인 책임 가능성");
+    assert.deepEqual(decided.responsibilityDecision, {
+      responsibility: "TENANT",
+      decidedById: "landlord-demo",
+      decidedAt: decided.responsibilityDecidedAt,
+      note: "배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+    });
+    const reviewed = decided.aiFeedback.find(
+      (feedback) => feedback.id === responsibilityFeedback.id
+    );
+    const stillOpen = decided.aiFeedback.find((feedback) => feedback.id === priorityFeedback.id);
+    assert.equal(reviewed?.status, "REVIEWED");
+    assert.equal(
+      reviewed?.managerReviewNote,
+      "배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+    );
+    assert.equal(stillOpen?.status, "OPEN");
+    assert.equal(
+      decided.messages.some(
+        (message) =>
+          message.senderRole === "LANDLORD" &&
+          message.messageText ===
+            "책임 판단 확정: 임차인 책임 — 배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+      ),
+      true
+    );
+  });
+
+  it("uses the more urgent priority between AI analysis and tenant input", () => {
+    const service = new RoomlogService();
+
+    const tenantMoreUrgent = service.createComplaint("tenant-demo", {
+      title: "벽지 얼룩 확인",
+      description: "침실 벽지에 작은 얼룩이 생겨 확인을 요청합니다.",
+      location: "침실 벽면",
+      urgency: 2
+    });
+    const aiMoreUrgent = service.createComplaint("tenant-demo", {
+      title: "천장에서 물이 계속 떨어져요",
+      description: "거실 천장에서 물이 계속 떨어져 즉시 확인이 필요합니다.",
+      location: "거실 천장",
+      urgency: 3
+    });
+
+    assert.equal(tenantMoreUrgent.ticket.priority, 2);
+    assert.equal(tenantMoreUrgent.analysis.priority, 2);
+    assert.equal(
+      tenantMoreUrgent.analysis.reasons?.includes("세입자 지정 긴급도 2순위 반영"),
+      true
+    );
+    assert.equal(aiMoreUrgent.ticket.priority, 1);
+    assert.equal(aiMoreUrgent.analysis.priority, 1);
+    assert.equal(
+      aiMoreUrgent.analysis.reasons?.includes("세입자 지정 긴급도 3순위 반영"),
+      true
+    );
+    assert.throws(
+      () =>
+        service.createComplaint("tenant-demo", {
+          title: "긴급도 오류",
+          description: "잘못된 긴급도 값 검증",
+          location: "침실",
+          urgency: 5
+        } as any),
+      /1부터 4/
+    );
+  });
+
   it("tracks manager ticket reads only after the manager opens the ticket", () => {
     const service = new RoomlogService();
     const created = service.createComplaint("tenant-demo", {

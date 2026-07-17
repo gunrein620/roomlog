@@ -1614,6 +1614,9 @@ model Ticket {
   priority           Int
   status             TicketStatus
   responsibilityHint String
+  responsibilityDecidedById String?
+  responsibilityDecidedAt DateTime?
+  responsibilityDecisionNote String?
   aiSummary          String
   dueAt              DateTime?
   createdAt          DateTime               @default(now())
