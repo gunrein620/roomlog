@@ -1,5 +1,10 @@
 import type { RegistrationPointPair, SplatTransform } from "@/app/splat-tour/tour-types";
-import type { SplatAssetStatus } from "@roomlog/types";
+import type {
+  SplatAssetStatus,
+  SplatIntakeCompleteRequest,
+  SplatIntakePresignRequest,
+  SplatIntakePresignResponse
+} from "@roomlog/types";
 
 // web → NestJS(api) splat 자산 CRUD 클라이언트.
 // 픽 UI/뷰어가 이 헬퍼로 서버와 통신한다. 정합 결과(transform)는 solver(③a)가
@@ -62,7 +67,12 @@ export function resolveAssetFileUrl(fileUrl: string): string {
 async function asJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`splat-asset API ${response.status}: ${detail || response.statusText}`);
+    const error = new Error(
+      `splat-asset API ${response.status}: ${detail || response.statusText}`
+    ) as Error & { status?: number };
+    // 호출부가 HTTP 상태로 분기(폴백 vs 즉시 실패)할 수 있게 상태 코드를 동봉한다.
+    error.status = response.status;
+    throw error;
   }
   return response.json() as Promise<T>;
 }
@@ -144,6 +154,120 @@ export function intakeSplatAssetWithProgress(
     xhr.onabort = () => reject(new Error("splat-asset API 업로드 취소"));
     xhr.send(form);
   });
+}
+
+/**
+ * S3 직접 업로드(presigned PUT) 발급 요청 — docs/splat-direct-upload.md. 서버가 소유권·확장자·
+ * 800MB 상한을 검사한 뒤 `{ mode: "direct", uploadUrl, key, headers }`를 주거나, S3 미설정
+ * 환경(로컬 dev)에서는 `{ mode: "multipart" }`를 줘서 기존 멀티파트 경로로 폴백하라고 신호한다.
+ */
+export async function requestSplatIntakePresign(
+  input: SplatIntakePresignRequest
+): Promise<SplatIntakePresignResponse> {
+  const response = await fetch(apiUrl("/splat-assets/intake/presign"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return asJson<SplatIntakePresignResponse>(response);
+}
+
+/**
+ * S3 직접 업로드 완료 통보 — PUT이 끝난 뒤 서버가 HEAD로 실재/크기를 검증하고 SplatAsset을
+ * 생성한다. 응답 형태는 기존 멀티파트 intake()와 동일해 상위 코드가 분기를 몰라도 된다.
+ */
+export async function completeSplatIntake(input: SplatIntakeCompleteRequest): Promise<SplatAsset> {
+  const response = await fetch(apiUrl("/splat-assets/intake/complete"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return asJson<SplatAsset>(response);
+}
+
+/**
+ * presigned URL로 파일 본체를 XHR PUT한다 (FormData 아님 — File을 그대로 body에 싣는다).
+ * S3 서명에 포함된 헤더(Content-Type 등)를 그대로 실어야 서명이 맞는다.
+ * **주의**: presigned URL은 cross-origin이라 쿠키를 실으면 서명이 깨진다 — withCredentials를
+ * 켜지 않는다(기본값 false 유지).
+ */
+export function uploadToPresignedUrl(
+  url: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    for (const [name, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(name, value);
+    }
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        const detail = typeof xhr.response === "string" ? xhr.response : "";
+        reject(new Error(`S3 직접 업로드 ${xhr.status}: ${detail || xhr.statusText}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("S3 직접 업로드 네트워크 오류"));
+    xhr.onabort = () => reject(new Error("S3 직접 업로드 취소"));
+    xhr.send(file);
+  });
+}
+
+/**
+ * 매물 등록 STEP 02 접수 오케스트레이션 — presign을 먼저 물어 S3 직접 업로드 가능 여부를
+ * 판단한다. `mode === "multipart"`(S3 비활성)면 기존 `intakeSplatAssetWithProgress`로 완전히
+ * 동일하게 위임한다. `mode === "direct"`면 S3로 PUT(진행률 0~97) 후 complete를 호출해
+ * 100%로 마감한다.
+ * 멀티파트 폴백은 "presign 엔드포인트가 없거나(404, 구버전 api) 네트워크 오류"일 때만 —
+ * 400/403 같은 검증 실패까지 폴백하면 어차피 거부될 대용량 파일을 서버로 통째로
+ * 올리게 돼(힙 버퍼링) 이 기능의 목적 자체가 무너진다. 검증 실패는 즉시 throw해
+ * 상위(tour-upload-store)의 에러 배너로 보낸다. 업로드/complete 실패도 그대로 throw.
+ */
+export async function intakeSplatAssetSmart(
+  input: IntakeSplatAssetInput,
+  onProgress?: (percent: number) => void
+): Promise<SplatAsset> {
+  let presign: SplatIntakePresignResponse;
+  try {
+    presign = await requestSplatIntakePresign({
+      listingId: input.listingId,
+      fileName: input.file.name,
+      sizeBytes: input.file.size,
+      mimeType: input.file.type || undefined
+    });
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    if (status === undefined || status === 404) {
+      return intakeSplatAssetWithProgress(input, onProgress);
+    }
+    throw error;
+  }
+
+  if (presign.mode === "multipart") {
+    return intakeSplatAssetWithProgress(input, onProgress);
+  }
+
+  await uploadToPresignedUrl(presign.uploadUrl, presign.headers, input.file, (percent) => {
+    onProgress?.(Math.min(97, Math.round((percent / 100) * 97)));
+  });
+
+  const asset = await completeSplatIntake({
+    listingId: input.listingId,
+    key: presign.key,
+    title: input.title,
+    address: input.address
+  });
+  onProgress?.(100);
+  return asset;
 }
 
 /**

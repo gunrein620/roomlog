@@ -7,7 +7,7 @@
 // 폼 리셋·탭 이동에도 살아남는다.
 
 import { useSyncExternalStore } from "react";
-import { intakeSplatAssetWithProgress, type IntakeSplatAssetInput } from "@/lib/splat-asset-api";
+import { intakeSplatAssetSmart, type IntakeSplatAssetInput } from "@/lib/splat-asset-api";
 
 export type TourUploadStatus = "idle" | "uploading" | "error";
 
@@ -99,7 +99,7 @@ export function startTourUpload(input: IntakeSplatAssetInput): Promise<void> {
   setState({ status: "uploading", percent: 0, fileName: input.file.name });
   bindBeforeUnload();
 
-  return intakeSplatAssetWithProgress(input, (percent) => {
+  return intakeSplatAssetSmart(input, (percent) => {
     // 업로드 중에만 진행률을 반영(에러/취소로 상태가 넘어간 경우엔 무시).
     if (state.status === "uploading") setState({ percent });
   })

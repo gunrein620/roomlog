@@ -23,3 +23,37 @@ export interface SplatAssetUpdatedPayload {
   listingId: string | null;
   status: SplatAssetStatus;
 }
+
+// ── S3 직접 업로드(presigned PUT) 계약 — docs/splat-direct-upload.md ──
+// 대용량 소스(영상/캡처 zip, ≤800MB)가 api 힙을 통과하지 않도록 브라우저가 S3로 직행한다.
+// 서버는 presign(서명 발급)과 complete(HEAD 검증 + 자산 생성)만 담당한다.
+
+/** 매물 3D 투어 소스 직접 업로드 — presign 요청. */
+export interface SplatIntakePresignRequest {
+  listingId: string;
+  fileName: string;
+  sizeBytes: number;
+  mimeType?: string;
+}
+
+/** presign 응답. multipart = S3 비활성 환경 — 기존 멀티파트 intake로 폴백하라는 신호. */
+export type SplatIntakePresignResponse =
+  | { mode: "multipart" }
+  | {
+      mode: "direct";
+      /** presigned PUT URL — 이 URL로 파일 본체를 PUT (쿠키 미동봉, cross-origin) */
+      uploadUrl: string;
+      /** S3 object key — complete 호출에 그대로 전달 */
+      key: string;
+      /** PUT 요청에 반드시 실어야 하는 헤더 (서명에 포함됨) */
+      headers: Record<string, string>;
+      expiresAt: string;
+    };
+
+/** 직접 업로드 완료 통보 — 응답은 기존 intake와 동일한 SplatAsset. */
+export interface SplatIntakeCompleteRequest {
+  listingId: string;
+  key: string;
+  title?: string;
+  address?: string;
+}

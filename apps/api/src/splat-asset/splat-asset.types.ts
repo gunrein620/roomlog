@@ -1,4 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
+import type {
+  SplatIntakeCompleteRequest,
+  SplatIntakePresignRequest
+} from "@roomlog/types";
 
 // SplatAsset CRUD 입출력 계약. web의 tour-types.ts(SplatTransform)와 필드가 같지만,
 // billing-manager-mapping과 동일 원칙으로 api는 web 내부 타입을 import하지 않고
@@ -97,6 +101,30 @@ export function parseIntakeInput(body: unknown): IntakeSplatAssetInput {
   if (typeof raw.address === "string" && raw.address.trim() !== "") input.address = raw.address.trim();
 
   return input;
+}
+
+export function parseIntakePresignInput(body: unknown): SplatIntakePresignRequest {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  if (typeof raw.sizeBytes !== "number" || !Number.isFinite(raw.sizeBytes) || raw.sizeBytes < 0) {
+    throw new BadRequestException("sizeBytes는 0 이상의 숫자여야 합니다.");
+  }
+
+  const input: SplatIntakePresignRequest = {
+    listingId: requireNonEmptyString(raw.listingId, "listingId"),
+    fileName: requireNonEmptyString(raw.fileName, "fileName"),
+    sizeBytes: Math.trunc(raw.sizeBytes)
+  };
+  if (raw.mimeType != null) input.mimeType = requireNonEmptyString(raw.mimeType, "mimeType");
+  return input;
+}
+
+export function parseIntakeCompleteInput(body: unknown): SplatIntakeCompleteRequest {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  const intake = parseIntakeInput(raw);
+  return {
+    ...intake,
+    key: requireNonEmptyString(raw.key, "key")
+  };
 }
 
 export function parseUpdateFileInput(body: unknown): UpdateSplatAssetFileInput {
