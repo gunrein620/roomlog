@@ -70,6 +70,7 @@ import {
 } from "./_components/WoozuLoginScreen";
 import { MobileRoleMenu } from "./_components/MobileRoleMenu";
 import TourActionBell from "./_components/TourActionBell";
+import TourUploadBanner from "./_components/TourUploadBanner";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
@@ -2424,6 +2425,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             </div>
           </div>
         </header>
+        {/* 상단 네비 바로 아래 전역 진행바 — 3D 투어 백그라운드 업로드 중 어느 탭에서든 보인다. */}
+        <TourUploadBanner />
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
           <header className="app-header">
