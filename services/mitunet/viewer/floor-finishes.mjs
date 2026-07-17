@@ -1,3 +1,5 @@
+import { decodeRoomFloorLabels } from "./room-floor-zones.mjs";
+
 function pointInRing(x, y, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -150,4 +152,87 @@ export function worldToMaskPixel(point, { scale, cx, cy }) {
     x: Math.round(point.x / scale + cx),
     y: Math.round(-point.z / scale + cy),
   };
+}
+
+function woodColor(x, y) {
+  const plankHeight = 18;
+  const plankWidth = 132;
+  const plankRow = Math.floor(y / plankHeight);
+  const stagger = (plankRow % 2) * Math.floor(plankWidth / 2);
+  const plankCol = Math.floor((x + stagger) / plankWidth);
+  const seam = y % plankHeight === 0 || (x + stagger) % plankWidth === 0;
+  const hash = Math.sin(plankRow * 127.1 + plankCol * 311.7) * 43758.5453;
+  const tone = Math.round(20 * ((hash - Math.floor(hash)) - 0.5));
+  const grain = Math.round(
+    4 * Math.sin(x * 0.11 + plankRow * 0.8)
+    + 2 * Math.sin(x * 0.31 + plankRow * 2.3),
+  );
+  return seam
+    ? [146, 114, 78]
+    : [196 + tone + grain, 158 + tone + grain, 112 + Math.round((tone + grain) * 0.6)];
+}
+
+function materialColor(material, x, y) {
+  if (material === "TILE") {
+    const grid = x % 28 <= 1 || y % 28 <= 1;
+    return grid ? [102, 133, 148] : [221, 235, 242];
+  }
+  if (material === "BALCONY_TILE") {
+    const grid = x % 22 <= 1 || y % 22 <= 1;
+    return grid ? [105, 112, 120] : [215, 219, 224];
+  }
+  if (material === "KITCHEN_FLOOR") {
+    const grid = x % 32 <= 1 || y % 32 <= 1;
+    if (grid) return [139, 132, 120];
+    return (Math.floor(x / 32) + Math.floor(y / 32)) % 2 === 0
+      ? [232, 226, 212]
+      : [207, 199, 184];
+  }
+  if (material === "STONE_TILE") {
+    const grid = x % 54 <= 1 || y % 34 <= 1;
+    return grid ? [112, 104, 94] : [217, 210, 196];
+  }
+  return woodColor(x, y);
+}
+
+export function buildFloorFinishRgba({ floorMaterials, height, interiorMask, width }) {
+  if (
+    !(interiorMask instanceof Uint8Array)
+    || !Number.isInteger(width)
+    || !Number.isInteger(height)
+    || width < 1
+    || height < 1
+    || interiorMask.length !== width * height
+  ) {
+    throw new RangeError("Floor finish dimensions do not match the interior mask");
+  }
+
+  let labels = null;
+  let zones = [];
+  if (floorMaterials) {
+    try {
+      labels = decodeRoomFloorLabels(floorMaterials);
+      zones = Array.isArray(floorMaterials.zones) ? floorMaterials.zones : [];
+      if (labels.length !== interiorMask.length) labels = null;
+    } catch {
+      labels = null;
+    }
+  }
+
+  const pixels = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < interiorMask.length; index += 1) {
+    if (!interiorMask[index]) continue;
+    const zoneLabel = labels ? labels[index] : 1;
+    if (labels && zoneLabel === 0) continue;
+    const material = labels ? zones[zoneLabel - 1]?.material : "WOOD";
+    const x = index % width;
+    const y = Math.floor(index / width);
+    const [red, green, blue] = materialColor(material, x, y);
+    const offset = index * 4;
+    pixels[offset] = red;
+    pixels[offset + 1] = green;
+    pixels[offset + 2] = blue;
+    pixels[offset + 3] = 255;
+  }
+  return pixels;
 }

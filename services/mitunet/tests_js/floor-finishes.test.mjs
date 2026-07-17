@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  buildFloorFinishRgba,
   buildInteriorMask,
   maskContains,
   worldToMaskPixel,
 } from "../viewer/floor-finishes.mjs";
+import { encodeRoomFloorLabels } from "../viewer/room-floor-zones.mjs";
 
 const rectangle = (x1, y1, x2, y2) => ({
   outer: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
@@ -146,4 +148,32 @@ test("world coordinates map back to the plan mask", () => {
     worldToMaskPixel({ x: 1, z: -2 }, { scale: 0.5, cx: 10, cy: 20 }),
     { x: 12, y: 24 },
   );
+});
+
+test("renders deterministic material colors and preserves a legacy wood fallback", () => {
+  const width = 6;
+  const height = 2;
+  const interiorMask = new Uint8Array(width * height).fill(1);
+  const labels = Uint8Array.from([
+    1, 1, 2, 2, 3, 0,
+    1, 1, 2, 2, 3, 0,
+  ]);
+  const floorMaterials = {
+    ...encodeRoomFloorLabels(labels, width, height),
+    zones: [
+      { material: "WOOD" },
+      { material: "TILE" },
+      { material: "BALCONY_TILE" },
+    ],
+  };
+
+  const zoned = buildFloorFinishRgba({ floorMaterials, height, interiorMask, width });
+  const pixel = index => [...zoned.slice(index * 4, index * 4 + 4)];
+  assert.notDeepEqual(pixel(0).slice(0, 3), pixel(2).slice(0, 3));
+  assert.notDeepEqual(pixel(2).slice(0, 3), pixel(4).slice(0, 3));
+  assert.equal(pixel(5)[3], 0);
+
+  const legacy = buildFloorFinishRgba({ height, interiorMask, width });
+  assert.equal(legacy[3], 255);
+  assert.deepEqual([...legacy.slice(0, 4)], [...buildFloorFinishRgba({ height, interiorMask, width }).slice(0, 4)]);
 });
