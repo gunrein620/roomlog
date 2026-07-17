@@ -10,7 +10,7 @@ import {
   Banknote,
   Building2,
   Copy,
-  Heart,
+  Star,
   Layers3,
   MapPinned,
   Phone,
@@ -125,7 +125,7 @@ export function ListingDetailView({
             <Share2 size={22} strokeWidth={2.5} />
           </button>
           <button className={isSaved ? "active" : ""} type="button" aria-label="찜하기" onClick={() => onToggleSaved(listing.listingNo)}>
-            <Heart size={24} fill={isSaved ? "currentColor" : "none"} strokeWidth={2.5} />
+            <Star size={24} fill={isSaved ? "currentColor" : "none"} strokeWidth={2.5} />
           </button>
         </div>
       </header>

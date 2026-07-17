@@ -3,8 +3,9 @@
 // 집우집주(WOOZU) 단일 계정 로그인 화면 — page.tsx(/?auth=login)와 /login이 공유한다.
 // 로그인은 역할을 제한하지 않는다: 계정 identity만 확인하고, 룸로그 표면 진입은
 // 로그인 후 세션의 capability(roles)로 판단한다.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Image from "next/image";
+import { Eye, EyeOff } from "lucide-react";
 import { KakaoTalkLogoIcon } from "./KakaoTalkLogoIcon";
 
 export type AppRole = "seeker" | "tenant" | "landlord";
@@ -122,6 +123,20 @@ export function WoozuLoginScreen({
   const [isServiceLoginPending, setIsServiceLoginPending] = useState(false);
   // "이메일로 계속하기"를 누르면 그 자리에서 이메일/비밀번호 폼이 펼쳐진다.
   const [showEmailForm, setShowEmailForm] = useState(false);
+  // 로그인 편의: 비밀번호 보기 토글 · 이메일 저장 · 자동 로그인
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberEmail, setRememberEmail] = useState(false);
+  const [autoLogin, setAutoLogin] = useState(false);
+
+  // 저장해둔 이메일/자동 로그인 설정 복원 (클라이언트 전용)
+  useEffect(() => {
+    const savedEmail = window.localStorage.getItem("woozu_saved_email");
+    if (savedEmail) {
+      setServiceEmail(savedEmail);
+      setRememberEmail(true);
+    }
+    setAutoLogin(window.localStorage.getItem("woozu_auto_login") === "1");
+  }, []);
   const socialProviders = socialProvidersForMode(mode, {
     redirectTo: googleRedirectTo,
     errorRedirectTo: googleErrorRedirectTo
@@ -152,6 +167,14 @@ export function WoozuLoginScreen({
         setServiceLoginError("로그인 상태를 확인하지 못했습니다.");
         return;
       }
+
+      // 로그인 성공 — 편의 설정 반영 (이메일 저장/자동 로그인 플래그)
+      if (rememberEmail) {
+        window.localStorage.setItem("woozu_saved_email", serviceEmail);
+      } else {
+        window.localStorage.removeItem("woozu_saved_email");
+      }
+      window.localStorage.setItem("woozu_auto_login", autoLogin ? "1" : "0");
 
       onAuthenticated((await meResponse.json()) as ViewerProfile);
     } catch {
@@ -222,14 +245,47 @@ export function WoozuLoginScreen({
                 </label>
                 <label>
                   비밀번호
-                  <input
-                    type="password"
-                    value={servicePassword}
-                    onChange={(event) => setServicePassword(event.target.value)}
-                    autoComplete="current-password"
-                    required
-                  />
+                  <span className="password-field">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={servicePassword}
+                      onChange={(event) => setServicePassword(event.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+                    {/* 전형적인 눈 아이콘 토글 — 입력창 우측 */}
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    >
+                      {showPassword ? (
+                        <EyeOff size={18} strokeWidth={2.2} aria-hidden="true" />
+                      ) : (
+                        <Eye size={18} strokeWidth={2.2} aria-hidden="true" />
+                      )}
+                    </button>
+                  </span>
                 </label>
+                <div className="login-remember-row">
+                  <label className="login-check">
+                    <input
+                      type="checkbox"
+                      checked={rememberEmail}
+                      onChange={(event) => setRememberEmail(event.target.checked)}
+                    />
+                    이메일 저장
+                  </label>
+                  <label className="login-check">
+                    <input
+                      type="checkbox"
+                      checked={autoLogin}
+                      onChange={(event) => setAutoLogin(event.target.checked)}
+                    />
+                    자동 로그인
+                  </label>
+                </div>
                 {serviceLoginError ? (
                   <p className="service-auth-error" role="alert">{serviceLoginError}</p>
                 ) : null}

@@ -719,6 +719,59 @@ p {
   border-color: var(--blue);
 }
 
+/* 비밀번호 보기 — 입력창 우측 눈 아이콘 토글 */
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 46px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: var(--subtle);
+}
+
+.password-toggle:hover {
+  color: var(--ink);
+}
+
+/* 이메일 저장 · 자동 로그인 체크 줄 */
+.login-remember-row {
+  display: flex;
+  gap: 18px;
+}
+
+/* .service-login-form label(grid) 공통 규칙보다 특이성을 높여 가로 정렬 유지 */
+.service-login-form .login-check,
+.login-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 폼 공통 input 스타일(46px 박스)이 체크박스를 삼키지 않게 원복 */
+.login-check input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--blue);
+}
+
 .service-login-submit,
 .signup-submit {
   min-height: 50px;
@@ -2114,10 +2167,11 @@ p {
   box-shadow: 0 8px 18px rgba(26, 19, 48, 0.1);
 }
 
+/* 찜 활성 = 채워진 별 — 브랜드 코랄 딥핑크 */
 .save-listing-button.saved,
 .map-listing > button.saved {
-  background: #fff0f3;
-  color: #e32952;
+  background: #fdeef2;
+  color: var(--pink-deep);
 }
 
 /* 카드 본문 — 가격·제목·스펙·위치 네 줄만. 액션/신뢰 칩은 상세로 넘겼다. */
@@ -8411,9 +8465,38 @@ p {
   font-weight: 900;
 }
 
+/* 게이지 트랙 — 채운 만큼만 은하수(--gauge-fill %), 나머지는 기존 회색. 노브 = 연보라 */
 .filter-range-bars input {
   width: 100%;
-  accent-color: var(--blue);
+  height: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 999px;
+  background:
+    linear-gradient(to right, rgba(0, 0, 0, 0) var(--gauge-fill, 100%), #e3e6ed var(--gauge-fill, 100%)),
+    url("/gauge-stars.svg") left center / cover no-repeat,
+    linear-gradient(90deg, #1e1840, #2a1f52 55%, #241d4e);
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-range-bars input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #8b83c0;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(32, 24, 74, 0.35);
+}
+
+.filter-range-bars input::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #8b83c0;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(32, 24, 74, 0.35);
 }
 
 .filter-price-grid {
@@ -8469,6 +8552,35 @@ p {
   color: var(--muted);
   font-size: 0.64rem;
   font-weight: 850;
+}
+
+/* 가격대 시트 하단 — 초기화(고스트) + 적용(주버튼) 나란히 */
+.price-sheet-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.price-sheet-actions .filter-apply-button {
+  position: static;
+  flex: 1;
+}
+
+.price-reset-button {
+  flex: none;
+  min-height: 56px;
+  padding: 0 22px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #ffffff;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.price-reset-button:hover {
+  background: #faf8fc;
+  color: var(--ink);
 }
 
 .filter-apply-button {
@@ -10720,6 +10832,13 @@ p {
     background: rgba(255, 255, 255, 0.16);
     border: 1px solid rgba(255, 255, 255, 0.32);
     color: #ffffff;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  /* 홈 스코프 규칙이 일반 hover보다 특이성이 높아 여기서 다시 선언해야 먹는다 */
+  .service-frame:has(.home-screen) .web-sell-cta:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.55);
   }
 
   /* 데스크톱은 topbar(68px + 1px 보더)가 sticky라 진행바를 그 아래에 고정한다. */
@@ -10992,7 +11111,8 @@ p {
     position: relative;
     min-height: 550px;
     margin: 0;
-    padding: 120px 56px 0;
+    /* 좌우 여백 = 검색카드(중앙 1180px)의 좌측 시작선과 일치 */
+    padding: 120px max(56px, calc((100% - 1180px) / 2)) 0;
     border-radius: 0;
     overflow: hidden;
     text-align: left;
@@ -11017,7 +11137,7 @@ p {
     margin-top: 18px;
     color: #ffffff;
     font-family: "Gowun Batang", serif;
-    font-size: 4.125rem;
+    font-size: 3.75rem;
     line-height: 1.18;
     letter-spacing: -0.005em;
     font-weight: 700;

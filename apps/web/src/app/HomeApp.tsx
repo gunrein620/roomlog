@@ -15,7 +15,7 @@ import {
   ChevronRight,
   Copy,
   DoorOpen,
-  Heart,
+  Star,
   HomeIcon,
   House,
   Layers3,
@@ -221,6 +221,41 @@ const listingMatchesCategory = (label: string, listing: Listing): boolean => {
 };
 
 const quickFilters = ["월세", "전세", "관리비 포함", "반려동물", "주차", "풀옵션"];
+
+// 검색바 거래유형 탭 — 택일. 필터 체인의 거래유형 OR 매칭(dealTypeFilters)과 같은 어휘를 쓴다.
+const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
+
+// 가격 게이지바 상한(만원) — 슬라이더 우측 끝 = 제한 없음.
+const PRICE_DEPOSIT_LIMIT = 50000; // 보증금 5억
+const PRICE_MONTHLY_LIMIT = 200; // 월세 200만
+
+// 축별 빠른 프리셋 — 각 칩은 자기 게이지만 세팅한다.
+const depositPresets = [
+  { label: "전체", value: PRICE_DEPOSIT_LIMIT },
+  { label: "1,000 이하", value: 1000 },
+  { label: "5,000 이하", value: 5000 },
+  { label: "1억 이하", value: 10000 }
+] as const;
+
+const monthlyPresets = [
+  { label: "전체", value: PRICE_MONTHLY_LIMIT },
+  { label: "40 이하", value: 40 },
+  { label: "60 이하", value: 60 },
+  { label: "100 이하", value: 100 }
+] as const;
+
+const formatDepositManwon = (manwon: number): string =>
+  manwon >= 10000
+    ? `${(manwon / 10000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억`
+    : `${manwon.toLocaleString("ko-KR")}만`;
+
+// 게이지 값 → 검색카드/요약 라벨. 두 게이지 모두 끝(제한 없음)이면 "전체".
+const priceRangeLabel = (deposit: number, monthly: number): string => {
+  const parts: string[] = [];
+  if (deposit < PRICE_DEPOSIT_LIMIT) parts.push(`보증금 ${formatDepositManwon(deposit)} 이하`);
+  if (monthly < PRICE_MONTHLY_LIMIT) parts.push(`월세 ${monthly}만 이하`);
+  return parts.join(" · ") || "전체";
+};
 
 const sortOptions = [
   { label: "정확도순", description: "실매물 확인, 응답률, 거리 기준으로 추천" },
@@ -792,7 +827,7 @@ const groupMapListings = (listings: MapPanelItem[]): MapListingGroup[] => {
 const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: string }> = [
   { key: "home", label: "홈", Icon: HomeIcon, href: "#home-title" },
   { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
-  { key: "saved", label: "찜", Icon: Heart, href: "#saved-list" },
+  { key: "saved", label: "찜", Icon: Star, href: "#saved-list" },
   { key: "inquiry", label: "채팅", Icon: MessageCircle, href: "#inquiry" }
 ];
 
@@ -874,7 +909,7 @@ const getMapFilterSummary = (filter: string) => {
   }
 
   if (filter === "찜한 매물") {
-    return "관심목록 기준";
+    return "찜목록 기준";
   }
 
   return "시세 지도 기준";
@@ -972,7 +1007,7 @@ function SavedListingsSection({
         ) : (
           <article className="saved-empty-card">
             <strong>아직 찜한 매물이 없습니다</strong>
-            <p>추천 매물이나 지도 결과에서 하트를 누르면 여기에 모입니다.</p>
+            <p>추천 매물이나 지도 결과에서 별을 누르면 여기에 모입니다.</p>
           </article>
         )}
       </div>
@@ -1047,10 +1082,9 @@ function FilterBottomSheet({
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>
-            <span>필터</span>
-            <h2 id="filter-sheet-title">조건 좁히기</h2>
+            <h2 id="filter-sheet-title">매물 유형</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="필터 닫기">×</button>
+          <button type="button" onClick={onClose} aria-label="매물 유형 닫기">×</button>
         </header>
 
         <div className="filter-summary-card" aria-label="현재 필터 요약">
@@ -1115,38 +1149,7 @@ function FilterBottomSheet({
           </div>
         </div>
 
-        <div className="filter-range-panel" aria-label="가격 범위">
-          <div>
-            <strong>가격 범위</strong>
-            <span>보증금 1,000만 이하 · 월세 130만 이하</span>
-          </div>
-          <div className="filter-range-bars">
-            <label>
-              <span>보증금</span>
-              <input type="range" min="0" max="5000" value="1000" readOnly aria-label="보증금 최대 1000만원" />
-            </label>
-            <label>
-              <span>월세</span>
-              <input type="range" min="0" max="200" value="130" readOnly aria-label="월세 최대 130만원" />
-            </label>
-          </div>
-        </div>
-
-        <div className="filter-price-grid">
-          <label>
-            보증금
-            <span>1,000만원 이하</span>
-          </label>
-          <label>
-            월세
-            <span>130만원 이하</span>
-          </label>
-          <label>
-            관리비
-            <span>포함 우선</span>
-          </label>
-        </div>
-
+        {/* 가격 범위 장식 패널 제거 — 전용 가격대 시트가 검색카드 옆에 실동작으로 존재 */}
         <button className="filter-apply-button" type="button" onClick={onApply}>
           조건 적용하고 {resultCount}개 보기
         </button>
@@ -1388,6 +1391,117 @@ function SortBottomSheet({
   );
 }
 
+function PriceBottomSheet({
+  isOpen,
+  deposit,
+  monthly,
+  resultCount,
+  onClose,
+  onChange
+}: {
+  isOpen: boolean;
+  deposit: number;
+  monthly: number;
+  resultCount: number;
+  onClose: () => void;
+  onChange: (next: { deposit: number; monthly: number }) => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="filter-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="price-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <h2 id="price-sheet-title">가격대</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="가격대 닫기">×</button>
+        </header>
+
+        {/* 보증금 — 프리셋 4개 + 게이지 (칩은 자기 축만 세팅) */}
+        <div className="filter-sheet-section">
+          <strong>보증금 · {deposit >= PRICE_DEPOSIT_LIMIT ? "제한 없음" : `${formatDepositManwon(deposit)} 이하`}</strong>
+          <div className="filter-chip-cloud">
+            {depositPresets.map((preset) => (
+              <button
+                className={deposit === preset.value ? "active" : ""}
+                type="button"
+                key={preset.label}
+                onClick={() => onChange({ deposit: preset.value, monthly })}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div className="filter-range-bars">
+            <label>
+              <span>게이지로 세밀 조절 (끝 = 제한 없음)</span>
+              <input
+                type="range"
+                min={0}
+                max={PRICE_DEPOSIT_LIMIT}
+                step={1000}
+                value={deposit}
+                style={{ "--gauge-fill": `${(deposit / PRICE_DEPOSIT_LIMIT) * 100}%` } as CSSProperties}
+                onChange={(event) => onChange({ deposit: Number(event.target.value), monthly })}
+                aria-label="보증금 상한"
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* 월세 — 프리셋 4개 + 게이지 */}
+        <div className="filter-sheet-section">
+          <strong>월세 · {monthly >= PRICE_MONTHLY_LIMIT ? "제한 없음" : `${monthly}만원 이하`}</strong>
+          <div className="filter-chip-cloud">
+            {monthlyPresets.map((preset) => (
+              <button
+                className={monthly === preset.value ? "active" : ""}
+                type="button"
+                key={preset.label}
+                onClick={() => onChange({ deposit, monthly: preset.value })}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div className="filter-range-bars">
+            <label>
+              <span>게이지로 세밀 조절 (끝 = 제한 없음)</span>
+              <input
+                type="range"
+                min={0}
+                max={PRICE_MONTHLY_LIMIT}
+                step={10}
+                value={monthly}
+                style={{ "--gauge-fill": `${(monthly / PRICE_MONTHLY_LIMIT) * 100}%` } as CSSProperties}
+                onChange={(event) => onChange({ deposit, monthly: Number(event.target.value) })}
+                aria-label="월세 상한"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="price-sheet-actions">
+          <button
+            className="price-reset-button"
+            type="button"
+            onClick={() => onChange({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT })}
+          >
+            초기화
+          </button>
+          <button className="filter-apply-button" type="button" onClick={onClose}>
+            적용하고 {resultCount}개 보기
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function NotificationSheet({
   isOpen,
   onClose
@@ -1478,6 +1592,9 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [recentSearches, setRecentSearches] = useState(searchSuggestions.recent);
   const [activeCategory, setActiveCategory] = useState(categories[0].label);
   const [activeQuickFilters, setActiveQuickFilters] = useState<string[]>([]);
+  // 검색카드 가격대 — 게이지바 값(만원). 상한 끝값 = 제한 없음.
+  const [priceRange, setPriceRange] = useState({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT });
+  const [isPriceSheetOpen, setIsPriceSheetOpen] = useState(false);
   // 홈 검색창 키워드 — 매물명/위치/스펙/태그를 즉시 필터링한다 (QA: 검색창 직접 입력).
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeMapFilter, setActiveMapFilter] = useState("시세");
@@ -1613,7 +1730,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const mapAreaTitle =
     hasResolvedMapContext || mapQueryStatus === "fallback" ? selectedAreaTitle : "";
   const mapAreaDisplayTitle = mapAreaTitle || "지역 미선택";
-  const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
+  const activePriceLabel = priceRangeLabel(priceRange.deposit, priceRange.monthly);
+  const activeFilterSummary = [
+    activeCategory,
+    ...activeQuickFilters,
+    ...(activePriceLabel !== "전체" ? [activePriceLabel] : [])
+  ].join(" · ");
   const visibleHomeListings = allListings.filter((listing) => {
     const categoryMatches = listingMatchesCategory(activeCategory, listing);
     // 거래유형(월세/전세/매매/단기)끼리는 OR — 둘 다 켜면 "월세 또는 전세"다 (QA: every()로 AND 되던 버그).
@@ -1641,7 +1763,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         .toLowerCase()
         .includes(keyword);
 
-    return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches;
+    // 가격대 — 게이지 상한(만원). 끝값 = 제한 없음. 전세·매매는 monthlyRentManwon=0이라 월세 상한에 자동 통과.
+    const priceMatches =
+      (priceRange.deposit >= PRICE_DEPOSIT_LIMIT || listing.depositManwon <= priceRange.deposit) &&
+      (priceRange.monthly >= PRICE_MONTHLY_LIMIT || listing.monthlyRentManwon <= priceRange.monthly);
+
+    return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches && priceMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
@@ -1798,7 +1925,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     : isRadiusEmptyMap
       ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : activeMapFilter === "찜한 매물"
-      ? `관심목록에 저장한 매물 ${visibleMapListings.length}개를 보여줍니다.`
+      ? `찜목록에 저장한 매물 ${visibleMapListings.length}개를 보여줍니다.`
     : `${activeSort} · ${mapFilterSummary} 조건으로 우선 매물 ${visibleMapListings.length}개를 먼저 보여줍니다.`;
   const mapEmptyTitle = isMapContextEmpty
     ? mapQueryStatus === "resolving" || mapLocationStatus === "requesting"
@@ -1824,7 +1951,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     : isRadiusEmptyMap
       ? `${isLocationScopedMap ? "현재 위치" : mapAreaDisplayTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : activeMapFilter === "찜한 매물"
-      ? "관심목록에 저장한 매물이 있으면 지도와 목록에 함께 표시됩니다."
+      ? "찜목록에 저장한 매물이 있으면 지도와 목록에 함께 표시됩니다."
     : `${activeSort} · ${mapFilterSummary} 조건에 맞는 매물이 없습니다.`;
   const mapViewportSpanM = mapViewportMaxSpanMeters(mapViewport);
   const mapPopupScopeRadiusM = isDistanceScopedMap ? mapSearchContext.radiusM : MAP_SEARCH_RADIUS_M;
@@ -1948,6 +2075,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setActiveQuickFilters((current) =>
       current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter]
     );
+  };
+
+  // 검색바 거래유형 = 택일 — 거래유형 슬롯을 비우고 선택한 것 하나만 넣는다(재클릭 = 해제).
+  const selectDealTypeExclusive = (deal: string) => {
+    setActiveQuickFilters((current) => {
+      const withoutDealTypes = current.filter((item) => !DEAL_TYPE_TABS.includes(item as (typeof DEAL_TYPE_TABS)[number]));
+      return current.includes(deal) ? withoutDealTypes : [...withoutDealTypes, deal];
+    });
   };
 
   const beginCategoryDrag = (event: PointerEvent<HTMLElement>) => {
@@ -2399,7 +2534,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             </button>
             <nav className="web-nav" aria-label="주요 메뉴">
               <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
-              <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
+              <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>찜목록</button>
               <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
                 채팅
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
@@ -2460,14 +2595,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
           {/* 5b 검색바 — 전세·월세/매매 · 지역/유형/가격 · 핑크 검색 CTA. 각 필드는 기존 시트를 연다 */}
           <div className="search-box" aria-label="매물 검색">
-            {/* 전세/월세 = 실제 거래유형 필터 토글 (OR 매칭, 둘 다 꺼지면 전체) — 매매는 제외 */}
+            {/* 거래유형 = 택일 탭 (다시 누르면 해제 = 전체) — 필터 상태의 거래유형 슬롯을 단독 점유 */}
             <div className="search-deal-tabs">
-              {["월세", "전세"].map((deal) => (
+              {DEAL_TYPE_TABS.map((deal) => (
                 <button
                   key={deal}
                   type="button"
                   className={activeQuickFilters.includes(deal) ? "search-deal-tab active" : "search-deal-tab"}
-                  onClick={() => toggleQuickFilter(deal)}
+                  onClick={() => selectDealTypeExclusive(deal)}
                 >
                   {deal}
                 </button>
@@ -2484,11 +2619,22 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 <span className="search-field-value">{activeCategory} ▾</span>
               </button>
               <span className="search-field-divider" aria-hidden="true" />
-              <button type="button" className="search-field" onClick={() => setIsFilterSheetOpen(true)}>
+              <button type="button" className="search-field" onClick={() => setIsPriceSheetOpen(true)}>
                 <span className="search-field-label">가격대</span>
-                <span className="search-field-value">전체 ▾</span>
+                <span className="search-field-value">{activePriceLabel} ▾</span>
               </button>
-              <button type="button" className="search-submit" onClick={() => setIsSearchSheetOpen(true)}>검색</button>
+              {/* 검색 = 현재 조건(탭·유형·가격)이 이미 피드에 반영돼 있으므로, 결과 섹션으로 이동시키는 실행 버튼 */}
+              <button
+                type="button"
+                className="search-submit"
+                onClick={() => {
+                  setIsPriceSheetOpen(false);
+                  setIsFilterSheetOpen(false);
+                  document.querySelector(".home-screen > .section-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                검색
+              </button>
             </div>
           </div>
 
@@ -2572,7 +2718,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                       aria-label={`${listing.title} 찜하기`}
                       onClick={() => toggleSavedListing(listing.listingNo)}
                     >
-                      <Heart size={22} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                      <Star size={22} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
                     </button>
                   </article>
                 ))}
@@ -2585,6 +2731,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 <button type="button" onClick={() => {
                   setActiveCategory("오피스텔");
                   setActiveQuickFilters(["월세"]);
+                  setPriceRange({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT });
                 }}>
                   기본 조건으로 보기
                 </button>
@@ -2827,7 +2974,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                         aria-label={`${listing.title} 저장`}
                         onClick={() => toggleSavedListing(listing.listingNo)}
                       >
-                        <Heart size={20} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                        <Star size={20} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
                       </button>
                     </article>
                   ))}
@@ -2977,6 +3124,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             setActiveSort(sort);
             setIsSortSheetOpen(false);
           }}
+        />
+        <PriceBottomSheet
+          isOpen={isPriceSheetOpen}
+          deposit={priceRange.deposit}
+          monthly={priceRange.monthly}
+          resultCount={visibleHomeCount}
+          onClose={() => setIsPriceSheetOpen(false)}
+          onChange={setPriceRange}
         />
         <NotificationSheet
           isOpen={isNotificationSheetOpen}
