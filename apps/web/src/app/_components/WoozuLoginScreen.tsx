@@ -3,7 +3,8 @@
 // 집우집주(WOOZU) 단일 계정 로그인 화면 — page.tsx(/?auth=login)와 /login이 공유한다.
 // 로그인은 역할을 제한하지 않는다: 계정 identity만 확인하고, 룸로그 표면 진입은
 // 로그인 후 세션의 capability(roles)로 판단한다.
-import { Fragment, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import Image from "next/image";
 import { KakaoTalkLogoIcon } from "./KakaoTalkLogoIcon";
 
 export type AppRole = "seeker" | "tenant" | "landlord";
@@ -94,7 +95,6 @@ export const socialProvidersForMode = (
   }
 ];
 
-const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as const;
 
 export function WoozuLoginScreen({
   mode,
@@ -116,11 +116,12 @@ export function WoozuLoginScreen({
     label: string;
   };
 }) {
-  const socialLoginNotice = "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다.";
   const [serviceEmail, setServiceEmail] = useState("");
   const [servicePassword, setServicePassword] = useState("");
   const [serviceLoginError, setServiceLoginError] = useState(socialAuthErrorMessage(initialError) ?? "");
   const [isServiceLoginPending, setIsServiceLoginPending] = useState(false);
+  // "이메일로 계속하기"를 누르면 그 자리에서 이메일/비밀번호 폼이 펼쳐진다.
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const socialProviders = socialProvidersForMode(mode, {
     redirectTo: googleRedirectTo,
     errorRedirectTo: googleErrorRedirectTo
@@ -162,61 +163,19 @@ export function WoozuLoginScreen({
 
   return (
     <main className="app-canvas login-canvas">
+      {/* 브랜드·헤드라인 = 밤하늘 위 흰 타이포(홈 히어로 문법) — 카드는 폼만 담아 흰 덩어리 고립을 해소 */}
+      <div className="login-hero">
+        {/* trim 로고(홈 상단바와 동일 자산) — 누르면 홈으로 */}
+        <button type="button" className="login-hero-logo" onClick={onGoHome} aria-label="홈으로 이동">
+          <Image src="/uju-logo-trim.png" alt="우주" width={108} height={108} priority />
+        </button>
+        <h1><span className="hero-woozu">우주</span>에서 방을 구해보세요!</h1>
+        <p className="login-hero-sub">조건에 맞는 방을 찾고, 3D 투어와 정보확인은 우주에서</p>
+      </div>
+
       <section className="login-phone" aria-label="집우집주 로그인">
-        <div className="login-topbar">
-          <button type="button" className="login-home-link" onClick={onGoHome} aria-label="홈으로 이동">
-            <span className="login-home-icon" aria-hidden="true">
-              <svg className="login-home-roof" viewBox="0 0 140 68" fill="none">
-                <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-                <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
-                <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
-                <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
-                <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
-              </svg>
-            </span>
-            집우집주<span>WOOZU</span>
-          </button>
-        </div>
-        <div className="login-brandmark">
-          <div className="brand-mark-icon">
-            <div className="brand-orbit">
-              <div className="brand-orbit-spin">
-                <span className="brand-star-fix">
-                  <span className="brand-star">
-                    <svg viewBox="0 0 24 24"><path d="M12 0c1.1 6.2 4.8 9.9 12 12-7.2 2.1-10.9 5.8-12 12-1.1-6.2-4.8-9.9-12-12 7.2-2.1 10.9-5.8 12-12Z" /></svg>
-                  </span>
-                </span>
-              </div>
-            </div>
-            <svg className="brand-roof" viewBox="0 0 140 68" fill="none">
-              <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-              <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
-              <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
-              <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
-              <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
-            </svg>
-          </div>
-          <div className="brand-word">우주</div>
-          <p className="brand-tagline">우주 | 3D공간 시뮬레이션</p>
-        </div>
-
         <div className="login-panel">
-          <p className="brand-kicker">|집우집주|  입주부터 관리까지 우주에서</p>
-          <h1>우주에서 방을 구해보세요!</h1>
-          <p>
-            조건에 맞는 방을 찾고, 3D 투어와 정보확인은 우주에서
-          </p>
-
-          <div className="login-feature-bar" aria-label="서비스 핵심 기능">
-            {loginFeaturePills.map((label, index) => (
-              <Fragment key={label}>
-                {index > 0 ? <span className="login-feature-sep" aria-hidden="true" /> : null}
-                <span className={`login-feature-pill login-feature-pill--${index}`}>{label}</span>
-              </Fragment>
-            ))}
-          </div>
-
-          <div className="social-stack" aria-label="소셜 로그인">
+          <div className="social-stack" aria-label="로그인 방법">
             {socialProviders.map((provider) => (
               <button
                 className={`social-button ${provider.className}`}
@@ -232,52 +191,61 @@ export function WoozuLoginScreen({
                 {provider.label}
               </button>
             ))}
+            {/* 이메일 로그인도 같은 스택의 "계속하기" 버튼 — 누르면 아래로 폼이 펼쳐진다 */}
+            <button
+              className="social-button email-login-button"
+              type="button"
+              aria-expanded={showEmailForm}
+              onClick={() => setShowEmailForm((visible) => !visible)}
+            >
+              <svg className="email-login-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M4 7.5 12 13l8-5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              이메일로 계속하기
+            </button>
           </div>
 
-          <p className="social-login-notice" role="status">{socialLoginNotice}</p>
-
-          <div className="service-login-panel" aria-label="서비스 로그인">
-            <div>
-              <strong>서비스 로그인</strong>
+          {showEmailForm ? (
+            <div className="service-login-panel" aria-label="이메일 로그인">
+              <form className="service-login-form" onSubmit={submitServiceLogin}>
+                <label>
+                  이메일
+                  <input
+                    type="email"
+                    value={serviceEmail}
+                    onChange={(event) => setServiceEmail(event.target.value)}
+                    autoComplete="username"
+                    autoFocus
+                    required
+                  />
+                </label>
+                <label>
+                  비밀번호
+                  <input
+                    type="password"
+                    value={servicePassword}
+                    onChange={(event) => setServicePassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </label>
+                {serviceLoginError ? (
+                  <p className="service-auth-error" role="alert">{serviceLoginError}</p>
+                ) : null}
+                <button className="service-login-submit" type="submit" disabled={isServiceLoginPending}>
+                  {isServiceLoginPending ? "로그인 중" : "로그인"}
+                </button>
+              </form>
             </div>
-            <form className="service-login-form" onSubmit={submitServiceLogin}>
-              <label>
-                이메일
-                <input
-                  type="email"
-                  value={serviceEmail}
-                  onChange={(event) => setServiceEmail(event.target.value)}
-                  autoComplete="username"
-                  required
-                />
-              </label>
-              <label>
-                비밀번호
-                <input
-                  type="password"
-                  value={servicePassword}
-                  onChange={(event) => setServicePassword(event.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-              {serviceLoginError ? (
-                <p className="service-auth-error" role="alert">{serviceLoginError}</p>
-              ) : null}
-              <button className="service-login-submit" type="submit" disabled={isServiceLoginPending}>
-                {isServiceLoginPending ? "로그인 중" : "로그인"}
-              </button>
-            </form>
-            <a className="service-signup-link" href="/signup">일반 회원가입</a>
+          ) : null}
+
+          <div className="login-alt-links">
+            <a className="service-signup-link" href="/signup">처음이세요? 이메일로 회원가입</a>
             {vendorActivationAction ? (
-              <div className="login-vendor-activation-entry">
-                <a
-                  className="login-vendor-activation-link"
-                  href={vendorActivationAction.href}
-                >
-                  {vendorActivationAction.label}
-                </a>
-              </div>
+              <a className="login-vendor-activation-link" href={vendorActivationAction.href}>
+                {vendorActivationAction.label}
+              </a>
             ) : null}
           </div>
         </div>

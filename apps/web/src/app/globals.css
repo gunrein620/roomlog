@@ -41,8 +41,13 @@ body {
     var(--canvas);
 }
 
+/* 로그인 = 밤하늘 위 카드 (A안) — 카드 뒤 달무리(성운 글로우)로 명도를 계단식으로 잇는다 */
 body:has(.login-canvas) {
-  background: #ffffff;
+  background:
+    url("/login-stars.svg") center / cover no-repeat,
+    radial-gradient(ellipse 62% 46% at 50% 46%, rgba(122, 104, 224, 0.3), transparent 72%),
+    radial-gradient(ellipse 30% 22% at 50% 38%, rgba(242, 137, 157, 0.12), transparent 70%),
+    linear-gradient(160deg, #17133a, #2a1f52 55%, #241d4e);
 }
 
 button,
@@ -72,11 +77,110 @@ img {
 }
 
 .login-canvas {
-  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 40px 16px 48px;
+  background: transparent;
 }
 
+/* 밤하늘 위 브랜드·헤드라인 — 흰 세리프 + '우주' 핑크 (홈 히어로와 같은 문법) */
+.login-hero {
+  color: #f4f1fd;
+  text-align: center;
+}
+
+/* trim 로고(홈과 동일 자산) — 누르면 홈 복귀. a/button 모두 중앙 정렬되도록 fit-content */
+.login-hero-logo {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 0;
+  background: none;
+}
+
+.login-hero-logo img {
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.login-hero h1 {
+  margin: 18px 0 0;
+  color: #ffffff;
+  font-family: "Gowun Batang", serif;
+  font-size: 2.1rem;
+  font-weight: 700;
+}
+
+.login-hero h1 .hero-woozu {
+  color: var(--pink);
+}
+
+.login-hero .login-hero-sub {
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+}
+
+/* 이메일로 계속하기 — 소셜 스택과 같은 결(흰 버튼 + 봉투 아이콘), 누르면 아래로 폼 전개 */
+.email-login-button {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.email-login-button:hover {
+  background: #faf8fc;
+  border-color: #e1dcef;
+  box-shadow: 0 8px 18px rgba(32, 24, 74, 0.1);
+}
+
+.email-login-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+/* 회원가입·업체 등록 보조 링크 — 한 줄씩 세로 스택, 폰트·밑줄 통일 */
+.login-alt-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.login-alt-links a {
+  display: inline-block;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-caption);
+  line-height: var(--lh-caption);
+  text-decoration: underline;
+  text-underline-offset: var(--space-xs);
+}
+
+/* 로그인 확인 중 — 밤하늘 위 흰 텍스트 (라이트 배경 플래시 방지) */
+.login-canvas .auth-check-screen {
+  color: #ffffff;
+}
+
+.login-canvas .auth-check-screen span {
+  color: #cbbff5;
+}
+
+/* 밤하늘 위 글래스 카드 — 별빛이 살짝 배어 보이게 (배지·하트와 같은 blur 문법) */
 .login-canvas .login-phone {
-  box-shadow: none;
+  min-height: 0;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 30px 70px rgba(11, 8, 30, 0.5);
 }
 
 .auth-check-screen {
@@ -598,12 +702,15 @@ p {
 }
 
 .service-signup-link,
+/* 보조 링크 — 로그인 하단 링크(.login-alt-links a)와 동일 문법 */
 .signup-back-link {
-  color: var(--blue);
-  font-size: 0.82rem;
-  font-weight: 950;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-caption);
+  line-height: var(--lh-caption);
   text-align: center;
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: var(--space-xs);
 }
 
 .login-vendor-activation-entry {
@@ -691,12 +798,11 @@ p {
   text-align: center;
 }
 
+/* 회원가입 = 로그인과 같은 밤하늘 (배경은 body:has(.login-canvas)가 담당) */
 .signup-page {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
   padding: 42px 18px;
-  background: linear-gradient(135deg, #f5f2fb 0%, #ffffff 46%, #f3fbf8 100%);
+  background: transparent;
 }
 
 .signup-card {
@@ -704,10 +810,11 @@ p {
   display: grid;
   gap: 18px;
   padding: 26px;
-  border: 1px solid #ece8f4;
-  border-radius: 20px;
-  background: #ffffff;
-  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.1);
+  border: 0;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 30px 70px rgba(11, 8, 30, 0.5);
 }
 
 .signup-brand {
@@ -10483,18 +10590,20 @@ p {
     overflow: visible;
   }
 
-  /* 로그인 화면 = 웹 사이즈에서도 좌우 분할 없이 중앙 정렬, 배경·프레임 구분 없이 전체 흰색 */
+  /* 로그인 = 데스크톱에서도 밤하늘 중앙 카드 */
   .app-canvas.login-canvas {
-    padding: 48px 24px;
-    background: #ffffff;
+    padding: 56px 24px;
+    background: transparent;
   }
 
   .login-canvas .login-phone {
+    width: min(100%, 520px);
     min-height: 0;
     border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 30px 70px rgba(11, 8, 30, 0.5);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(14px);
   }
 
   .service-frame:not(.with-bottom-tabs) {
