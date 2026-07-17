@@ -73,7 +73,10 @@ import { MobileRoleMenu } from "./_components/MobileRoleMenu";
 import TourActionBell from "./_components/TourActionBell";
 import TourUploadBanner from "./_components/TourUploadBanner";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import { formatTenantLandlordUnreadCount } from "@/lib/tenant-landlord-conversation";
+import { tenantLandlordNavLabel } from "@/lib/tenant-landlord-nav-unread";
 import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
+import { useTenantLandlordUnreadCount } from "@/lib/use-tenant-landlord-unread-count";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
 import {
   demoListings as listings,
@@ -1877,6 +1880,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   }, [activeTab]);
 
   const inquiryBadgeCount = unseenTradeCount;
+  const tenantLandlordUnreadCount = useTenantLandlordUnreadCount(
+    Boolean(viewer && hasCapability(viewer, "TENANT")),
+    viewer?.userId,
+  );
+  const tenantLandlordBadgeText = formatTenantLandlordUnreadCount(tenantLandlordUnreadCount);
+  const tenantLandlordNavigationLabel = tenantLandlordNavLabel(tenantLandlordUnreadCount);
 
   // 상세는 이제 라우트(/listing/[id]) — 공유 가능한 URL로 이동한다(1단계 라우트 분리).
   // 채팅 시작도 상세의 문의하기가 담당한다 — 홈 카드에는 별도 액션 버튼을 두지 않는다.
@@ -2402,7 +2411,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 채팅
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
-              <button className={activeTab === "living" ? "active" : ""} type="button" onClick={() => activateTab("living")}>세입자</button>
+              <button
+                className={activeTab === "living" ? "active" : ""}
+                type="button"
+                onClick={() => activateTab("living")}
+                aria-label={tenantLandlordNavigationLabel}
+              >
+                세입자
+                {tenantLandlordBadgeText ? (
+                  <span className="nav-badge" aria-hidden="true">{tenantLandlordBadgeText}</span>
+                ) : null}
+              </button>
               <button type="button" onClick={() => { window.location.href = "/manager/home/00"; }}>관리</button>
               <button className={activeTab === "sell" ? "active" : ""} type="button" onClick={() => activateTab("sell")}>매물등록</button>
             </nav>

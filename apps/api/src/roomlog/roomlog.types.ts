@@ -1068,6 +1068,8 @@ export type Complaint = {
   roomId: string;
   ticketId: string;
   sourceChannel: ComplaintSourceChannel;
+  clientRequestId?: string;
+  requestFingerprint?: string;
   title: string;
   description: string;
   location: string;
@@ -2190,6 +2192,8 @@ export type CreateComplaintInput = {
   description: string;
   location: string;
   roomId?: string;
+  clientRequestId?: string;
+  attachmentUrls?: string[];
   occurredAt?: string;
   availableTimes?: string;
 };

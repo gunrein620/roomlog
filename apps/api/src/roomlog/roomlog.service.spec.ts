@@ -4045,6 +4045,33 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("clears tenant unread landlord messages", () => {
+    const service = new RoomlogService();
+    const thread = service
+      .listTenantMessagingThreads("tenant-demo")
+      .find((item) => item.context === "general" && !item.contextRef);
+
+    assert.ok(thread);
+
+    const replied = service.addManagerMessagingThreadMessage("landlord-demo", thread.id, {
+      body: "확인 후 답변드립니다."
+    });
+    assert.equal(replied.unreadCount, thread.unreadCount + 1);
+
+    const read = service.markTenantMessagingThreadRead("tenant-demo", thread.id);
+    assert.equal(read.unreadCount, 0);
+    assert.equal(service.getTenantMessagingThread("tenant-demo", thread.id).unreadCount, 0);
+    assert.equal(
+      service.listTenantMessagingThreads("tenant-demo").find((item) => item.id === thread.id)?.unreadCount,
+      0
+    );
+
+    assert.throws(
+      () => service.markTenantMessagingThreadRead("multi-demo", thread.id),
+      /메시지 스레드를 찾을 수 없습니다/
+    );
+  });
+
   it("links tenant landlord inquiry to the manager messaging thread", () => {
     const service = new RoomlogService();
     const existing = service

@@ -132,6 +132,16 @@ describe("Docker Postgres local database wiring", () => {
     assert.doesNotMatch(migrationBootstrapSource, /spawnSync\(\s*"pnpm",/);
     assert.match(apiPrismaConfigSource, /schema: "\.\.\/\.\.\/prisma\/schema\.prisma"/);
   });
+
+  it("does not treat columns owned by an earlier migration as partial application", () => {
+    const artifact = migrationBootstrapSource.match(
+      /migration: "20260717100000_trade_listing_current_tenant_room",[\s\S]*?\n\s{2}\}/
+    )?.[0];
+
+    assert.ok(artifact);
+    assert.doesNotMatch(artifact, /columns:/);
+    assert.match(artifact, /indexes: \["TenantRoom_tenantId_key"\]/);
+  });
 });
 
 describe("Migration Postgres version contract", () => {

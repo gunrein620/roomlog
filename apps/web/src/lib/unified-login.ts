@@ -65,27 +65,29 @@ export function hasCapability(user: SessionRoles, role: UserRole) {
   return user.role === role;
 }
 
-export type PostLoginDestination =
-  | { kind: "redirect"; path: string }
-  | { kind: "link-required"; intent: LoginIntent };
+/** capability가 없을 때 해당 관계를 만드는 비보호 진입점 — 매물등록 폼 자체가
+ *  LANDLORD 관계를 만드는 진입점이므로 landlord는 바로 /sell로 간다. */
+const linkEntryPathByIntent: Record<LoginIntent, string> = {
+  tenant: "/",
+  landlord: "/sell",
+  vendor: "/vendor/activate"
+};
 
 /**
- * 로그인(또는 이미 로그인된 세션 확인) 후 어디로 보낼지 결정한다.
- * capability가 없으면 다시 로그인시키는 대신 "이 계정에 연결이 필요하다" 상태로 보낸다.
+ * 로그인(또는 이미 로그인된 세션 확인) 후 어디로 보낼 경로를 결정한다.
+ * capability가 없어도 중간 안내 화면 없이 관계를 만드는 진입점으로 바로 보낸다.
+ * 이때 redirectTo는 무시한다 — 보호 경로면 가드가 다시 /login으로 되돌려 루프가 된다.
  */
 export function resolvePostLoginDestination(
   user: SessionRoles,
   intent?: LoginIntent,
   redirectTo?: string | null
-): PostLoginDestination {
+): string {
   if (intent && !hasCapability(user, roleForIntent(intent))) {
-    return { kind: "link-required", intent };
+    return linkEntryPathByIntent[intent];
   }
 
-  return {
-    kind: "redirect",
-    path: safeRedirectPath(redirectTo, defaultRedirectForIntent(intent))
-  };
+  return safeRedirectPath(redirectTo, defaultRedirectForIntent(intent));
 }
 
 type LegacySearchParams = Record<string, string | string[] | undefined>;

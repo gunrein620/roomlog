@@ -18,6 +18,14 @@
       "autoPort": false
     },
     {
+      "name": "api-local",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:api"],
+      "cwd": ".",
+      "port": 4000,
+      "autoPort": false
+    },
+    {
       "name": "web-local",
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/next-with-root-env.mjs", "dev", "-p", "3200"],

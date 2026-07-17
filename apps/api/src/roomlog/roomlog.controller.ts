@@ -105,6 +105,8 @@ import {
 import { RoomlogManagerVendorDomain } from "./services/roomlog-manager-vendor.domain";
 import { RoomlogVendorWorkflowDomain } from "./services/roomlog-vendor-workflow.domain";
 import { RoomlogTenantVendorConnectionDomain } from "./services/roomlog-tenant-vendor-connection.domain";
+import { RoomlogTenantComplaintDraftDomain } from "./services/roomlog-tenant-complaint-draft.domain";
+import type { SaveTenantComplaintDraftInput } from "./tenant-complaint-draft.repository";
 import { VendorCompletionAttachmentService } from "./vendor-completion-attachment.service";
 import { VendorActivationRepositoryError } from "./vendor-activation.repository";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -205,7 +207,9 @@ export class RoomlogController {
     @Optional()
     private readonly vendorCompletionAttachments?: VendorCompletionAttachmentService,
     @Optional()
-    private readonly tenantVendorConnection?: RoomlogTenantVendorConnectionDomain
+    private readonly tenantVendorConnection?: RoomlogTenantVendorConnectionDomain,
+    @Optional()
+    private readonly tenantComplaintDraft?: RoomlogTenantComplaintDraftDomain
   ) {}
 
   @Get("roomlog/demo")
@@ -533,6 +537,36 @@ export class RoomlogController {
     return this.roomlogService.listTenantComplaints(user.id);
   }
 
+  @Get("tenant/complaints/draft")
+  async getTenantComplaintDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("roomId") roomId = ""
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    if (!this.tenantComplaintDraft) throw new ServiceUnavailableException("민원 초안 저장소를 사용할 수 없습니다.");
+    return { draft: await this.tenantComplaintDraft.get(user.id, roomId) };
+  }
+
+  @Put("tenant/complaints/draft")
+  saveTenantComplaintDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: SaveTenantComplaintDraftInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    if (!this.tenantComplaintDraft) throw new ServiceUnavailableException("민원 초안 저장소를 사용할 수 없습니다.");
+    return this.tenantComplaintDraft.save(user.id, body);
+  }
+
+  @Delete("tenant/complaints/draft")
+  deleteTenantComplaintDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("roomId") roomId = ""
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    if (!this.tenantComplaintDraft) throw new ServiceUnavailableException("민원 초안 저장소를 사용할 수 없습니다.");
+    return this.tenantComplaintDraft.remove(user.id, roomId);
+  }
+
   @Get("tenant/bills")
   listTenantBills(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);
@@ -622,12 +656,18 @@ export class RoomlogController {
   }
 
   @Post("tenant/complaints")
-  createComplaint(
+  async createComplaint(
     @Headers("authorization") authorization: string | undefined,
     @Body() body: CreateComplaintInput
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
+    if (body.roomId && this.tenantComplaintDraft) {
+      await this.tenantComplaintDraft.assertRoomAccess(user.id, body.roomId);
+    }
     const result = this.roomlogService.createComplaint(user.id, body);
+    if (body.roomId && this.tenantComplaintDraft) {
+      await this.tenantComplaintDraft.remove(user.id, body.roomId);
+    }
     this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
     return result;
   }
@@ -927,6 +967,19 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.getTenantMessagingThread(user.id, threadId);
+  }
+
+  @Post("tenant/messaging/threads/:threadId/read")
+  markTenantMessagingThreadRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    const result = this.roomlogService.markTenantMessagingThreadRead(user.id, threadId);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging", action: "read" });
+
+    return result;
   }
 
   @Post("tenant/messaging/threads/:threadId/messages")
@@ -1426,7 +1479,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
     const result = this.roomlogService.markManagerTicketRead(user.id, ticketId);
-    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    this.realtime.broadcast("roomlog:activity", {
+      kind: "ticket",
+      action: "read",
+    });
 
     return result;
   }

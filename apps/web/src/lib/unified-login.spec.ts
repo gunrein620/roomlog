@@ -65,41 +65,31 @@ describe("post-login destination (capability, not identity)", () => {
   const multiRoleUser = { role: "TENANT", roles: ["SEEKER", "TENANT", "LANDLORD"] };
 
   it("routes a multi-role account into both tenant and landlord surfaces", () => {
-    assert.deepEqual(resolvePostLoginDestination(multiRoleUser, "tenant"), {
-      kind: "redirect",
-      path: defaultRedirectForIntent("tenant")
-    });
-    assert.deepEqual(resolvePostLoginDestination(multiRoleUser, "landlord"), {
-      kind: "redirect",
-      path: defaultRedirectForIntent("landlord")
-    });
+    assert.equal(resolvePostLoginDestination(multiRoleUser, "tenant"), defaultRedirectForIntent("tenant"));
+    assert.equal(resolvePostLoginDestination(multiRoleUser, "landlord"), defaultRedirectForIntent("landlord"));
   });
 
-  it("asks for a relation link instead of re-login when capability is missing", () => {
-    assert.deepEqual(resolvePostLoginDestination(multiRoleUser, "vendor"), {
-      kind: "link-required",
-      intent: "vendor"
-    });
+  it("sends a capability-less account straight to the relation entry point (no interstitial)", () => {
+    assert.equal(resolvePostLoginDestination(multiRoleUser, "vendor"), "/vendor/activate");
+    const seekerOnly = { role: "SEEKER", roles: ["SEEKER"] };
+    assert.equal(resolvePostLoginDestination(seekerOnly, "landlord"), "/sell");
+    assert.equal(resolvePostLoginDestination(seekerOnly, "tenant"), "/");
+  });
+
+  it("ignores redirectTo when capability is missing (protected-path loop guard)", () => {
+    const seekerOnly = { role: "SEEKER", roles: ["SEEKER"] };
+    assert.equal(resolvePostLoginDestination(seekerOnly, "landlord", "/manager/home/00"), "/sell");
   });
 
   it("falls back to the legacy single role when roles[] is absent", () => {
     const legacyUser = { role: "VENDOR" };
     assert.equal(hasCapability(legacyUser, "VENDOR"), true);
     assert.equal(hasCapability(legacyUser, "TENANT"), false);
-    assert.deepEqual(resolvePostLoginDestination(legacyUser, "vendor"), {
-      kind: "redirect",
-      path: "/vendor/job/00"
-    });
+    assert.equal(resolvePostLoginDestination(legacyUser, "vendor"), "/vendor/job/00");
   });
 
   it("honors a safe redirectTo and rejects unsafe ones", () => {
-    assert.deepEqual(resolvePostLoginDestination(multiRoleUser, "tenant", "/tenant/home/00"), {
-      kind: "redirect",
-      path: "/tenant/home/00"
-    });
-    assert.deepEqual(resolvePostLoginDestination(multiRoleUser, undefined, "https://evil.test"), {
-      kind: "redirect",
-      path: "/"
-    });
+    assert.equal(resolvePostLoginDestination(multiRoleUser, "tenant", "/tenant/home/00"), "/tenant/home/00");
+    assert.equal(resolvePostLoginDestination(multiRoleUser, undefined, "https://evil.test"), "/");
   });
 });
