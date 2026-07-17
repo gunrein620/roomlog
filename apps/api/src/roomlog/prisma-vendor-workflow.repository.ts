@@ -17,12 +17,14 @@ import type {
   VendorEstimateReviewInput,
   VendorJobDetail,
   VendorJobEstimateView,
+  VendorJobMessageView,
   VendorJobPaymentView,
   VendorJobSummary,
   VendorPaymentRequest as SharedVendorPaymentRequest,
   VendorSettlementRow,
   VendorVisitScheduleInput
 } from "@roomlog/types";
+import type { AddVendorRepairMessageInput } from "./roomlog.types";
 import type { DomainEventRepository } from "../domain-events/domain-event.repository";
 import { mapRepairPaymentOrder } from "../credit/prisma-repair-payment-order.repository";
 import { publicRepairPaymentOrder } from "../credit/repair-payment-order-public";
@@ -85,6 +87,9 @@ type DirectPaymentProjection = Prisma.VendorPaymentRequestGetPayload<{
 }>;
 type DecisionProjection = Prisma.RepairCompletionDecisionGetPayload<Record<string, never>>;
 const JOB_INCLUDE = {
+  messages: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }]
+  },
   ticket: {
     include: {
       room: true,
@@ -496,6 +501,27 @@ function mapJobPayment(row: PaymentProjection): VendorJobPaymentView {
   };
 }
 
+function mapJobMessage(
+  row: Prisma.TicketMessageGetPayload<Record<string, never>>
+): VendorJobMessageView {
+  if (![
+    "TENANT",
+    "LANDLORD",
+    "VENDOR"
+  ].includes(row.senderRole)) {
+    throw workflowError(
+      "INVALID_STATE",
+      "업체 작업 메시지의 발신자 역할을 확인할 수 없습니다."
+    );
+  }
+  return {
+    senderRole: row.senderRole as VendorJobMessageView["senderRole"],
+    messageText: row.messageText,
+    attachmentUrls: [...row.attachmentUrls],
+    createdAt: row.createdAt.toISOString()
+  };
+}
+
 export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository {
   private readonly prisma: PrismaClient;
 
@@ -679,6 +705,82 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       include: this.jobInclude()
     });
     return row ? this.projectJobRow(row) : null;
+  }
+
+  async addRepairMessage(
+    vendorId: string,
+    vendorUserId: string,
+    repairId: string,
+    input: AddVendorRepairMessageInput
+  ): Promise<VendorJobMessageView> {
+    const normalizedVendorId = requiredText(vendorId, "업체 정보를 확인해 주세요.");
+    const normalizedVendorUserId = requiredText(
+      vendorUserId,
+      "업체 계정 정보를 확인해 주세요."
+    );
+    const normalizedRepairId = requiredText(repairId, "수리 작업 정보를 확인해 주세요.");
+    const messageText = typeof input?.messageText === "string"
+      ? input.messageText.trim()
+      : "";
+    if (input?.attachmentUrls !== undefined && !Array.isArray(input.attachmentUrls)) {
+      throw workflowError("INVALID_REQUEST", "첨부 사진 목록을 확인해 주세요.");
+    }
+    const attachmentUrls = [...new Set((input?.attachmentUrls ?? []).map((value) => {
+      if (typeof value !== "string" || !value.trim()) {
+        throw workflowError("INVALID_REQUEST", "첨부 사진 정보를 확인해 주세요.");
+      }
+      return value.trim();
+    }))];
+    if (!messageText && attachmentUrls.length === 0) {
+      throw workflowError("INVALID_REQUEST", "메시지 또는 사진을 입력해 주세요.");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id" FROM "RepairRequest" WHERE "id" = ${normalizedRepairId} FOR UPDATE
+      `);
+      if (locked.length === 0) {
+        throw workflowError("REPAIR_NOT_FOUND", "수리 작업을 찾을 수 없습니다.");
+      }
+      const repair = await tx.repairRequest.findUnique({
+        where: { id: normalizedRepairId },
+        select: {
+          id: true,
+          ticketId: true,
+          vendorId: true,
+          status: true,
+          ticket: { select: { complaintId: true } }
+        }
+      });
+      if (!repair) {
+        throw workflowError("REPAIR_NOT_FOUND", "수리 작업을 찾을 수 없습니다.");
+      }
+      if (repair.vendorId !== normalizedVendorId) {
+        throw workflowError("REPAIR_ACCESS_DENIED", "배정된 업체만 메시지를 보낼 수 있습니다.");
+      }
+      if (
+        CLOSED_REPAIR_STATUSES.includes(
+          repair.status as (typeof CLOSED_REPAIR_STATUSES)[number]
+        )
+      ) {
+        throw workflowError("INVALID_STATE", "완료되거나 취소된 작업에는 메시지를 보낼 수 없습니다.");
+      }
+
+      const message = await tx.ticketMessage.create({
+        data: {
+          id: this.nextId("message"),
+          ticketId: repair.ticketId,
+          complaintId: repair.ticket.complaintId,
+          repairId: repair.id,
+          senderUserId: normalizedVendorUserId,
+          senderRole: "VENDOR",
+          messageText: messageText || "사진을 공유했습니다.",
+          attachmentUrls,
+          createdAt: this.clock()
+        }
+      });
+      return mapJobMessage(message);
+    });
   }
 
   async getTenantWorkflow(
@@ -2514,11 +2616,16 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         }
       }
     });
+    const messages = await db.ticketMessage.findMany({
+      where: { repairId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
     return this.projectJobRow({
       ...repair,
       estimates,
       completionReports,
-      paymentRequest
+      paymentRequest,
+      messages
     });
   }
 
@@ -2560,7 +2667,8 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       ...(tenantAvailableTimes ? { tenantAvailableTimes } : {}),
       ...(row.scheduledAt ? { scheduledAt: row.scheduledAt.toISOString() } : {}),
       estimates: row.estimates.map(mapJobEstimate),
-      completionReports: row.completionReports.map(mapCompletion)
+      completionReports: row.completionReports.map(mapCompletion),
+      messages: row.messages.map(mapJobMessage)
     };
   }
 

@@ -13,12 +13,14 @@ import type {
   VendorEstimateDraftInput,
   VendorEstimateReviewInput,
   VendorJobDetail,
+  VendorJobMessageView,
   VendorJobPaymentView,
   VendorJobSummary,
   VendorPaymentRequest,
   VendorSettlementRow,
   VendorVisitScheduleInput
 } from "@roomlog/types";
+import type { AddVendorRepairMessageInput } from "./roomlog.types";
 
 export const VENDOR_WORKFLOW_REPOSITORY = Symbol("VENDOR_WORKFLOW_REPOSITORY");
 
@@ -93,6 +95,12 @@ export interface VendorWorkflowRepository {
   assignVendor(command: AssignVendorCommand): Promise<VendorJobDetail>;
   listJobs(vendorId: string): Promise<VendorJobSummary[]>;
   getJob(vendorId: string, repairId: string): Promise<VendorJobDetail | null>;
+  addRepairMessage(
+    vendorId: string,
+    vendorUserId: string,
+    repairId: string,
+    input: AddVendorRepairMessageInput
+  ): Promise<VendorJobMessageView>;
   saveEstimateDraft(command: {
     vendorId: string;
     repairId: string;

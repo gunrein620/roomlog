@@ -259,6 +259,14 @@ export interface VendorJobPaymentView {
   processedAt?: string;
 }
 
+/** 업체 작업 화면에 공개 가능한 티켓 메시지. 내부 사용자·메시지 식별자는 포함하지 않는다. */
+export interface VendorJobMessageView {
+  senderRole: "TENANT" | "LANDLORD" | "VENDOR";
+  messageText: string;
+  attachmentUrls: string[];
+  createdAt: string;
+}
+
 /** 세입자 직접결제 대기 기록에는 클라이언트가 금액을 전달하지 않는다. */
 export interface RequestTenantDirectPaymentInput {
   idempotencyKey: string;
@@ -311,6 +319,7 @@ export interface VendorJobDetail extends VendorJobSummary {
   scheduledAt?: string;
   estimates: VendorJobEstimateView[];
   completionReports: VendorCompletionReport[];
+  messages: VendorJobMessageView[];
 }
 
 export interface VendorVisitScheduleInput {

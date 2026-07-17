@@ -6661,7 +6661,9 @@ export class RoomlogService implements OnModuleDestroy {
       ticket.complaintId,
       managerId,
       "LANDLORD",
-      messageText
+      messageText,
+      [],
+      this.activeRepairIdForTicket(ticket.id)
     );
     this.persistStore();
 
@@ -6837,7 +6839,8 @@ export class RoomlogService implements OnModuleDestroy {
       tenantId,
       "TENANT",
       messageText || "추가 사진을 제출했습니다.",
-      attachmentUrls
+      attachmentUrls,
+      this.activeRepairIdForTicket(ticket.id)
     );
 
     this.refreshAnalysisFromTenantFollowup(ticket, {
@@ -13603,12 +13606,14 @@ export class RoomlogService implements OnModuleDestroy {
     senderUserId: string,
     senderRole: TicketMessage["senderRole"],
     messageText: string,
-    attachmentUrls: string[] = []
+    attachmentUrls: string[] = [],
+    repairId?: string
   ) {
     const message: TicketMessage = {
       id: id("msg"),
       ticketId,
       complaintId,
+      ...(repairId ? { repairId } : {}),
       senderUserId,
       senderRole,
       messageText,
@@ -13619,6 +13624,18 @@ export class RoomlogService implements OnModuleDestroy {
     this.store.messages.push(message);
 
     return message;
+  }
+
+  private activeRepairIdForTicket(ticketId: string): string | undefined {
+    return this.store.repairs
+      .filter(
+        (repair) =>
+          repair.ticketId === ticketId &&
+          !["COMPLETED", "CANCELLED"].includes(repair.status)
+      )
+      .sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id)
+      )[0]?.id;
   }
 
   private findComplaint(complaintId: string, sourceStore: Store = this.store) {

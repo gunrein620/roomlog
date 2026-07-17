@@ -156,6 +156,7 @@ function directMessage(
     id: message.id,
     ticketId: message.ticketId,
     complaintId: optional(message.complaintId),
+    repairId: optional(message.repairId),
     senderUserId: message.senderUserId,
     senderRole: message.senderRole,
     messageText: message.messageText,
@@ -867,7 +868,7 @@ export class PrismaStoreProjector implements StoreProjector {
         messageText: message.messageText,
         attachmentUrls: message.attachmentUrls,
         createdAt: asIso(message.createdAt) ?? new Date().toISOString()
-      }) as TicketMessage & { repairId?: string }),
+      })),
       messagingThreads: messagingThreads.map((thread) => ({
         id: thread.id,
         roomId: thread.roomId,
@@ -2558,15 +2559,13 @@ export class PrismaStoreProjector implements StoreProjector {
       }
 
       for (const message of store.messages) {
-        const repairId = (message as { repairId?: string }).repairId;
-
         await tx.ticketMessage.upsert({
           where: { id: message.id },
           create: {
             id: message.id,
             ticketId: message.ticketId,
             complaintId: message.complaintId,
-            repairId,
+            repairId: message.repairId,
             senderUserId: message.senderUserId,
             senderRole: message.senderRole,
             messageText: message.messageText,
@@ -2576,7 +2575,7 @@ export class PrismaStoreProjector implements StoreProjector {
           update: {
             ticketId: message.ticketId,
             complaintId: message.complaintId,
-            repairId,
+            repairId: message.repairId,
             senderUserId: message.senderUserId,
             senderRole: message.senderRole,
             messageText: message.messageText,

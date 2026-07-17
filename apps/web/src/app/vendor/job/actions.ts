@@ -7,6 +7,7 @@ import type { VendorEstimateDraftInput } from "@roomlog/types";
 import {
   confirmVendorDirectPayment,
   saveVendorEstimateDraft,
+  sendVendorRepairMessage,
   scheduleVendorWorkflowJob,
   startVendorWorkflowJob,
   submitVendorCompletionReport,
@@ -69,6 +70,20 @@ export async function confirmDirectPaymentAction(paymentRequestId: string) {
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: errorMessage(error) };
+  }
+}
+
+export async function sendVendorRepairMessageAction(formData: FormData) {
+  const repairId = required(formData, "repairId");
+  try {
+    await sendVendorRepairMessage(repairId, {
+      messageText: required(formData, "messageText"),
+    });
+    revalidatePath(withId(ROUTES["V-JOB-01"], repairId));
+    redirect(`${withId(ROUTES["V-JOB-01"], repairId)}&sent=1`);
+  } catch (error) {
+    if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) throw error;
+    redirect(errorHref(ROUTES["V-JOB-01"], repairId, error));
   }
 }
 

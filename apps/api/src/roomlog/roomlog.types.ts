@@ -1180,6 +1180,7 @@ export type TicketMessage = {
   id: string;
   ticketId: string;
   complaintId?: string;
+  repairId?: string;
   senderUserId: string;
   senderRole: MessageSenderRole;
   messageText: string;

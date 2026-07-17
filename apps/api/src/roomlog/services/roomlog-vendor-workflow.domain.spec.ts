@@ -240,6 +240,7 @@ async function withWorkflowFixture(
   run: (context: {
     prisma: PrismaClient;
     domain: RoomlogVendorWorkflowDomain;
+    repository: PrismaVendorWorkflowRepository;
     fixture: WorkflowFixture;
   }) => Promise<void>
 ) {
@@ -263,7 +264,7 @@ async function withWorkflowFixture(
       }
     };
     const domain = new RoomlogVendorWorkflowDomain(repository, vendorAccounts);
-    await run({ prisma, domain, fixture });
+    await run({ prisma, domain, repository, fixture });
   } finally {
     try {
       if (repository) await repository.close();
@@ -1033,6 +1034,126 @@ describe("RoomlogVendorWorkflowDomain visit negotiation", () => {
           assert.equal(repair.scheduledAt, null);
           assert.deepEqual(estimates.map(({ status }) => status), ["SUBMITTED", "SUBMITTED"]);
           assert.equal(messages.length, 0);
+        }
+      );
+    }
+  );
+});
+
+describe("RoomlogVendorWorkflowDomain vendor chat", () => {
+  it(
+    "stores assigned vendor messages in the repair scope and exposes only that scope",
+    { skip: !databaseUrl },
+    async () => {
+      await withWorkflowFixture(
+        `${Date.now().toString(36)}_vendor_chat`,
+        {},
+        async ({ prisma, domain, fixture }) => {
+          await prisma.ticketMessage.create({
+            data: {
+              id: `ticket-only-${fixture.repairId}`,
+              ticketId: fixture.ticketId,
+              complaintId: fixture.complaintId,
+              senderUserId: fixture.managerId,
+              senderRole: "LANDLORD",
+              messageText: "세입자와 관리자만 보는 책임 검토 대화",
+              attachmentUrls: []
+            }
+          });
+
+          const created = await domain.addVendorRepairMessage(
+            fixture.vendorUserId,
+            fixture.repairId,
+            {
+              messageText: "화요일 오후 3시에 방문해도 될까요?",
+              attachmentUrls: ["/api/files/vendor-chat.jpg"]
+            }
+          );
+          const persisted = await prisma.ticketMessage.findFirstOrThrow({
+            where: {
+              repairId: fixture.repairId,
+              messageText: "화요일 오후 3시에 방문해도 될까요?"
+            }
+          });
+          const detail = await domain.getJob(
+            fixture.vendorUserId,
+            fixture.repairId
+          );
+
+          assert.equal(persisted.repairId, fixture.repairId);
+          assert.equal(persisted.senderRole, "VENDOR");
+          assert.deepEqual(created, {
+            senderRole: "VENDOR",
+            messageText: "화요일 오후 3시에 방문해도 될까요?",
+            attachmentUrls: ["/api/files/vendor-chat.jpg"],
+            createdAt: persisted.createdAt.toISOString()
+          });
+          assert.deepEqual(detail.messages, [created]);
+          assert.equal(
+            detail.messages.some((message) =>
+              message.messageText.includes("책임 검토")
+            ),
+            false
+          );
+          assert.equal("senderUserId" in detail.messages[0]!, false);
+          assert.equal("repairId" in detail.messages[0]!, false);
+          assert.equal("id" in detail.messages[0]!, false);
+        }
+      );
+    }
+  );
+
+  it(
+    "rejects unassigned vendors, closed repairs, and empty messages",
+    { skip: !databaseUrl },
+    async () => {
+      await withWorkflowFixture(
+        `${Date.now().toString(36)}_vendor_chat_gates`,
+        {},
+        async ({ prisma, domain, repository, fixture }) => {
+          const unassignedDomain = new RoomlogVendorWorkflowDomain(
+            repository,
+            {
+              async resolveActiveVendorId() {
+                return "vendor-not-assigned";
+              },
+              async resolveActiveVendorAccount() {
+                return undefined;
+              }
+            }
+          );
+
+          await assert.rejects(
+            () => unassignedDomain.addVendorRepairMessage(
+              "vendor-user-not-assigned",
+              fixture.repairId,
+              { messageText: "배정되지 않은 업체 메시지" }
+            ),
+            (error: unknown) =>
+              error instanceof Error &&
+              error.name === "ForbiddenException"
+          );
+          await assert.rejects(
+            () => domain.addVendorRepairMessage(
+              fixture.vendorUserId,
+              fixture.repairId,
+              { messageText: " ", attachmentUrls: [] }
+            ),
+            BadRequestException
+          );
+
+          await prisma.repairRequest.update({
+            where: { id: fixture.repairId },
+            data: { status: "COMPLETED" }
+          });
+          await assert.rejects(
+            () => domain.addVendorRepairMessage(
+              fixture.vendorUserId,
+              fixture.repairId,
+              { messageText: "완료 후 메시지" }
+            ),
+            ConflictException
+          );
         }
       );
     }

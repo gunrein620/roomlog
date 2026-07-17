@@ -39,6 +39,7 @@ import {
   AnnouncementTranslationRequest,
   AttachmentCategory,
   AddTenantComplaintMessageInput,
+  AddVendorRepairMessageInput,
   ConfirmTenantCompletionInput,
   CompleteDirectHandlingInput,
   ConfirmBillPaymentInput,
@@ -2399,6 +2400,23 @@ export class RoomlogController {
   ) {
     const user = await this.requireVendorRole(authorization);
     return this.requireVendorWorkflowDomain().getJob(user.id, repairId);
+  }
+
+  @Post("vendor/jobs/:repairId/messages")
+  async addVendorRepairMessage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: AddVendorRepairMessageInput
+  ) {
+    rejectCallerIdentity(body, ["vendorId", "userId", "managerId", "actorUserId"]);
+    const user = await this.requireVendorRole(authorization);
+    const message = await this.requireVendorWorkflowDomain().addVendorRepairMessage(
+      user.id,
+      repairId,
+      body
+    );
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    return message;
   }
 
   @Put("vendor/jobs/:repairId/estimate-draft")

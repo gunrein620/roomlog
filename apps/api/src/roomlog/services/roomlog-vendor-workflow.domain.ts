@@ -19,10 +19,12 @@ import type {
   VendorEstimateDraftInput,
   VendorEstimateReviewInput,
   VendorJobDetail,
+  VendorJobMessageView,
   VendorJobSummary,
   VendorSettlementRow,
   VendorVisitScheduleInput
 } from "@roomlog/types";
+import type { AddVendorRepairMessageInput } from "../roomlog.types";
 import type { DomainEventDispatcher } from "../../domain-events/domain-event.dispatcher";
 import type { VendorAccountResolver } from "../vendor-activation.repository";
 import {
@@ -204,6 +206,43 @@ export class RoomlogVendorWorkflowDomain {
     const job = await this.execute(() => this.repository.getJob(vendorId, normalizedRepairId));
     if (!job) throw new NotFoundException("수리 작업을 찾을 수 없습니다.");
     return job;
+  }
+
+  async addVendorRepairMessage(
+    userId: string,
+    repairId: string,
+    input: AddVendorRepairMessageInput
+  ): Promise<VendorJobMessageView> {
+    const normalizedRepairId = normalizeIdentifier(
+      repairId,
+      "수리 작업 정보가 올바르지 않습니다."
+    );
+    if (!isRecord(input)) {
+      throw new BadRequestException("메시지 내용을 확인해 주세요.");
+    }
+    const messageText = typeof input.messageText === "string"
+      ? input.messageText.trim()
+      : "";
+    if (input.attachmentUrls !== undefined && !Array.isArray(input.attachmentUrls)) {
+      throw new BadRequestException("첨부 사진 목록을 확인해 주세요.");
+    }
+    const attachmentUrls = [...new Set((input.attachmentUrls ?? []).map((value) => {
+      if (typeof value !== "string" || !value.trim()) {
+        throw new BadRequestException("첨부 사진 정보를 확인해 주세요.");
+      }
+      return value.trim();
+    }))];
+    if (!messageText && attachmentUrls.length === 0) {
+      throw new BadRequestException("메시지 또는 사진을 입력해 주세요.");
+    }
+
+    const vendorId = await this.requireVendorId(userId);
+    return this.execute(() => this.repository.addRepairMessage(
+      vendorId,
+      normalizeIdentifier(userId, "업체 계정 정보가 올바르지 않습니다."),
+      normalizedRepairId,
+      { messageText, attachmentUrls }
+    ));
   }
 
   async saveEstimateDraft(
