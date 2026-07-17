@@ -31,8 +31,14 @@ import {
   VendorWorkflowRepositoryError,
   type CompletionCommit,
   type DecisionCommit,
+  type VendorRepairMessageRecord,
   type VendorWorkflowRepository
 } from "../vendor-workflow.repository";
+
+/** 저장소 직행으로 생성된 업체 메시지를 인메모리 스토어에 반영하는 선택 훅(RoomlogService가 구현). */
+export interface VendorRepairMessageStoreSync {
+  ingestVendorRepairMessage?(record: VendorRepairMessageRecord): void;
+}
 
 export interface AssignVendorInput {
   vendorId: string;
@@ -156,7 +162,7 @@ function publicCompletionDecision(
 export class RoomlogVendorWorkflowDomain {
   constructor(
     private readonly repository: VendorWorkflowRepository,
-    private readonly vendorAccounts: VendorAccountResolver,
+    private readonly vendorAccounts: VendorAccountResolver & VendorRepairMessageStoreSync,
     private readonly events?: Pick<DomainEventDispatcher, "dispatchPending">
   ) {}
 
@@ -237,12 +243,15 @@ export class RoomlogVendorWorkflowDomain {
     }
 
     const vendorId = await this.requireVendorId(userId);
-    return this.execute(() => this.repository.addRepairMessage(
+    const result = await this.execute(() => this.repository.addRepairMessage(
       vendorId,
       normalizeIdentifier(userId, "업체 계정 정보가 올바르지 않습니다."),
       normalizedRepairId,
       { messageText, attachmentUrls }
     ));
+    // 저장소 직행 쓰기라 스토어 기반 읽기(세입자 상세 등)가 재하이드레이션 전엔 못 본다 — 즉시 반영.
+    this.vendorAccounts.ingestVendorRepairMessage?.(result.record);
+    return result.view;
   }
 
   async saveEstimateDraft(

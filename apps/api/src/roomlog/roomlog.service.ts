@@ -10,6 +10,7 @@ import {
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
+import type { VendorRepairMessageRecord } from "./vendor-workflow.repository";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -6945,6 +6946,30 @@ export class RoomlogService implements OnModuleDestroy {
     this.persistStore();
 
     return this.presentAiFeedback(feedback);
+  }
+
+  /**
+   * 업체 채팅(2D)은 Prisma 저장소 직행 쓰기라 인메모리 스토어가 모른다 — 저장 직후
+   * 같은 id로 스토어에 반영해 세입자/관리자 읽기 경로가 재하이드레이션 없이 즉시 보게 한다.
+   * (다음 persistStore 스냅샷은 같은 id upsert라 중복이 생기지 않는다.)
+   */
+  ingestVendorRepairMessage(record: VendorRepairMessageRecord) {
+    const ticket = this.store.tickets.find((item) => item.id === record.ticketId);
+    if (!ticket) return;
+    if (this.store.messages.some((message) => message.id === record.id)) return;
+
+    this.store.messages.push({
+      id: record.id,
+      ticketId: record.ticketId,
+      complaintId: record.complaintId,
+      repairId: record.repairId,
+      senderUserId: record.senderUserId,
+      senderRole: record.senderRole,
+      messageText: record.messageText,
+      attachmentUrls: [...record.attachmentUrls],
+      createdAt: record.createdAt
+    });
+    ticket.updatedAt = record.createdAt;
   }
 
   confirmTenantCompletion(

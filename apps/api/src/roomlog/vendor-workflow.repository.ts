@@ -91,6 +91,28 @@ export interface DecisionCommit {
   eventKey: string;
 }
 
+/**
+ * 업체 발신 메시지의 내부 원장 레코드 — Prisma 저장 직후 인메모리 스토어 동기화에 쓴다.
+ * (스토어를 안 거치는 저장소 직행 쓰기라서, 이 레코드를 서비스에 되돌려 세입자/관리자
+ * 읽기 경로가 재하이드레이션 없이 즉시 메시지를 보게 한다.)
+ */
+export interface VendorRepairMessageRecord {
+  id: string;
+  ticketId: string;
+  complaintId: string;
+  repairId: string;
+  senderUserId: string;
+  senderRole: "VENDOR";
+  messageText: string;
+  attachmentUrls: string[];
+  createdAt: string;
+}
+
+export interface VendorRepairMessageResult {
+  view: VendorJobMessageView;
+  record: VendorRepairMessageRecord;
+}
+
 export interface VendorWorkflowRepository {
   assignVendor(command: AssignVendorCommand): Promise<VendorJobDetail>;
   listJobs(vendorId: string): Promise<VendorJobSummary[]>;
@@ -100,7 +122,7 @@ export interface VendorWorkflowRepository {
     vendorUserId: string,
     repairId: string,
     input: AddVendorRepairMessageInput
-  ): Promise<VendorJobMessageView>;
+  ): Promise<VendorRepairMessageResult>;
   saveEstimateDraft(command: {
     vendorId: string;
     repairId: string;

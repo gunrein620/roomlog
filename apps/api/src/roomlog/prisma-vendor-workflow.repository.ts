@@ -43,6 +43,7 @@ import {
   type DecisionCommit,
   type SaveVendorCompletionAttachmentCommand,
   type VendorCompletionAttachmentAccess,
+  type VendorRepairMessageResult,
   type VendorWorkflowRepository
 } from "./vendor-workflow.repository";
 
@@ -712,7 +713,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
     vendorUserId: string,
     repairId: string,
     input: AddVendorRepairMessageInput
-  ): Promise<VendorJobMessageView> {
+  ): Promise<VendorRepairMessageResult> {
     const normalizedVendorId = requiredText(vendorId, "업체 정보를 확인해 주세요.");
     const normalizedVendorUserId = requiredText(
       vendorUserId,
@@ -779,7 +780,20 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
           createdAt: this.clock()
         }
       });
-      return mapJobMessage(message);
+      return {
+        view: mapJobMessage(message),
+        record: {
+          id: message.id,
+          ticketId: message.ticketId,
+          complaintId: repair.ticket.complaintId,
+          repairId: repair.id,
+          senderRole: "VENDOR" as const,
+          senderUserId: normalizedVendorUserId,
+          messageText: message.messageText,
+          attachmentUrls: [...message.attachmentUrls],
+          createdAt: message.createdAt.toISOString()
+        }
+      };
     });
   }
 
