@@ -2460,9 +2460,18 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
           {/* 5b 검색바 — 전세·월세/매매 · 지역/유형/가격 · 핑크 검색 CTA. 각 필드는 기존 시트를 연다 */}
           <div className="search-box" aria-label="매물 검색">
+            {/* 전세/월세 = 실제 거래유형 필터 토글 (OR 매칭, 둘 다 꺼지면 전체) — 매매는 제외 */}
             <div className="search-deal-tabs">
-              <button type="button" className="search-deal-tab active">전세·월세</button>
-              <button type="button" className="search-deal-tab">매매</button>
+              {["월세", "전세"].map((deal) => (
+                <button
+                  key={deal}
+                  type="button"
+                  className={activeQuickFilters.includes(deal) ? "search-deal-tab active" : "search-deal-tab"}
+                  onClick={() => toggleQuickFilter(deal)}
+                >
+                  {deal}
+                </button>
+              ))}
             </div>
             <div className="search-fields">
               <button type="button" className="search-field" onClick={() => setIsSearchSheetOpen(true)}>

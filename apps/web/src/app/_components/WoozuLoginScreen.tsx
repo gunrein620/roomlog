@@ -241,7 +241,7 @@ export function WoozuLoginScreen({
           ) : null}
 
           <div className="login-alt-links">
-            <a className="service-signup-link" href="/signup">처음이세요? 이메일로 회원가입</a>
+            <a className="service-signup-link" href="/signup">처음이세요? 회원가입</a>
             {vendorActivationAction ? (
               <a className="login-vendor-activation-link" href={vendorActivationAction.href}>
                 {vendorActivationAction.label}

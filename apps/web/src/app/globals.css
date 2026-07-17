@@ -124,7 +124,7 @@ img {
   pointer-events: none;
   offset-path: path("M 0 38 A 92 38 0 1 1 0 -38 A 92 38 0 1 1 0 38");
   offset-rotate: 0deg;
-  animation: login-star-orbit 2.4s linear infinite;
+  animation: login-star-orbit 2s linear infinite;
 }
 
 /* 혜성 리듬: 타원의 긴 구간(앞·뒤 가로 스윕)은 빠르게 슝, 양끝 짧은 턴에서는
