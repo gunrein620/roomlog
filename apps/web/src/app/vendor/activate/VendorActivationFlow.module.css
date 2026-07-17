@@ -28,7 +28,7 @@
 
 .progress {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-xs);
   margin-top: var(--space-md);
 }
@@ -119,7 +119,6 @@
 
 .primaryButton,
 .secondaryButton,
-.textButton,
 .textLink {
   min-height: var(--touch-target);
   border-radius: var(--radius-btn);
@@ -145,7 +144,6 @@
   color: var(--on-surface);
 }
 
-.textButton,
 .textLink {
   border: 0;
   background: transparent;
@@ -153,8 +151,7 @@
 }
 
 .primaryButton:disabled,
-.secondaryButton:disabled,
-.textButton:disabled {
+.secondaryButton:disabled {
   cursor: default;
   opacity: var(--disabled-opacity);
 }
@@ -205,11 +202,6 @@
   color: var(--on-surface);
   font-weight: var(--fw-header);
   text-align: right;
-}
-
-.authActions {
-  display: grid;
-  gap: var(--space-md);
 }
 
 .centered {

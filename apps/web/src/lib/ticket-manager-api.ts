@@ -7,7 +7,7 @@ import type {
   RepairJob,
   Ticket,
 } from "@roomlog/types";
-import { ApiError, serverFetch } from "./server-api";
+import { ApiError, ApiPayloadError, serverFetch } from "./server-api";
 import {
   toManagerTicket,
   toManagerAnalysis,
@@ -98,6 +98,7 @@ async function activeTeamTicket(): Promise<TeamManagerTicket | null> {
     const list = await listTeamTickets();
     return list[0] ?? null;
   } catch (error) {
+    if (error instanceof ApiPayloadError) throw error;
     console.error("[manager/api] /manager/tickets 조회 실패:", error);
     return null;
   }
@@ -107,6 +108,7 @@ async function teamTicketById(id: string): Promise<TeamManagerTicket | null> {
   try {
     return await serverFetch<TeamManagerTicket>(`/manager/tickets/${encodeURIComponent(id)}`);
   } catch (error) {
+    if (error instanceof ApiPayloadError) throw error;
     console.error(`[manager/api] /manager/tickets/${id} 조회 실패:`, error);
     return null;
   }
@@ -124,6 +126,7 @@ export async function listManagerTickets(filter?: string): Promise<Ticket[]> {
   try {
     return (await listTeamTickets(filter)).map(toManagerTicket);
   } catch (error) {
+    if (error instanceof ApiPayloadError) throw error;
     console.error("[manager/api] listManagerTickets 실패 → 빈 목록:", error);
     return [];
   }
@@ -151,6 +154,7 @@ export async function getManagerQueueSummary(): Promise<ManagerQueueSummary> {
     const list = await listTeamTickets();
     return computeQueueSummary(list.map(toManagerTicket), list.map(toManagerRepair));
   } catch (error) {
+    if (error instanceof ApiPayloadError) throw error;
     console.error("[manager/api] 큐 요약 실패 → 0:", error);
     return { today: 0, urgent: 0, awaitingReview: 0, awaitingPayment: 0, onHold: 0, total: 0 };
   }

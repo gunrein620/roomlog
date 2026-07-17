@@ -47,7 +47,7 @@ export default async function VendorSearchPage({ searchParams }: { searchParams:
             <button className={styles.button} type="submit">검색</button>
           </form>
         </VendorSection>
-        <VendorSection title={`${result.data.length}개 검색 결과`} description="검증·활성·계정 연결 상태는 작업 배정 가능 여부와 별도로 확인합니다.">
+        <VendorSection title={`${result.data.length}개 검색 결과`} description="운영 검증과 계정 연결을 완료한 업체만 표시합니다.">
           {result.data.length > 0 ? (
             <div className={styles.searchResultGrid}>
               {result.data.map((candidate) => (

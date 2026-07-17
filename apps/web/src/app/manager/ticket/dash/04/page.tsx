@@ -1,9 +1,10 @@
-import { requiredVendorTrade, vendorSupportsRequiredTrade } from "@roomlog/types";
+import { requiredVendorTrade, vendorSupportsRequiredTrade, vendorTradeLabel } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import {
   findManagerVendorJobByTicket,
-  searchVendorCatalog,
+  searchAssignableVendorCandidates,
 } from "@/lib/vendor-mgmt-api";
+import { ApiPayloadError } from "@/lib/server-api";
 import { MANAGER_DEMO_TICKET_ID, getManagerTicket } from "@/lib/ticket-manager-api";
 import { ManagerMutationForm } from "../../../_components/ManagerMutationForm";
 import {
@@ -25,17 +26,23 @@ import {
 } from "../../_components/ticket-manager-ui";
 import { assignVendorAction, confirmVisitAction, reviewEstimateAction } from "./actions";
 import { ConfirmAssignmentButton } from "./ConfirmAssignmentButton";
+import { IncompleteVendorDataState } from "./IncompleteVendorDataState";
 
 type SearchParams = Promise<{ id?: string }>;
 
 export default async function VendorAssignmentPage({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
   const ticketId = id ?? MANAGER_DEMO_TICKET_ID;
-  const [ticket, candidatesResult, workflowResult] = await Promise.all([
+  const loaded = await Promise.all([
     getManagerTicket(ticketId),
-    searchVendorCatalog({ isActive: true }),
+    searchAssignableVendorCandidates(ticketId),
     findManagerVendorJobByTicket(ticketId),
-  ]);
+  ]).catch((error: unknown) => {
+    if (error instanceof ApiPayloadError) return null;
+    throw error;
+  });
+  if (!loaded) return <IncompleteVendorDataState />;
+  const [ticket, candidatesResult, workflowResult] = loaded;
   const registeredCandidates = candidatesResult.data.filter(
     (candidate) => candidate.registrationStatus === "ACTIVE",
   );
@@ -72,7 +79,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
             <div style={{ ...row, justifyContent: "space-between" }}>
               <div>
                 <strong>{candidate.catalog.businessName}</strong>
-                <div style={muted}>{candidate.catalog.trades.join(" · ")} · {candidate.catalog.serviceAreas.join(", ")}</div>
+                <div style={muted}>{candidate.catalog.trades.map(vendorTradeLabel).join(" · ")} · {candidate.catalog.serviceAreas.join(", ")}</div>
               </div>
               <StatusPill active={assignable || sameActiveVendor}>
                 {sameActiveVendor

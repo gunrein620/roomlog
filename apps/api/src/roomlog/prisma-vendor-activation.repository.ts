@@ -12,7 +12,9 @@ import type {
   VendorCatalogRecord
 } from "@roomlog/types";
 import {
+  RESCENE_ACTIVATION_ID_PREFIX,
   VendorActivationRepositoryError,
+  type ResceneVendorActivationIssuePersistenceInput,
   type VendorAccountResolver,
   type VendorActivationRecord,
   type VendorActivationRepository,
@@ -22,19 +24,11 @@ import {
 type ClaimResult = {
   link: VendorAccountLinkRecord;
   vendor: VendorCatalogRecord;
-  idempotent: boolean;
 };
 
 type VendorActivationWithVendor = Prisma.VendorActivationGetPayload<{
   include: { vendor: true };
 }>;
-
-class VendorAccountLinkInsertConflict extends Error {
-  constructor(readonly originalError: Prisma.PrismaClientKnownRequestError) {
-    super("Vendor account link insert conflicted.");
-    this.name = "VendorAccountLinkInsertConflict";
-  }
-}
 
 function mapActivation(row: VendorActivationWithVendor): VendorActivationRecord {
   return {
@@ -141,13 +135,44 @@ export class PrismaVendorActivationRepository
     return activation ? mapActivation(activation) : undefined;
   }
 
-  async getById(activationId: string) {
-    const activation = await this.prisma.vendorActivation.findUnique({
-      where: { id: activationId },
-      include: { vendor: true }
+  async listRescene() {
+    const activations = await this.prisma.vendorActivation.findMany({
+      where: { id: { startsWith: RESCENE_ACTIVATION_ID_PREFIX } },
+      include: { vendor: true },
+      orderBy: { createdAt: "desc" }
     });
+    return activations.map(mapActivation);
+  }
 
-    return activation ? mapActivation(activation) : undefined;
+  async issue(input: ResceneVendorActivationIssuePersistenceInput) {
+    return await this.prisma.$transaction(async (tx) => {
+      await tx.vendorProfile.create({
+        data: {
+          id: input.vendorId,
+          businessName: input.vendor.businessName,
+          contactPerson: input.vendor.contactPerson,
+          phone: input.vendor.phone,
+          serviceArea: input.vendor.serviceAreas[0],
+          serviceAreas: input.vendor.serviceAreas,
+          trades: input.vendor.trades,
+          verificationStatus: "PENDING",
+          isActive: true,
+          createdAt: input.now
+        }
+      });
+      const activation = await tx.vendorActivation.create({
+        data: {
+          id: input.activationId,
+          vendorId: input.vendorId,
+          keyHash: input.keyHash,
+          status: "ISSUED",
+          expiresAt: input.expiresAt,
+          createdAt: input.now
+        },
+        include: { vendor: true }
+      });
+      return mapActivation(activation);
+    });
   }
 
   async getActiveAccountLink(userId: string) {
@@ -220,18 +245,6 @@ export class PrismaVendorActivationRepository
           })
         ]);
 
-        if (
-          activation.status === "CLAIMED" &&
-          activation.claimedByUserId === input.userId &&
-          activeUserLink?.vendorId === activation.vendorId
-        ) {
-          return {
-            link: mapLink(activeUserLink),
-            vendor: mapVendor(vendor),
-            idempotent: true
-          };
-        }
-
         if (activation.status === "EXPIRED") {
           throw repositoryError("EXPIRED_KEY", "Vendor activation key has expired.");
         }
@@ -263,24 +276,20 @@ export class PrismaVendorActivationRepository
           );
         }
 
-        let link: VendorAccountLink;
-        try {
-          link = await tx.vendorAccountLink.create({
-            data: {
-              id: randomUUID(),
-              vendorId: activation.vendorId,
-              userId: input.userId,
-              role: "OWNER",
-              status: "ACTIVE",
-              linkedAt: input.now
-            }
-          });
-        } catch (error) {
-          if (isUniqueConflict(error)) {
-            throw new VendorAccountLinkInsertConflict(error);
-          }
-          throw error;
+        if (vendor.verificationStatus !== "PENDING") {
+          throw unavailableVendorError();
         }
+
+        const link = await tx.vendorAccountLink.create({
+          data: {
+            id: randomUUID(),
+            vendorId: activation.vendorId,
+            userId: input.userId,
+            role: "OWNER",
+            status: "ACTIVE",
+            linkedAt: input.now
+          }
+        });
 
         const claimed = await tx.vendorActivation.updateMany({
           where: { id: activation.id, status: "ISSUED" },
@@ -298,72 +307,24 @@ export class PrismaVendorActivationRepository
           );
         }
 
+        const verifiedVendor = await tx.vendorProfile.update({
+          where: { id: vendor.id },
+          data: { verificationStatus: "VERIFIED" }
+        });
+
         return {
           link: mapLink(link),
-          vendor: mapVendor(vendor),
-          idempotent: false
+          vendor: mapVendor(verifiedVendor)
         };
       });
     } catch (error) {
-      if (!(error instanceof VendorAccountLinkInsertConflict)) throw error;
-
-      return this.prisma.$transaction(async (tx) => {
-        const activationReference = await tx.vendorActivation.findUnique({
-          where: { id: input.activationId },
-          select: { vendorId: true }
-        });
-        if (!activationReference) throw error.originalError;
-
-        const vendor = await lockAvailableVendor(
-          tx,
-          activationReference.vendorId
+      if (isUniqueConflict(error)) {
+        throw repositoryError(
+          "ACCOUNT_ALREADY_LINKED",
+          "This account or vendor already has an active link."
         );
-        const activation = await tx.vendorActivation.findUnique({
-          where: { id: input.activationId }
-        });
-        if (!activation || activation.vendorId !== activationReference.vendorId) {
-          throw error.originalError;
-        }
-        const [activeUserLink, activeVendorOwner] = await Promise.all([
-          tx.vendorAccountLink.findFirst({
-            where: { userId: input.userId, status: "ACTIVE" }
-          }),
-          tx.vendorAccountLink.findFirst({
-            where: {
-              vendorId: activation.vendorId,
-              role: "OWNER",
-              status: "ACTIVE"
-            }
-          })
-        ]);
-
-        if (
-          activation.status === "CLAIMED" &&
-          activation.claimedByUserId === input.userId &&
-          activeUserLink?.vendorId === activation.vendorId
-        ) {
-          return {
-            link: mapLink(activeUserLink),
-            vendor: mapVendor(vendor),
-            idempotent: true
-          };
-        }
-
-        if (activeUserLink) {
-          throw repositoryError(
-            "ACCOUNT_ALREADY_LINKED",
-            "This account already has an active vendor link."
-          );
-        }
-        if (activeVendorOwner) {
-          throw repositoryError(
-            "ALREADY_CLAIMED",
-            "This vendor already has an active owner."
-          );
-        }
-
-        throw error.originalError;
-      });
+      }
+      throw error;
     }
   }
 

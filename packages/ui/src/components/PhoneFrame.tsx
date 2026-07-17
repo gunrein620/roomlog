@@ -6,11 +6,19 @@ export interface PhoneFrameProps {
   label?: ReactNode;
   /** 집우집주 홈 링크 — 룸로그 화면에서 부동산 앱으로 돌아가는 동선. null이면 숨김 */
   homeHref?: string | null;
+  /** 상단 왼쪽 사용자 액션. 지정하면 기본 집우집주 홈 링크를 대체한다. */
+  leadingAction?: ReactNode;
   fitViewport?: boolean;
 }
 
 /** 임차인·업체 화면용 폰 프레임 (390×844 중앙 배치, WOOZU 스킨) */
-export function PhoneFrame({ children, label, homeHref = "/", fitViewport = false }: PhoneFrameProps) {
+export function PhoneFrame({
+  children,
+  label,
+  homeHref = "/",
+  leadingAction,
+  fitViewport = false,
+}: PhoneFrameProps) {
   return (
     <div
       style={{
@@ -23,7 +31,7 @@ export function PhoneFrame({ children, label, homeHref = "/", fitViewport = fals
         fontFamily: "var(--font-sans)",
       }}
     >
-      {label || homeHref ? (
+      {label || homeHref || leadingAction !== undefined ? (
         <div
           style={{
             width: "var(--phone-w)",
@@ -36,7 +44,9 @@ export function PhoneFrame({ children, label, homeHref = "/", fitViewport = fals
             gap: 8,
           }}
         >
-          {homeHref ? (
+          {leadingAction !== undefined ? (
+            leadingAction
+          ) : homeHref ? (
             <a
               href={homeHref}
               style={{

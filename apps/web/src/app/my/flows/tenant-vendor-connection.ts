@@ -3,6 +3,7 @@ import type {
   TenantVendorConnectionPreview,
   TenantVendorConnectionRequestResult,
 } from "@roomlog/types";
+import { vendorTradeLabel } from "@roomlog/types";
 import type { TenantIntakeResponsibilityHint } from "@/lib/tenant-intake-api";
 
 export type TenantVendorConnectionState =
@@ -35,17 +36,6 @@ export type TenantVendorConnectionAction =
   | { type: "BACK_TO_CANDIDATES" }
   | { type: "RESET" };
 
-const TRADE_LABELS: Readonly<Record<string, string>> = {
-  hvac: "냉난방",
-  plumbing: "배관·수전",
-  electrical: "전기",
-  locksmith: "출입·보안",
-  waterproofing: "방수",
-  cleaning: "청소",
-  appliance: "가전",
-  general: "종합 수리",
-};
-
 export function initialTenantVendorConnectionState(): TenantVendorConnectionState {
   return { step: "idle" };
 }
@@ -57,7 +47,7 @@ export function tenantVendorConnectionEligible(
 }
 
 export function tenantVendorTradeLabel(trade: string) {
-  return TRADE_LABELS[trade.trim().toLocaleLowerCase("ko")] ?? trade;
+  return vendorTradeLabel(trade);
 }
 
 export function tenantVendorConnectionReducer(

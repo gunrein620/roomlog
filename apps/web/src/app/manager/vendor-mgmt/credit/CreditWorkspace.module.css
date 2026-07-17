@@ -303,15 +303,14 @@
 
 .policySettings,
 .policyActions {
-  min-height: calc(var(--touch-target) + var(--space-md));
+  min-height: calc(var(--control-compact-size) + var(--space-lg));
   display: flex;
   align-items: center;
-  padding: var(--space-md) var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
   border-top: 1px solid var(--border);
 }
 
 .policySettings {
-  block-size: calc(var(--touch-target) + var(--space-xl));
   background: var(--surface-container-low);
 }
 
@@ -325,7 +324,7 @@
 }
 
 .limitField {
-  width: min(100%, var(--content-readable-max));
+  width: min(100%, var(--content-narrow-max));
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, .45fr);
   align-items: center;
@@ -343,9 +342,15 @@
 }
 
 .limitField > span {
+  min-height: var(--control-compact-size);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  padding: 0 var(--space-md);
+}
+
+.policyActions .primaryButton {
+  min-height: var(--control-compact-size);
   padding: 0 var(--space-md);
 }
 
@@ -418,7 +423,8 @@
 .limitField:focus-within,
 .noteField input:focus-visible,
 .historyScroll:focus-visible,
-.topupScroll:focus-visible {
+.topupScroll:focus-visible,
+.paymentList:focus-visible {
   outline: 0;
   box-shadow: var(--focus-ring);
 }
@@ -435,6 +441,8 @@
 .paymentList {
   display: grid;
   gap: var(--space-sm);
+  overflow-y: auto;
+  padding-right: var(--space-xs);
 }
 
 .paymentCard {
@@ -490,6 +498,17 @@
   gap: var(--space-sm);
 }
 
+.auxiliaryActions summary {
+  cursor: pointer;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.auxiliaryActions > div {
+  margin-top: var(--space-sm);
+}
+
 .paymentMethodGroup,
 .paymentChoices {
   width: 100%;
@@ -505,43 +524,6 @@
 
 .paymentChoices {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.externalPaymentPanel {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: var(--space-sm);
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-sm);
-  padding: var(--space-md);
-  background: var(--surface-container-low);
-}
-
-.externalPaymentHeading {
-  display: grid;
-  gap: var(--space-xs);
-}
-
-.externalPaymentHeading strong {
-  color: var(--on-surface);
-  font-size: var(--fs-caption);
-}
-
-.externalPaymentHeading span {
-  color: var(--on-surface-variant);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-body);
-}
-
-.externalPaymentPanel > .secondaryButton {
-  justify-self: end;
-}
-
-.directPaymentFields {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(170px, .8fr) minmax(220px, 1.2fr);
-  gap: var(--space-sm);
 }
 
 .paymentCard > .secondaryButton {
@@ -561,7 +543,8 @@
 }
 
 .historyScroll,
-.topupScroll {
+.topupScroll,
+.paymentList {
   --history-visible-rows: 8;
   --history-max-height: calc(
     var(--touch-target) + var(--touch-target) + var(--touch-target) + var(--touch-target)
@@ -750,15 +733,13 @@
     flex-direction: column;
   }
 
-  .limitField,
-  .directPaymentFields {
+  .limitField {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .policyActions .primaryButton,
   .requestActions > button,
   .paymentChoices > button,
-  .externalPaymentPanel > .secondaryButton,
   .paymentCard > .secondaryButton {
     width: 100%;
   }

@@ -75,6 +75,9 @@ class UnavailableManagerVendorRepository implements ManagerVendorRepository {
   async searchCatalog() {
     return workflowUnavailable();
   }
+  async searchAssignmentCandidates() {
+    return workflowUnavailable();
+  }
   async list() {
     return workflowUnavailable();
   }
@@ -144,6 +147,9 @@ class UnavailableVendorWorkflowRepository implements VendorWorkflowRepository {
   async getTenantWorkflow(): Promise<never> {
     return workflowUnavailable();
   }
+  async listTenantPayableWorkflows(): Promise<never> {
+    return workflowUnavailable();
+  }
   async reviewTenantEstimate(): Promise<never> {
     return workflowUnavailable();
   }
@@ -151,6 +157,12 @@ class UnavailableVendorWorkflowRepository implements VendorWorkflowRepository {
     return workflowUnavailable();
   }
   async decideTenantCompletion(): Promise<never> {
+    return workflowUnavailable();
+  }
+  async requestTenantDirectPayment(): Promise<never> {
+    return workflowUnavailable();
+  }
+  async confirmVendorDirectPayment(): Promise<never> {
     return workflowUnavailable();
   }
 }
@@ -412,6 +424,11 @@ export async function createRoomlogServiceOptions(
     RoomlogWorkflowResourceLifecycle
   ],
   // 거래(trade) 모듈이 같은 토큰 인증을 재사용한다.
-  exports: [RoomlogService]
+  exports: [
+    RoomlogService,
+    RoomlogManagerVendorDomain,
+    RoomlogTenantVendorConnectionDomain,
+    RoomlogVendorWorkflowDomain
+  ]
 })
 export class RoomlogModule {}

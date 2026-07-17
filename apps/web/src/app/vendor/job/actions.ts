@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { VendorEstimateDraftInput } from "@roomlog/types";
 import {
+  confirmVendorDirectPayment,
   saveVendorEstimateDraft,
   scheduleVendorWorkflowJob,
   startVendorWorkflowJob,
@@ -44,6 +45,16 @@ function errorMessage(error: unknown) {
 function errorHref(route: string, repairId: string, error: unknown) {
   const separator = withId(route, repairId).includes("?") ? "&" : "?";
   return `${withId(route, repairId)}${separator}error=${encodeURIComponent(errorMessage(error))}`;
+}
+
+export async function confirmDirectPaymentAction(paymentRequestId: string) {
+  try {
+    await confirmVendorDirectPayment(paymentRequestId);
+    revalidatePath(ROUTES["V-JOB-SETTLEMENT"]);
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: errorMessage(error) };
+  }
 }
 
 function estimateInput(formData: FormData): VendorEstimateDraftInput {

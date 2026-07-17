@@ -47,6 +47,7 @@ type LockedPaymentAuthority = {
   managerId: string;
   amount: number;
   status: VendorPaymentRequestStatus;
+  lastAttemptMode: "AUTO_CREDIT" | "MANUAL_CREDIT" | "DIRECT" | "TOSS" | null;
   ticketTenantId: string;
   roomId: string;
   landlordId: string | null;
@@ -54,6 +55,14 @@ type LockedPaymentAuthority = {
   payerAccountStatus: "ACTIVE" | "INVITED" | "DISABLED";
   tenantRoomLinked: boolean;
 };
+
+function canPrepareTossPayment(authority: Pick<
+  LockedPaymentAuthority,
+  "payerRole" | "status" | "lastAttemptMode"
+>) {
+  return PAYABLE_REQUEST_STATUSES.has(authority.status) &&
+    !(authority.payerRole === "TENANT" && authority.lastAttemptMode === "DIRECT");
+}
 
 type NormalizedActor = Readonly<{
   payerRole: "MANAGER" | "TENANT";
@@ -402,7 +411,7 @@ export class PrismaRepairPaymentOrderRepository
               normalizedActor,
               command.paymentRequestId
             );
-            if (!PAYABLE_REQUEST_STATUSES.has(authority.status)) {
+            if (!canPrepareTossPayment(authority)) {
               throw new ConflictException(
                 "현재 지급 요청 상태에서는 Toss 결제 주문을 만들 수 없습니다."
               );
@@ -591,7 +600,7 @@ export class PrismaRepairPaymentOrderRepository
         if (order.status !== "READY") {
           transitionConflict(order.status, "승인 요청");
         }
-        if (!PAYABLE_REQUEST_STATUSES.has(authority.status)) {
+        if (!canPrepareTossPayment(authority)) {
           throw new ConflictException(
             "현재 지급 요청 상태에서는 Toss 승인을 시작할 수 없습니다."
           );
@@ -650,7 +659,7 @@ export class PrismaRepairPaymentOrderRepository
       ) {
         transitionConflict(order.status, "결제 확정");
       }
-      if (!PAYABLE_REQUEST_STATUSES.has(authority.status)) {
+      if (!canPrepareTossPayment(authority)) {
         throw new ConflictException(
           "지급 요청이 이미 다른 방식으로 처리되어 Toss 결제를 확정할 수 없습니다."
         );
@@ -672,28 +681,32 @@ export class PrismaRepairPaymentOrderRepository
       }
 
       const now = new Date();
-      const costId = `cost_vendor_payment_${request.id}`;
-      const unitId = request.repair.ticket.room.roomNo
-        .trim()
-        .replace(/호$/u, "");
-      await tx.cost.create({
-        data: {
-          id: costId,
-          managerId: request.managerId,
-          date: request.completionReport.completedAt,
-          item: `${unitId} ${request.repair.title}`,
-          amount: request.amount,
-          type: "REPAIR",
-          scope: "UNIT",
-          unitId,
-          status: "CONFIRMED",
-          verified: true,
-          repairPayment: "ALREADY_PAID",
-          paymentRef: order.orderId,
-          createdAt: now,
-          updatedAt: now
-        }
-      });
+      const costId = request.payerRole === "MANAGER"
+        ? `cost_vendor_payment_${request.id}`
+        : null;
+      if (costId) {
+        const unitId = request.repair.ticket.room.roomNo
+          .trim()
+          .replace(/호$/u, "");
+        await tx.cost.create({
+          data: {
+            id: costId,
+            managerId: request.managerId,
+            date: request.completionReport.completedAt,
+            item: `${unitId} ${request.repair.title}`,
+            amount: request.amount,
+            type: "REPAIR",
+            scope: "UNIT",
+            unitId,
+            status: "CONFIRMED",
+            verified: true,
+            repairPayment: "ALREADY_PAID",
+            paymentRef: order.orderId,
+            createdAt: now,
+            updatedAt: now
+          }
+        });
+      }
       await tx.vendorPaymentRequest.update({
         where: { id: request.id },
         data: {
@@ -890,7 +903,7 @@ export class PrismaRepairPaymentOrderRepository
           }
           return mapRepairPaymentOrder(existing);
         }
-        if (!PAYABLE_REQUEST_STATUSES.has(authority.status)) {
+        if (!canPrepareTossPayment(authority)) {
           throw new ConflictException(
             "현재 지급 요청 상태에서는 Toss 재결제 주문을 만들 수 없습니다."
           );
@@ -1083,6 +1096,7 @@ export class PrismaRepairPaymentOrderRepository
         request."managerId" AS "managerId",
         request."amount",
         request."status"::text AS "status",
+        request."lastAttemptMode"::text AS "lastAttemptMode",
         ticket."tenantId" AS "ticketTenantId",
         ticket."roomId" AS "roomId",
         room."landlordId" AS "landlordId",
@@ -1144,9 +1158,14 @@ export class PrismaRepairPaymentOrderRepository
         payerRole: actor.payerRole,
         payerUserId: actor.payerUserId
       },
-      select: { amount: true, status: true }
+      select: {
+        amount: true,
+        status: true,
+        payerRole: true,
+        lastAttemptMode: true
+      }
     });
-    if (!authority || !PAYABLE_REQUEST_STATUSES.has(authority.status)) {
+    if (!authority || !canPrepareTossPayment(authority)) {
       return undefined;
     }
     const amount = requireSafePositiveAmount(authority.amount);
