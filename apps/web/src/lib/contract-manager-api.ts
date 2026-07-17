@@ -4,12 +4,14 @@ import { apiUrl } from "./api-url";
 import { AUTH_COOKIE } from "./auth-cookie";
 import { ApiError, serverFetch } from "./server-api";
 
-export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
+export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual" | "trade_acceptance";
 
 export interface ManagerContractRow {
   contract: Contract;
   tenantName: string;
   buildingName: string;
+  depositSummary?: string;
+  clauseSummary?: string;
   origin: ManagerContractOrigin;
   statusLabel: string;
   slaOverdue: boolean;
@@ -32,6 +34,15 @@ export interface ManagerContractDashboard {
 
 export interface ManagerContractDetail {
   row: ManagerContractRow;
+  currentDocument?: {
+    id: string;
+    contractId: string;
+    uploadedByUserId?: string;
+    origin: Exclude<ManagerContractOrigin, "trade_acceptance">;
+    fileName?: string;
+    fileUrl?: string;
+    uploadedAt: string;
+  };
   extraction: ContractExtraction;
   privacy: ContractPrivacy;
   tenant: {
@@ -46,6 +57,10 @@ export interface ManagerContractDetail {
     maintenanceFee: string;
     paymentDay: string;
     account: string;
+    specialTerms?: string;
+    autoRenewal?: string;
+    restorationDuty?: string;
+    repairDuty?: string;
   };
   inventory: string[];
   timeline: ManagerContractTimelineItem[];
@@ -184,6 +199,10 @@ export function updateManagerContractManualValues(
   id: string,
   input: {
     deposit?: string;
+    specialTerms?: string;
+    autoRenewal?: string;
+    restorationDuty?: string;
+    repairDuty?: string;
     monthlyRent?: number;
     maintenanceFee?: number;
     paymentDay?: number;

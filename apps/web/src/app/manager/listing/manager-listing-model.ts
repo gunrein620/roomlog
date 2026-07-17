@@ -6,6 +6,7 @@ import {
 export interface TradeListing {
   id: string;
   ownerId: string;
+  roomId?: string;
   title: string;
   roomType: string;
   location: string;

@@ -672,6 +672,7 @@ model Room {
   intakeSessions       IntakeSession[]
   moveInChecklistItems MoveInChecklistItem[]
   bills                Bill[]
+  tradeListings        TradeListing[]
 
   @@unique([buildingName, roomNo])
   @@index([landlordId])
@@ -2140,6 +2141,7 @@ model TradeListing {
   id                String   @id
   ownerId           String
   ownerName         String
+  roomId            String?
   title             String
   roomType          String
   tradeType         String // "월세" | "전세" | "매매"
@@ -2161,8 +2163,11 @@ model TradeListing {
   createdAt         DateTime
   updatedAt         DateTime @default(now()) @updatedAt
 
+  room              Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
   @@index([status, createdAt])
   @@index([ownerId])
+  @@index([roomId])
 }
 
 // ─── 임차인 가구 배치(트랙 C) — docs/tenant-furniture-fit.md ──────────────────
