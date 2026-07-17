@@ -6,8 +6,11 @@ import {
   type OnModuleDestroy,
 } from "@nestjs/common";
 import { CreditModule } from "../credit/credit.module";
+import { CreditService } from "../credit/credit.service";
 import { RepairPaymentOrderService } from "../credit/repair-payment-order.service";
 import { RoomlogModule } from "../roomlog/roomlog.module";
+import { RoomlogService } from "../roomlog/roomlog.service";
+import { RoomlogManagerVendorDomain } from "../roomlog/services/roomlog-manager-vendor.domain";
 import { RoomlogTenantVendorConnectionDomain } from "../roomlog/services/roomlog-tenant-vendor-connection.domain";
 import { RoomlogVendorWorkflowDomain } from "../roomlog/services/roomlog-vendor-workflow.domain";
 import {
@@ -16,10 +19,15 @@ import {
   type AgentToolActionRepository,
 } from "./agent-tool-action.repository";
 import { AgentToolGateService } from "./agent-tool-gate.service";
+import { AgentRoleToolRouter } from "./agent-role-tool.router";
 import { AgentResourceRefCodec } from "./agent-resource-ref";
+import { ManagerAgentToolAdapter } from "./manager-agent-tool.adapter";
 import { PrismaAgentToolActionRepository } from "./prisma-agent-tool-action.repository";
 import { TenantAgentToolAdapter } from "./tenant-agent-tool.adapter";
-import { TenantAgentToolsController } from "./tenant-agent-tools.controller";
+import {
+  ManagerAgentToolsController,
+  TenantAgentToolsController,
+} from "./agent-tools.controller";
 
 const unavailable = async (): Promise<never> => {
   throw new ServiceUnavailableException(
@@ -55,7 +63,7 @@ class AgentToolActionLifecycle implements OnModuleDestroy {
 
 @Module({
   imports: [RoomlogModule, CreditModule],
-  controllers: [TenantAgentToolsController],
+  controllers: [TenantAgentToolsController, ManagerAgentToolsController],
   providers: [
     {
       provide: AGENT_TOOL_ACTION_REPOSITORY,
@@ -86,8 +94,42 @@ class AgentToolActionLifecycle implements OnModuleDestroy {
       ) => new TenantAgentToolAdapter(connections, workflows, orders, refs),
     },
     {
+      provide: ManagerAgentToolAdapter,
+      inject: [
+        RoomlogService,
+        AgentResourceRefCodec,
+        RoomlogManagerVendorDomain,
+        RoomlogVendorWorkflowDomain,
+        CreditService,
+        RepairPaymentOrderService,
+      ],
+      useFactory: (
+        roomlog: RoomlogService,
+        refs: AgentResourceRefCodec,
+        vendors: RoomlogManagerVendorDomain,
+        workflows: RoomlogVendorWorkflowDomain,
+        credit: CreditService,
+        orders: RepairPaymentOrderService,
+      ) => new ManagerAgentToolAdapter(
+        roomlog,
+        refs,
+        vendors,
+        workflows,
+        credit,
+        orders,
+      ),
+    },
+    {
+      provide: AgentRoleToolRouter,
+      inject: [TenantAgentToolAdapter, ManagerAgentToolAdapter],
+      useFactory: (
+        tenant: TenantAgentToolAdapter,
+        manager: ManagerAgentToolAdapter,
+      ) => new AgentRoleToolRouter(tenant, manager),
+    },
+    {
       provide: AGENT_ROLE_TOOL_ADAPTER,
-      useExisting: TenantAgentToolAdapter,
+      useExisting: AgentRoleToolRouter,
     },
     AgentToolGateService,
     AgentToolActionLifecycle,

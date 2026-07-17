@@ -6,7 +6,7 @@ import {
 } from "@prisma/client";
 import type {
   AgentConfirmationCard,
-  TenantAgentToolName,
+  AgentToolName,
 } from "@roomlog/types";
 import {
   AgentToolActionUnavailableError,
@@ -29,7 +29,7 @@ function record(row: AgentToolAction): AgentToolActionRecord {
       userId: row.principalUserId,
       role: row.principalRole as AgentPrincipal["role"],
     },
-    tool: row.toolName as TenantAgentToolName,
+    tool: row.toolName as AgentToolName,
     toolCallId: row.toolCallId,
     arguments: row.arguments as Record<string, unknown>,
     ...(row.executorName ? { executorName: row.executorName } : {}),

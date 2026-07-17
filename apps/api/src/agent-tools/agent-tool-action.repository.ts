@@ -1,6 +1,6 @@
 import type {
   AgentConfirmationCard,
-  TenantAgentToolName,
+  AgentToolName,
 } from "@roomlog/types";
 
 export const AGENT_TOOL_ACTION_REPOSITORY = Symbol(
@@ -25,7 +25,7 @@ export type AgentToolActionStatus =
 export type AgentToolActionRecord = Readonly<{
   id: string;
   principal: AgentPrincipal;
-  tool: TenantAgentToolName;
+  tool: AgentToolName;
   toolCallId: string;
   arguments: Record<string, unknown>;
   executorName?: string;
@@ -44,7 +44,7 @@ export type AgentToolActionRecord = Readonly<{
 export type BeginAgentImmediateInput = Readonly<{
   id: string;
   principal: AgentPrincipal;
-  tool: TenantAgentToolName;
+  tool: AgentToolName;
   toolCallId: string;
   arguments: Record<string, unknown>;
 }>;
@@ -70,17 +70,18 @@ export type AgentPreparedMutation = Readonly<{
 
 export interface AgentRoleToolAdapter {
   policy(
+    principal: AgentPrincipal,
     tool: string,
   ): "IMMEDIATE" | "PREPARE" | "CONFIRM_ONLY" | undefined;
   executeImmediate(
     principal: AgentPrincipal,
-    tool: TenantAgentToolName,
+    tool: AgentToolName,
     args: Record<string, unknown>,
     context: { toolCallId: string },
   ): Promise<Record<string, unknown>>;
   prepareMutation(
     principal: AgentPrincipal,
-    tool: TenantAgentToolName,
+    tool: AgentToolName,
     args: Record<string, unknown>,
   ): Promise<AgentPreparedMutation>;
   executePending(

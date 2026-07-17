@@ -8,11 +8,21 @@ import { BadRequestException } from "@nestjs/common";
 import { tokenSecret } from "../roomlog/roomlog-support";
 import type { AgentPrincipal } from "./agent-tool-action.repository";
 
-export type AgentResourceKind = "repair" | "estimate" | "payment" | "order";
+export type AgentResourceKind =
+  | "repair"
+  | "estimate"
+  | "payment"
+  | "order"
+  | "vendor"
+  | "ticket"
+  | "bill"
+  | "thread"
+  | "topup";
 
 type AgentResourceClaims = {
   version: 1;
   principalUserId: string;
+  principalRole: AgentPrincipal["role"];
   kind: AgentResourceKind;
   resourceId: string;
   complaintId?: string;
@@ -57,6 +67,7 @@ export class AgentResourceRefCodec {
     const claims: AgentResourceClaims = {
       version: 1,
       principalUserId: principal.userId,
+      principalRole: principal.role,
       kind,
       resourceId: normalizedId,
       ...(complaintId?.trim() ? { complaintId: complaintId.trim() } : {}),
@@ -106,6 +117,7 @@ export class AgentResourceRefCodec {
     if (
       claims.version !== 1 ||
       claims.principalUserId !== principal.userId ||
+      claims.principalRole !== principal.role ||
       claims.kind !== kind ||
       typeof claims.resourceId !== "string" ||
       !claims.resourceId.trim() ||

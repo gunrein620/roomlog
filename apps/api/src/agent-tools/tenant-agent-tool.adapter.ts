@@ -67,7 +67,8 @@ export class TenantAgentToolAdapter implements AgentRoleToolAdapter {
     private readonly refs: AgentResourceRefCodec,
   ) {}
 
-  policy(tool: string) {
+  policy(principal: AgentPrincipal, tool: string) {
+    if (principal.role !== "TENANT") return undefined;
     return POLICY[tool as keyof typeof POLICY];
   }
 

@@ -8,9 +8,9 @@ import {
 } from "@nestjs/common";
 import type {
   AgentPendingActionView,
+  AgentToolName,
   AgentToolInvokeInput,
   AgentToolInvokeResponse,
-  TenantAgentToolName,
 } from "@roomlog/types";
 import {
   AGENT_ACTION_ID_FACTORY,
@@ -91,11 +91,11 @@ export class AgentToolGateService {
     input: AgentToolInvokeInput,
   ): Promise<AgentToolInvokeResponse> {
     const toolName = typeof input.tool === "string" ? input.tool.trim() : "";
-    const policy = this.adapter.policy(toolName);
+    const policy = this.adapter.policy(principal, toolName);
     if (!policy) {
       return { status: "blocked", summary: "허용되지 않은 도구입니다." };
     }
-    const tool = toolName as TenantAgentToolName;
+    const tool = toolName as AgentToolName;
     if (policy === "CONFIRM_ONLY") {
       return {
         status: "blocked",
@@ -168,7 +168,7 @@ export class AgentToolGateService {
 
   private async invokeImmediate(
     principal: AgentPrincipal,
-    tool: TenantAgentToolName,
+    tool: AgentToolName,
     args: Record<string, unknown>,
     toolCallId: string,
   ): Promise<AgentToolInvokeResponse> {
@@ -197,7 +197,7 @@ export class AgentToolGateService {
 
   private async prepare(
     principal: AgentPrincipal,
-    tool: TenantAgentToolName,
+    tool: AgentToolName,
     args: Record<string, unknown>,
     toolCallId: string,
   ): Promise<AgentToolInvokeResponse> {

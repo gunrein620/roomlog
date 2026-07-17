@@ -4955,7 +4955,7 @@ export class RoomlogService implements OnModuleDestroy {
     return await this.copilot.chat(managerId, input);
   }
 
-  private resolveManagerAgentPendingCommand(
+  resolveManagerAgentPendingCommand(
     managerId: string,
     kind: NonNullable<CopilotChatResponse["pendingAction"]>["kind"],
     input: ManagerAgentCommandInput
