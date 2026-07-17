@@ -3,6 +3,8 @@ import {
   extractWallFaceDimensions,
   formatWallLength,
 } from "./wall-dimensions.mjs";
+import { layoutDimensionLabels } from "./measurement-layout.mjs";
+import { extractRoomAreas, formatRoomArea } from "./room-areas.mjs";
 
 const INTERNAL_SIZE = 1024;
 const MIN_OPENING_LENGTH = 8;
@@ -319,6 +321,7 @@ export class ReviewEditor {
     this.previewOpening = null;
     this.activeWallMask = null;
     this.wallDimensionSegments = [];
+    this.roomAreas = [];
     this.scalePoints = [];
     this.calibration = null;
     this.spacePressed = false;
@@ -387,6 +390,7 @@ export class ReviewEditor {
     this.inputImage = inputImage;
     this.document = new ReviewDocument(wallMask, payload.openings ?? []);
     this.wallDimensionSegments = [];
+    this.roomAreas = [];
     this.scalePoints = [];
     // Default to a door-width scale estimate so plans render at real size even
     // before manual calibration; the Scale tool still overrides this.
@@ -437,6 +441,7 @@ export class ReviewEditor {
     );
     this.document.revision += 1;
     this.refreshWallDimensions();
+    this.refreshRoomAreas();
     this.render();
     this.onChange(this.document);
     return this.getCalibration();
@@ -447,6 +452,7 @@ export class ReviewEditor {
     this.scalePoints = [];
     this.calibration = null;
     this.wallDimensionSegments = [];
+    this.roomAreas = [];
     if (this.document) this.document.revision += 1;
     this.render();
     if (this.document) this.onChange(this.document);
@@ -618,7 +624,9 @@ export class ReviewEditor {
     if (this.previewOpening) {
       this.drawOpening(this.previewOpening, true);
     }
-    this.drawWallDimensions();
+    const roomAreaLayout = this.buildRoomAreaLabelLayout();
+    this.drawWallDimensions(roomAreaLayout.map(item => item.bounds));
+    this.drawRoomAreaLabels(roomAreaLayout);
     this.drawScaleMeasurement();
   }
 
@@ -636,7 +644,94 @@ export class ReviewEditor {
     return this.wallDimensionSegments;
   }
 
-  drawWallDimensions() {
+  refreshRoomAreas(width = INTERNAL_SIZE, height = INTERNAL_SIZE) {
+    if (!this.document?.wallMask || !this.calibration || this.calibration.estimated) {
+      this.roomAreas = [];
+      return this.roomAreas;
+    }
+    this.roomAreas = extractRoomAreas(
+      this.document.wallMask,
+      this.document.openings,
+      width,
+      height,
+      this.calibration.millimetersPerPixel,
+      { minimumAreaM2: 1 },
+    );
+    return this.roomAreas;
+  }
+
+  buildRoomAreaLabelLayout() {
+    if (!this.calibration || this.calibration.estimated || !this.roomAreas?.length) return [];
+    const context = this.context;
+    context.save();
+    context.font = "600 12px system-ui, sans-serif";
+    const layout = this.roomAreas.map(room => {
+      const label = formatRoomArea(room.areaM2);
+      const center = this.imageToScreen(room.anchor.x, room.anchor.y);
+      const width = context.measureText(label).width + 12;
+      const height = 20;
+      return {
+        room,
+        label,
+        center,
+        bounds: {
+          left: center.x - width / 2,
+          top: center.y - height / 2,
+          right: center.x + width / 2,
+          bottom: center.y + height / 2,
+        },
+      };
+    });
+    context.restore();
+    return layout;
+  }
+
+  dimensionLabelLayout(reservedBounds = []) {
+    const context = this.context;
+    context.save();
+    context.font = "600 11px system-ui, sans-serif";
+    const candidates = this.wallDimensionSegments.map((segment, index) => {
+      const start = this.imageToScreen(segment.start.x, segment.start.y);
+      const end = this.imageToScreen(segment.end.x, segment.end.y);
+      const deltaX = end.x - start.x;
+      const deltaY = end.y - start.y;
+      const screenLength = Math.hypot(deltaX, deltaY);
+      if (!Number.isFinite(screenLength) || screenLength < 2) return null;
+      let angle = Math.atan2(deltaY, deltaX);
+      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+      const rawNormalX = Number(segment.normal?.x);
+      const rawNormalY = Number(segment.normal?.y);
+      const normalLength = Math.hypot(rawNormalX, rawNormalY);
+      const normal = Number.isFinite(normalLength) && normalLength > 0
+        ? { x: rawNormalX / normalLength, y: rawNormalY / normalLength }
+        : { x: -deltaY / screenLength, y: deltaX / screenLength };
+      const label = formatWallLength(
+        segment.lengthPixels * Number(this.calibration.millimetersPerPixel),
+      );
+      return {
+        id: `${segment.regionId}:${index}`,
+        segment,
+        start,
+        end,
+        tangent: { x: deltaX / screenLength, y: deltaY / screenLength },
+        normal,
+        anchor: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
+        width: context.measureText(label).width + 10,
+        height: 18,
+        angle,
+        label,
+        screenLength,
+      };
+    }).filter(Boolean);
+    context.restore();
+    return layoutDimensionLabels(candidates, reservedBounds, {
+      baseOffset: 14,
+      laneStep: 20,
+      collisionPadding: 2,
+    });
+  }
+
+  drawWallDimensions(reservedBounds = []) {
     if (
       !this.calibration ||
       this.calibration.estimated ||
@@ -648,96 +743,89 @@ export class ReviewEditor {
     if (!Number.isFinite(millimetersPerPixel) || millimetersPerPixel <= 0) return;
 
     const context = this.context;
+    const layout = this.dimensionLabelLayout(reservedBounds);
     context.save();
-    context.font = "700 12px system-ui, sans-serif";
+    context.font = "600 11px system-ui, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
 
-    for (const segment of this.wallDimensionSegments) {
-      const start = this.imageToScreen(segment.start.x, segment.start.y);
-      const end = this.imageToScreen(segment.end.x, segment.end.y);
-      const deltaX = end.x - start.x;
-      const deltaY = end.y - start.y;
-      const screenLength = Math.hypot(deltaX, deltaY);
-      if (!Number.isFinite(screenLength) || screenLength < 2) continue;
-
-      const tangentX = deltaX / screenLength;
-      const tangentY = deltaY / screenLength;
-      const rawNormalX = Number(segment.normal?.x);
-      const rawNormalY = Number(segment.normal?.y);
-      const normalLength = Math.hypot(rawNormalX, rawNormalY);
-      const normalX = Number.isFinite(normalLength) && normalLength > 0
-        ? rawNormalX / normalLength
-        : -tangentY;
-      const normalY = Number.isFinite(normalLength) && normalLength > 0
-        ? rawNormalY / normalLength
-        : tangentX;
-      const offset = 16;
-      const arrowLength = Math.min(8, screenLength / 4);
-      const arrowHalfWidth = 4;
+    for (const item of layout) {
       const dimensionStart = {
-        x: start.x + normalX * offset,
-        y: start.y + normalY * offset,
+        x: item.start.x + item.normal.x * item.offset,
+        y: item.start.y + item.normal.y * item.offset,
       };
       const dimensionEnd = {
-        x: end.x + normalX * offset,
-        y: end.y + normalY * offset,
+        x: item.end.x + item.normal.x * item.offset,
+        y: item.end.y + item.normal.y * item.offset,
       };
+      const arrowLength = Math.min(6, item.screenLength / 4);
+      const arrowHalfWidth = 3;
 
       context.beginPath();
-      context.strokeStyle = "rgba(255, 255, 255, 0.96)";
-      context.lineWidth = 4;
-      context.moveTo(dimensionStart.x, dimensionStart.y);
-      context.lineTo(dimensionEnd.x, dimensionEnd.y);
-      context.stroke();
-
-      context.beginPath();
-      context.strokeStyle = "#06b6d4";
-      context.lineWidth = 2;
-      context.moveTo(start.x, start.y);
+      context.strokeStyle = "rgba(17, 24, 39, 0.55)";
+      context.lineWidth = 0.75;
+      context.moveTo(item.start.x, item.start.y);
       context.lineTo(dimensionStart.x, dimensionStart.y);
-      context.moveTo(end.x, end.y);
+      context.moveTo(item.end.x, item.end.y);
       context.lineTo(dimensionEnd.x, dimensionEnd.y);
-      context.moveTo(dimensionStart.x, dimensionStart.y);
-      context.lineTo(dimensionEnd.x, dimensionEnd.y);
-      context.moveTo(dimensionStart.x, dimensionStart.y);
-      context.lineTo(
-        dimensionStart.x + tangentX * arrowLength + normalX * arrowHalfWidth,
-        dimensionStart.y + tangentY * arrowLength + normalY * arrowHalfWidth,
-      );
-      context.moveTo(dimensionStart.x, dimensionStart.y);
-      context.lineTo(
-        dimensionStart.x + tangentX * arrowLength - normalX * arrowHalfWidth,
-        dimensionStart.y + tangentY * arrowLength - normalY * arrowHalfWidth,
-      );
-      context.moveTo(dimensionEnd.x, dimensionEnd.y);
-      context.lineTo(
-        dimensionEnd.x - tangentX * arrowLength + normalX * arrowHalfWidth,
-        dimensionEnd.y - tangentY * arrowLength + normalY * arrowHalfWidth,
-      );
-      context.moveTo(dimensionEnd.x, dimensionEnd.y);
-      context.lineTo(
-        dimensionEnd.x - tangentX * arrowLength - normalX * arrowHalfWidth,
-        dimensionEnd.y - tangentY * arrowLength - normalY * arrowHalfWidth,
-      );
       context.stroke();
 
-      const label = formatWallLength(segment.lengthPixels * millimetersPerPixel);
-      if (!label) continue;
-      const centerX = (dimensionStart.x + dimensionEnd.x) / 2;
-      const centerY = (dimensionStart.y + dimensionEnd.y) / 2;
-      let angle = Math.atan2(deltaY, deltaX);
-      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-      const plateWidth = context.measureText(label).width + 12;
+      context.beginPath();
+      context.strokeStyle = "#111827";
+      context.lineWidth = 1;
+      context.moveTo(dimensionStart.x, dimensionStart.y);
+      context.lineTo(dimensionEnd.x, dimensionEnd.y);
+      context.moveTo(dimensionStart.x, dimensionStart.y);
+      context.lineTo(
+        dimensionStart.x + item.tangent.x * arrowLength + item.normal.x * arrowHalfWidth,
+        dimensionStart.y + item.tangent.y * arrowLength + item.normal.y * arrowHalfWidth,
+      );
+      context.moveTo(dimensionStart.x, dimensionStart.y);
+      context.lineTo(
+        dimensionStart.x + item.tangent.x * arrowLength - item.normal.x * arrowHalfWidth,
+        dimensionStart.y + item.tangent.y * arrowLength - item.normal.y * arrowHalfWidth,
+      );
+      context.moveTo(dimensionEnd.x, dimensionEnd.y);
+      context.lineTo(
+        dimensionEnd.x - item.tangent.x * arrowLength + item.normal.x * arrowHalfWidth,
+        dimensionEnd.y - item.tangent.y * arrowLength + item.normal.y * arrowHalfWidth,
+      );
+      context.moveTo(dimensionEnd.x, dimensionEnd.y);
+      context.lineTo(
+        dimensionEnd.x - item.tangent.x * arrowLength - item.normal.x * arrowHalfWidth,
+        dimensionEnd.y - item.tangent.y * arrowLength - item.normal.y * arrowHalfWidth,
+      );
+      context.stroke();
 
       context.save();
-      context.translate(centerX, centerY);
-      context.rotate(angle);
-      context.fillStyle = "rgba(255, 255, 255, 0.96)";
-      context.fillRect(-plateWidth / 2, -10, plateWidth, 20);
-      context.fillStyle = "#0f172a";
-      context.fillText(label, 0, 0);
+      context.translate(item.center.x, item.center.y);
+      context.rotate(item.angle);
+      context.fillStyle = "rgba(255, 255, 255, 0.9)";
+      context.fillRect(-item.width / 2, -item.height / 2, item.width, item.height);
+      context.fillStyle = "#111827";
+      context.fillText(item.label, 0, 0);
       context.restore();
+    }
+    context.restore();
+  }
+
+  drawRoomAreaLabels(layout) {
+    if (!layout?.length) return;
+    const context = this.context;
+    context.save();
+    context.font = "600 12px system-ui, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    for (const item of layout) {
+      context.fillStyle = "rgba(255, 255, 255, 0.9)";
+      context.fillRect(
+        item.bounds.left,
+        item.bounds.top,
+        item.bounds.right - item.bounds.left,
+        item.bounds.bottom - item.bounds.top,
+      );
+      context.fillStyle = "#111827";
+      context.fillText(item.label, item.center.x, item.center.y);
     }
     context.restore();
   }
@@ -971,6 +1059,7 @@ export class ReviewEditor {
         this.scalePoints = [selectedPoint];
         this.calibration = null;
         this.wallDimensionSegments = [];
+        this.roomAreas = [];
       } else if (
         this.scalePoints.length === 1 &&
         Math.hypot(
@@ -1213,6 +1302,7 @@ export class ReviewEditor {
     if (!changed) return;
     if (this.calibration && !this.calibration.estimated) {
       this.refreshWallDimensions();
+      this.refreshRoomAreas();
     }
     this.render();
     this.onChange(this.document);

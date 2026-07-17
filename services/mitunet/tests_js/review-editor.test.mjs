@@ -76,16 +76,16 @@ test("applying calibration replaces the base grid with a real millimeter grid", 
   });
 });
 
-test("wall dimensions draw only after manual scale calibration", () => {
+test("manual measurements draw every wall label with thin black strokes and room areas", () => {
   const labels = [];
-  const points = [];
+  const strokes = [];
   const context = {
     save() {},
     restore() {},
     beginPath() {},
-    moveTo(x, y) { points.push({ command: "moveTo", x, y }); },
-    lineTo(x, y) { points.push({ command: "lineTo", x, y }); },
-    stroke() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() { strokes.push({ strokeStyle: this.strokeStyle, lineWidth: this.lineWidth }); },
     fillRect() {},
     translate() {},
     rotate() {},
@@ -95,46 +95,71 @@ test("wall dimensions draw only after manual scale calibration", () => {
   const editor = Object.create(ReviewEditor.prototype);
   editor.context = context;
   editor.viewport = { scale: 1, offsetX: 0, offsetY: 0 };
-  editor.wallDimensionSegments = [{
-    start: { x: 10, y: 20 },
-    end: { x: 110, y: 20 },
-    normal: { x: 0, y: -1 },
-    lengthPixels: 100,
-    face: "exterior",
-    regionId: 0,
+  editor.wallDimensionSegments = [
+    {
+      start: { x: 10, y: 20 },
+      end: { x: 110, y: 20 },
+      normal: { x: 0, y: -1 },
+      lengthPixels: 100,
+      face: "exterior",
+      regionId: 0,
+    },
+    {
+      start: { x: 20, y: 30 },
+      end: { x: 120, y: 30 },
+      normal: { x: 0, y: -1 },
+      lengthPixels: 100,
+      face: "interior",
+      regionId: 1,
+    },
+  ];
+  editor.roomAreas = [{
+    regionId: 2,
+    pixelCount: 250,
+    areaM2: 10.2,
+    anchor: { x: 70, y: 80 },
   }];
 
   editor.calibration = { millimetersPerPixel: 10, estimated: true };
-  editor.drawWallDimensions();
+  const estimatedLayout = editor.buildRoomAreaLabelLayout();
+  editor.drawWallDimensions(estimatedLayout.map(item => item.bounds));
+  editor.drawRoomAreaLabels(estimatedLayout);
   assert.deepEqual(labels, []);
 
   editor.calibration = { millimetersPerPixel: 10 };
-  editor.drawWallDimensions();
-  assert.deepEqual(labels, ["1,000 mm"]);
-  assert.ok(
-    points.some(point => point.command === "moveTo" && point.x === 10 && point.y === 4),
-    JSON.stringify(points),
-  );
-  assert.ok(
-    points.some(point => point.command === "lineTo" && point.x === 110 && point.y === 4),
-    JSON.stringify(points),
-  );
-  assert.ok(points.filter(point => point.command === "lineTo").length >= 8);
+  const roomLayout = editor.buildRoomAreaLabelLayout();
+  editor.drawWallDimensions(roomLayout.map(item => item.bounds));
+  editor.drawRoomAreaLabels(roomLayout);
+
+  assert.deepEqual(labels.sort(), ["1,000 mm", "1,000 mm", "10.2 m²"].sort());
+  assert.ok(strokes.some(item => item.strokeStyle === "#111827" && item.lineWidth === 1));
+  assert.ok(strokes.some(item => item.strokeStyle === "rgba(17, 24, 39, 0.55)"));
 });
 
-test("applying manual calibration refreshes cached wall faces", () => {
+test("estimated calibration never calculates room areas", () => {
+  const editor = Object.create(ReviewEditor.prototype);
+  editor.document = { wallMask: new Uint8Array(64), openings: [] };
+  editor.calibration = { millimetersPerPixel: 100, estimated: true };
+  editor.roomAreas = [{ areaM2: 2, anchor: { x: 2, y: 2 } }];
+
+  assert.deepEqual(editor.refreshRoomAreas(8, 8), []);
+  assert.deepEqual(editor.roomAreas, []);
+});
+
+test("applying manual calibration refreshes wall dimensions and room areas", () => {
   const calls = [];
   const editor = Object.create(ReviewEditor.prototype);
   editor.document = { revision: 0 };
   editor.scalePoints = [{ x: 10, y: 20 }, { x: 110, y: 20 }];
   editor.refreshWallDimensions = () => calls.push("dimensions");
+  editor.refreshRoomAreas = () => calls.push("areas");
   editor.render = () => calls.push("render");
   editor.onChange = () => calls.push("change");
 
   editor.applyCalibration(1000);
 
   assert.equal(editor.calibration.estimated, undefined);
-  assert.deepEqual(calls, ["dimensions", "render", "change"]);
+  assert.deepEqual(calls, ["dimensions", "areas", "render", "change"]);
 });
 
 test("hit testing selects a visible opening box", () => {
@@ -511,18 +536,19 @@ const createWallPointerProbe = () => {
   return { editor, calls };
 };
 
-test("every committed wall or opening edit refreshes calibrated wall dimensions", () => {
+test("every committed wall or opening edit refreshes calibrated measurements", () => {
   const calls = [];
   const editor = Object.create(ReviewEditor.prototype);
   editor.document = { wallMask: new Uint8Array([0]), openings: [] };
   editor.calibration = { millimetersPerPixel: 10 };
   editor.refreshWallDimensions = () => calls.push("dimensions");
+  editor.refreshRoomAreas = () => calls.push("areas");
   editor.render = () => calls.push("render");
   editor.onChange = () => calls.push("change");
 
   editor.finishDocumentChange(true);
 
-  assert.deepEqual(calls, ["dimensions", "render", "change"]);
+  assert.deepEqual(calls, ["dimensions", "areas", "render", "change"]);
 });
 
 const createPanPointerProbe = () => {
