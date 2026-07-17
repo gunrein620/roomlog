@@ -17,8 +17,8 @@ export const metadata: Metadata = {
     telephone: false
   },
   icons: {
+    /* 우주 trim 로고 기반 아이콘 — 구 icon.svg(지붕 마크)는 목록에서 제외 */
     icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icon-512.png", sizes: "512x512", type: "image/png" }
     ],
