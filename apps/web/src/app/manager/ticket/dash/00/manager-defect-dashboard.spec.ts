@@ -123,7 +123,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   );
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
   assert.match(autoRefreshSource, /getRealtimeSocket/);
-  assert.match(autoRefreshSource, /isTicketActivity/);
+  assert.match(autoRefreshSource, /shouldRefreshTicketDashboard/);
   assert.match(autoRefreshSource, /router\.refresh\(\)/);
   assert.match(autoRefreshSource, /window\.setInterval/);
   assert.match(autoRefreshSource, /30000/);

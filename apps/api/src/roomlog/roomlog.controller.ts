@@ -1383,7 +1383,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
     const result = this.roomlogService.markManagerTicketRead(user.id, ticketId);
-    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    this.realtime.broadcast("roomlog:activity", {
+      kind: "ticket",
+      action: "read",
+    });
 
     return result;
   }

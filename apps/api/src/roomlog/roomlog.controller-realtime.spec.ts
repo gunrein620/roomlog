@@ -88,7 +88,10 @@ describe("roomlog complaint realtime activity", () => {
     controller.markManagerTicketRead(`Bearer ${auth.accessToken}`, ticket.id);
 
     assert.deepEqual(broadcasts, [
-      { event: "roomlog:activity", payload: { kind: "ticket" } },
+      {
+        event: "roomlog:activity",
+        payload: { kind: "ticket", action: "read" },
+      },
     ]);
   });
 });
