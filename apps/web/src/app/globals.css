@@ -94,6 +94,7 @@ img {
 
 /* trim 로고(홈과 동일 자산) — 누르면 홈 복귀. a/button 모두 중앙 정렬되도록 fit-content */
 .login-hero-logo {
+  position: relative;
   display: block;
   width: fit-content;
   margin: 0 auto;
@@ -102,8 +103,52 @@ img {
 }
 
 .login-hero-logo img {
+  position: relative;
+  z-index: 2;
   border-radius: 18px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* 궤도 별 — 로고 속 궤적처럼 타원으로 공전. 뒤쪽 반궤도에선 로고 뒤(z-index 1)로
+   들어가 가려졌다가 반대편에서 다시 앞(z-index 3)으로 나온다. 스케일로 원근감. */
+.login-hero-logo::after {
+  content: "✦";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  color: var(--pink);
+  font-size: 19px;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(242, 137, 157, 0.85);
+  pointer-events: none;
+  offset-path: path("M 0 38 A 92 38 0 1 1 0 -38 A 92 38 0 1 1 0 38");
+  offset-rotate: 0deg;
+  animation: login-star-orbit 2.4s linear infinite;
+}
+
+/* 혜성 리듬: 타원의 긴 구간(앞·뒤 가로 스윕)은 빠르게 슝, 양끝 짧은 턴에서는
+   잠깐 정체. offset-distance 체크포인트를 비선형 배분해 속도를 만든다.
+   (d=0 앞중앙 · d=25/75 양끝 턴 · d=50 뒤중앙) */
+@keyframes login-star-orbit {
+  0%   { offset-distance: 0%;   transform: scale(1);    opacity: 1;    z-index: 3; }
+  7%   { offset-distance: 15%;  transform: scale(0.9);  opacity: 1;    z-index: 3; }
+  25%  { offset-distance: 25%;  transform: scale(0.75); opacity: 0.95; z-index: 3; }
+  27%  { z-index: 1; }
+  43%  { offset-distance: 35%;  transform: scale(0.6);  opacity: 0.85; z-index: 1; }
+  50%  { offset-distance: 50%;  transform: scale(0.55); opacity: 0.8;  z-index: 1; }
+  57%  { offset-distance: 65%;  transform: scale(0.6);  opacity: 0.85; z-index: 1; }
+  73%  { z-index: 1; }
+  75%  { offset-distance: 75%;  transform: scale(0.75); opacity: 0.95; z-index: 3; }
+  93%  { offset-distance: 85%;  transform: scale(0.9);  opacity: 1;    z-index: 3; }
+  100% { offset-distance: 100%; transform: scale(1);    opacity: 1;    z-index: 3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-hero-logo::after {
+    animation: none;
+    offset-distance: 12%;
+  }
 }
 
 .login-hero h1 {
