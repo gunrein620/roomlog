@@ -75,6 +75,7 @@ export type TradeListing = Omit<TradeListingInput, "images" | "options"> & {
   id: string;
   ownerId: string;
   ownerName: string;
+  roomId?: string;
   status: "노출중" | "계약완료";
   createdAt: string;
   images: string[];
@@ -194,6 +195,11 @@ function normalizeDetailAddress(value?: string): string | undefined {
 
 function normalizeBuildingName(value?: string): string | undefined {
   const trimmed = typeof value === "string" ? value.trim().slice(0, 80) : "";
+  return trimmed || undefined;
+}
+
+function normalizeRoomId(value?: string): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
   return trimmed || undefined;
 }
 
@@ -452,6 +458,9 @@ export class TradeService implements OnModuleDestroy {
           const buildingName = normalizeBuildingName(listing.buildingName);
           if (buildingName) listing.buildingName = buildingName;
           else delete listing.buildingName;
+          const roomId = normalizeRoomId(listing.roomId);
+          if (roomId) listing.roomId = roomId;
+          else delete listing.roomId;
           if (listing.status !== "계약완료") listing.status = "노출중";
         });
         parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
@@ -541,7 +550,19 @@ export class TradeService implements OnModuleDestroy {
     return this.listListings().filter((listing) => listing.ownerId === ownerId);
   }
 
-  createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
+  attachListingRoom(ownerId: string, listingId: string, roomId: string): TradeListing {
+    const listing = this.ownedListing(ownerId, listingId);
+    const normalizedRoomId = normalizeRoomId(roomId);
+    if (!normalizedRoomId) throw new BadRequestException("roomId is required.");
+    if (listing.roomId === normalizedRoomId) return listing;
+
+    listing.roomId = normalizedRoomId;
+    this.persist();
+    this.projectListings();
+    return listing;
+  }
+
+  createListing(owner: { id: string; name: string }, input: TradeListingInput, roomId?: string): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
     const tradeType = normalizeTradeType(input.tradeType);
     const depositManwon = Number(input.depositManwon) || 0;
@@ -556,6 +577,7 @@ export class TradeService implements OnModuleDestroy {
       id: randomUUID().slice(0, 8),
       ownerId: owner.id,
       ownerName: owner.name,
+      ...(normalizeRoomId(roomId) ? { roomId: normalizeRoomId(roomId) } : {}),
       title: input.title.trim(),
       roomType: input.roomType?.trim() || "원룸",
       tradeType,

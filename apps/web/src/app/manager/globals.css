@@ -2443,7 +2443,7 @@ html:has(.manager-workspace) {
 
 .manager-contract-table {
   width: 100%;
-  min-width: 1720px;
+  min-width: 1840px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -2498,17 +2498,17 @@ html:has(.manager-workspace) {
 
 .manager-contract-table th:nth-child(3),
 .manager-contract-table td:nth-child(3) {
-  width: 78px;
+  width: 190px;
 }
 
 .manager-contract-table th:nth-child(4),
 .manager-contract-table td:nth-child(4) {
-  width: 210px;
+  width: 88px;
 }
 
 .manager-contract-table th:nth-child(5),
 .manager-contract-table td:nth-child(5) {
-  width: 88px;
+  width: 126px;
 }
 
 .manager-contract-table th:nth-child(6),
@@ -2595,6 +2595,19 @@ html:has(.manager-workspace) {
 
 .manager-contract-table__primary-link:hover {
   color: var(--primary);
+}
+
+.manager-contract-table__building {
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.manager-contract-table__building .manager-contract-table__primary-link {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .manager-contract-table__strong,
@@ -2828,6 +2841,301 @@ html:has(.manager-workspace) {
 
   .manager-contract-dashboard__pagination nav {
     justify-self: center;
+  }
+}
+
+.manager-contract-dashboard {
+  gap: var(--space-lg);
+}
+
+.manager-contract-dashboard__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-lg);
+  align-items: center;
+  padding: var(--space-xl);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-soft);
+}
+
+.manager-contract-dashboard__hero-copy {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.manager-contract-dashboard__hero p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-weight: var(--fw-subtitle);
+  line-height: var(--lh-body);
+}
+
+.manager-contract-dashboard__hero-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.manager-contract-dashboard__secondary-action {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-lg);
+  border: 1.5px solid var(--primary);
+  border-radius: var(--radius-btn);
+  color: var(--primary);
+  background: var(--surface-container-lowest);
+  font: inherit;
+  font-weight: var(--fw-title);
+  cursor: pointer;
+}
+
+.manager-contract-dashboard__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.manager-contract-dashboard__metric {
+  min-height: 116px;
+  display: grid;
+  align-content: space-between;
+  gap: var(--space-xs);
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+}
+
+.manager-contract-dashboard__metric span {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-title);
+}
+
+.manager-contract-dashboard__metric strong {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-contract-dashboard__metric small {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+  line-height: var(--lh-caption);
+}
+
+.manager-contract-dashboard__queue-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-soft);
+}
+
+.manager-contract-dashboard__queue-panel .manager-contract-dashboard__filter-header {
+  min-height: calc(var(--touch-target) + var(--space-lg));
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--primary) 4%, var(--surface-container-lowest));
+}
+
+.manager-contract-dashboard__filter-header h3 {
+  margin: 0;
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-subtitle);
+}
+
+.manager-contract-dashboard__queue-panel .manager-contract-dashboard__status-filters {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+}
+
+.manager-contract-dashboard__status-filters button {
+  min-height: 34px;
+  padding: 0 var(--space-md);
+  border: 0;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  font-size: var(--fs-caption);
+  box-shadow: none;
+}
+
+.manager-contract-dashboard__status-filters button[aria-pressed="true"] {
+  border: 1.5px solid var(--primary);
+  color: var(--primary);
+  background: var(--surface-container-lowest);
+}
+
+.manager-contract-dashboard__filter-panel {
+  grid-template-columns: minmax(280px, 1fr) minmax(170px, 220px);
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface-container-lowest);
+  box-shadow: none;
+}
+
+.manager-contract-dashboard__filter-panel label {
+  display: block;
+}
+
+.manager-contract-dashboard__field-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.manager-contract-dashboard__filter-panel input,
+.manager-contract-dashboard__filter-panel select {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  background: var(--surface-container-lowest);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-contract-table-wrap {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.manager-contract-table {
+  min-width: 1120px;
+}
+
+.manager-contract-table th,
+.manager-contract-table td {
+  min-height: 64px;
+  padding: var(--space-md) var(--space-lg);
+  font-size: var(--fs-body);
+}
+
+.manager-contract-table th {
+  color: var(--on-surface-variant);
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface-container-lowest));
+}
+
+.manager-contract-table th:nth-child(1),
+.manager-contract-table td:nth-child(1) {
+  width: 140px;
+}
+
+.manager-contract-table th:nth-child(2),
+.manager-contract-table td:nth-child(2) {
+  width: 128px;
+}
+
+.manager-contract-table th:nth-child(3),
+.manager-contract-table td:nth-child(3) {
+  width: 190px;
+}
+
+.manager-contract-table th:nth-child(4),
+.manager-contract-table td:nth-child(4) {
+  width: 150px;
+}
+
+.manager-contract-table th:nth-child(5),
+.manager-contract-table td:nth-child(5) {
+  width: 160px;
+}
+
+.manager-contract-table th:nth-child(6),
+.manager-contract-table td:nth-child(6) {
+  width: 300px;
+}
+
+.manager-contract-table th:nth-child(7),
+.manager-contract-table td:nth-child(7) {
+  width: 112px;
+}
+
+.manager-contract-table__money {
+  color: var(--on-surface);
+  text-align: left;
+}
+
+.manager-contract-table__row-action {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-lg);
+  border: 1.5px solid var(--primary);
+  border-radius: var(--radius);
+  color: var(--primary);
+  background: var(--surface-container-lowest);
+  font-weight: var(--fw-title);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.manager-contract-priority {
+  min-width: 74px;
+  min-height: 34px;
+  border: 0;
+  padding: 0 var(--space-md);
+  font-size: var(--fs-caption);
+}
+
+.manager-contract-priority--sla {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 10%, var(--surface-container-lowest));
+}
+
+.manager-contract-priority--check,
+.manager-contract-priority--pending {
+  color: color-mix(in srgb, var(--warning) 72%, var(--on-surface));
+  background: color-mix(in srgb, var(--warning) 18%, var(--surface-container-lowest));
+}
+
+.manager-contract-priority--ready,
+.manager-contract-priority--confirmed {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, var(--surface-container-lowest));
+}
+
+.manager-contract-priority--expire {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface-container-lowest));
+}
+
+.manager-contract-dashboard__secondary-action:focus-visible,
+.manager-contract-table__row-action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 1180px) {
+  .manager-contract-dashboard__hero {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-contract-dashboard__hero-actions {
+    justify-content: flex-start;
+  }
+
+  .manager-contract-dashboard__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .manager-contract-dashboard__filter-panel,
+  .manager-contract-dashboard__metrics {
+    grid-template-columns: 1fr;
   }
 }
 

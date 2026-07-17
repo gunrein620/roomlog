@@ -7,8 +7,13 @@ import {
 } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import { ApiError } from "@/lib/server-api";
-import { ContractShell, PageStack, Section } from "../_components";
-import { ContractRegisterForm, type ContractRegisterActionState } from "./ContractRegisterForm";
+import { getUser } from "@/lib/session";
+import { ContractShell, PageStack } from "../_components";
+import {
+  ContractRegisterForm,
+  type ContractRegisterActionState,
+  type ManagedContractRoomOption,
+} from "./ContractRegisterForm";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +24,7 @@ async function createContractAction(
   "use server";
 
   const unitId = textValue(formData, "unitId");
+  const roomId = textValue(formData, "roomId");
   const tenantName = textValue(formData, "tenantName");
   const tenantPhone = textValue(formData, "tenantPhone");
   const tenantEmail = textValue(formData, "tenantEmail");
@@ -35,7 +41,8 @@ async function createContractAction(
   try {
     const uploaded = contractFile ? await uploadManagerContractDocument(contractFile) : undefined;
     const detail = await createManagerContract({
-      unitId,
+      roomId: roomId || undefined,
+      unitId: unitId || undefined,
       tenantName,
       fileName: uploaded?.fileName ?? uploadedFileName(formData, "contractFile") ?? "manager-contract.pdf",
       fileUrl: uploaded?.fileUrl,
@@ -85,13 +92,19 @@ async function createContractAction(
   return { redirectTo: nextUrl };
 }
 
-export default function Page() {
+export default async function Page() {
+  const user = await getUser();
+  const managedRooms: ManagedContractRoomOption[] = (user?.managedRooms ?? []).map((room) => ({
+    id: room.id,
+    buildingName: room.buildingName || "이름 미입력 건물",
+    roomNo: room.roomNo || "-",
+    address: room.address || "",
+  }));
+
   return (
     <ContractShell id="M-DOC-02" title="계약서 등록">
       <PageStack>
-        <Section title="계약서 등록 접수">
-          <ContractRegisterForm action={createContractAction} />
-        </Section>
+        <ContractRegisterForm action={createContractAction} rooms={managedRooms} />
       </PageStack>
     </ContractShell>
   );
@@ -128,6 +141,9 @@ function uploadedFile(formData: FormData, name: string) {
 
 function contractActionErrorMessage(error: unknown) {
   if (error instanceof ApiError && error.message.trim()) return error.message;
+  if (error instanceof Error && /fetch failed|failed to fetch|networkerror|load failed/i.test(error.message)) {
+    return "API 서버에 연결하지 못했습니다. 현재 localhost:3000/4000을 Docker 컨테이너가 잡고 있거나 API 서버가 다른 환경으로 떠 있는지 확인해 주세요.";
+  }
   if (error instanceof Error && error.message.trim()) return error.message;
   return "계약서 등록 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
 }

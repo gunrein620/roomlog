@@ -21,6 +21,7 @@ export class TradeStoreProjector {
     try {
       const rows = await this.prisma.tradeListing.findMany({ orderBy: { createdAt: "desc" } });
       return rows.map((row) => {
+        const roomId = (row as unknown as { roomId?: string | null }).roomId?.trim();
         const detailAddress = (row as unknown as { detailAddress?: string | null }).detailAddress?.trim();
         const buildingName = (row as unknown as { buildingName?: string | null }).buildingName?.trim();
         const specRow = row as unknown as {
@@ -33,6 +34,7 @@ export class TradeStoreProjector {
           id: row.id,
           ownerId: row.ownerId,
           ownerName: row.ownerName,
+          ...(roomId ? { roomId } : {}),
           title: row.title,
           roomType: row.roomType,
           tradeType: normalizeTradeType(row.tradeType),
@@ -73,6 +75,7 @@ export class TradeStoreProjector {
         const data = {
           ownerId: listing.ownerId,
           ownerName: listing.ownerName,
+          roomId: listing.roomId?.trim() || null,
           title: listing.title,
           roomType: listing.roomType,
           tradeType: listing.tradeType,

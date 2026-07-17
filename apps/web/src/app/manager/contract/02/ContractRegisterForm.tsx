@@ -2,8 +2,8 @@
 
 import { FileSearch, FileUp, ScanLine } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { Badge, Button, Card } from "@roomlog/ui";
+import { useActionState, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { Button, Card } from "@roomlog/ui";
 
 export type ContractRegisterActionState = {
   redirectTo?: string;
@@ -17,18 +17,37 @@ type ContractRegisterAction = (
 
 const INITIAL_ACTION_STATE: ContractRegisterActionState = {};
 
-export function ContractRegisterForm({ action }: { action: ContractRegisterAction }) {
+export type ManagedContractRoomOption = {
+  id: string;
+  buildingName: string;
+  roomNo: string;
+  address?: string;
+};
+
+export function ContractRegisterForm({
+  action,
+  rooms,
+}: {
+  action: ContractRegisterAction;
+  rooms: ManagedContractRoomOption[];
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const navigatedRedirectRef = useRef<string | null>(null);
   const [actionState, formAction, pending] = useActionState(action, INITIAL_ACTION_STATE);
   const [fileName, setFileName] = useState("파일 미선택");
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [hasFile, setHasFile] = useState(false);
-  const submitDisabled = pending || !hasFile;
+  const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.id ?? "");
+  const selectedRoom = rooms.find((room) => room.id === selectedRoomId);
+  const hasRooms = rooms.length > 0;
+  const submitDisabled = pending || !hasFile || !selectedRoomId;
 
   useEffect(() => {
     if (!actionState.redirectTo) return;
+    if (navigatedRedirectRef.current === actionState.redirectTo) return;
+    navigatedRedirectRef.current = actionState.redirectTo;
     router.push(actionState.redirectTo);
   }, [actionState.redirectTo, router]);
 
@@ -65,74 +84,120 @@ export function ContractRegisterForm({ action }: { action: ContractRegisterActio
 
   return (
     <form ref={formRef} action={formAction} encType="multipart/form-data" aria-busy={pending} style={pageGridStyle}>
-      <Card style={heroCardStyle}>
-        <div style={{ display: "grid", gap: "var(--space-sm)" }}>
-          <div style={stepRowStyle}>
-            <StepPill active>1 계약서 입력</StepPill>
-            <StepPill>2 OCR 분석</StepPill>
-            <StepPill>3 값 보강</StepPill>
-            <StepPill>4 확정</StepPill>
-          </div>
-          <h2 style={titleStyle}>계약서 파일만 먼저 입력하세요</h2>
-          <p style={mutedStyle}>OCR이 읽은 뒤 부족한 값은 기존 DB 계약값으로 보강하고, 마지막에 사람이 직접 수정합니다.</p>
-        </div>
-
-        <div className="contract-register-upload-grid" style={uploadGridStyle}>
-          <label style={dropzoneStyle}>
-            {filePreviewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={filePreviewUrl} alt="선택한 계약서 이미지 미리보기" style={previewImageStyle} />
-            ) : (
-              <div style={dropzoneInnerStyle}>
-                <FileSearch aria-hidden="true" style={largeIconStyle} />
-                <strong>{fileName}</strong>
-                <span style={mutedStyle}>PDF 또는 이미지 파일을 선택하세요.</span>
-              </div>
-            )}
-            <input
-              id="manager-contract-file"
-              name="contractFile"
-              type="file"
-              accept="application/pdf,image/*"
-              required
-              disabled={pending}
-              onChange={handleFileChange}
-              style={visuallyHiddenStyle}
-            />
-          </label>
-
-          <div className="contract-register-upload-actions" style={uploadActionStyle}>
-            <label
-              className="contract-register-upload-button"
-              htmlFor="manager-contract-file"
-              aria-disabled={pending}
-              style={pending ? disabledFileButtonStyle : fileButtonStyle}
-            >
-              <FileUp aria-hidden="true" style={smallIconStyle} />
-              <span>파일 선택</span>
+      <div className="contract-register-upload-grid" style={uploadGridStyle}>
+        <Card style={uploadCardStyle}>
+          <div style={dropzoneStyle}>
+            <label htmlFor="manager-contract-file" style={dropzonePreviewStyle}>
+              {filePreviewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={filePreviewUrl} alt="선택한 계약서 이미지 미리보기" style={previewImageStyle} />
+              ) : (
+                <div style={dropzoneInnerStyle}>
+                  <FileSearch aria-hidden="true" style={largeIconStyle} />
+                  <strong>{fileName}</strong>
+                  <span style={dropzoneHintStyle}>PDF 또는 이미지 파일을 선택하면 원문 미리보기와 OCR 품질 체크를 먼저 보여줍니다.</span>
+                </div>
+              )}
+              <input
+                id="manager-contract-file"
+                name="contractFile"
+                type="file"
+                accept="application/pdf,image/*"
+                required
+                disabled={pending}
+                onChange={handleFileChange}
+                style={visuallyHiddenStyle}
+              />
             </label>
-            <Button
-              className="contract-register-submit-button"
-              type="submit"
-              name="intent"
-              value="ocr-first"
-              disabled={submitDisabled}
-              aria-disabled={submitDisabled}
-              style={submitDisabled ? disabledSubmitButtonStyle : buttonWithIconStyle}
-            >
-              <ScanLine aria-hidden="true" style={smallIconStyle} />
-              {pending ? "처리 중" : "계약서 입력"}
-            </Button>
-            {actionState.error ? <div role="alert" style={errorNoticeStyle}>{actionState.error}</div> : null}
+
+            <div className="contract-register-upload-actions" style={uploadActionStyle}>
+              <label
+                className="contract-register-upload-button"
+                htmlFor="manager-contract-file"
+                aria-disabled={pending}
+                style={pending ? disabledFileButtonStyle : fileButtonStyle}
+              >
+                <FileUp aria-hidden="true" style={smallIconStyle} />
+                <span>파일 선택</span>
+              </label>
+              <Button
+                className="contract-register-submit-button"
+                type="submit"
+                name="intent"
+                value="ocr-first"
+                disabled={submitDisabled}
+                aria-disabled={submitDisabled}
+                style={submitDisabled ? disabledSubmitButtonStyle : buttonWithIconStyle}
+              >
+                <ScanLine aria-hidden="true" style={smallIconStyle} />
+                {pending ? "처리 중" : "계약서 입력"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </Card>
+          {actionState.error ? <div role="alert" style={errorNoticeStyle}>{actionState.error}</div> : null}
+        </Card>
+
+        <Card style={ocrGuideCardStyle}>
+          <div style={roomSelectPanelStyle}>
+            <label htmlFor="manager-contract-room" style={roomSelectLabelStyle}>매물 선택</label>
+            <select
+              id="manager-contract-room"
+              name="roomId"
+              value={selectedRoomId}
+              required={hasRooms}
+              disabled={pending || !hasRooms}
+              onChange={(event) => setSelectedRoomId(event.currentTarget.value)}
+              style={pending || !hasRooms ? disabledRoomSelectStyle : roomSelectStyle}
+            >
+              {hasRooms ? (
+                rooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.buildingName} {room.roomNo}
+                  </option>
+                ))
+              ) : (
+                <option value="">등록된 매물 없음</option>
+              )}
+            </select>
+            <span style={roomSelectMetaStyle}>
+              {selectedRoom ? selectedRoom.address || "주소 미입력" : "매물을 먼저 등록해 주세요"}
+            </span>
+          </div>
+          <h3 style={guideTitleStyle}>이번 OCR이 읽는 항목</h3>
+          <div style={guideListStyle}>
+            <OcrReadItem index="1" title="보증금 구조" note="기본 보증금, 전환보증금, 최종 보증금" badge="필수" emphasis />
+            <OcrReadItem index="2" title="특약" note="계약서에 없으면 문서에 없음으로 확정" badge="선택" />
+            <OcrReadItem index="3" title="자동연장·원상복구·수선 책임" note="있으면 원문 기준으로 저장, 없으면 숨김 처리" badge="선택" />
+          </div>
+        </Card>
+      </div>
     </form>
   );
 }
 
-function StepPill({ active = false, children }: { active?: boolean; children: ReactNode }) {
-  return <Badge emphasis={active}>{children}</Badge>;
+function OcrReadItem({
+  index,
+  title,
+  note,
+  badge,
+  emphasis = false,
+}: {
+  index: string;
+  title: string;
+  note: string;
+  badge: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div style={guideItemStyle}>
+      <span style={guideIndexStyle}>{index}</span>
+      <div style={guideItemTextStyle}>
+        <strong style={guideItemTitleStyle}>{title}</strong>
+        <span>{note}</span>
+      </div>
+      <span style={emphasis ? requiredBadgeStyle : optionalBadgeStyle}>{badge}</span>
+    </div>
+  );
 }
 
 const pageGridStyle = {
@@ -140,43 +205,43 @@ const pageGridStyle = {
   gap: "var(--space-lg)",
 } as const;
 
-const heroCardStyle = {
-  display: "grid",
-  gap: "var(--space-lg)",
-} as const;
-
-const stepRowStyle = {
-  display: "flex",
-  gap: "var(--space-sm)",
-  flexWrap: "wrap",
-} as const;
-
-const titleStyle = {
-  margin: 0,
-  fontSize: "var(--fs-title)",
-  lineHeight: "var(--lh-title)",
-} as const;
-
 const uploadGridStyle = {
   display: "grid",
   width: "100%",
-  maxWidth: 980,
-  marginInline: "auto",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
+  maxWidth: "none",
+  marginInline: 0,
+  gridTemplateColumns: "minmax(320px, 0.86fr) minmax(360px, 1.04fr)",
   gap: "var(--space-lg)",
   alignItems: "stretch",
 } as const;
 
+const uploadCardStyle = {
+  minHeight: 430,
+  display: "grid",
+  gap: "var(--space-md)",
+  borderRadius: "var(--radius-lg)",
+  padding: "var(--space-lg)",
+} as const;
+
 const dropzoneStyle = {
-  minHeight: 300,
+  minHeight: 390,
   display: "grid",
   placeItems: "center",
+  alignContent: "center",
+  gap: "var(--space-lg)",
   border: "1.5px dashed var(--outline-variant)",
   borderRadius: "var(--radius-md)",
   background: "var(--surface-container-low)",
-  cursor: "pointer",
   overflow: "hidden",
   padding: "var(--space-lg)",
+} as const;
+
+const dropzonePreviewStyle = {
+  width: "100%",
+  minHeight: 220,
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
 } as const;
 
 const dropzoneInnerStyle = {
@@ -187,6 +252,14 @@ const dropzoneInnerStyle = {
   color: "var(--on-surface-variant)",
 } as const;
 
+const dropzoneHintStyle = {
+  maxWidth: 430,
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-body)",
+  fontWeight: 700,
+  lineHeight: "var(--lh-body)",
+} as const;
+
 const previewImageStyle = {
   width: "100%",
   height: "100%",
@@ -195,22 +268,25 @@ const previewImageStyle = {
 } as const;
 
 const uploadActionStyle = {
-  display: "grid",
-  gap: "var(--space-md)",
-  alignContent: "center",
-  justifyItems: "center",
+  display: "flex",
+  justifyContent: "center",
+  gap: "var(--space-sm)",
+  flexWrap: "wrap",
 } as const;
 
 const fileButtonStyle = {
   minHeight: "var(--touch-target)",
+  width: "auto",
   position: "relative",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   gap: "var(--space-sm)",
+  border: "1.5px solid var(--primary)",
   borderRadius: "var(--radius-btn)",
-  color: "var(--on-primary)",
-  background: "var(--primary)",
+  padding: "0 var(--space-lg)",
+  color: "var(--primary)",
+  background: "var(--surface-container-lowest)",
   fontWeight: 800,
   cursor: "pointer",
 } as const;
@@ -231,14 +307,130 @@ const visuallyHiddenStyle = {
 } as const;
 
 const buttonWithIconStyle = {
+  width: "auto",
   gap: "var(--space-sm)",
   minHeight: "var(--touch-target)",
+  paddingInline: "var(--space-lg)",
 } as const;
 
 const disabledSubmitButtonStyle = {
   ...buttonWithIconStyle,
   opacity: 0.55,
   cursor: "not-allowed",
+} as const;
+
+const ocrGuideCardStyle = {
+  minHeight: 430,
+  display: "grid",
+  alignContent: "start",
+  gap: "var(--space-lg)",
+  borderRadius: "var(--radius-lg)",
+  padding: "var(--space-xl)",
+} as const;
+
+const roomSelectPanelStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
+  padding: "var(--space-md)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-low)",
+} as const;
+
+const roomSelectLabelStyle = {
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-body)",
+  fontWeight: 900,
+} as const;
+
+const roomSelectStyle = {
+  minHeight: "var(--touch-target)",
+  width: "100%",
+  border: "1px solid var(--input-border)",
+  borderRadius: "var(--radius-btn)",
+  padding: "0 var(--space-md)",
+  color: "var(--input-text)",
+  background: "var(--surface-container-lowest)",
+  font: "inherit",
+  fontWeight: 800,
+} as const;
+
+const disabledRoomSelectStyle = {
+  ...roomSelectStyle,
+  opacity: 0.55,
+  cursor: "not-allowed",
+} as const;
+
+const roomSelectMetaStyle = {
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  lineHeight: "var(--lh-caption)",
+} as const;
+
+const guideTitleStyle = {
+  margin: 0,
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-subtitle)",
+  lineHeight: "var(--lh-subtitle)",
+} as const;
+
+const guideListStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
+} as const;
+
+const guideItemStyle = {
+  minHeight: 78,
+  display: "grid",
+  gridTemplateColumns: "44px minmax(0, 1fr) auto",
+  gap: "var(--space-md)",
+  alignItems: "center",
+  padding: "var(--space-md)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  background: "var(--surface-container-lowest)",
+} as const;
+
+const guideIndexStyle = {
+  width: 42,
+  height: 42,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: "var(--radius-sm)",
+  color: "var(--primary)",
+  background: "var(--primary-container)",
+  fontWeight: 900,
+} as const;
+
+const guideItemTextStyle = {
+  minWidth: 0,
+  display: "grid",
+  gap: "var(--space-xs)",
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  lineHeight: "var(--lh-caption)",
+} as const;
+
+const guideItemTitleStyle = {
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-body)",
+  lineHeight: "var(--lh-body)",
+} as const;
+
+const requiredBadgeStyle = {
+  borderRadius: "var(--radius-full)",
+  padding: "var(--space-xs) var(--space-sm)",
+  color: "var(--success)",
+  background: "color-mix(in srgb, var(--success) 14%, var(--surface-container-lowest))",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 900,
+} as const;
+
+const optionalBadgeStyle = {
+  ...requiredBadgeStyle,
+  color: "var(--on-surface-variant)",
+  background: "var(--surface-container-low)",
 } as const;
 
 const errorNoticeStyle = {
@@ -261,10 +453,4 @@ const smallIconStyle = {
   width: 18,
   height: 18,
   flex: "0 0 auto",
-} as const;
-
-const mutedStyle = {
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  lineHeight: "var(--lh-body)",
 } as const;
