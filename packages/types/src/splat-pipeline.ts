@@ -25,8 +25,9 @@ export interface SplatAssetUpdatedPayload {
 }
 
 // ── S3 직접 업로드(presigned PUT) 계약 — docs/splat-direct-upload.md ──
-// 대용량 소스(영상/캡처 zip, ≤800MB)가 api 힙을 통과하지 않도록 브라우저가 S3로 직행한다.
+// 대용량 소스(영상/캡처 zip)가 api 힙을 통과하지 않도록 브라우저가 S3로 직행한다.
 // 서버는 presign(서명 발급)과 complete(HEAD 검증 + 자산 생성)만 담당한다.
+// 한도: 직접 업로드 2GB(sizeBytes int4 범위) / 멀티파트 폴백 800MB(서버 힙 버퍼링 경로).
 
 /** 매물 3D 투어 소스 직접 업로드 — presign 요청. */
 export interface SplatIntakePresignRequest {

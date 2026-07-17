@@ -158,8 +158,8 @@ export function intakeSplatAssetWithProgress(
 
 /**
  * S3 직접 업로드(presigned PUT) 발급 요청 — docs/splat-direct-upload.md. 서버가 소유권·확장자·
- * 800MB 상한을 검사한 뒤 `{ mode: "direct", uploadUrl, key, headers }`를 주거나, S3 미설정
- * 환경(로컬 dev)에서는 `{ mode: "multipart" }`를 줘서 기존 멀티파트 경로로 폴백하라고 신호한다.
+ * 상한(직접 2GB, 폴백 800MB)을 검사한 뒤 `{ mode: "direct", uploadUrl, key, headers }`를 주거나,
+ * S3 미설정 환경(로컬 dev)에서는 `{ mode: "multipart" }`를 줘서 기존 멀티파트 경로로 폴백하라고 신호한다.
  */
 export async function requestSplatIntakePresign(
   input: SplatIntakePresignRequest

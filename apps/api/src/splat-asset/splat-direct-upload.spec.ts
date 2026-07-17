@@ -6,6 +6,7 @@ import { SplatAssetController } from "./splat-asset.controller";
 import { SplatAssetService } from "./splat-asset.service";
 
 const MAX_UPLOAD_BYTES = 800 * 1024 * 1024;
+const MAX_DIRECT_UPLOAD_BYTES = 2000 * 1024 * 1024;
 
 function serviceWithFakes(prisma: unknown, storageAdapter: unknown): SplatAssetService {
   const service = new SplatAssetService(undefined);
@@ -77,9 +78,51 @@ describe("Splat direct upload presign", () => {
     );
   });
 
-  it("rejects a file larger than 800MB", async () => {
+  it("rejects a direct upload larger than 2GB", async () => {
     const service = serviceWithFakes({}, {
       presignUpload: async () => assert.fail("상한 초과 파일에 presign을 발급하면 안 됩니다.")
+    });
+
+    await assert.rejects(
+      () =>
+        service.presignIntake({
+          listingId: "listing-1",
+          fileName: "tour.mp4",
+          sizeBytes: MAX_DIRECT_UPLOAD_BYTES + 1,
+          mimeType: "video/mp4"
+        }),
+      (error: unknown) => error instanceof BadRequestException && hasStatus(error, 400)
+    );
+  });
+
+  it("allows a direct upload between 800MB and 2GB", async () => {
+    // 직접 업로드 한도(2GB)는 멀티파트 한도(800MB)보다 넓다 — 고해상도 영상 실험 경로.
+    const service = serviceWithFakes({}, {
+      presignUpload: async (input: { key: string; mimeType: string; expiresInSeconds: number }) => ({
+        uploadUrl: "https://bucket.example/presigned",
+        key: input.key,
+        headers: { "Content-Type": input.mimeType },
+        expiresAt: new Date("2026-07-17T01:00:00.000Z"),
+        publicUrl: `https://cdn.example/${input.key}`
+      })
+    });
+
+    const result = await service.presignIntake({
+      listingId: "listing-1",
+      fileName: "tour.mp4",
+      sizeBytes: MAX_UPLOAD_BYTES + 1,
+      mimeType: "video/mp4"
+    });
+
+    assert.equal(result.mode, "direct");
+  });
+
+  it("rejects a file over the multipart limit up front when falling back to multipart mode", async () => {
+    // S3 비활성 환경에서 800MB 초과 파일에 multipart 모드를 돌려주면, 클라이언트가
+    // 어차피 거부될 대용량 멀티파트 업로드를 시작하게 된다 — presign 단계에서 차단.
+    const service = serviceWithFakes({}, {
+      save: async () => ({ fileName: "unused", fileUrl: "/unused" }),
+      read: async () => null
     });
 
     await assert.rejects(
@@ -194,9 +237,9 @@ describe("Splat direct upload complete", () => {
     );
   });
 
-  it("rejects an uploaded object larger than 800MB after HEAD", async () => {
+  it("rejects an uploaded object larger than 2GB after HEAD", async () => {
     const service = serviceWithFakes({}, {
-      headObject: async () => ({ sizeBytes: MAX_UPLOAD_BYTES + 1, mimeType: "video/mp4" }),
+      headObject: async () => ({ sizeBytes: MAX_DIRECT_UPLOAD_BYTES + 1, mimeType: "video/mp4" }),
       publicUrl: (key: string) => `https://cdn.example/${key}`
     });
 

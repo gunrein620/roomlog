@@ -30,8 +30,13 @@ export const SPLAT_ASSET_DATABASE_URL = "SPLAT_ASSET_DATABASE_URL";
 
 export type UploadedSplatAssetFile = { buffer: Buffer; originalname: string; mimetype: string };
 
+// 멀티파트(서버 경유) 한도 — multer가 파일 전체를 힙에 버퍼링하는 경로라 보수적으로 유지한다.
 const MAX_UPLOAD_BYTES = 800 * 1024 * 1024;
 const MAX_UPLOAD_MESSAGE = "영상, 캡처 zip 또는 스플랫 파일은 800MB 이하만 접수할 수 있습니다.";
+// S3 직접 업로드(presigned PUT) 한도 — 서버는 바이트를 안 만지므로 힙과 무관.
+// 상한 근거는 sizeBytes 컬럼(int4, 최대 ~2.147GB)이다. 더 키우려면 BigInt 마이그레이션 필요.
+const MAX_DIRECT_UPLOAD_BYTES = 2000 * 1024 * 1024;
+const MAX_DIRECT_UPLOAD_MESSAGE = "영상, 캡처 zip 또는 스플랫 파일은 2GB 이하만 접수할 수 있습니다.";
 const SPLAT_EXTENSIONS = [".spz", ".sog", ".ply", ".splat"];
 const VIDEO_EXTENSIONS = [".mp4", ".mov", ".m4v", ".webm"];
 
@@ -240,11 +245,16 @@ export class SplatAssetService {
     if (input.sizeBytes === 0) {
       throw new BadRequestException("업로드할 파일이 비어 있습니다.");
     }
-    if (input.sizeBytes > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException(MAX_UPLOAD_MESSAGE);
-    }
     if (!this.storageAdapter.presignUpload) {
+      // 멀티파트 폴백으로 보낼 파일은 폴백 경로의 한도(800MB)를 여기서 미리 걸러,
+      // 어차피 거부될 대용량 업로드를 클라이언트가 시작조차 하지 않게 한다.
+      if (input.sizeBytes > MAX_UPLOAD_BYTES) {
+        throw new BadRequestException(MAX_UPLOAD_MESSAGE);
+      }
       return { mode: "multipart" };
+    }
+    if (input.sizeBytes > MAX_DIRECT_UPLOAD_BYTES) {
+      throw new BadRequestException(MAX_DIRECT_UPLOAD_MESSAGE);
     }
 
     const key = `splat-intake/${input.listingId}/${safeUploadedFileName(
@@ -281,8 +291,8 @@ export class SplatAssetService {
     if (head.sizeBytes === 0) {
       throw new BadRequestException("업로드할 파일이 비어 있습니다.");
     }
-    if (head.sizeBytes > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException(MAX_UPLOAD_MESSAGE);
+    if (head.sizeBytes > MAX_DIRECT_UPLOAD_BYTES) {
+      throw new BadRequestException(MAX_DIRECT_UPLOAD_MESSAGE);
     }
 
     const classification = classifyIntakeFile(input.key, head.mimeType);
