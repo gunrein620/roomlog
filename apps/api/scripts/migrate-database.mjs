@@ -415,13 +415,18 @@ const REQUIRED_FINAL_FUNCTIONS = Object.freeze({
 
 export const analyzeMigrationHistory = (migrations, ledgerRows) => {
   if (ledgerRows.length > migrations.length) {
-    throw new Error("Migration ledger is not an ordered prefix of repository migrations");
+    throw new Error("Migration ledger contains unknown or duplicate migrations");
   }
 
-  for (const [index, row] of ledgerRows.entries()) {
-    const migration = migrations[index];
-    if (!migration || row.migration_name !== migration.name) {
-      throw new Error("Migration ledger is not an ordered prefix of repository migrations");
+  const migrationByName = new Map(migrations.map((migration) => [migration.name, migration]));
+  const appliedNames = new Set();
+  for (const row of ledgerRows) {
+    const migration = migrationByName.get(row.migration_name);
+    if (!migration) {
+      throw new Error(`Migration ledger contains unknown migration: ${row.migration_name}`);
+    }
+    if (appliedNames.has(row.migration_name)) {
+      throw new Error(`Migration ledger contains duplicate migration: ${row.migration_name}`);
     }
     if (!row.finished_at || row.rolled_back_at || row.logs) {
       throw new Error(`Migration ${row.migration_name} is failed or incomplete`);
@@ -429,11 +434,12 @@ export const analyzeMigrationHistory = (migrations, ledgerRows) => {
     if (row.checksum !== migration.checksum) {
       throw new Error(`Migration ${row.migration_name} checksum mismatch`);
     }
+    appliedNames.add(row.migration_name);
   }
 
   return {
-    applied: migrations.slice(0, ledgerRows.length),
-    pending: migrations.slice(ledgerRows.length)
+    applied: migrations.filter(({ name }) => appliedNames.has(name)),
+    pending: migrations.filter(({ name }) => !appliedNames.has(name))
   };
 };
 
@@ -925,7 +931,11 @@ export const runDatabaseBootstrap = async (databaseUrl = process.env.DATABASE_UR
       throw new Error(
         "Nonempty database has no trusted migration ledger; in-place adoption is deferred"
       );
-    } else if (history.applied.length < BASELINE_MIGRATIONS.length) {
+    } else if (
+      BASELINE_MIGRATIONS.some(
+        (name) => !history.applied.some((migration) => migration.name === name)
+      )
+    ) {
       throw new Error(
         "Partial frozen baseline ledger is not safe to resume; in-place adoption is deferred"
       );
