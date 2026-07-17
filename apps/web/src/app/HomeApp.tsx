@@ -12,6 +12,7 @@ import {
   Building,
   Building2,
   CalendarClock,
+  ChevronDown,
   ChevronRight,
   Copy,
   DoorOpen,
@@ -220,7 +221,8 @@ const listingMatchesCategory = (label: string, listing: Listing): boolean => {
   return false;
 };
 
-const quickFilters = ["월세", "전세", "관리비 포함", "반려동물", "주차", "풀옵션"];
+/* 거래유형(월세·전세)은 검색카드 탭이 단독 점유 — 여기엔 부가 조건만 남긴다 (중복 스택 제거) */
+const quickFilters = ["관리비 포함", "반려동물", "주차", "풀옵션"];
 
 // 검색바 거래유형 탭 — 택일. 필터 체인의 거래유형 OR 매칭(dealTypeFilters)과 같은 어휘를 쓴다.
 const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
@@ -1095,28 +1097,7 @@ function FilterBottomSheet({
           <em>예상 {resultCount}개</em>
         </div>
 
-        <div className="filter-sheet-section">
-          <strong>거래 유형</strong>
-          <div className="filter-segment-grid">
-            {["월세", "전세", "단기", "매매"].map((dealType) => (
-              <button
-                className={activeQuickFilters.includes(dealType) ? "active" : ""}
-                type="button"
-                key={dealType}
-                onClick={() => {
-                  if (dealType === "단기" || dealType === "매매") {
-                    return;
-                  }
-
-                  onQuickFilterToggle(dealType);
-                }}
-              >
-                {dealType}
-              </button>
-            ))}
-          </div>
-        </div>
-
+        {/* 거래유형 섹션 제거 — 검색카드 탭이 단독 점유(택일), 시트의 다중 토글이 규칙을 깨뜨렸음 */}
         <div className="filter-sheet-section">
           <strong>매물 유형</strong>
           <div className="filter-option-grid">
@@ -2576,6 +2557,13 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         <TourUploadBanner />
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
+          {/* 히어로가 앱헤더보다 먼저 — 모바일 첫 화면도 브랜드(별밤 밴드)로 연다. 데스크톱은 app-header가 숨겨져 영향 없음 */}
+          <div className="web-hero-head" aria-hidden="true">
+            <span className="web-hero-eyebrow">FIND YOUR SPACE</span>
+            <h1>방 구할 땐,<br /><span className="hero-woozu">우주</span>에서</h1>
+            <p className="web-hero-sub">사진과 다른 집은 그만. 3D로 먼저 둘러보세요.</p>
+          </div>
+
           <header className="app-header">
             <div>
               <p className="brand-kicker">{selectedAreaTitle} 주변</p>
@@ -2586,12 +2574,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               <Bell size={19} strokeWidth={2.4} aria-hidden="true" />
             </button>
           </header>
-
-          <div className="web-hero-head" aria-hidden="true">
-            <span className="web-hero-eyebrow">FIND YOUR SPACE</span>
-            <h1>방 구할 땐,<br /><span className="hero-woozu">우주</span>에서</h1>
-            <p className="web-hero-sub">사진과 다른 집은 그만. 3D로 먼저 둘러보세요.</p>
-          </div>
 
           {/* 5b 검색바 — 전세·월세/매매 · 지역/유형/가격 · 핑크 검색 CTA. 각 필드는 기존 시트를 연다 */}
           <div className="search-box" aria-label="매물 검색">
@@ -2611,17 +2593,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <div className="search-fields">
               <button type="button" className="search-field" onClick={() => setIsSearchSheetOpen(true)}>
                 <span className="search-field-label">지역</span>
-                <span className="search-field-value">{selectedAreaTitle} ▾</span>
+                <span className="search-field-value">{selectedAreaTitle} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
               </button>
               <span className="search-field-divider" aria-hidden="true" />
               <button type="button" className="search-field" onClick={() => setIsFilterSheetOpen(true)}>
                 <span className="search-field-label">매물 유형</span>
-                <span className="search-field-value">{activeCategory} ▾</span>
+                <span className="search-field-value">{activeCategory} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
               </button>
               <span className="search-field-divider" aria-hidden="true" />
               <button type="button" className="search-field" onClick={() => setIsPriceSheetOpen(true)}>
                 <span className="search-field-label">가격대</span>
-                <span className="search-field-value">{activePriceLabel} ▾</span>
+                <span className="search-field-value">{activePriceLabel} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
               </button>
               {/* 검색 = 현재 조건(탭·유형·가격)이 이미 피드에 반영돼 있으므로, 결과 섹션으로 이동시키는 실행 버튼 */}
               <button
@@ -2674,11 +2656,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             ))}
           </div>
 
-          <div className="filter-feedback" role="status" aria-label={`선택 조건 ${activeFilterSummary}, 확인매물 ${visibleHomeCount}개`}>
-            <strong>{activeFilterSummary}</strong>
-            <span>확인매물 {visibleHomeCount}개를 보여주는 중</span>
-          </div>
-
+          {/* filter-feedback 바 제거 — 조건 요약은 app-header(모바일)·검색카드(데스크톱)가 이미 담당 */}
           <div className="section-title">
             <div>
               {/* "3D로 미리 보는"은 전 매물 3D를 암시해 과장 — 브랜드 화자 큐레이션 문구로 */}

@@ -32,6 +32,8 @@ html,
 body {
   min-height: 100%;
   margin: 0;
+  /* 가로 스크롤 전역 가드 — 한 요소가 삐져나와도 페이지가 옆으로 밀리지 않게 (hidden이 아닌 clip: 스크롤 컨테이너화 방지) */
+  overflow-x: clip;
 }
 
 body {
@@ -72,7 +74,7 @@ img {
 }
 
 .app-canvas {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 0;
 }
 
@@ -229,7 +231,7 @@ img {
 }
 
 .auth-check-screen {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-content: center;
   gap: 10px;
@@ -252,7 +254,7 @@ img {
 .login-phone,
 .service-frame {
   width: min(100%, 430px);
-  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0 auto;
   overflow: clip;
   background: var(--canvas);
@@ -898,7 +900,7 @@ p {
 
 /* 회원가입 = 로그인과 같은 밤하늘 (배경은 body:has(.login-canvas)가 담당) */
 .signup-page {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 42px 18px;
   background: transparent;
 }
@@ -1008,6 +1010,11 @@ p {
 
 .app-header {
   padding-top: 4px;
+}
+
+/* 모바일 홈 = 히어로 밴드 바로 아래 기능 헤더 — 밴드와 숨 고를 간격 */
+.web-hero-head + .app-header {
+  margin-top: 18px;
 }
 
 .app-header h1 {
@@ -1147,6 +1154,13 @@ p {
   text-overflow: ellipsis;
 }
 
+/* ▾ 글리프 → lucide ChevronDown 전환분 — 인라인 svg 베이스라인 보정 */
+.search-field-value svg {
+  display: inline;
+  vertical-align: -3px;
+  color: var(--subtle);
+}
+
 .search-field-divider {
   flex: none;
   width: 1px;
@@ -1186,60 +1200,44 @@ p {
   display: none;
 }
 
-.category-card {
-  flex: 0 0 88px;
-  display: grid;
-  min-width: 88px;
-  min-height: 66px;
-  align-content: space-between;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--paper);
-  cursor: pointer;
-  text-align: left;
-  -webkit-user-drag: none;
+/* .category-card 계열은 5b 언더라인 탭 전환 때 JSX에서 사라진 사체라 제거됨 */
+
+/* 5b 언더라인 카테고리 탭 — 데스크톱 블록에만 있던 위계(밑줄·색)를 전 뷰포트 base로 승격 */
+.category-strip {
+  gap: 20px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--line);
 }
 
-.category-card i {
-  display: inline-grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-style: normal;
-}
-
-.category-card i svg {
-  width: 18px;
-  height: 18px;
-}
-
-.category-card span {
-  font-size: 0.88rem;
-  font-weight: 900;
-}
-
-.category-card strong {
+.category-tab {
+  flex: none;
+  padding: 8px 0 10px;
+  border: 0;
+  background: none;
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
 }
 
-.category-card.active {
-  border-color: var(--blue);
-  background: var(--blue);
-  color: #ffffff;
+.category-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
 
-.category-card.active i {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-}
+/* 터치 기기 = 최소 48px 히트영역 (hallmark responsive 게이트) — 시각 밀도는 유지, 타깃만 확장 */
+@media (pointer: coarse) {
+  .search-deal-tab,
+  .category-tab {
+    min-height: 48px;
+  }
 
-.category-card.active strong {
-  color: rgba(255, 255, 255, 0.78);
+  .quick-filter-row button,
+  .map-filter-row button {
+    min-height: 44px;
+    padding: 0 14px;
+  }
 }
 
 @media (max-width: 759px) {
@@ -1252,7 +1250,7 @@ p {
     cursor: grabbing;
   }
 
-  .category-strip .category-card {
+  .category-strip .category-tab {
     cursor: inherit;
   }
 }
@@ -3189,7 +3187,7 @@ p {
 }
 
 .listing-detail-screen {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding-bottom: 128px;
   background: #ffffff;
 }
@@ -4381,7 +4379,7 @@ p {
   }
 
   .tour-sheet {
-    width: calc(100vw - 24px);
+    width: 100%;
     height: min(92vh, 840px);
     max-height: none;
     padding: 10px 14px 16px;
@@ -9075,7 +9073,7 @@ p {
 }
 
 .floor-plan-page {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 18px;
   background: #eef1f6;
   color: var(--ink);
@@ -9127,7 +9125,7 @@ p {
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   max-width: 1380px;
-  min-height: calc(100vh - 98px);
+  min-height: calc(100dvh - 98px);
   margin: 16px auto 0;
   /* 요약 드로어(.floor-plan-drawer)의 기준 컨테이너 */
   position: relative;
@@ -10629,7 +10627,7 @@ p {
 
   .login-phone,
   .service-frame {
-    min-height: calc(100vh - 64px);
+    min-height: calc(100dvh - 64px);
     border: 1px solid rgba(18, 24, 40, 0.12);
     border-radius: 24px;
   }
@@ -10653,9 +10651,53 @@ p {
   }
 }
 
-.web-topbar,
-.web-hero-head {
+.web-topbar {
   display: none;
+}
+
+/* 모바일 컴팩트 히어로 — PC 별밤 히어로의 축소판. 모바일 첫 화면도 브랜드로 열어 두 표면의 무드를 잇는다.
+   .screen 패딩(14px 16px)을 음수 마진으로 뚫고 풀블리드, 사진은 bottom 기준이라 집 실루엣이 유지된다 */
+.web-hero-head {
+  position: relative;
+  margin: -14px -16px 0;
+  padding: 34px 22px 30px;
+  overflow: hidden;
+  text-align: left;
+  background-image:
+    linear-gradient(180deg, rgba(11, 8, 30, 0.4), transparent 42%, rgba(11, 8, 30, 0.3)),
+    linear-gradient(200deg, rgba(32, 24, 74, 0.5), rgba(32, 24, 74, 0.34)),
+    url("/hero-night.jpg");
+  background-size: cover;
+  background-position: center 100%;
+}
+
+.web-hero-eyebrow {
+  display: block;
+  color: #cbbff5;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+}
+
+.web-hero-head h1 {
+  margin-top: 8px;
+  color: #ffffff;
+  font-family: "Gowun Batang", serif;
+  font-size: 1.72rem;
+  line-height: 1.26;
+  letter-spacing: -0.005em;
+  font-weight: 700;
+}
+
+.web-hero-head h1 .hero-woozu {
+  color: var(--pink);
+}
+
+.web-hero-head p.web-hero-sub {
+  margin-top: 9px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 /* 3D 투어 백그라운드 업로드 전역 진행바 — 상단 네비 바로 아래, 어느 탭에서든 노출. */
@@ -10739,7 +10781,7 @@ p {
   .service-frame.with-bottom-tabs {
     display: block;
     width: 100%;
-    min-height: 100vh;
+    min-height: 100dvh;
     padding-bottom: 0;
     border: 0;
     border-radius: 0;
@@ -10764,8 +10806,8 @@ p {
   }
 
   .service-frame:not(.with-bottom-tabs) {
-    width: min(calc(100vw - 48px), 980px);
-    min-height: calc(100vh - 48px);
+    width: min(calc(100% - 48px), 980px);
+    min-height: calc(100dvh - 48px);
   }
 
   .detail-service-frame {
@@ -11345,7 +11387,7 @@ p {
     grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 12px 18px;
-    min-height: calc(100vh - 104px);
+    min-height: calc(100dvh - 104px);
     padding: 16px 20px 22px;
     border-top: 1px solid var(--line);
     background: #eef2f8;
@@ -11434,7 +11476,7 @@ p {
   .map-canvas-stack {
     grid-column: 2;
     grid-row: 3;
-    min-height: calc(100vh - 240px);
+    min-height: calc(100dvh - 240px);
   }
 
   /* [data-state] 셀렉터는 오류/키없음 상태에서 height 340px를 거는
@@ -11442,14 +11484,14 @@ p {
   .map-stage,
   .map-canvas-stack .map-stage[data-state] {
     height: 100%;
-    min-height: calc(100vh - 240px);
+    min-height: calc(100dvh - 240px);
     margin-top: 0;
     border: 1px solid var(--line);
     border-radius: 18px;
   }
 
   .map-unresolved-state {
-    min-height: calc(100vh - 240px);
+    min-height: calc(100dvh - 240px);
     margin-top: 0;
     border: 1px solid var(--line);
     border-radius: 18px;
@@ -11466,7 +11508,7 @@ p {
     grid-column: 1;
     grid-row: 3;
     align-self: stretch;
-    max-height: calc(100vh - 240px);
+    max-height: calc(100dvh - 240px);
     overflow-y: auto;
     margin-top: 0;
     padding: 14px;
@@ -11769,7 +11811,7 @@ p {
     grid-column: 1;
     grid-row: 3 / span 3;
     align-self: start;
-    height: min(680px, calc(100vh - 160px));
+    height: min(680px, calc(100dvh - 160px));
     min-height: 540px;
   }
 
@@ -11846,7 +11888,7 @@ p {
     bottom: 24px;
     /* 전화 · 3D 둘러보기 · 1인칭 체험 · 문자 문의 — 데스크톱도 4버튼 한 줄 */
     grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
-    width: min(calc(100vw - 48px), 980px);
+    width: min(calc(100% - 48px), 980px);
     border-radius: 18px;
   }
 
@@ -11861,12 +11903,12 @@ p {
 .sort-sheet,
 .notification-sheet,
 .postcode-sheet {
-    width: min(calc(100vw - 48px), 560px);
+    width: min(calc(100% - 48px), 560px);
     border-radius: 26px;
   }
 
   .tenant-request-sheet {
-    width: min(calc(100vw - 48px), 700px);
+    width: min(calc(100% - 48px), 700px);
   }
 
   .search-sheet-backdrop,
@@ -12352,7 +12394,7 @@ p {
 
 .tenant-landlord-chat-button {
   position: fixed;
-  right: max(18px, calc((100vw - 1180px) / 2 + 18px));
+  right: max(18px, calc((100% - 1180px) / 2 + 18px));
   bottom: 24px;
   z-index: 70;
   display: inline-flex;
@@ -12391,7 +12433,7 @@ p {
   z-index: 91;
   display: flex;
   flex-direction: column;
-  width: min(440px, calc(100vw - 24px));
+  width: min(440px, calc(100% - 24px));
   height: 100dvh;
   background: var(--paper);
   border-left: 1px solid var(--line);
@@ -12453,7 +12495,7 @@ p {
   z-index: 91;
   display: flex;
   flex-direction: column;
-  width: min(420px, calc(100vw - 28px));
+  width: min(420px, calc(100% - 28px));
   height: min(720px, calc(100dvh - 48px));
   transform: translate(-50%, -50%);
   overflow: hidden;
@@ -13619,7 +13661,7 @@ p {
   }
 
   .tenant-ai-assist-button {
-    right: max(24px, calc((100vw - 1180px) / 2 - 72px));
+    right: max(24px, calc((100% - 1180px) / 2 - 72px));
     left: auto;
     bottom: 32px;
     width: 64px;
@@ -14373,7 +14415,7 @@ p {
 }
 
 .manager-assistant-dialog {
-  width: min(calc(100vw - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
+  width: min(calc(100% - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
   height: min(calc(100dvh - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
   max-width: none;
   max-height: calc(100dvh - var(--space-xxl));
