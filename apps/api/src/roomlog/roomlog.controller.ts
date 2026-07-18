@@ -2310,22 +2310,6 @@ export class RoomlogController {
     return detail.performance;
   }
 
-  @Get("manager/vendor-mgmt/search")
-  searchManagerVendorCatalog(
-    @Headers("authorization") authorization: string | undefined,
-    @Query("query") query?: string,
-    @Query("trade") trade?: string,
-    @Query("serviceArea") serviceArea?: string,
-    @Query("verificationStatus") verificationStatus?: string,
-    @Query("isActive") isActive?: string
-  ) {
-    const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().searchCatalog(
-      user.id,
-      catalogFilters(query, trade, serviceArea, verificationStatus, isActive)
-    );
-  }
-
   @Post("manager/vendor-mgmt/vendors/manual")
   createManualManagerVendor(
     @Headers("authorization") authorization: string | undefined,
@@ -2334,15 +2318,6 @@ export class RoomlogController {
     rejectCallerIdentity(body, ["managerId", "actorUserId"]);
     const user = this.requireRole(authorization, ["LANDLORD"]);
     return this.requireManagerVendorDomain().createManual(user.id, body);
-  }
-
-  @Put("manager/vendor-mgmt/vendors/:vendorId/registration")
-  registerManagerVendor(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("vendorId") vendorId: string
-  ) {
-    const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().register(user.id, vendorId);
   }
 
   @Delete("manager/vendor-mgmt/vendors/:vendorId/registration")

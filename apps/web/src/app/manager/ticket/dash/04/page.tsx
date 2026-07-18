@@ -141,7 +141,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
             </div>
           </ManagerMutationForm>
         );
-        }) : <EmptyState title="배정 가능한 등록 업체가 없습니다" description="업체 관리의 업체 찾기에서 먼저 내 업체로 등록해 주세요." />}
+        }) : <EmptyState title="배정 가능한 등록 업체가 없습니다" description="업체 관리에서 업체 등록으로 먼저 내 업체를 추가해 주세요." />}
       </Card> : null}
 
       <Card style={{ display: "grid", gap: "var(--space-md)" }}>

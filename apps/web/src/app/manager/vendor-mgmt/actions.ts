@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import {
   archiveManagerVendor,
   createManagerVendor,
-  registerManagerVendor,
   updateManagerVendorNote,
 } from "@/lib/vendor-mgmt-api";
 import { MANAGER_VENDOR_MGMT_PATHS } from "@/lib/vendor-mgmt-nav";
@@ -24,7 +23,6 @@ function requiredFormString(formData: FormData, key: string) {
 
 function refreshVendorPages(vendorId: string) {
   revalidatePath(MANAGER_VENDOR_MGMT_PATHS.vendors);
-  revalidatePath(MANAGER_VENDOR_MGMT_PATHS.search);
   revalidatePath(MANAGER_VENDOR_MGMT_PATHS.vendor(vendorId));
   revalidatePath(MANAGER_VENDOR_MGMT_PATHS.performance(vendorId));
 }
@@ -41,20 +39,6 @@ export async function createManualVendorAction(
     });
     revalidatePath(MANAGER_VENDOR_MGMT_PATHS.vendors);
     return managerMutationSuccess("업체를 등록했습니다.");
-  } catch (error) {
-    return managerMutationError(error);
-  }
-}
-
-export async function registerVendorAction(
-  _previousState: ManagerMutationState,
-  formData: FormData,
-): Promise<ManagerMutationState> {
-  try {
-    const vendorId = requiredFormString(formData, "vendorId");
-    await registerManagerVendor(vendorId);
-    refreshVendorPages(vendorId);
-    return managerMutationSuccess("내 업체로 등록했습니다.");
   } catch (error) {
     return managerMutationError(error);
   }
