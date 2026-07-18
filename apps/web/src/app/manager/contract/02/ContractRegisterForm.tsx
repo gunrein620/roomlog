@@ -17,6 +17,8 @@ type ContractRegisterAction = (
 
 const INITIAL_ACTION_STATE: ContractRegisterActionState = {};
 
+type FilePreviewKind = "image" | "pdf";
+
 export type ManagedContractRoomOption = {
   id: string;
   buildingName: string;
@@ -38,6 +40,7 @@ export function ContractRegisterForm({
   const [actionState, formAction, pending] = useActionState(action, INITIAL_ACTION_STATE);
   const [fileName, setFileName] = useState("파일 미선택");
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [filePreviewKind, setFilePreviewKind] = useState<FilePreviewKind | null>(null);
   const [hasFile, setHasFile] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.id ?? "");
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId);
@@ -67,18 +70,21 @@ export function ContractRegisterForm({
     if (!file) {
       setFileName("파일 미선택");
       setFilePreviewUrl(null);
+      setFilePreviewKind(null);
       setHasFile(false);
       return;
     }
 
     setFileName(file.name);
     setHasFile(true);
-    if (file.type.startsWith("image/")) {
+    if (file.type.startsWith("image/") || isPdfFile(file)) {
       const url = URL.createObjectURL(file);
       previewUrlRef.current = url;
       setFilePreviewUrl(url);
+      setFilePreviewKind(file.type.startsWith("image/") ? "image" : "pdf");
     } else {
       setFilePreviewUrl(null);
+      setFilePreviewKind(null);
     }
   }
 
@@ -88,9 +94,15 @@ export function ContractRegisterForm({
         <Card style={uploadCardStyle}>
           <div style={dropzoneStyle}>
             <label htmlFor="manager-contract-file" style={dropzonePreviewStyle}>
-              {filePreviewUrl ? (
+              {filePreviewUrl && filePreviewKind === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={filePreviewUrl} alt="선택한 계약서 이미지 미리보기" style={previewImageStyle} />
+                <img src={filePreviewUrl} alt="선택한 계약서 미리보기" style={previewImageStyle} />
+              ) : filePreviewUrl && filePreviewKind === "pdf" ? (
+                <iframe
+                  title="선택한 계약서 PDF 미리보기"
+                  src={pdfPreviewSrc(filePreviewUrl)}
+                  style={previewPdfStyle}
+                />
               ) : (
                 <div style={dropzoneInnerStyle}>
                   <FileSearch aria-hidden="true" style={largeIconStyle} />
@@ -173,6 +185,14 @@ export function ContractRegisterForm({
       </div>
     </form>
   );
+}
+
+function isPdfFile(file: File) {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+}
+
+function pdfPreviewSrc(url: string) {
+  return url.includes("#") ? url : `${url}#toolbar=0&navpanes=0&view=FitH`;
 }
 
 function OcrReadItem({
@@ -263,8 +283,18 @@ const dropzoneHintStyle = {
 const previewImageStyle = {
   width: "100%",
   height: "100%",
-  objectFit: "cover",
+  objectFit: "contain",
   borderRadius: "var(--radius)",
+  background: "var(--surface-container-lowest)",
+} as const;
+
+const previewPdfStyle = {
+  width: "100%",
+  minHeight: 320,
+  height: "100%",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  background: "var(--surface-container-lowest)",
 } as const;
 
 const uploadActionStyle = {
