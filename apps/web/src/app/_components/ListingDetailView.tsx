@@ -113,17 +113,6 @@ export function ListingDetailView({
   // 입주 가능일 — 가격 정보 테이블(getListingPriceRows)과 같은 규칙을 쓴다.
   const moveInLabel = listing.floorLabel.includes("고층") ? "즉시입주" : "협의 가능";
 
-  const copyListingNo = async () => {
-    const text = listing.listingLabel;
-
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-    }
-
-    setDetailToast("매물번호를 복사했어요");
-    window.setTimeout(() => setDetailToast(""), 1600);
-  };
-
   return (
     <section className={has3DHero ? "listing-detail-screen has-3d" : "listing-detail-screen"} aria-labelledby="clicked-detail-title">
       <header className="detail-top-title">
@@ -257,14 +246,7 @@ export function ListingDetailView({
 
       <aside className="detail-side-panel" aria-label="가격·문의 정보">
 
-      {/* 갱신·조회는 가격 캡션이 담당 — 여기선 번호+복사만 남긴다(시안엔 없는 행이라 슬림하게). */}
-      <div className="listing-number-bar">
-        <button type="button" aria-label="매물번호 복사" onClick={copyListingNo}>
-          <span>{listing.listingLabel}</span>
-          <Copy size={15} strokeWidth={2.4} aria-hidden="true" />
-        </button>
-      </div>
-
+      {/* 매물번호 줄 제거 — 헤더 캡션이 이미 번호를 보여준다. 공유·찜은 헤더 오버레이 우상단 고정. */}
       {detailToast ? <div className="detail-toast" role="status">{detailToast}</div> : null}
 
       <div className="detail-price-block">

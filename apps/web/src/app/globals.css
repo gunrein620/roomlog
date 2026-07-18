@@ -4052,10 +4052,6 @@ p {
   font-weight: 400;
 }
 
-.detail-side-panel .listing-number-bar button {
-  font-weight: 500;
-}
-
 .detail-spec-table > div {
   font-size: 0.875rem;
 }
@@ -12699,6 +12695,11 @@ p {
     overflow: auto;
     padding: 6px 0 0;
     border-left: 1px solid var(--line);
+  }
+
+  /* 오버레이 헤더의 공유·찜(우상단 고정)과 겹치지 않게 패널 첫 줄을 내린다 */
+  .listing-detail-screen.has-3d .detail-side-panel {
+    padding-top: 66px;
   }
 
   /* 패널 하단(집주인 카드+CTA)은 바닥 정렬 — 시안의 margin-top:auto */
