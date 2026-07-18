@@ -182,6 +182,9 @@ export function ListingDetailView({
         </div>
       ) : null}
 
+      {/* 시안 구조 — 좌 스테이지 + 우 고정폭 패널이 한 행(데스크톱), 모바일은 자연 스택. */}
+      <div className="detail-hero-row">
+      <div className="detail-hero-stage">
       {has3DHero && listing.floorPlan3D ? (
         /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스). */
         <div className="detail-3d-hero" id="detail-3d-hero" aria-label={`${listing.title} 3D 도면 미리보기`}>
@@ -252,13 +255,16 @@ export function ListingDetailView({
           </div>
         </div>
       )}
+      </div>
 
+      <aside className="detail-side-panel" aria-label="가격·문의 정보">
+
+      {/* 갱신·조회는 가격 캡션이 담당 — 여기선 번호+복사만 남긴다(시안엔 없는 행이라 슬림하게). */}
       <div className="listing-number-bar">
         <button type="button" aria-label="매물번호 복사" onClick={copyListingNo}>
           <span>{listing.listingLabel}</span>
           <Copy size={15} strokeWidth={2.4} aria-hidden="true" />
         </button>
-        <span className="listing-updated">{listing.updated} 갱신 · {listing.viewCount}</span>
       </div>
 
       {detailToast ? <div className="detail-toast" role="status">{detailToast}</div> : null}
@@ -317,6 +323,8 @@ export function ListingDetailView({
         ))}
       </div>
 
+      {/* 패널 하단 묶음 — 데스크톱에서 margin-top:auto로 바닥 정렬(시안). */}
+      <div className="detail-panel-bottom">
       {/* 등록 주체 카드 — 시안의 중개사 카드 자리. 우리 스코프는 개인 임대인이라
           직접등록은 "OO (집주인)", 데모 매물은 기존 broker 문자열을 그대로 쓴다. */}
       <div className="detail-owner-card" aria-label="등록 주체 정보">
@@ -334,6 +342,10 @@ export function ListingDetailView({
           <button className="detail-panel-primary" type="button" onClick={onStartChat}>문자로 문의하기</button>
           <button className="detail-panel-ghost" type="button" onClick={onStartChat}>전화</button>
         </div>
+      </div>
+      </div>
+
+      </aside>
       </div>
 
       {/* 옵션 정보 섹션은 우측 패널 칩(detail-panel-options)으로 승격 — 가격·건물 정보를 나란히 둔다. */}

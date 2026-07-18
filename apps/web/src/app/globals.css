@@ -3347,16 +3347,7 @@ p {
   border-radius: 50%;
 }
 
-/* 매물번호 바도 밤하늘 톤으로 — 헤더→스테이지 사이 흰 띠 제거 */
-.listing-detail-screen.has-3d .listing-number-bar {
-  border-bottom: 0;
-  background: #17133a;
-}
-
-.listing-detail-screen.has-3d .listing-number-bar button,
-.listing-detail-screen.has-3d .listing-number-bar .listing-updated {
-  color: rgba(203, 191, 245, 0.75);
-}
+/* 매물번호 바는 우측 패널 안으로 이동 — 헤더→스테이지 사이 별도 행 제거(시안). */
 
 .listing-detail-screen.has-3d .detail-header-actions button.active {
   border-color: rgba(242, 137, 157, 0.55);
@@ -3375,6 +3366,7 @@ p {
   inset: 0 0 118px;
   overflow: hidden;
   border: 0;
+  background: transparent;
 }
 
 .detail-3d-hero .tour-room-loading {
@@ -11520,6 +11512,11 @@ p {
     overflow: visible;
   }
 
+  /* 3D 히어로 상세 — 시안(1440 풀폭)에 맞춘 넓은 프레임 */
+  .service-frame.detail-frame-wide {
+    width: min(calc(100% - 48px), 1440px);
+  }
+
   /* 상단 가로 네비게이션 — 모든 탭에서 얇은 밤하늘 띠(galaxy-texture)로 홈 히어로와 세계관 연결 */
   .web-topbar {
     display: block;
@@ -12496,57 +12493,59 @@ p {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* 시안 구조 — grid 산개 대신 hero-row(좌 스테이지 + 우 고정폭 패널) 플렉스 한 행 */
   .listing-detail-screen {
-    display: grid;
-    grid-template-columns: minmax(460px, 1fr) 360px;
-    align-items: start;
-    padding-bottom: 120px;
+    padding-bottom: 48px;
   }
 
-  .detail-top-title {
-    grid-column: 1 / -1;
+  .detail-hero-row {
+    display: flex;
+    align-items: stretch;
+    height: min(820px, calc(100dvh - 96px));
+    min-height: 560px;
   }
 
-  .listing-number-bar {
-    grid-column: 1 / -1;
-    grid-row: 2;
+  .detail-hero-stage {
+    position: relative;
+    flex: 1;
+    min-width: 0;
   }
 
-  /* 오른쪽 컬럼(가격·기본정보·태그) 3행에 맞춰 스팬 — 안심 거래/단지 카드 제거로 5행→3행 */
-  .detail-gallery {
-    grid-column: 1;
-    grid-row: 3 / span 3;
-    align-self: start;
-    height: min(680px, calc(100dvh - 160px));
-    min-height: 540px;
+  .detail-hero-stage .detail-gallery,
+  .detail-hero-stage .detail-3d-hero {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
   }
 
-  /* 우측 컬럼(시안) — 가격(3) 스펙표(4) 옵션(5) 태그(6) 집주인(7) CTA(8) */
-  .detail-price-block,
-.detail-spec-table,
-.detail-panel-options,
-.detail-tags {
-    grid-column: 2;
+  .detail-side-panel {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: clamp(380px, 33vw, 460px);
+    overflow: auto;
+    padding: 6px 0 0;
+    border-left: 1px solid var(--line);
+  }
+
+  /* 패널 하단(집주인 카드+CTA)은 바닥 정렬 — 시안의 margin-top:auto */
+  .detail-panel-bottom {
+    margin-top: auto;
+    padding-top: 18px;
+  }
+
+  /* 패널이 행 높이를 넘칠 때도 주 CTA는 항상 보이게 — 패널 안 sticky 바닥 */
+  .detail-panel-cta {
+    position: sticky;
+    bottom: 0;
+    margin: 14px 0 0;
+    padding: 12px 18px 18px;
+    background: #ffffff;
+    box-shadow: 0 -10px 14px rgba(255, 255, 255, 0.92);
   }
 
   .detail-price-block {
-    grid-row: 3;
-  }
-
-  .detail-spec-table {
-    grid-row: 4;
-  }
-
-  .detail-panel-options {
-    grid-row: 5;
-  }
-
-  .detail-tags {
-    grid-row: 6;
-  }
-
-  .detail-price-block {
-    padding-top: 28px;
+    padding-top: 20px;
   }
 
   .detail-price-block .detail-price-main {
@@ -12595,33 +12594,9 @@ p {
     border-radius: 18px;
   }
 
-  /* 3D 히어로 상세 — 갤러리 자리(1열)를 스테이지가 차지, 우측 컬럼 3~8행을 함께 덮는다 */
-  .detail-3d-hero {
-    grid-column: 1;
-    grid-row: 3 / span 6;
-    align-self: stretch;
-    height: auto;
-    min-height: 640px;
-    max-height: calc(100dvh - 120px);
-  }
-
-  .detail-gallery {
-    grid-row: 3 / span 6;
-  }
-
-  .detail-owner-card {
-    grid-column: 2;
-    grid-row: 7;
-    align-self: start;
-    margin: 18px 24px 0 6px;
-  }
-
   .detail-panel-cta {
     display: block;
-    grid-column: 2;
-    grid-row: 8;
-    align-self: start;
-    margin: 14px 24px 0 6px;
+    margin: 14px 18px 0;
   }
 
   /* 데스크톱은 우측 패널 CTA가 담당 — 화면을 가리는 하단 고정 바를 없앤다(시안) */

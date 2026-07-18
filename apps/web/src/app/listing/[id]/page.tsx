@@ -99,9 +99,14 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
   const isOwner = await isListingOwner(resolved.ownerId);
   const similarListings = pickSimilarListings(resolved.listing, tradeListings);
 
+  // 3D 히어로 매물은 시안(1440 풀폭)에 맞춰 넓은 프레임 — 도면 없는 매물은 기존 폭 유지.
+  const frameClassName = resolved.listing.floorPlan3D
+    ? "service-frame detail-service-frame detail-frame-wide"
+    : "service-frame detail-service-frame";
+
   return (
     <main className="app-canvas">
-      <div className="service-frame detail-service-frame" aria-label="집우집주 매물 상세">
+      <div className={frameClassName} aria-label="집우집주 매물 상세">
         <ListingDetailRoute listing={resolved.listing} isOwner={isOwner} similarListings={similarListings} />
       </div>
     </main>
