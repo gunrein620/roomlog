@@ -3,7 +3,7 @@
 // 민원/하자 대화 사이드 패널 — 대시보드에서 행을 누르면 오른쪽 절반이 열린다.
 // 모달로 상세 정보를 늘어놓던 것을 접고 "세입자와의 대화" 하나에 집중한다: 티켓 스레드
 // (GET manager/tickets/:id → messages)를 그대로 읽고 쓰므로 세입자탭 진행 메시지와 같은 소스다.
-// 갱신은 소켓 broadcast(roomlog:activity kind=ticket)로 즉시, 실패 시 폴링으로 폴백한다.
+// 갱신은 소켓 broadcast(roomlog:activity kind=ticket)로만 즉시 반영한다.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
@@ -22,6 +22,7 @@ import {
 import {
   TICKET_LANES,
   canSwitchTicketLane,
+  ticketLaneFromServerStatus,
   ticketLaneOf,
   type TicketLane,
 } from "./ticket-lane";
@@ -30,8 +31,6 @@ import {
   beginLocalTicketLaneMutation,
   completeLocalTicketLaneMutation,
 } from "./ticket-lane-mutation-activity";
-
-const POLL_INTERVAL_MS = 15_000;
 
 const ticketTypeLabel = {
   defect: "하자 민원",
@@ -119,9 +118,11 @@ function MessageBubble({ message }: { message: TicketThreadMessage }) {
 export function TicketChatPanel({
   row,
   onClose,
+  onTicketLaneChanged,
 }: {
   row: DefectDashboardRow | null;
   onClose: () => void;
+  onTicketLaneChanged?: (ticketId: string, lane: TicketLane, updatedAt?: string) => void;
 }) {
   const router = useRouter();
   const ticketId = row?.ticket.id;
@@ -157,11 +158,12 @@ export function TicketChatPanel({
     setMessages([]);
     setDraft("");
     setError("");
-    setLane(row ? ticketLaneOf(row.ticket.status) : null);
     if (ticketId) void refresh();
-    // row는 열 때마다 새 객체라 ticketId만 본다 — 같은 티켓이면 레인을 다시 덮어쓰지 않는다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, ticketId]);
+
+  useEffect(() => {
+    setLane(row ? ticketLaneOf(row.ticket.status) : null);
+  }, [row?.ticket.status, ticketId]);
 
   // 실시간: 세입자·업체 쪽 티켓 활동 신호를 받으면 스레드를 다시 읽는다.
   useEffect(() => {
@@ -178,13 +180,6 @@ export function TicketChatPanel({
     return () => {
       socket.off("roomlog:activity", onActivity);
     };
-  }, [refresh, ticketId]);
-
-  // 소켓이 끊긴 환경(프록시·방화벽)에서도 대화가 멈추지 않도록 하는 폴백.
-  useEffect(() => {
-    if (!ticketId) return;
-    const timer = window.setInterval(() => void refresh({ silent: true }), POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
   }, [refresh, ticketId]);
 
   useEffect(() => {
@@ -253,14 +248,19 @@ export function TicketChatPanel({
         body: JSON.stringify({ lane: nextLane, clientRequestId }),
       });
 
+      const data = (await response.json().catch(() => undefined)) as
+        | { message?: string; ticket?: { status?: unknown; updatedAt?: unknown } }
+        | undefined;
       if (!response.ok) {
-        const data = (await response.json().catch(() => undefined)) as
-          | { message?: string }
-          | undefined;
         throw new Error(data?.message || "진행 상태를 바꾸지 못했습니다.");
       }
 
+      const confirmedLane = ticketLaneFromServerStatus(data?.ticket?.status) ?? nextLane;
+      const confirmedUpdatedAt =
+        typeof data?.ticket?.updatedAt === "string" ? data.ticket.updatedAt : undefined;
       completeLocalTicketLaneMutation(clientRequestId);
+      setLane(confirmedLane);
+      onTicketLaneChanged?.(ticketId, confirmedLane, confirmedUpdatedAt);
       router.refresh();
     } catch (laneError) {
       abandonLocalTicketLaneMutation(clientRequestId);

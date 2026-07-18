@@ -90,6 +90,9 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
 
   assert.match(componentSource, /aria-pressed/);
   assert.match(componentSource, /ticketLaneOf/);
+  assert.match(componentSource, /applyTicketLaneOverrides\(rows, ticketLaneOverrides\)/);
+  assert.match(componentSource, /reconcileTicketLaneOverrides\(current, rows\)/);
+  assert.match(componentSource, /function applyConfirmedTicketLane/);
   assert.match(componentSource, /received: "접수"/);
   assert.match(componentSource, /processing: "진행"/);
   assert.match(componentSource, /resolved: "완료"/);

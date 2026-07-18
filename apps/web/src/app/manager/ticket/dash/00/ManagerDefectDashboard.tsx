@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import type { ManagerProxyIntakeRoom } from "@/lib/ticket-manager-api";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
@@ -20,6 +20,12 @@ import {
   type DefectStatusFilter,
 } from "./ticket-dashboard-model";
 import { ticketLaneOf, type TicketLane } from "./ticket-lane";
+import {
+  applyTicketLaneOverrides,
+  reconcileTicketLaneOverrides,
+  ticketStatusForLane,
+  type TicketLaneOverride,
+} from "./ticket-lane-local-state";
 
 const PAGE_SIZE = 10;
 const TABLE_COLUMNS = [
@@ -150,15 +156,20 @@ export function ManagerDefectDashboard({
     () => new Set(),
   );
   const [proxyIntakeOpen, setProxyIntakeOpen] = useState(false);
+  const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
+
+  useEffect(() => {
+    setTicketLaneOverrides((current) => reconcileTicketLaneOverrides(current, rows));
+  }, [rows]);
 
   const effectiveRows = useMemo(
     () =>
-      rows.map((row) =>
+      applyTicketLaneOverrides(rows, ticketLaneOverrides).map((row) =>
         locallyReadTicketIds.has(row.ticket.id)
           ? { ...row, isManagerUnread: false }
           : row,
       ),
-    [locallyReadTicketIds, rows],
+    [locallyReadTicketIds, rows, ticketLaneOverrides],
   );
   const counts = useMemo(() => countDefectStatuses(effectiveRows), [effectiveRows]);
   const workers = useMemo(
@@ -209,6 +220,15 @@ export function ManagerDefectDashboard({
       .catch(() => {
         // 패널은 그대로 열어두고 배지는 서버 저장이 성공할 때만 갱신한다.
       });
+  }
+
+  function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
+    setTicketLaneOverrides((current) => ({ ...current, [ticketId]: { lane, updatedAt } }));
+    setSelectedRow((current) =>
+      current?.ticket.id === ticketId
+        ? { ...current, ticket: { ...current.ticket, status: ticketStatusForLane(lane) } }
+        : current,
+    );
   }
 
   return (
@@ -378,7 +398,11 @@ export function ManagerDefectDashboard({
         />
       ) : null}
 
-      <TicketChatPanel row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <TicketChatPanel
+        row={selectedRow}
+        onClose={() => setSelectedRow(null)}
+        onTicketLaneChanged={applyConfirmedTicketLane}
+      />
     </section>
   );
 }
