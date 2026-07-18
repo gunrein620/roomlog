@@ -102,8 +102,12 @@ function nearestLabel(labels, point, width, height) {
   return 0;
 }
 
-function componentPixelCount(labels, baseLabel) {
-  return labels.reduce((sum, value) => sum + Number(value === baseLabel), 0);
+function connectedLabelComponentPixelCount(labels, baseLabel, seed, width, height) {
+  const pixels = [];
+  for (let index = 0; index < labels.length; index += 1) {
+    if (labels[index] === baseLabel) pixels.push(index);
+  }
+  return connectedPixelsContainingSeed(pixels, seed, width, height).length;
 }
 
 function validArea(pixels, componentSize, millimetersPerPixel) {
@@ -158,6 +162,45 @@ function ringArea(ring) {
   return Math.abs(doubleArea) / 2;
 }
 
+function segmentsIntersect([ax, ay], [bx, by], [cx, cy], [dx, dy]) {
+  const cross = (x1, y1, x2, y2) => x1 * y2 - y1 * x2;
+  const onSegment = (x, y, startX, startY, endX, endY) => x >= Math.min(startX, endX)
+    && x <= Math.max(startX, endX) && y >= Math.min(startY, endY) && y <= Math.max(startY, endY);
+  const abx = bx - ax;
+  const aby = by - ay;
+  const acx = cx - ax;
+  const acy = cy - ay;
+  const adx = dx - ax;
+  const ady = dy - ay;
+  const cdx = dx - cx;
+  const cdy = dy - cy;
+  const cax = ax - cx;
+  const cay = ay - cy;
+  const cbx = bx - cx;
+  const cby = by - cy;
+  const first = cross(abx, aby, acx, acy);
+  const second = cross(abx, aby, adx, ady);
+  const third = cross(cdx, cdy, cax, cay);
+  const fourth = cross(cdx, cdy, cbx, cby);
+  if (first === 0 && onSegment(cx, cy, ax, ay, bx, by)) return true;
+  if (second === 0 && onSegment(dx, dy, ax, ay, bx, by)) return true;
+  if (third === 0 && onSegment(ax, ay, cx, cy, dx, dy)) return true;
+  if (fourth === 0 && onSegment(bx, by, cx, cy, dx, dy)) return true;
+  return (first > 0) !== (second > 0) && (third > 0) !== (fourth > 0);
+}
+
+function ringsOverlap(left, right) {
+  if (left.some(([x, y]) => pointInRing(x, y, right)) || right.some(([x, y]) => pointInRing(x, y, left))) return true;
+  for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
+    const leftNext = (leftIndex + 1) % left.length;
+    for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
+      const rightNext = (rightIndex + 1) % right.length;
+      if (segmentsIntersect(left[leftIndex], left[leftNext], right[rightIndex], right[rightNext])) return true;
+    }
+  }
+  return false;
+}
+
 function rectangleRing(candidate, millimetersPerPixel) {
   const scale = Number(millimetersPerPixel);
   const physical = Number.isFinite(scale) && scale > 0;
@@ -174,6 +217,12 @@ function rectangleRing(candidate, millimetersPerPixel) {
     [end.x + candidate.tangent.x * half, end.y + candidate.tangent.y * half],
     [end.x - candidate.tangent.x * half, end.y - candidate.tangent.y * half],
   ];
+}
+
+function effectiveMillimetersPerPixel(millimetersPerPixel, candidate) {
+  const calibrated = Number(millimetersPerPixel);
+  if (Number.isFinite(calibrated) && calibrated > 0) return calibrated;
+  return Number.isFinite(candidate?.spanPixels) && candidate.spanPixels > 0 ? 900 / candidate.spanPixels : null;
 }
 
 export function findExteriorDoorCandidates({ height, interiorMask, openings = [], width }) {
@@ -225,23 +274,27 @@ export function buildEntranceFloorOverride({
     ? permanentSolid
     : new Uint8Array(width * height);
   const candidates = findExteriorDoorCandidates({ height, interiorMask, openings, width });
-  const balconyRooms = rooms.filter((room) => BALCONY_LABEL.test(String(room?.label ?? "")));
+  const balconyRings = rooms
+    .filter((room) => BALCONY_LABEL.test(String(room?.label ?? "")))
+    .map((room) => normalizedRing(room.polygon, width, height))
+    .filter(Boolean);
   const entranceRooms = rooms
     .filter((room) => ENTRANCE_LABEL.test(String(room?.label ?? "")) && Number(room?.confidence) >= MIN_CONFIDENCE)
     .sort((left, right) => Number(right.confidence) - Number(left.confidence));
 
-  const notInsideBalcony = candidates.filter((candidate) => !balconyRooms.some((room) => {
-    const ring = normalizedRing(room.polygon, width, height);
-    return ring && pointInRing(candidate.inwardPoint.x, candidate.inwardPoint.y, ring);
-  }));
-  if (!notInsideBalcony.length) return null;
+  const safeCandidates = candidates.filter((candidate) => {
+    const fallbackRing = rectangleRing(candidate, millimetersPerPixel);
+    return !balconyRings.some((ring) => pointInRing(candidate.inwardPoint.x, candidate.inwardPoint.y, ring)
+      || ringsOverlap(fallbackRing, ring));
+  });
+  if (!safeCandidates.length) return null;
 
-  let selected = notInsideBalcony[0];
+  let selected = null;
   let selectedRoom = null;
   for (const room of entranceRooms) {
     const ring = normalizedRing(room.polygon, width, height);
     if (!ring) continue;
-    const matchingDoor = notInsideBalcony.find((candidate) => {
+    const matchingDoor = safeCandidates.find((candidate) => {
       const threshold = Number.isFinite(Number(millimetersPerPixel)) && Number(millimetersPerPixel) > 0
         ? 750 / Number(millimetersPerPixel)
         : candidate.spanPixels;
@@ -254,17 +307,22 @@ export function buildEntranceFloorOverride({
       break;
     }
   }
+  if (!selectedRoom) {
+    if (safeCandidates.length !== 1) return null;
+    selected = safeCandidates[0];
+  }
 
   const baseLabel = nearestLabel(labels, selected.inwardPoint, width, height);
   if (!baseLabel) return null;
-  const componentSize = componentPixelCount(labels, baseLabel);
+  const componentSize = connectedLabelComponentPixelCount(labels, baseLabel, selected.inwardPoint, width, height);
+  const areaScale = effectiveMillimetersPerPixel(millimetersPerPixel, selected);
   const semanticRing = selectedRoom ? normalizedRing(selectedRoom.polygon, width, height) : null;
   let pixels = semanticRing
     ? pixelsInRing(semanticRing, labels, baseLabel, interiorMask, solidMask, width, height)
     : [];
   pixels = connectedPixelsContainingSeed(pixels, selected.inwardPoint, width, height);
 
-  if (!validArea(pixels, componentSize, millimetersPerPixel)) {
+  if (!validArea(pixels, componentSize, areaScale)) {
     const fallbackRing = rectangleRing(selected, millimetersPerPixel);
     pixels = connectedPixelsContainingSeed(pixelsInRing(
       fallbackRing,
@@ -277,7 +335,7 @@ export function buildEntranceFloorOverride({
     ), selected.inwardPoint, width, height);
     if (pixels.length < ringArea(fallbackRing) * 0.5) return null;
   }
-  if (!validArea(pixels, componentSize, millimetersPerPixel)) return null;
+  if (!validArea(pixels, componentSize, areaScale)) return null;
 
   return {
     baseLabel,

@@ -81,3 +81,52 @@ test("returns null when no exterior entrance can be proven", () => {
   fixture.openings[0] = { ...fixture.openings[0], center_y: 30 };
   assert.equal(buildEntranceFloorOverride({ ...fixture, millimetersPerPixel: 100, rooms: [] }), null);
 });
+
+test("uses the entrance-side connected label component for the 15 percent cap", () => {
+  const fixture = entranceFixture();
+  fixture.labels.fill(0);
+  for (let y = 32; y < 52; y += 1) {
+    for (let x = 28; x < 52; x += 1) fixture.labels[y * fixture.width + x] = 1;
+  }
+  for (let y = 6; y < 31; y += 1) {
+    for (let x = 8; x < 72; x += 1) fixture.labels[y * fixture.width + x] = 1;
+  }
+  assert.equal(buildEntranceFloorOverride({ ...fixture, millimetersPerPixel: 100, rooms: [] }), null);
+});
+
+test("rejects label-free fallback when multiple safe exterior doors remain", () => {
+  const fixture = entranceFixture();
+  fixture.openings.push({ id: "rear", kind: "door", valid: true, axis: "horizontal", center_x: 40, center_y: 6, width: 12, height: 2 });
+  assert.equal(buildEntranceFloorOverride({ ...fixture, millimetersPerPixel: 100, rooms: [] }), null);
+});
+
+test("rejects a fallback zone that overlaps an AI balcony polygon", () => {
+  const fixture = entranceFixture();
+  const result = buildEntranceFloorOverride({
+    ...fixture,
+    millimetersPerPixel: 100,
+    rooms: [{ confidence: 0.95, label: "발코니", polygon: normalizedBox(32, 36, 48, 47, fixture.width, fixture.height) }],
+  });
+  assert.equal(result, null);
+});
+
+test("uses the standard door scale to limit uncalibrated semantic entrance area", () => {
+  const width = 400;
+  const height = 200;
+  const interiorMask = rectangularInterior(width, height, 10, 10, 390, 190);
+  const labels = new Uint8Array(width * height);
+  for (let index = 0; index < labels.length; index += 1) labels[index] = interiorMask[index] ? 1 : 0;
+  const result = buildEntranceFloorOverride({
+    height,
+    interiorMask,
+    labels,
+    openings: [{ id: "front", kind: "door", valid: true, axis: "horizontal", center_x: 200, center_y: 190, width: 12, height: 2 }],
+    permanentSolid: new Uint8Array(width * height),
+    rooms: [{ confidence: 0.95, label: "현관", polygon: normalizedBox(150, 89, 250, 189, width, height) }],
+    width,
+  });
+  assert.ok(result);
+  const estimatedScale = 900 / 12;
+  assert.ok(result.pixels.length * estimatedScale * estimatedScale <= 6_000_000);
+  assert.ok(result.pixels.length < 1_000);
+});
