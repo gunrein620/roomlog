@@ -81,9 +81,15 @@ async function updateManualCorrectionAction(formData: FormData) {
 
   const contractId = String(formData.get("contractId") ?? "");
   const detailUrl = `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`;
+  const monthlyRent = amountValue(formData, "monthlyRent");
+
+  if (monthlyRent === "invalid") {
+    redirect(`${detailUrl}&error=${encodeURIComponent("월세는 0 이상의 원 단위 정수로 입력해 주세요.")}`);
+  }
 
   try {
     await updateManagerContractManualValues(contractId, {
+      monthlyRent,
       deposit: textValue(formData, "deposit"),
       specialTerms: textValue(formData, "specialTerms"),
       autoRenewal: textValue(formData, "autoRenewal"),
@@ -173,7 +179,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </Card>
         </div>
 
-        <Section title="보증금·특약 수정">
+        <Section title="보증금·월세·특약 수정">
           <ManualCorrectionForm detail={detail} sourceKind={source.kind} />
         </Section>
 
@@ -436,14 +442,30 @@ function ManualCorrectionForm({ detail, sourceKind }: { detail: ManagerContractD
     <Card style={manualCardStyle}>
       <div style={manualHeaderStyle}>
         <div style={{ fontWeight: 900 }}>계약서 원문에서 중요한 부분만 고칩니다</div>
-        <p style={mutedBodyStyle}>월세·관리비·기간·납부일·주소는 매물 DB 값을 사용하고, 보증금과 특약성 조항만 원문 기준으로 저장하세요.</p>
+        <p style={mutedBodyStyle}>관리비·기간·납부일·주소는 매물 DB 값을 사용하고, 보증금·월세와 특약성 조항은 원문 기준으로 직접 저장할 수 있습니다.</p>
       </div>
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
         <div style={correctionGroupGridStyle}>
-          <CorrectionGroup title="보증금" note="기본 보증금, 전환보증금, 최종 보증금처럼 계약서에 적힌 보증금 구조를 그대로 남깁니다.">
+          <CorrectionGroup title="보증금·월세" note="기본 보증금, 전환보증금, 최종 보증금처럼 계약서에 적힌 보증금 구조를 그대로 남기고, 월세는 원 단위 숫자로 입력합니다.">
             <CorrectionField fieldId="contract-field-deposit" label="보증금">
               <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
+            </CorrectionField>
+            <CorrectionField fieldId="contract-field-monthlyRent" label="월세 (원)">
+              <input
+                id="contract-field-monthlyRent"
+                name="monthlyRent"
+                type="text"
+                inputMode="numeric"
+                defaultValue={values.monthlyRent}
+                placeholder="예: 650000 (월세가 없으면 0)"
+                style={correctionInputStyle}
+              />
+              <span style={correctionGroupNoteStyle}>
+                {detail.row.contract.monthlyRent === undefined
+                  ? "현재 저장값 없음 · 비워두면 저장되지 않습니다."
+                  : `현재 저장값 ${detail.row.contract.monthlyRent.toLocaleString("ko-KR")}원 · 비워두면 그대로 유지됩니다.`}
+              </span>
             </CorrectionField>
           </CorrectionGroup>
 
@@ -688,6 +710,7 @@ function escapeRegExp(value: string) {
 
 function manualDefaults(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind) {
   return {
+    monthlyRent: amountInputValue(detail.row.contract.monthlyRent),
     deposit:
       storedManualValue(detail, "보증금", detail.manualValues.deposit) ||
       textInputCandidate(detail, "보증금", sourceKind),
@@ -728,6 +751,20 @@ function isDocumentAbsentValue(value?: string) {
 
 function textValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
+}
+
+// 빈 값이면 기존 DB 값을 유지하도록 undefined(=미전송)를 돌려준다.
+function amountValue(formData: FormData, name: string): number | undefined | "invalid" {
+  const raw = textValue(formData, name).replace(/[,\s원]/g, "");
+  if (!raw) return undefined;
+
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) return "invalid";
+  return parsed;
+}
+
+function amountInputValue(value?: number) {
+  return value === undefined ? "" : String(value);
 }
 
 function manualInputValue(value?: string) {
@@ -794,7 +831,7 @@ function ocrFailureInfo(highlights: string[]): OcrFailureInfo {
 }
 
 function pageNotice(sourceParam?: string) {
-  if (sourceParam === "manual-saved") return "수정한 보증금·특약 검토값을 저장했습니다.";
+  if (sourceParam === "manual-saved") return "수정한 보증금·월세·특약 검토값을 저장했습니다.";
   if (sourceParam === "ocr-first") return "계약서 입력 후 OCR 분석을 실행했습니다. 보증금과 특약성 조항만 확인해 주세요.";
   return "";
 }
