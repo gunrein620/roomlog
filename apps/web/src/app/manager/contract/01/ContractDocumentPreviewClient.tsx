@@ -587,6 +587,10 @@ const highlightLabelStyle = {
   fontSize: 11,
   fontWeight: 900,
   lineHeight: 1.35,
+  whiteSpace: "nowrap",
+  wordBreak: "keep-all",
+  writingMode: "horizontal-tb",
+  flexShrink: 0,
 } as const;
 
 const documentPageStyle = {
