@@ -262,7 +262,15 @@ function RoomOrbitControls({
 
 // 방 크기에 맞춰 카메라 거리를 자동 계산 — 고정 카메라로는 작은 방이 점처럼,
 // 큰 방이 화면 밖으로 나가므로, 진입/방 크기 변경 시 전체가 보이는 거리로 재배치한다.
-function RoomCameraAutoFit({ wallsData }: { wallsData: WheretoputWall3D[] }) {
+function RoomCameraAutoFit({
+  distanceScale = 1,
+  wallsData
+}: {
+  /** 씬 그룹 스케일·여백 보정 배율 — 오토핏은 무스케일 벽 좌표로 계산하므로,
+   *  horizontalScale로 방을 키운 뷰(상세 3D)는 그만큼 곱해 줘야 방이 화면에 작게 뜬다. */
+  distanceScale?: number;
+  wallsData: WheretoputWall3D[];
+}) {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
   const bounds = useMemo(() => computeWallBoundsXZ(wallsData), [wallsData]);
@@ -271,12 +279,12 @@ function RoomCameraAutoFit({ wallsData }: { wallsData: WheretoputWall3D[] }) {
 
   useEffect(() => {
     const longSide = Math.max(bounds.width, bounds.height);
-    const distance = Math.min(40, Math.max(6, longSide * 1.5));
+    const distance = Math.min(40, Math.max(6, longSide * 1.5)) * distanceScale;
     camera.position.set(bounds.centerX + distance * 0.55, distance * 0.7, bounds.centerZ + distance * 0.85);
     camera.lookAt(bounds.centerX, 0, bounds.centerZ);
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boundsKey, camera, invalidate]);
+  }, [boundsKey, camera, distanceScale, invalidate]);
 
   return null;
 }
@@ -284,6 +292,7 @@ function RoomCameraAutoFit({ wallsData }: { wallsData: WheretoputWall3D[] }) {
 export function RoomlogThreeFloorPlanView({
   cameraPosition = [14, 12, 18],
   controlsEnabled = true,
+  fitDistanceScale = 1,
   frameloop = "demand",
   furnitureData,
   furnitureVerticalScale = 1,
@@ -311,6 +320,8 @@ export function RoomlogThreeFloorPlanView({
   // 편집기는 "demand"(입력 시에만 렌더)로 효율적이지만, 읽기 전용 뷰어는
   // 드래그 전에도 방이 보여야 하므로 "always"를 넘겨 즉시·리사이즈 시 계속 렌더한다.
   frameloop?: "demand" | "always";
+  /** 카메라 오토핏 거리 배율 — 1보다 크면 방이 화면 중앙에 더 작게 뜬다(상세 3D 히어로). */
+  fitDistanceScale?: number;
   furnitureData: PlacedFurniture[];
   furnitureVerticalScale?: number;
   hideHint?: boolean;
@@ -352,7 +363,7 @@ export function RoomlogThreeFloorPlanView({
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop}>
-        <RoomCameraAutoFit wallsData={wallsData} />
+        <RoomCameraAutoFit distanceScale={fitDistanceScale} wallsData={wallsData} />
         {sceneBackground ? <color attach="background" args={[sceneBackground]} /> : null}
         <ambientLight intensity={0.72} />
         <directionalLight intensity={1.4} position={[6, 12, 8]} />

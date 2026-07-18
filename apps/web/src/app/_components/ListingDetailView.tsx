@@ -7,17 +7,13 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
-  Banknote,
-  Building2,
   ChevronLeft,
   ChevronRight,
   Copy,
   Play,
   Star,
-  Layers3,
   MapPinned,
   Phone,
-  Ruler,
   Share2,
   X
 } from "lucide-react";
@@ -113,6 +109,12 @@ export function ListingDetailView({
   // 직접등록 매물은 집주인이 등록 시 고른 옵션만, 데모 매물(options 없음)은 기존 고정 목록을 보여준다.
   const listingOptions = listing.options ?? optionItems;
 
+  // 가격 헤더용 파생값 — 보증금/월세형(월세·반전세)만 숫자 조합, 전세·매매는 카드 문자열에서 유형만 뗀다.
+  const priceTypeLabel = listing.price.match(/^(반전세|월세|전세|매매)/)?.[1] ?? "월세";
+  const isMonthlyPrice = priceTypeLabel === "월세" || priceTypeLabel === "반전세";
+  // 입주 가능일 — 가격 정보 테이블(getListingPriceRows)과 같은 규칙을 쓴다.
+  const moveInLabel = listing.floorLabel.includes("고층") ? "즉시입주" : "협의 가능";
+
   const copyListingNo = async () => {
     const text = listing.listingLabel;
 
@@ -130,7 +132,11 @@ export function ListingDetailView({
         <button className="detail-back-button" type="button" onClick={onBack} aria-label="목록으로 돌아가기">
           <ArrowLeft size={24} strokeWidth={2.5} />
         </button>
-        <h1 id="clicked-detail-title">{listing.detailHeader}</h1>
+        <div className="detail-title-stack">
+          {/* 3D 히어로 매물은 시안처럼 라벨+매물 이름을 헤더에 — 번호는 아래 복사 바에 그대로 있다. */}
+          {has3DHero ? <span className="detail-title-caption">{listing.listingLabel}</span> : null}
+          <h1 id="clicked-detail-title">{has3DHero ? listing.title : listing.detailHeader}</h1>
+        </div>
         <div className="detail-header-actions">
           <button type="button" aria-label="공유하기" onClick={() => setIsShareSheetOpen(true)}>
             <Share2 size={22} strokeWidth={2.5} />
@@ -258,8 +264,21 @@ export function ListingDetailView({
       {detailToast ? <div className="detail-toast" role="status">{detailToast}</div> : null}
 
       <div className="detail-price-block">
-        <h2>{listing.price}</h2>
-        <p>{listing.headline}</p>
+        {/* 시안 문법 — 작은 캡션(유형·갱신) 위, 세리프 큰 가격 아래. 숫자는 카드 문자열이 아닌 원본 수치. */}
+        <span className="detail-price-caption">
+          {priceTypeLabel} · {listing.updated} 갱신 · {listing.viewCount}
+        </span>
+        <h2 className="detail-price-main">
+          {isMonthlyPrice ? (
+            <>
+              {listing.depositManwon.toLocaleString("ko-KR")}
+              <span className="detail-price-sep"> / </span>
+              {listing.monthlyRentManwon.toLocaleString("ko-KR")}
+            </>
+          ) : (
+            listing.price.replace(/^(전세|매매)\s*/, "")
+          )}
+        </h2>
         <div className="detail-address-line">
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>{listing.location}</span>
@@ -269,23 +288,27 @@ export function ListingDetailView({
         ) : null}
       </div>
 
-      <div className="listing-detail-facts" aria-label="매물 기본 정보">
-        <div>
-          <span aria-hidden="true"><Building2 size={20} strokeWidth={2.2} /></span>
-          <strong>{listing.roomType}</strong>
-        </div>
-        <div>
-          <span aria-hidden="true"><Ruler size={20} strokeWidth={2.2} /></span>
-          <strong>{listing.sizeLabel}</strong>
-        </div>
-        <div>
-          <span aria-hidden="true"><Layers3 size={20} strokeWidth={2.2} /></span>
-          <strong>{listing.floorLabel}</strong>
-        </div>
-        <div>
-          <span aria-hidden="true"><Banknote size={20} strokeWidth={2.2} /></span>
-          <strong>{listing.maintenanceFee}</strong>
-        </div>
+      {/* 시안의 구분선 테이블 — 아이콘 그리드 대신 라벨/값 행. */}
+      <dl className="detail-spec-table" aria-label="매물 기본 정보">
+        <div><dt>매물 유형</dt><dd>{listing.roomType}</dd></div>
+        <div><dt>전용면적</dt><dd>{listing.sizeLabel}</dd></div>
+        <div><dt>해당층</dt><dd>{listing.floorLabel}</dd></div>
+        <div><dt>관리비</dt><dd>{listing.maintenanceFee}</dd></div>
+        <div><dt>입주 가능일</dt><dd>{moveInLabel}</dd></div>
+      </dl>
+
+      {/* 옵션 — 시안처럼 우측 패널(모바일은 본문 흐름) 소프트 칩. */}
+      <div className="detail-panel-options" aria-label="옵션">
+        <strong>옵션</strong>
+        {listingOptions.length > 0 ? (
+          <div className="detail-panel-option-chips">
+            {listingOptions.map((option) => (
+              <span key={option}>{option}</span>
+            ))}
+          </div>
+        ) : (
+          <p>집주인이 등록한 옵션이 없습니다.</p>
+        )}
       </div>
 
       <div className="detail-tags" aria-label="매물 태그">
@@ -304,36 +327,30 @@ export function ListingDetailView({
         </div>
       </div>
 
-      <section className="detail-info-section" aria-label="가격 정보">
-        <div className="detail-section-heading">
-          <h2>가격 정보</h2>
-          <span>방문 전 필수 확인</span>
+      {/* 데스크톱 우측 패널 하단 CTA — 시안 배치. 모바일은 기존 하단 고정 바가 담당(CSS로 숨김). */}
+      <div className="detail-panel-cta">
+        <span className="detail-panel-cta-note">로그인 없이 문의 가능 · 채팅으로 바로 연결</span>
+        <div className="detail-panel-cta-buttons">
+          <button className="detail-panel-primary" type="button" onClick={onStartChat}>문자로 문의하기</button>
+          <button className="detail-panel-ghost" type="button" onClick={onStartChat}>전화</button>
         </div>
-        <dl className="detail-info-table">
-          {listingPriceRows.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      </div>
 
+      {/* 옵션 정보 섹션은 우측 패널 칩(detail-panel-options)으로 승격 — 가격·건물 정보를 나란히 둔다. */}
       <div className="detail-info-pair">
-        <section className="detail-info-section" aria-label="옵션 정보">
+        <section className="detail-info-section" aria-label="가격 정보">
           <div className="detail-section-heading">
-            <h2>옵션 정보</h2>
-            <span>{isDirectListing ? "집주인 등록 기준" : "현장 확인 필요"}</span>
+            <h2>가격 정보</h2>
+            <span>방문 전 필수 확인</span>
           </div>
-          {listingOptions.length > 0 ? (
-            <div className="option-chip-grid">
-              {listingOptions.map((option) => (
-                <span key={option}>{option}</span>
-              ))}
-            </div>
-          ) : (
-            <p className="option-empty-note">집주인이 등록한 옵션이 없습니다.</p>
-          )}
+          <dl className="detail-info-table">
+            {listingPriceRows.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
 
         <section className="detail-info-section" aria-label="건물 정보">
@@ -352,6 +369,9 @@ export function ListingDetailView({
         </section>
       </div>
 
+      {/* 하단 2단(시안) — 좌: 상세 설명+위치, 우: 비슷한 매물. 모바일은 자연 스택. */}
+      <div className="detail-lower-duo">
+      <div className="detail-lower-main">
       <section className="detail-info-section detail-description-section" aria-label="상세 설명">
         <div className="detail-section-heading">
           <h2>상세 설명</h2>
@@ -376,6 +396,7 @@ export function ListingDetailView({
           title={listing.title}
         />
       </section>
+      </div>
 
       {similarListings.length > 0 ? (
         <section className="detail-similar-section" aria-label="비슷한 매물">
@@ -397,6 +418,7 @@ export function ListingDetailView({
           </div>
         </section>
       ) : null}
+      </div>
 
       <div className={has3DHero ? "detail-contact-bar has-3d" : "detail-contact-bar"} id="detail-contact">
         <span className="contact-tooltip">로그인 없이 문의 가능 · 채팅으로 바로 연결</span>

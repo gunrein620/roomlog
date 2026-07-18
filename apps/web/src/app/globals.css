@@ -3342,6 +3342,22 @@ p {
   color: #ebe5ff;
 }
 
+/* 시안의 원형 뒤로가기 */
+.listing-detail-screen.has-3d .detail-back-button {
+  border-radius: 50%;
+}
+
+/* 매물번호 바도 밤하늘 톤으로 — 헤더→스테이지 사이 흰 띠 제거 */
+.listing-detail-screen.has-3d .listing-number-bar {
+  border-bottom: 0;
+  background: #17133a;
+}
+
+.listing-detail-screen.has-3d .listing-number-bar button,
+.listing-detail-screen.has-3d .listing-number-bar .listing-updated {
+  color: rgba(203, 191, 245, 0.75);
+}
+
 .listing-detail-screen.has-3d .detail-header-actions button.active {
   border-color: rgba(242, 137, 157, 0.55);
   background: rgba(242, 137, 157, 0.14);
@@ -3825,6 +3841,175 @@ p {
 
 .photo-lightbox-nav.next {
   right: 10px;
+}
+
+/* ── 헤더 타이틀 스택(라벨+이름) ── */
+.detail-title-stack {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.detail-title-stack h1 {
+  overflow: hidden;
+  font-size: 1.32rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-title-caption {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.listing-detail-screen.has-3d .detail-title-caption {
+  color: rgba(203, 191, 245, 0.65);
+}
+
+/* ── 가격 헤더(시안) — 작은 캡션 + 세리프 큰 가격 ── */
+.detail-price-caption {
+  display: block;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.detail-price-block .detail-price-main {
+  margin-top: 8px;
+  font-family: "Gowun Batang", serif;
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.detail-price-sep {
+  color: var(--subtle);
+  font-size: 0.62em;
+}
+
+/* ── 스펙 테이블(시안) — 구분선 라벨/값 행 ── */
+.detail-spec-table {
+  display: grid;
+  margin: 18px 18px 0;
+}
+
+.detail-spec-table > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.86rem;
+}
+
+.detail-spec-table > div:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-spec-table dt {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.detail-spec-table dd {
+  margin: 0;
+  color: #172033;
+  font-weight: 800;
+}
+
+/* ── 우측 패널 옵션 칩 ── */
+.detail-panel-options {
+  display: grid;
+  gap: 10px;
+  margin: 18px 18px 0;
+}
+
+.detail-panel-options strong {
+  color: #172033;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.detail-panel-options p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.detail-panel-option-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-panel-option-chips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(139, 131, 192, 0.28);
+  border-radius: 999px;
+  background: rgba(203, 191, 245, 0.16);
+  color: #3b3568;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+/* ── 우측 패널 CTA(시안) — 데스크톱 전용, 모바일은 하단 고정 바가 담당 ── */
+.detail-panel-cta {
+  display: none;
+}
+
+.detail-panel-cta-note {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--subtle);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.detail-panel-cta-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.detail-panel-primary {
+  flex: 2.4;
+  min-height: 50px;
+  border-radius: 14px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.detail-panel-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(32, 24, 74, 0.28);
+}
+
+.detail-panel-ghost {
+  flex: 1;
+  min-height: 50px;
+  border: 1px solid rgba(32, 24, 74, 0.22);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--blue);
+  font-size: 0.9rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.detail-panel-ghost:hover {
+  background: rgba(32, 24, 74, 0.05);
 }
 
 /* 터치 기기 — 히어로 컨트롤도 48px 터치 타깃 확보 (hallmark 게이트) */
@@ -12336,8 +12521,10 @@ p {
     min-height: 540px;
   }
 
+  /* 우측 컬럼(시안) — 가격(3) 스펙표(4) 옵션(5) 태그(6) 집주인(7) CTA(8) */
   .detail-price-block,
-.listing-detail-facts,
+.detail-spec-table,
+.detail-panel-options,
 .detail-tags {
     grid-column: 2;
   }
@@ -12346,29 +12533,24 @@ p {
     grid-row: 3;
   }
 
-  .listing-detail-facts {
+  .detail-spec-table {
     grid-row: 4;
   }
 
-  .detail-tags {
+  .detail-panel-options {
     grid-row: 5;
+  }
+
+  .detail-tags {
+    grid-row: 6;
   }
 
   .detail-price-block {
     padding-top: 28px;
   }
 
-  .detail-price-block h2 {
-    font-size: 2rem;
-  }
-
-  .detail-price-block p {
-    margin-top: 18px;
-    font-size: 1.08rem;
-  }
-
-  .listing-detail-facts {
-    grid-template-columns: 1fr;
+  .detail-price-block .detail-price-main {
+    font-size: 2.5rem;
   }
 
   .gallery-tile {
@@ -12413,34 +12595,69 @@ p {
     border-radius: 18px;
   }
 
-  /* 3D 히어로 상세 — 갤러리 자리(1열)를 스테이지가 차지, 우측 컬럼 6행엔 집주인 카드 */
+  /* 3D 히어로 상세 — 갤러리 자리(1열)를 스테이지가 차지, 우측 컬럼 3~8행을 함께 덮는다 */
   .detail-3d-hero {
     grid-column: 1;
-    grid-row: 3 / span 4;
-    align-self: start;
-    height: min(720px, calc(100dvh - 150px));
+    grid-row: 3 / span 6;
+    align-self: stretch;
+    height: auto;
+    min-height: 640px;
+    max-height: calc(100dvh - 120px);
   }
 
-  /* 우측 컬럼에 집주인 카드가 추가돼 좌측 히어로/갤러리는 4행을 덮는다 */
   .detail-gallery {
-    grid-row: 3 / span 4;
+    grid-row: 3 / span 6;
   }
 
   .detail-owner-card {
     grid-column: 2;
-    grid-row: 6;
+    grid-row: 7;
     align-self: start;
-    margin: 16px 24px 0 6px;
+    margin: 18px 24px 0 6px;
   }
 
-  .detail-similar-section {
+  .detail-panel-cta {
+    display: block;
+    grid-column: 2;
+    grid-row: 8;
+    align-self: start;
+    margin: 14px 24px 0 6px;
+  }
+
+  /* 데스크톱은 우측 패널 CTA가 담당 — 화면을 가리는 하단 고정 바를 없앤다(시안) */
+  .detail-contact-bar {
+    display: none;
+  }
+
+  /* 하단 2단(시안) — 좌: 설명+지도(1.35), 우: 비슷한 매물(1) */
+  .detail-lower-duo {
+    display: grid;
     grid-column: 1 / -1;
-    margin-right: 24px;
-    margin-left: 24px;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 0 20px;
+    align-items: start;
+    margin: 0 24px;
   }
 
-  .detail-similar-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .detail-lower-main {
+    min-width: 0;
+  }
+
+  .detail-lower-duo .detail-info-section,
+  .detail-lower-duo .detail-map-section,
+  .detail-lower-duo .detail-similar-section {
+    grid-column: auto;
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .detail-lower-duo .detail-similar-section {
+    margin-top: 20px;
+  }
+
+  /* duo 좌측은 폭이 절반 — 지도는 제목 아래로 스택(시안) */
+  .detail-lower-duo .detail-map-section {
+    grid-template-columns: 1fr;
   }
 
   .hero-stage .listing-tour-furniture {
