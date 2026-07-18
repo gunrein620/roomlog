@@ -8874,8 +8874,10 @@ export class RoomlogService implements OnModuleDestroy {
       linkedRoomIds.add(currentRoomId);
     }
 
+    // 해지된 집은 목록에서 뺀다. 현재 연결(tenantRooms)은 위에서 이미 넣었으므로,
+    // 거주 중 기간 만료(expired지만 연결 유지)는 그대로 남고 해지된 방만 사라진다.
     this.store.contracts
-      .filter((contract) => contract.tenantId === tenantId)
+      .filter((contract) => contract.tenantId === tenantId && contract.lifecycle !== "expired")
       .forEach((contract) => linkedRoomIds.add(contract.roomId));
 
     return [...linkedRoomIds]
@@ -9213,10 +9215,27 @@ export class RoomlogService implements OnModuleDestroy {
     }
 
     const room = this.findRoom(roomId);
+    // 청구는 호실 기준이라 재계약 시 전 세입자 청구(미납·연체 포함)가 새 세입자에게 넘어간다.
+    // 내 입주 시점 이전에 발행된 청구는 내 것이 아니다 — 남의 연체를 새 세입자에게 보이지 않는다.
+    // 입주 시점을 알 수 없으면(계약 미연결) 기존대로 전부 반환 — 정상 청구를 숨기지 않는다.
+    const occupancyStart = this.tenantOccupancyStart(tenantId, room.id);
 
     return this.store.bills
       .filter((bill) => this.roomForBill(bill)?.id === room.id)
+      .filter(
+        (bill) => occupancyStart === undefined || this.timeOf(bill.createdAt) >= occupancyStart
+      )
       .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  /** 해당 호실에서 내 계약이 시작된 시각(거래 수락 시각 우선). 계약이 없으면 undefined. */
+  private tenantOccupancyStart(tenantId: string, roomId: string): number | undefined {
+    const starts = this.store.contracts
+      .filter((contract) => contract.tenantId === tenantId && contract.roomId === roomId)
+      .map((contract) => this.timeOf(contract.tradeAcceptedAt ?? contract.createdAt))
+      .filter((time) => Number.isFinite(time) && time > 0);
+
+    return starts.length > 0 ? Math.min(...starts) : undefined;
   }
 
   private billIsVisibleToTenant(bill: Bill, at: Date) {
