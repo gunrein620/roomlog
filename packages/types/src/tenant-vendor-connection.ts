@@ -73,7 +73,11 @@ export interface TenantVendorConnectionRequestResult {
 
 export type TenantVendorEstimateReviewInput =
   | { action: "APPROVE" }
-  | { action: "REQUEST_REVISION"; note: string };
+  | {
+      action: "REQUEST_REVISION";
+      note: string;
+      tenantAvailableTimes?: string;
+    };
 
 export interface TenantVendorVisitScheduleInput {
   scheduledAt: string;
@@ -86,6 +90,8 @@ export type TenantVendorCompletionDecisionInput =
 export interface TenantVendorWorkflowView {
   complaintId: string;
   repairId: string;
+  title: string;
+  publicLocation: string;
   status: string;
   vendor: TenantPartnerVendorPublicView;
   scheduledAt?: string;

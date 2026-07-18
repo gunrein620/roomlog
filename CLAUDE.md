@@ -47,7 +47,7 @@ bash scripts/verify.sh               # 원커맨드 스모크(types/ui typecheck
 ### 프론트 (apps/web) — 단일 앱, 두 계층의 표면
 - `apps/manager` · `apps/tenant` · `apps/vendor`는 **빈 stale 디렉토리**(node_modules만). 모든 화면은 `apps/web/src/app/`에 있다.
 - **① 공개 탐색 표면 (비로그인, 반응형 웹)**: 매물 탐색 SPA. 루트 `HomeApp.tsx`(**~120KB 대형 클라이언트 컴포넌트** — 수정 시 주의)가 본체이고, `saved/`(찜) · `sell/`(매물등록) · `inquiry/`(매물 채팅) · `living/`(입주 후 허브) · `map/`(네이버 지도 방찾기) 라우트는 전부 `<HomeApp initialTab="...">` 얇은 래퍼다. `listing/[id]/`(매물 상세), `login/`(통합 WOOZU 로그인, `WoozuLoginScreen`). **PhoneFrame 안 씀.**
-- **② 역할별 관리 표면 (로그인 후)**: `src/app/<role>/<domain>/**` (tenant/manager/vendor). 임차인/업체 = `PhoneFrame`(390×844) 모바일 셸, 관리인 데스크탑 = `ManagerShell`. (from `@roomlog/ui`)
+- **② 역할별 관리 표면 (로그인 후)**: `src/app/<role>/<domain>/**` (tenant/manager/vendor). **업체 = `PhoneFrame`(390×844) 모바일 셸, 관리인 데스크탑 = `ManagerShell`** (from `@roomlog/ui`). **세입자 본선은 공개 표면의 세입자탭**(`/living` → `my/flows/TenantMyPage.tsx`, 사용자 결정 2026-07-17) — 하자 접수·이력·상세(긴급도/이의제기/확정표시/채팅/완료확인)가 전부 탭 안 시트에서 이루어진다. `src/app/tenant/**` PhoneFrame 화면은 폐기 방향의 잔존 와이어프레임이니 세입자 신규 기능을 거기에 배선하지 말 것.
 - **데이터 화면 = async 서버 컴포넌트**가 `src/lib/<domain>-api.ts`(BFF)를 await.
 - **BFF 패턴**: `src/lib/<domain>-api.ts`의 `serverFetch`(`src/lib/server-api.ts`)가 httpOnly 쿠키 토큰(`roomlog_token`)을 `Authorization: Bearer`로 Nest에 forward. **서버 전용**(`next/headers` 의존). 데이터 없음/인증 전/오류 시 `demo-<domain>.ts`로 폴백하되 **경고 로그**를 남긴다(빈 상태·오류를 데모로 은폐 금지).
 - **서버/클라 경계 함정**: `serverFetch`/`next/headers` 의존 모듈을 `"use client"` 컴포넌트가 import하면 빌드가 깨진다(클라 번들이 `next/headers`를 끎). 클라에서 API 필요 시 fetch-only 파일로 분리(예: `market-api.ts` vs 서버전용 `api.ts`).
@@ -75,7 +75,7 @@ bash scripts/verify.sh               # 원커맨드 스모크(types/ui typecheck
 `prisma/schema.prisma` — 75+ 모델(하자·티켓·수리·비용·빌링·계약·이사정산·메시징·리포트·크레딧/결제·3D). 스키마 변경 후 `pnpm db:generate` 필수, DB엔 `roomlog-postgres` 컨테이너가 떠 있어야 함. 마이그레이션은 db push 베이스라인(migrate dev 재생 불가 — 부채). 프로덕션은 `docker-compose.prod.yml`의 `migration` 서비스가 담당.
 
 ## 도메인 작업 시 (요약)
-**실배선 레퍼런스 슬라이스**(그대로 따라할 예시): 하자=`src/app/tenant/defect/**`, 업체잡=`src/app/vendor/job/**` — Prisma·쿠키인증·데모폴백까지 실제로 돈다.
+**실배선 레퍼런스 슬라이스**(그대로 따라할 예시): 세입자 하자=`src/app/my/flows/TenantMyPage.tsx`(세입자탭 시트, 클라 fetch → `/api/tenant/*` 프록시), 업체잡=`src/app/vendor/job/**` — Prisma·쿠키인증·데모폴백까지 실제로 돈다.
 1. **좁은 목 먼저**: `packages/types/src/<domain>.ts` 계약 확정 + `index.ts` re-export.
 2. **모델**: `schema.prisma` 추가 → `db push`(또는 migrate) + `db:generate`.
 3. **모듈**: core면 `roomlog.controller`/`roomlog.service`(+projector), 독립이면 새 Nest 모듈 → `app.module.ts` 등록. 역할 가드 필수.

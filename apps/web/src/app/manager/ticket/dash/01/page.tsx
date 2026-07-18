@@ -1,7 +1,9 @@
-import { Badge, Button, Card } from "@roomlog/ui";
+import { Badge, Card } from "@roomlog/ui";
 import { getManagerTicketDetail } from "@/lib/ticket-manager-api";
+import { resolveTicketDirectFlow } from "@/lib/ticket-direct-flow-state";
 import {
   LinkButton,
+  DirectHandlingActions,
   ResponsibilityCard,
   StatusBadges,
   TicketHeader,
@@ -14,6 +16,14 @@ import {
 } from "../../_components/ticket-manager-ui";
 import { AttachmentThumbnailGallery } from "./AttachmentThumbnailGallery";
 import { TicketDetailBackButton } from "./TicketDetailBackButton";
+import { ManagerTicketChat } from "./ManagerTicketChat";
+import {
+  cancelDirectHandlingAction,
+  completeDirectHandlingAction,
+  decideResponsibilityAction,
+  sendTicketChatAction,
+  startDirectHandlingAction,
+} from "./actions";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -34,8 +44,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   }
 
   const { ticket, analysis, repair } = detail;
-  const completionGuard = repair?.stage === "completed" || repair?.stage === "paid";
-
+  const flow = resolveTicketDirectFlow({
+    ticketStatus: ticket.status,
+    directHandling: ticket.directHandling,
+    hasRepairPath: Boolean(repair),
+    repairStage: repair?.stage,
+  });
   return (
     <div style={pageStack}>
       <TicketHeader
@@ -70,7 +84,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             )}
           </Card>
 
-          <ResponsibilityCard analysis={analysis} />
+          <ResponsibilityCard
+            analysis={analysis}
+            ticketId={ticket.id}
+            aiFeedback={detail.aiFeedback}
+            responsibilityDecision={detail.responsibilityDecision}
+            decisionAction={decideResponsibilityAction}
+          />
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitle}>임차인 입력·첨부</div>
@@ -81,13 +101,40 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             />
           </Card>
 
+          <ManagerTicketChat
+            ticketId={ticket.id}
+            messages={detail.messages}
+            action={sendTicketChatAction}
+          />
+
+          {detail.vendorDecline ? (
+            <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <div style={{ fontWeight: 700 }}>업체가 배정을 거절했습니다</div>
+              <div style={muted}>{detail.vendorDecline.reason}</div>
+              <div style={{ ...row, justifyContent: "flex-end" }}>
+                <LinkButton
+                  href={ticketDashHref("04", ticket.id)}
+                  variant="secondary"
+                >
+                  다른 업체 배정
+                </LinkButton>
+              </div>
+            </Card>
+          ) : null}
+
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
             <div style={sectionTitle}>다음 행동</div>
-            <Button disabled={!completionGuard} style={!completionGuard ? { opacity: 0.45, cursor: "not-allowed" } : undefined}>
-              {completionGuard ? "완료 처리" : "완료 처리 · 수리완료/결제 가드"}
-            </Button>
+            <DirectHandlingActions
+              ticket={ticket}
+              repair={repair}
+              startAction={startDirectHandlingAction}
+              completeAction={completeDirectHandlingAction}
+              cancelAction={cancelDirectHandlingAction}
+            />
             <div style={{ ...row, justifyContent: "flex-end" }}>
-              <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
+              {flow.showVendorAssignment ? (
+                <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
+              ) : null}
               <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">답변 초안 생성</LinkButton>
             </div>
           </Card>

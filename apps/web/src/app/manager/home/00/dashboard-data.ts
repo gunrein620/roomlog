@@ -1,4 +1,4 @@
-import type { Thread, Ticket } from "@roomlog/types";
+import type { Cost, MonthlyCostSummary, Thread, Ticket } from "@roomlog/types";
 import { toManagerDashboard, type TeamDashboardResponse } from "@/lib/billing-manager-mapping";
 import { getManagerContractDashboard } from "@/lib/contract-manager-api";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
@@ -14,11 +14,14 @@ import {
   countOverdueBills,
   countTicketProgress,
   depositRateMonthLabel,
+  monthlyRepairCostTrend,
+  recentActiveRepairCosts,
   sumDepositAmounts,
   sumPortfolioAmounts,
   type DashboardBillingRow,
   type DashboardContractExpiryRow,
   type DashboardListing,
+  type DashboardRepairExpenseSummary,
   type DashboardSourceKey,
   type DashboardThread,
   type DashboardTicket,
@@ -36,6 +39,7 @@ export type ManagerDashboardData = {
   depositAmounts: { collected: number; billed: number } | null;
   ticketProgress: { open: number; resolved: number; total: number } | null;
   portfolioAmounts: { depositManwon: number; monthlyRentManwon: number; contractCount: number } | null;
+  repairExpenses: DashboardRepairExpenseSummary | null;
   homeCards: ManagerHomeCard[];
   uncontractedListings: DashboardListing[];
   sourceFailures: DashboardSourceKey[];
@@ -85,13 +89,14 @@ const ticketStatusLabels: Record<string, string> = {
 };
 
 export async function assembleManagerDashboard(user: SessionUser | null): Promise<ManagerDashboardData> {
-  const [listings, tradeContracts, billing, tickets, contractDashboard, threads] = await Promise.all([
+  const [listings, tradeContracts, billing, tickets, contractDashboard, threads, repairExpenses] = await Promise.all([
     loadListings(user),
     loadTradeContracts(user),
     loadBillingRows(),
     loadTickets(),
     loadContractExpiryRows(),
-    loadThreads()
+    loadThreads(),
+    loadRepairExpenses()
   ]);
 
   const sourceFailures: DashboardSourceKey[] = [
@@ -100,7 +105,8 @@ export async function assembleManagerDashboard(user: SessionUser | null): Promis
     billing.failed ? "billing" : null,
     tickets.failed ? "tickets" : null,
     contractDashboard.failed ? "contractDashboard" : null,
-    threads.failed ? "messaging" : null
+    threads.failed ? "messaging" : null,
+    repairExpenses.failed ? "costs" : null
   ].filter((key): key is DashboardSourceKey => Boolean(key));
 
   const billingRows = billing.failed ? null : billing.data.rows;
@@ -157,6 +163,7 @@ export async function assembleManagerDashboard(user: SessionUser | null): Promis
     depositAmounts: sumDepositAmounts(billingRows),
     ticketProgress: countTicketProgress(ticketRows),
     portfolioAmounts: sumPortfolioAmounts(tradeContracts.data),
+    repairExpenses: repairExpenses.failed ? null : repairExpenses.data,
     homeCards,
     uncontractedListings: listings.data,
     sourceFailures,
@@ -275,6 +282,30 @@ async function loadThreads(): Promise<SourceResult<DashboardThread[]>> {
     };
   } catch {
     return { data: [], failed: true };
+  }
+}
+
+async function loadRepairExpenses(): Promise<SourceResult<DashboardRepairExpenseSummary>> {
+  try {
+    const [costs, summary] = await Promise.all([
+      serverFetch<Cost[]>("/manager/costs"),
+      serverFetch<MonthlyCostSummary>("/manager/costs/monthly-summary")
+    ]);
+
+    return {
+      data: {
+        month: summary.month,
+        totalAmount: summary.byType.repair,
+        recent: recentActiveRepairCosts(costs),
+        monthlyTrend: monthlyRepairCostTrend(costs, summary.month)
+      },
+      failed: false
+    };
+  } catch {
+    return {
+      data: { month: "", totalAmount: 0, recent: [], monthlyTrend: [] },
+      failed: true
+    };
   }
 }
 

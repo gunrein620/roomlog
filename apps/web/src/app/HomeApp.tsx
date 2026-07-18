@@ -63,6 +63,7 @@ import {
   DEMO_VENDORS
 } from "../lib/demo-vendor-mgmt";
 import {
+  VENDOR_ACTIVATION_LOGIN_ACTION,
   WoozuLoginScreen,
   type AppRole,
   type AuthMode,
@@ -70,8 +71,12 @@ import {
 } from "./_components/WoozuLoginScreen";
 import { MobileRoleMenu } from "./_components/MobileRoleMenu";
 import TourActionBell from "./_components/TourActionBell";
+import TourUploadBanner from "./_components/TourUploadBanner";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import { formatTenantLandlordUnreadCount } from "@/lib/tenant-landlord-conversation";
+import { tenantLandlordNavLabel } from "@/lib/tenant-landlord-nav-unread";
 import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
+import { useTenantLandlordUnreadCount } from "@/lib/use-tenant-landlord-unread-count";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
 import {
   demoListings as listings,
@@ -1498,9 +1503,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [isDevRolePreview, setIsDevRolePreview] = useState(false);
   // URL ?role=/flow= 딥링크가 역할을 정했는지 — 정했다면 계정 기반 자동 역할이 덮지 않는다.
   const urlRoleAppliedRef = useRef(false);
-  // 집 내놓기 시작 모드(/?flow=listing) — 관리 콘솔 보호와 분리된 비보호 등록 진입.
-  // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
-  const [isListingStartMode, setIsListingStartMode] = useState(false);
   const isAuthHistoryPushedRef = useRef(false);
   // 공개된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
   const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
@@ -1878,6 +1880,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   }, [activeTab]);
 
   const inquiryBadgeCount = unseenTradeCount;
+  const tenantLandlordUnreadCount = useTenantLandlordUnreadCount(
+    Boolean(viewer && hasCapability(viewer, "TENANT")),
+    viewer?.userId,
+  );
+  const tenantLandlordBadgeText = formatTenantLandlordUnreadCount(tenantLandlordUnreadCount);
+  const tenantLandlordNavigationLabel = tenantLandlordNavLabel(tenantLandlordUnreadCount);
 
   // 상세는 이제 라우트(/listing/[id]) — 공유 가능한 URL로 이동한다(1단계 라우트 분리).
   // 채팅 시작도 상세의 문의하기가 담당한다 — 홈 카드에는 별도 액션 버튼을 두지 않는다.
@@ -2229,12 +2237,11 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
     } else if (flow === "listing") {
-      // 집 내놓기 시작 — capability 가드를 타지 않는 등록 진입점.
-      // /login의 "관리 중인 집 연결 필요" CTA가 여기로 온다 (로그인 루프 방지, QA 2).
+      // 집 내놓기 시작 딥링크(/?flow=listing) — 매물등록 폼으로 직행한다.
+      // (sell 탭이 비보호로 바뀌어 별도 모드 플래그는 필요 없어졌지만, 기존 링크 호환을 위해 유지)
       urlRoleAppliedRef.current = true;
       setActiveRole("landlord");
       setActiveTab("sell");
-      setIsListingStartMode(true);
       setAuthMode(null);
       window.history.replaceState(null, "", TAB_PATHS.sell + window.location.hash);
       resetWindowScrollSoon();
@@ -2332,17 +2339,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     );
   }, [viewer]);
 
-  // 집 내놓기 시작 모드는 보호 대상에서 제외 — 등록 시작은 capability가 아니라
-  // 매물 등록 자체가 LANDLORD 관계를 만드는 진입점이다. 관리 콘솔(/manager/*)은 계속 서버 가드.
-  // 페이지는 이제 탭이 직접 결정한다: 매물등록(sell)=임대인, 세입자(living)=세입자.
-  const protectedConfig =
-    activeTab === "sell"
-      ? isListingStartMode
-        ? null
-        : protectedRoleConfig.landlord
-      : activeTab === "living"
-        ? protectedRoleConfig.tenant
-        : null;
+  // 매물등록(sell)은 보호 대상이 아니다 — 매물 등록 자체가 LANDLORD 관계를 만드는
+  // 진입점이므로, 집이 없는(처음 가입한) 계정도 "집 내놓기 시작" 경유 없이 바로 폼으로 간다.
+  // 등록 제출 시점의 로그인 요구는 폼(401 안내)이 담당하고, 관리 콘솔(/manager/*)은 계속 서버 가드.
+  const protectedConfig = activeTab === "living" ? protectedRoleConfig.tenant : null;
   const isProtectedRolePage = Boolean(protectedConfig);
   const canAccessProtectedRolePage =
     !protectedConfig ||
@@ -2370,6 +2370,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         mode={authMode}
         onAuthenticated={completeServiceAuth}
         onGoHome={closeAuthScreen}
+        vendorActivationAction={VENDOR_ACTIVATION_LOGIN_ACTION}
       />
     );
   }
@@ -2410,7 +2411,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 채팅
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
-              <button className={activeTab === "living" ? "active" : ""} type="button" onClick={() => activateTab("living")}>세입자</button>
+              <button
+                className={activeTab === "living" ? "active" : ""}
+                type="button"
+                onClick={() => activateTab("living")}
+                aria-label={tenantLandlordNavigationLabel}
+              >
+                세입자
+                {tenantLandlordBadgeText ? (
+                  <span className="nav-badge" aria-hidden="true">{tenantLandlordBadgeText}</span>
+                ) : null}
+              </button>
               <button type="button" onClick={() => { window.location.href = "/manager/home/00"; }}>관리</button>
               <button className={activeTab === "sell" ? "active" : ""} type="button" onClick={() => activateTab("sell")}>매물등록</button>
             </nav>
@@ -2435,6 +2446,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             </div>
           </div>
         </header>
+        {/* 상단 네비 바로 아래 전역 진행바 — 3D 투어 백그라운드 업로드 중 어느 탭에서든 보인다. */}
+        <TourUploadBanner />
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
           <header className="app-header">

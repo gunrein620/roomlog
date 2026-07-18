@@ -162,7 +162,7 @@ export class RoomlogMessagingDomain {
 
     this.persistStore();
 
-    return this.presentThread(thread);
+    return this.presentManagerThread(managerId, thread);
   }
 
   listTenantMessagingThreads(tenantId: string): MessagingThread[] {
@@ -182,6 +182,21 @@ export class RoomlogMessagingDomain {
     if (!thread) {
       throw new NotFoundException("메시지 스레드를 찾을 수 없습니다.");
     }
+
+    return this.presentThread(thread, true);
+  }
+
+  markTenantMessagingThreadRead(tenantId: string, threadId: string): MessagingThread {
+    const thread = this.store.messagingThreads.find(
+      (item) => item.id === threadId && item.tenantId === tenantId
+    );
+
+    if (!thread) {
+      throw new NotFoundException("메시지 스레드를 찾을 수 없습니다.");
+    }
+
+    thread.unreadCount = 0;
+    this.persistStore();
 
     return this.presentThread(thread, true);
   }
@@ -227,7 +242,7 @@ export class RoomlogMessagingDomain {
       .filter((thread) => this.canManagerAccessRoom(managerId, thread.roomId))
       .filter((thread) => !context || thread.context === context)
       .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt))
-      .map((thread) => this.presentThread(thread));
+      .map((thread) => this.presentManagerThread(managerId, thread));
   }
 
   listManagerMessagingRecipients(managerId: string): ManagerMessagingRecipient[] {
@@ -286,7 +301,7 @@ export class RoomlogMessagingDomain {
         !thread.contextRef
     );
     if (existing) {
-      return this.presentThread(existing);
+      return this.presentManagerThread(managerId, existing);
     }
 
     const body = input.body?.trim();
@@ -309,7 +324,7 @@ export class RoomlogMessagingDomain {
   getManagerMessagingThread(managerId: string, threadId: string): MessagingThread {
     const thread = this.findManagerThread(managerId, threadId);
 
-    return this.presentThread(thread, true);
+    return this.presentManagerThread(managerId, thread, true);
   }
 
   markManagerMessagingThreadRead(managerId: string, threadId: string): MessagingThread {
@@ -317,7 +332,7 @@ export class RoomlogMessagingDomain {
     thread.managerUnreadCount = 0;
     this.persistStore();
 
-    return this.presentThread(thread, true);
+    return this.presentManagerThread(managerId, thread, true);
   }
 
   addManagerMessagingThreadMessage(
@@ -336,7 +351,7 @@ export class RoomlogMessagingDomain {
     });
     this.persistStore();
 
-    return this.presentThread(thread, true);
+    return this.presentManagerThread(managerId, thread, true);
   }
 
   deleteManagerMessagingThread(managerId: string, threadId: string) {
@@ -659,6 +674,31 @@ export class RoomlogMessagingDomain {
         ? threadMessages.map((message) => ({ ...message, attachmentUrls: [...message.attachmentUrls] }))
         : undefined
     };
+  }
+
+  private presentManagerThread(
+    managerId: string,
+    thread: MessagingThread,
+    includeMessages = false
+  ): MessagingThread {
+    const presented = this.presentThread(thread, includeMessages);
+    const ticketId = thread.context === "defect" ? thread.contextRef?.trim() : undefined;
+    if (!ticketId) {
+      return presented;
+    }
+
+    const linkedTicket = this.store.tickets.find(
+      (ticket) => ticket.id === ticketId && ticket.roomId === thread.roomId
+    );
+    if (!linkedTicket) {
+      return presented;
+    }
+
+    const isManagerTicketUnread = !this.store.managerTicketReads?.some(
+      (read) => read.managerId === managerId && read.ticketId === linkedTicket.id
+    );
+
+    return { ...presented, isManagerTicketUnread };
   }
 
   private senderUserIdFor(thread: MessagingThread, sender: MessagingMessageSender) {

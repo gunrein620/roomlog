@@ -8,6 +8,9 @@ import { labelStyle, mutedStyle } from "../_components";
 
 type ResponseType = "FIXED_ESTIMATE" | "VISIT_REQUIRED" | "DECLINED";
 
+const estimateDetailPlaceholder =
+  "예: 출장비 5만원, 작업비 10만원, 자재비 10만원\n배수로가 막혀서 해당 부분 제거하고 새 부품으로 교체했습니다.";
+
 const fieldStyle = {
   width: "100%",
   minHeight: 88,
@@ -20,6 +23,43 @@ const fieldStyle = {
   padding: 12,
   resize: "vertical",
 } as const;
+
+const compactLabelStyle = {
+  ...labelStyle,
+  display: "block",
+  marginBottom: 4,
+} as const;
+
+function parsedAmount(value: string) {
+  const amount = Number(value.trim());
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : 0;
+}
+
+function won(amount: number) {
+  return `${amount.toLocaleString("ko-KR")}원`;
+}
+
+function toSeoulDateTimeLocal(value?: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map(({ type, value: partValue }) => [type, partValue]),
+  );
+  const localValue = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(localValue) ? localValue : undefined;
+}
 
 export function EstimateResponseForm({
   repairId,
@@ -35,8 +75,10 @@ export function EstimateResponseForm({
       ? "FIXED_ESTIMATE"
       : estimate?.responseType ?? "FIXED_ESTIMATE",
   );
-  const first = estimate?.lineItems[0];
-  const second = estimate?.lineItems[1];
+  const [amountInput, setAmountInput] = useState(() =>
+    estimate?.totalAmount ? String(estimate.totalAmount) : "",
+  );
+  const totalAmount = parsedAmount(amountInput);
 
   return (
     <form action={saveEstimateAction} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -81,33 +123,64 @@ export function EstimateResponseForm({
 
       {responseType === "FIXED_ESTIMATE" ? (
         <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={labelStyle}>견적 항목</div>
-          <Input name="lineDescription1" placeholder="자재 또는 부품" defaultValue={first?.description} disabled={readOnly} />
-          <Input name="lineAmount1" type="number" min="1" placeholder="항목 금액" defaultValue={first?.unitAmount} disabled={readOnly} />
-          <Input name="lineDescription2" placeholder="작업비" defaultValue={second?.description} disabled={readOnly} />
-          <Input name="lineAmount2" type="number" min="1" placeholder="항목 금액" defaultValue={second?.unitAmount} disabled={readOnly} />
-          <Input
-            name="estimatedDurationMinutes"
-            type="number"
-            min="1"
-            placeholder="예상 작업 시간(분)"
-            defaultValue={estimate?.estimatedDurationMinutes ?? 60}
-            disabled={readOnly}
-          />
-          <textarea
-            name="workDescription"
-            placeholder="작업 범위와 포함 내용을 적어 주세요."
-            defaultValue={estimate?.workDescription}
-            disabled={readOnly}
-            style={fieldStyle}
-          />
+          <div style={labelStyle}>견적</div>
+          <label>
+            <span style={compactLabelStyle}>견적 금액(원)</span>
+            <Input
+              name="totalAmount"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              step="1"
+              value={amountInput}
+              onChange={(event) => setAmountInput(event.target.value)}
+              placeholder="예: 250000"
+              disabled={readOnly}
+              required
+            />
+          </label>
+          <div
+            aria-live="polite"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: 12,
+              borderRadius: "var(--radius-md)",
+              background: "var(--primary-container)",
+              color: "var(--on-primary-container)",
+            }}
+          >
+            <strong>총 견적</strong>
+            <strong>{won(totalAmount)}</strong>
+          </div>
+          <label>
+            <span style={compactLabelStyle}>견적 내용</span>
+            <textarea
+              name="workDescription"
+              placeholder={estimateDetailPlaceholder}
+              defaultValue={estimate?.workDescription}
+              disabled={readOnly}
+              required
+              style={{ ...fieldStyle, minHeight: 160 }}
+            />
+          </label>
+          <p style={{ ...mutedStyle, margin: 0 }}>
+            금액 구성(출장비·작업비·자재비)과 작업 내용을 한 칸에 자유롭게 적어 주세요.
+          </p>
         </Card>
       ) : null}
 
       {responseType === "VISIT_REQUIRED" ? (
         <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={labelStyle}>방문 가능 일정</div>
-          <Input name="visitAvailableAt" type="datetime-local" disabled={readOnly} />
+          <Input
+            name="visitAvailableAt"
+            type="datetime-local"
+            defaultValue={toSeoulDateTimeLocal(estimate?.visitAvailableAt)}
+            disabled={readOnly}
+          />
           <textarea
             name="workDescription"
             placeholder="현장에서 확인할 항목을 적어 주세요."

@@ -10,6 +10,7 @@ import {
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
+import type { VendorRepairMessageRecord } from "./vendor-workflow.repository";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -20,10 +21,12 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
+  ResceneVendorActivation,
   TicketType,
   VendorAccountView,
   VendorActivationClaimResult,
-  VendorActivationPreviewEnvelope
+  VendorActivationIssueResult,
+  VendorActivationPreview
 } from "@roomlog/types";
 import {
   billingDateInSeoul,
@@ -67,6 +70,11 @@ import type {
 } from "./vendor-activation.repository";
 import { UnavailableVendorActivationRepository } from "./unavailable-vendor-activation.repository";
 import type { TenantVendorWorkflowAuthority } from "./tenant-vendor-connection.repository";
+import {
+  DirectHandlingPersistenceError,
+  type DirectHandlingMutationResult,
+  type DirectHandlingPersistence
+} from "./direct-handling.persistence";
 import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
 import { RoomlogAnnouncementTranslationService } from "./services/roomlog-announcement-translation.service";
 import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
@@ -97,6 +105,7 @@ import {
   ComplaintSourceChannel,
   ComplaintStatus,
   ConfirmTenantCompletionInput,
+  CompleteDirectHandlingInput,
   CreateRoomInput,
   Contract,
   ContractDocument,
@@ -131,6 +140,7 @@ import {
   CreateTenantContractInput,
   CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
+  CancelDirectHandlingInput,
   DisclosureSetting,
   Deposit,
   DuplicateTicketCandidate,
@@ -174,6 +184,7 @@ import {
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
   ManagerDunningActionPreview,
+  ManagerProxyIntakeInput,
   ManagerRealtimeClientSecretResult,
   ManagerReport,
   ManagerReportAuditLogEntry,
@@ -225,9 +236,11 @@ import {
   SimulatorWallData,
   SendIntakeMessageInput,
   SendDunningInput,
+  StartDirectHandlingInput,
   StartManagerConversationInput,
   StatusHistory,
   SubmitTenantAiFeedbackInput,
+  DecideTicketResponsibilityInput,
   TeamBill,
   TeamBillCreationData,
   TeamBillCreationUnavailableReason,
@@ -827,9 +840,19 @@ export type ManagerTicketRead = {
   readAt: string;
 };
 
-export type StoreProjector = {
+export type ComplaintAggregateIds = {
+  complaintId: string;
+  ticketId: string;
+  historyIds: string[];
+  messageIds: string[];
+};
+
+export type StoreProjector = Partial<DirectHandlingPersistence> & {
   load?(): Store | undefined | Promise<Store | undefined>;
   persist(store: Store): void | Promise<void>;
+  removeComplaintAggregate?(
+    ids: ComplaintAggregateIds
+  ): void | Promise<void>;
   disconnect?(): void | Promise<void>;
 };
 
@@ -855,6 +878,14 @@ function envNumber(name: string, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
 
   return Math.max(min, Math.min(max, value));
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function envConfidenceRatio(name: string, fallback: number) {
@@ -2409,6 +2440,7 @@ export class RoomlogService implements OnModuleDestroy {
   private persistenceGeneration = 0;
   private completedPersistenceGeneration = 0;
   private persistenceFailure?: { generation: number; error: unknown };
+  private readonly pendingProxyIntakeBroadcastTicketIds = new Set<string>();
   private shutdownStarted = false;
   private shutdownPromise?: Promise<void>;
   private readonly auth: RoomlogAuthDomain;
@@ -2812,16 +2844,25 @@ export class RoomlogService implements OnModuleDestroy {
 
   async previewVendorActivation(
     rawKey: string
-  ): Promise<VendorActivationPreviewEnvelope> {
+  ): Promise<VendorActivationPreview> {
     return await this.vendorActivation.preview(rawKey);
+  }
+
+  async listResceneVendorActivations(): Promise<ResceneVendorActivation[]> {
+    return await this.vendorActivation.listRescene();
+  }
+
+  async issueVendorActivation(input: unknown): Promise<VendorActivationIssueResult> {
+    await this.flushPersistence();
+    return await this.vendorActivation.issue(input);
   }
 
   async claimVendorActivation(
     userId: string,
-    activationSession: string
+    rawKey: string
   ): Promise<VendorActivationClaimResult> {
     await this.flushPersistence();
-    return await this.vendorActivation.claim(userId, activationSession);
+    return await this.vendorActivation.claim(userId, rawKey);
   }
 
   async resolveActiveVendorId(userId: string): Promise<string | undefined> {
@@ -4092,6 +4133,10 @@ export class RoomlogService implements OnModuleDestroy {
     return this.contract.preflightAcceptedTradeContract(input);
   }
 
+  disconnectAcceptedTradeContract(input: { tradeContractId: string; tenantId: string }) {
+    return this.contract.disconnectAcceptedTradeContract(input);
+  }
+
   getManagerContractDashboard(managerId: string) {
     return this.contract.getManagerContractDashboard(managerId);
   }
@@ -4173,14 +4218,200 @@ export class RoomlogService implements OnModuleDestroy {
     this.validateComplaintInput(input);
 
     const roomId = input.roomId ?? this.store.tenantRooms[tenantId] ?? "room-301";
+    const requestFingerprint = input.clientRequestId
+      ? this.complaintRequestFingerprint(roomId, input)
+      : undefined;
+    const existing = input.clientRequestId
+      ? this.store.complaints.find(
+          (complaint) =>
+            complaint.tenantId === tenantId &&
+            complaint.clientRequestId === input.clientRequestId
+        )
+      : undefined;
+    if (existing) {
+      if (existing.requestFingerprint !== requestFingerprint) {
+        throw new ConflictException("같은 접수 요청에 변경된 내용을 다시 사용할 수 없습니다.");
+      }
+      const ticket = this.findTicket(existing.ticketId);
+      return {
+        complaint: this.presentComplaint(existing),
+        ticket: this.presentTicket(ticket),
+        analysis: this.store.analyses[ticket.id]
+      };
+    }
     const analysis = this.analyzeComplaint(input);
     return this.createComplaintRecord(tenantId, roomId, "DIRECT_FORM", input, analysis, [
       {
         senderUserId: tenantId,
         senderRole: "TENANT",
-        messageText: input.description
+        messageText: input.description,
+        attachmentUrls: input.attachmentUrls
       }
     ]);
+  }
+
+  async createManagerProxyIntake(managerId: string, input: ManagerProxyIntakeInput) {
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Array.isArray(input) ||
+      typeof input.roomId !== "string" ||
+      !input.roomId.trim()
+    ) {
+      throw new BadRequestException("호실을 선택해 주세요.");
+    }
+    if (input.tenantId !== undefined && typeof input.tenantId !== "string") {
+      throw new BadRequestException("선택한 세입자가 해당 호실에 연결되어 있지 않습니다.");
+    }
+    this.assertManagerCanAccessRoom(managerId, input.roomId);
+    this.validateComplaintInput(input);
+
+    const reportedViaLabels: Record<
+      NonNullable<ManagerProxyIntakeInput["reportedVia"]>,
+      string
+    > = {
+      phone: "전화",
+      text: "문자",
+      in_person: "대면",
+      other: "기타"
+    };
+    const reportedVia = input.reportedVia ?? "other";
+    if (!Object.hasOwn(reportedViaLabels, reportedVia)) {
+      throw new BadRequestException("접수 경로가 올바르지 않습니다.");
+    }
+
+    const linkedTenantIds = Object.entries(this.store.tenantRooms)
+      .filter(([, roomId]) => roomId === input.roomId)
+      .map(([tenantId]) => tenantId);
+    if (linkedTenantIds.length === 0) {
+      throw new BadRequestException("연결된 세입자가 없는 호실입니다");
+    }
+
+    const requestedTenantId = input.tenantId?.trim();
+    if (input.tenantId !== undefined && !requestedTenantId) {
+      throw new BadRequestException("선택한 세입자가 해당 호실에 연결되어 있지 않습니다.");
+    }
+    if (!requestedTenantId && linkedTenantIds.length > 1) {
+      throw new BadRequestException("세입자를 선택해 주세요");
+    }
+
+    const tenantId = requestedTenantId ?? linkedTenantIds[0];
+    if (!tenantId || !linkedTenantIds.includes(tenantId)) {
+      throw new BadRequestException("선택한 세입자가 해당 호실에 연결되어 있지 않습니다.");
+    }
+
+    const normalizedInput = { ...input, reportedVia };
+    const requestFingerprint = normalizedInput.clientRequestId
+      ? this.complaintRequestFingerprint(input.roomId, normalizedInput)
+      : undefined;
+    const existing = normalizedInput.clientRequestId
+      ? this.store.complaints.find(
+          (complaint) =>
+            complaint.tenantId === tenantId &&
+            complaint.clientRequestId === normalizedInput.clientRequestId
+        )
+      : undefined;
+    if (existing) {
+      if (existing.requestFingerprint !== requestFingerprint) {
+        throw new ConflictException("같은 접수 요청에 변경된 내용을 다시 사용할 수 없습니다.");
+      }
+      const ticket = this.findTicket(existing.ticketId);
+      if (
+        this.persistenceFailure?.generation === this.persistenceGeneration &&
+        this.completedPersistenceGeneration < this.persistenceGeneration
+      ) {
+        this.projectStore();
+      }
+      await this.ensurePersistenceDurability();
+      const shouldBroadcast = this.pendingProxyIntakeBroadcastTicketIds.delete(ticket.id);
+      return {
+        complaint: this.presentComplaint(existing),
+        ticket: this.presentTicket(ticket),
+        analysis: this.store.analyses[ticket.id],
+        created: false as const,
+        shouldBroadcast
+      };
+    }
+
+    const analysis = this.analyzeComplaint(normalizedInput);
+    let createdRecordIds:
+      | { complaintId: string; ticketId: string; historyIds: string[]; messageIds: string[] }
+      | undefined;
+    try {
+      const created = this.createComplaintRecord(
+        tenantId,
+        input.roomId,
+        "MANAGER_PROXY",
+        normalizedInput,
+        analysis,
+        [
+          {
+            senderUserId: managerId,
+            senderRole: "LANDLORD",
+            messageText: `관리자 대리 접수 · ${reportedViaLabels[reportedVia]} · ${normalizedInput.description}`,
+            attachmentUrls: input.attachmentUrls
+          }
+        ],
+        undefined,
+        (ids) => {
+          createdRecordIds = ids;
+          this.pendingProxyIntakeBroadcastTicketIds.add(ids.ticketId);
+        }
+      );
+      await this.ensurePersistenceDurability();
+      const shouldBroadcast = this.pendingProxyIntakeBroadcastTicketIds.delete(
+        created.ticket.id
+      );
+
+      return { ...created, created: true as const, shouldBroadcast };
+    } catch (error) {
+      if (!normalizedInput.clientRequestId && createdRecordIds) {
+        this.rollbackComplaintRecord(createdRecordIds);
+        this.pendingProxyIntakeBroadcastTicketIds.delete(createdRecordIds.ticketId);
+        await this.drainPersistenceQueue();
+
+        if (!this.storeProjector?.removeComplaintAggregate) {
+          const safetyError = new Error(
+            "대리접수 저장 실패를 안전하게 보상할 수 없습니다."
+          ) as Error & { cause?: unknown };
+          safetyError.cause = error;
+          throw safetyError;
+        }
+
+        try {
+          await this.storeProjector.removeComplaintAggregate(createdRecordIds);
+        } catch (compensationError) {
+          const safetyError = new Error(
+            "대리접수 저장 실패 보상 작업을 완료하지 못했습니다."
+          ) as Error & { cause?: unknown };
+          safetyError.cause = compensationError;
+          throw safetyError;
+        }
+      }
+      throw error;
+    }
+  }
+
+  listManagerProxyIntakeRooms(managerId: string) {
+    const { rooms } = this.resolveManagerBillingScope(managerId);
+
+    return rooms.map((room) => {
+      const tenants = Object.entries(this.store.tenantRooms)
+        .filter(([, roomId]) => roomId === room.id)
+        .map(([tenantId]) => ({
+          tenantId,
+          name: this.store.users.find((user) => user.id === tenantId)?.name ?? "이름 미확인"
+        }))
+        .sort((left, right) => left.tenantId.localeCompare(right.tenantId));
+
+      return {
+        roomId: room.id,
+        buildingName: room.buildingName,
+        unitLabel: room.roomNo,
+        tenants,
+        hasTenant: tenants.length > 0
+      };
+    });
   }
 
   createIntakeSession(tenantId: string, input: CreateIntakeSessionInput = {}) {
@@ -5005,7 +5236,7 @@ export class RoomlogService implements OnModuleDestroy {
     return await this.copilot.chat(managerId, input);
   }
 
-  private resolveManagerAgentPendingCommand(
+  resolveManagerAgentPendingCommand(
     managerId: string,
     kind: NonNullable<CopilotChatResponse["pendingAction"]>["kind"],
     input: ManagerAgentCommandInput
@@ -5590,7 +5821,13 @@ export class RoomlogService implements OnModuleDestroy {
       attachmentUrls?: string[];
     }[],
     ticketResponsibilityHint: Ticket["responsibilityHint"] =
-      analysis.responsibilityHint
+      analysis.responsibilityHint,
+    onCreated?: (ids: {
+      complaintId: string;
+      ticketId: string;
+      historyIds: string[];
+      messageIds: string[];
+    }) => void
   ) {
     const createdAt = now();
     const complaintId = id("cmp");
@@ -5601,6 +5838,10 @@ export class RoomlogService implements OnModuleDestroy {
       roomId,
       ticketId,
       sourceChannel,
+      clientRequestId: input.clientRequestId,
+      requestFingerprint: input.clientRequestId
+        ? this.complaintRequestFingerprint(roomId, input)
+        : undefined,
       title: input.title,
       description: input.description,
       location: input.location,
@@ -5629,17 +5870,32 @@ export class RoomlogService implements OnModuleDestroy {
     this.store.complaints.unshift(complaint);
     this.store.tickets.unshift(ticket);
     this.store.analyses[ticket.id] = analysis;
-    this.pushHistory(ticket.id, "system", undefined, "RECEIVED", "임차인 신고 접수");
+    const initialHistory = this.pushHistory(
+      ticket.id,
+      "system",
+      undefined,
+      "RECEIVED",
+      sourceChannel === "MANAGER_PROXY" ? "관리자 대리 접수" : "임차인 신고 접수"
+    );
+    const createdMessages: TicketMessage[] = [];
     for (const message of initialMessages) {
-      this.addMessageInternal(
-        ticket.id,
-        complaint.id,
-        message.senderUserId,
-        message.senderRole,
-        message.messageText,
-        message.attachmentUrls
+      createdMessages.push(
+        this.addMessageInternal(
+          ticket.id,
+          complaint.id,
+          message.senderUserId,
+          message.senderRole,
+          message.messageText,
+          message.attachmentUrls
+        )
       );
     }
+    onCreated?.({
+      complaintId,
+      ticketId,
+      historyIds: [initialHistory.id],
+      messageIds: createdMessages.map((message) => message.id)
+    });
     this.persistStore();
 
     return {
@@ -5647,6 +5903,23 @@ export class RoomlogService implements OnModuleDestroy {
       ticket: this.presentTicket(ticket),
       analysis
     };
+  }
+
+  private rollbackComplaintRecord(ids: ComplaintAggregateIds) {
+    this.removeStoreRecordById(this.store.complaints, ids.complaintId);
+    this.removeStoreRecordById(this.store.tickets, ids.ticketId);
+    delete this.store.analyses[ids.ticketId];
+    for (const historyId of ids.historyIds) {
+      this.removeStoreRecordById(this.store.history, historyId);
+    }
+    for (const messageId of ids.messageIds) {
+      this.removeStoreRecordById(this.store.messages, messageId);
+    }
+  }
+
+  private removeStoreRecordById<T extends { id: string }>(records: T[], recordId: string) {
+    const index = records.findIndex((record) => record.id === recordId);
+    if (index >= 0) records.splice(index, 1);
   }
 
   listTenantComplaints(tenantId: string) {
@@ -5722,6 +5995,7 @@ export class RoomlogService implements OnModuleDestroy {
           ticketId: ticket.id,
           vendorId: activeRepair.vendorId,
           status: activeRepair.status,
+          tenantInitiated: activeRepair.tenantInitiated,
           title: activeRepair.title,
           description: activeRepair.description,
           ...(activeRepair.costBearer
@@ -5737,6 +6011,7 @@ export class RoomlogService implements OnModuleDestroy {
         const nextPhotoUrls = [...activeRepair.completionPhotoUrls];
         if (
           sameRepair.status !== activeRepair.status ||
+          sameRepair.tenantInitiated !== activeRepair.tenantInitiated ||
           sameRepair.title !== activeRepair.title ||
           sameRepair.description !== activeRepair.description ||
           sameRepair.costBearer !== activeRepair.costBearer ||
@@ -5745,6 +6020,7 @@ export class RoomlogService implements OnModuleDestroy {
           sameRepair.updatedAt !== activeRepair.updatedAt
         ) {
           sameRepair.status = activeRepair.status;
+          sameRepair.tenantInitiated = activeRepair.tenantInitiated;
           sameRepair.title = activeRepair.title;
           sameRepair.description = activeRepair.description;
           sameRepair.costBearer = activeRepair.costBearer;
@@ -5784,10 +6060,19 @@ export class RoomlogService implements OnModuleDestroy {
     return this.store.tickets.map((ticket) => this.presentTicket(ticket));
   }
 
-  listTicketsForManager(managerId: string) {
-    return this.store.tickets
-      .filter((ticket) => this.canManagerAccessRoom(managerId, ticket.roomId))
-      .map((ticket) => this.presentTicketForManager(managerId, ticket));
+  private async currentManagerReadStore() {
+    if (!this.storeProjector?.load) return this.store;
+    return (await this.storeProjector.load()) ?? createEmptyStore();
+  }
+
+  listTicketsForManager(managerId: string, sourceStore: Store = this.store) {
+    return sourceStore.tickets
+      .filter((ticket) => this.canManagerAccessRoom(managerId, ticket.roomId, sourceStore))
+      .map((ticket) => this.presentTicketForManager(managerId, ticket, sourceStore));
+  }
+
+  async listCurrentTicketsForManager(managerId: string) {
+    return this.listTicketsForManager(managerId, await this.currentManagerReadStore());
   }
 
   queryManagerAssistant(
@@ -5807,7 +6092,10 @@ export class RoomlogService implements OnModuleDestroy {
     const filters: string[] = [];
     const normalizedQuestion = question.replace(/\s+/g, " ");
 
-    if (/콜봇/.test(normalizedQuestion)) {
+    if (/대리\s*접수|관리자\s*대리/.test(normalizedQuestion)) {
+      matches = matches.filter((ticket) => ticket.sourceChannel === "MANAGER_PROXY");
+      filters.push("접수 채널: 관리자 대리 접수");
+    } else if (/콜봇/.test(normalizedQuestion)) {
       matches = matches.filter((ticket) => ticket.sourceChannel === "CALLBOT");
       filters.push("접수 채널: 콜봇");
     } else if (/음성/.test(normalizedQuestion)) {
@@ -5913,11 +6201,30 @@ export class RoomlogService implements OnModuleDestroy {
     return this.presentTicket(ticket);
   }
 
-  getTicketDetailForManager(managerId: string, ticketId: string) {
-    const ticket = this.findTicket(ticketId);
-    this.assertManagerCanAccessTicket(managerId, ticket);
+  getTicketDetailForManager(
+    managerId: string,
+    ticketId: string,
+    sourceStore: Store = this.store
+  ) {
+    const ticket = this.findTicket(ticketId, sourceStore);
+    this.assertManagerCanAccessTicket(managerId, ticket, sourceStore);
 
-    return this.presentTicketForManager(managerId, ticket);
+    const detail = this.presentTicketForManager(managerId, ticket, sourceStore, {
+      includeDetail: true
+    });
+
+    return {
+      ...detail,
+      messages: detail.messages ?? []
+    };
+  }
+
+  async getCurrentTicketDetailForManager(managerId: string, ticketId: string) {
+    return this.getTicketDetailForManager(
+      managerId,
+      ticketId,
+      await this.currentManagerReadStore()
+    );
   }
 
   markManagerTicketRead(managerId: string, ticketId: string) {
@@ -5960,8 +6267,86 @@ export class RoomlogService implements OnModuleDestroy {
   updateTicket(managerId: string, ticketId: string, input: Partial<Pick<Ticket, "category" | "priority" | "responsibilityHint" | "aiSummary">>) {
     const ticket = this.findTicket(ticketId);
     this.assertManagerCanAccessTicket(managerId, ticket);
+
+    if (input.responsibilityHint !== undefined) {
+      if (!this.isResponsibilityHint(input.responsibilityHint)) {
+        throw new BadRequestException("책임 가능성 값이 올바르지 않습니다.");
+      }
+
+      const analysis = this.store.analyses[ticket.id];
+      if (!analysis) {
+        throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
+      }
+      analysis.responsibilityHint = input.responsibilityHint;
+    }
+
     Object.assign(ticket, input, { updatedAt: now() });
     this.addMessageInternal(ticket.id, ticket.complaintId, managerId, "LANDLORD", "AI 분석 값을 검토했습니다.");
+    this.persistStore();
+
+    return this.presentTicket(ticket);
+  }
+
+  decideTicketResponsibility(
+    managerId: string,
+    ticketId: string,
+    input: DecideTicketResponsibilityInput
+  ) {
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+
+    if (!(["TENANT", "LANDLORD"] as const).includes(input.responsibility as never)) {
+      throw new BadRequestException("책임 주체를 선택해주세요.");
+    }
+
+    const note = input.note?.trim() ?? "";
+    if (!note) {
+      throw new BadRequestException("세입자에게 보이는 책임 판단 사유를 입력해주세요.");
+    }
+
+    const analysis = this.store.analyses[ticket.id];
+    if (!analysis) {
+      throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
+    }
+
+    const decidedAt = now();
+    const responsibilityLabel = input.responsibility === "TENANT" ? "임차인" : "임대인";
+    const responsibilityHint: AiAnalysis["responsibilityHint"] =
+      input.responsibility === "TENANT" ? "임차인 책임 가능성" : "임대인 책임 가능성";
+
+    ticket.responsibilityHint = responsibilityHint;
+    ticket.responsibilityDecidedById = managerId;
+    ticket.responsibilityDecidedAt = decidedAt;
+    ticket.responsibilityDecisionNote = note;
+    ticket.updatedAt = decidedAt;
+    analysis.responsibilityHint = responsibilityHint;
+    analysis.reasons = Array.from(
+      new Set([...(analysis.reasons ?? []), `관리자 책임 판단 확정: ${responsibilityLabel} 책임`])
+    );
+
+    for (const feedback of this.store.aiFeedback.filter(
+      (item) =>
+        item.ticketId === ticket.id &&
+        item.target === "RESPONSIBILITY" &&
+        item.status === "OPEN"
+    )) {
+      feedback.status = "REVIEWED";
+      feedback.managerReviewNote = note;
+      feedback.correctedValue = `관리자 확정: ${responsibilityLabel} 책임`;
+      feedback.reviewedByUserId = managerId;
+      feedback.reviewedAt = decidedAt;
+      feedback.updatedAt = decidedAt;
+    }
+
+    const complaint = this.findComplaint(ticket.complaintId);
+    complaint.updatedAt = decidedAt;
+    this.addMessageInternal(
+      ticket.id,
+      ticket.complaintId,
+      managerId,
+      "LANDLORD",
+      `책임 판단 확정: ${responsibilityLabel} 책임 — ${note}`
+    );
     this.persistStore();
 
     return this.presentTicket(ticket);
@@ -6099,6 +6484,334 @@ export class RoomlogService implements OnModuleDestroy {
     return this.presentTicket(ticket);
   }
 
+  async startDirectHandling(
+    managerId: string,
+    ticketId: string,
+    input: StartDirectHandlingInput = {}
+  ) {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new BadRequestException("직접 처리 요청 형식이 올바르지 않습니다.");
+    }
+    if (input.note !== undefined && typeof input.note !== "string") {
+      throw new BadRequestException("직접 처리 메모 형식이 올바르지 않습니다.");
+    }
+    const note = input.note?.trim();
+    const persistence = this.directHandlingPersistence();
+    if (persistence) {
+      await this.ensurePersistenceDurability();
+      let result: DirectHandlingMutationResult;
+      try {
+        result = await persistence.startDirectHandling({
+          managerId,
+          ticketId,
+          ...(note ? { note } : {}),
+          occurredAt: now()
+        });
+      } catch (error) {
+        this.rethrowDirectHandlingPersistenceError(error);
+      }
+      this.reconcileDirectHandlingResult(result);
+      return this.presentTicket(this.findTicket(ticketId));
+    }
+
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+
+    if (ticket.directHandlingStartedAt && !ticket.directHandlingCompletedAt) {
+      throw new ConflictException("이미 관리자 직접 처리가 진행 중입니다.");
+    }
+
+    const activeRepair = this.store.repairs.find(
+      (repair) =>
+        repair.ticketId === ticket.id &&
+        !["COMPLETED", "CANCELLED"].includes(repair.status)
+    );
+    if (activeRepair) {
+      throw new ConflictException(
+        "활성 수리가 진행 중인 티켓은 관리자 직접 처리를 시작할 수 없습니다."
+      );
+    }
+
+    this.assertTicketStatus(
+      ticket.id,
+      [
+        "RECEIVED",
+        "REVIEWING",
+        "ADDITIONAL_INFO_REQUESTED",
+        "VENDOR_ASSIGNMENT_PENDING",
+        "REOPENED"
+      ],
+      "관리자 직접 처리 시작"
+    );
+
+    const startedAt = now();
+    ticket.directHandlingStartedAt = startedAt;
+    ticket.directHandlingCompletedAt = undefined;
+    ticket.directHandlingNote = note || undefined;
+    const transitioned = this.transitionTicket(
+      ticket.id,
+      "REPAIR_IN_PROGRESS",
+      managerId,
+      "관리자 직접 처리 시작"
+    );
+    this.addMessageInternal(
+      ticket.id,
+      ticket.complaintId,
+      managerId,
+      "LANDLORD",
+      note
+        ? `관리자가 직접 처리를 시작했습니다 — ${note}`
+        : "관리자가 직접 처리를 시작했습니다."
+    );
+    this.persistStore();
+    await this.ensurePersistenceDurability();
+
+    return this.presentTicket(transitioned);
+  }
+
+  async completeDirectHandling(
+    managerId: string,
+    ticketId: string,
+    input: CompleteDirectHandlingInput
+  ) {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new BadRequestException("직접 처리 완료 요청 형식이 올바르지 않습니다.");
+    }
+    const note = typeof input?.note === "string" ? input.note.trim() : "";
+
+    if (!note) {
+      throw new BadRequestException("직접 처리 완료 내용을 입력해주세요.");
+    }
+
+    let costInput: CompleteDirectHandlingInput["cost"];
+    if (input.cost !== undefined) {
+      const rawCost = input.cost as unknown;
+      if (
+        !isPlainRecord(rawCost)
+        || !Object.prototype.hasOwnProperty.call(rawCost, "amount")
+      ) {
+        throw new BadRequestException("직접 처리 비용은 금액을 포함한 객체로 입력해주세요.");
+      }
+      if (
+        !Number.isSafeInteger(rawCost.amount) ||
+        (rawCost.amount as number) <= 0 ||
+        (rawCost.amount as number) > 2_147_483_647
+      ) {
+        throw new BadRequestException(
+          "직접 처리 비용 금액은 PostgreSQL 정수 범위의 양의 안전 정수로 입력해주세요."
+        );
+      }
+      if (rawCost.item !== undefined && typeof rawCost.item !== "string") {
+        throw new BadRequestException("직접 처리 비용 항목 형식이 올바르지 않습니다.");
+      }
+      costInput = rawCost as CompleteDirectHandlingInput["cost"];
+    }
+
+    const persistence = this.directHandlingPersistence();
+    if (persistence) {
+      await this.ensurePersistenceDurability();
+      let result: DirectHandlingMutationResult;
+      try {
+        result = await persistence.completeDirectHandling({
+          managerId,
+          ticketId,
+          note,
+          occurredAt: now(),
+          ...(costInput
+            ? {
+                cost: {
+                  amount: costInput.amount,
+                  ...(costInput.item?.trim() ? { item: costInput.item.trim() } : {})
+                }
+              }
+            : {})
+        });
+      } catch (error) {
+        this.rethrowDirectHandlingPersistenceError(error);
+      }
+      this.reconcileDirectHandlingResult(result);
+      return this.presentTicket(this.findTicket(ticketId));
+    }
+
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+
+    if (!ticket.directHandlingStartedAt || ticket.directHandlingCompletedAt) {
+      throw new BadRequestException("직접 처리 중인 티켓만 완료를 보고할 수 있습니다.");
+    }
+    this.assertTicketStatus(
+      ticket.id,
+      ["REPAIR_IN_PROGRESS"],
+      "관리자 직접 처리 완료 보고"
+    );
+
+    const completedAt = now();
+    ticket.directHandlingCompletedAt = completedAt;
+    const transitioned = this.transitionTicket(
+      ticket.id,
+      "COMPLETION_REPORTED",
+      managerId,
+      "관리자 직접 처리 완료 보고"
+    );
+    this.addMessageInternal(
+      ticket.id,
+      ticket.complaintId,
+      managerId,
+      "LANDLORD",
+      `관리자가 처리 완료를 보고했습니다 — 확인해 주세요. ${note}`
+    );
+
+    if (costInput) {
+      const item = costInput.item?.trim() || `직접 처리 · ${ticket.category}`;
+      const cost: Cost = {
+        id: id("cost"),
+        managerId,
+        date: completedAt,
+        item,
+        amount: costInput.amount,
+        type: "repair",
+        scope: "unit",
+        unitId: ticket.roomId,
+        status: "draft",
+        verified: false,
+        createdAt: completedAt,
+        updatedAt: completedAt
+      };
+      this.store.costs.unshift(cost);
+    }
+
+    this.persistStore();
+    await this.ensurePersistenceDurability();
+    return this.presentTicket(transitioned);
+  }
+
+  async cancelDirectHandling(
+    managerId: string,
+    ticketId: string,
+    input: CancelDirectHandlingInput
+  ) {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new BadRequestException("직접 처리 취소 요청 형식이 올바르지 않습니다.");
+    }
+    const reason = typeof input?.reason === "string" ? input.reason.trim() : "";
+
+    if (!reason) {
+      throw new BadRequestException("직접 처리 취소 사유를 입력해주세요.");
+    }
+
+    const persistence = this.directHandlingPersistence();
+    if (persistence) {
+      await this.ensurePersistenceDurability();
+      let result: DirectHandlingMutationResult;
+      try {
+        result = await persistence.cancelDirectHandling({
+          managerId,
+          ticketId,
+          reason,
+          occurredAt: now()
+        });
+      } catch (error) {
+        this.rethrowDirectHandlingPersistenceError(error);
+      }
+      this.reconcileDirectHandlingResult(result);
+      return this.presentTicket(this.findTicket(ticketId));
+    }
+
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+    if (!ticket.directHandlingStartedAt || ticket.directHandlingCompletedAt) {
+      throw new BadRequestException("완료 보고 전 직접 처리만 취소할 수 있습니다.");
+    }
+    this.assertTicketStatus(
+      ticket.id,
+      ["REPAIR_IN_PROGRESS"],
+      "관리자 직접 처리 취소"
+    );
+
+    ticket.directHandlingStartedAt = undefined;
+    ticket.directHandlingCompletedAt = undefined;
+    ticket.directHandlingNote = undefined;
+    const transitioned = this.transitionTicket(
+      ticket.id,
+      "REVIEWING",
+      managerId,
+      "관리자 직접 처리 취소"
+    );
+    this.addMessageInternal(
+      ticket.id,
+      ticket.complaintId,
+      managerId,
+      "LANDLORD",
+      `직접 처리를 취소했습니다 — ${reason}`
+    );
+    this.persistStore();
+    await this.ensurePersistenceDurability();
+
+    return this.presentTicket(transitioned);
+  }
+
+  private directHandlingPersistence(): DirectHandlingPersistence | undefined {
+    const candidate = this.storeProjector;
+    if (
+      candidate?.startDirectHandling &&
+      candidate.completeDirectHandling &&
+      candidate.cancelDirectHandling
+    ) {
+      return candidate as DirectHandlingPersistence;
+    }
+    return undefined;
+  }
+
+  private reconcileDirectHandlingResult(result: DirectHandlingMutationResult) {
+    this.upsertStoreRecord(this.store.tickets, result.ticket);
+    this.upsertStoreRecord(this.store.complaints, result.complaint);
+    this.upsertStoreRecord(this.store.messages, result.message, "append");
+    this.upsertStoreRecord(this.store.history, result.history, "prepend");
+    if (result.cost) {
+      this.upsertStoreRecord(this.store.costs, result.cost, "prepend");
+    }
+  }
+
+  private upsertStoreRecord<T extends { id: string }>(
+    records: T[],
+    record: T,
+    placement: "keep" | "append" | "prepend" = "keep"
+  ) {
+    const index = records.findIndex((item) => item.id === record.id);
+    if (index >= 0) {
+      records[index] = record;
+      return;
+    }
+    if (placement === "append") {
+      records.push(record);
+      return;
+    }
+    if (placement === "prepend") {
+      records.unshift(record);
+      return;
+    }
+    records.push(record);
+  }
+
+  private rethrowDirectHandlingPersistenceError(error: unknown): never {
+    if (!(error instanceof DirectHandlingPersistenceError)) {
+      throw error;
+    }
+    if (error.code === "TICKET_NOT_FOUND") {
+      throw new NotFoundException(error.message);
+    }
+    if (error.code === "ACCESS_DENIED") {
+      throw new ForbiddenException(error.message);
+    }
+    if (
+      error.code === "ALREADY_ACTIVE" ||
+      error.code === "ACTIVE_REPAIR_CONFLICT"
+    ) {
+      throw new ConflictException(error.message);
+    }
+    throw new BadRequestException(error.message);
+  }
+
   draftManagerTicketReply(
     managerId: string,
     ticketId: string,
@@ -6177,7 +6890,9 @@ export class RoomlogService implements OnModuleDestroy {
       ticket.complaintId,
       managerId,
       "LANDLORD",
-      messageText
+      messageText,
+      [],
+      this.activeRepairIdForTicket(ticket.id)
     );
     this.persistStore();
 
@@ -6353,7 +7068,8 @@ export class RoomlogService implements OnModuleDestroy {
       tenantId,
       "TENANT",
       messageText || "추가 사진을 제출했습니다.",
-      attachmentUrls
+      attachmentUrls,
+      this.activeRepairIdForTicket(ticket.id)
     );
 
     this.refreshAnalysisFromTenantFollowup(ticket, {
@@ -6458,6 +7174,30 @@ export class RoomlogService implements OnModuleDestroy {
     this.persistStore();
 
     return this.presentAiFeedback(feedback);
+  }
+
+  /**
+   * 업체 채팅(2D)은 Prisma 저장소 직행 쓰기라 인메모리 스토어가 모른다 — 저장 직후
+   * 같은 id로 스토어에 반영해 세입자/관리자 읽기 경로가 재하이드레이션 없이 즉시 보게 한다.
+   * (다음 persistStore 스냅샷은 같은 id upsert라 중복이 생기지 않는다.)
+   */
+  ingestVendorRepairMessage(record: VendorRepairMessageRecord) {
+    const ticket = this.store.tickets.find((item) => item.id === record.ticketId);
+    if (!ticket) return;
+    if (this.store.messages.some((message) => message.id === record.id)) return;
+
+    this.store.messages.push({
+      id: record.id,
+      ticketId: record.ticketId,
+      complaintId: record.complaintId,
+      repairId: record.repairId,
+      senderUserId: record.senderUserId,
+      senderRole: record.senderRole,
+      messageText: record.messageText,
+      attachmentUrls: [...record.attachmentUrls],
+      createdAt: record.createdAt
+    });
+    ticket.updatedAt = record.createdAt;
   }
 
   confirmTenantCompletion(
@@ -8255,6 +8995,10 @@ export class RoomlogService implements OnModuleDestroy {
     return this.messaging.getTenantMessagingThread(tenantId, threadId);
   }
 
+  markTenantMessagingThreadRead(tenantId: string, threadId: string) {
+    return this.messaging.markTenantMessagingThreadRead(tenantId, threadId);
+  }
+
   addTenantMessagingThreadMessage(
     tenantId: string,
     threadId: string,
@@ -9956,17 +10700,102 @@ export class RoomlogService implements OnModuleDestroy {
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
-    if (!input.title?.trim()) {
+    if (typeof input.title !== "string" || !input.title.trim()) {
       throw new BadRequestException("신고 제목을 입력해주세요.");
     }
 
-    if (!input.description?.trim()) {
+    if (typeof input.description !== "string" || !input.description.trim()) {
       throw new BadRequestException("신고 내용을 입력해주세요.");
     }
 
-    if (!input.location?.trim()) {
+    if (typeof input.location !== "string" || !input.location.trim()) {
       throw new BadRequestException("발생 위치를 입력해주세요.");
     }
+
+    if (
+      input.attachmentUrls !== undefined &&
+      (!Array.isArray(input.attachmentUrls) ||
+        input.attachmentUrls.some((url) => typeof url !== "string" || !url.trim()))
+    ) {
+      throw new BadRequestException("첨부 이미지 주소가 올바르지 않습니다.");
+    }
+
+    if (
+      input.clientRequestId !== undefined &&
+      (typeof input.clientRequestId !== "string" || !input.clientRequestId.trim())
+    ) {
+      throw new BadRequestException("접수 요청 식별자가 올바르지 않습니다.");
+    }
+
+    if (
+      input.occurredAt !== undefined &&
+      (typeof input.occurredAt !== "string" ||
+        !this.isValidFullIsoDateTime(input.occurredAt))
+    ) {
+      throw new BadRequestException("발생 시점이 올바르지 않습니다.");
+    }
+
+    if (
+      input.availableTimes !== undefined &&
+      (typeof input.availableTimes !== "string" || !input.availableTimes.trim())
+    ) {
+      throw new BadRequestException("방문 가능 시간이 올바르지 않습니다.");
+    }
+
+    if (input.urgency !== undefined && ![1, 2, 3, 4].includes(input.urgency)) {
+      throw new BadRequestException("긴급도는 1부터 4 사이로 입력해주세요.");
+    }
+  }
+
+  private isValidFullIsoDateTime(value: string) {
+    const match = value.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$/u
+    );
+    if (!match) return false;
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    const timezoneOffsetMinutes =
+      match[8] === "Z"
+        ? 0
+        : (match[9] === "+" ? 1 : -1) *
+          (Number(match[10]) * 60 + Number(match[11]));
+    const calendarAtInputOffset = new Date(
+      parsed.getTime() + timezoneOffsetMinutes * 60 * 1000
+    );
+    const expectedMilliseconds = Number((match[7] ?? "").padEnd(3, "0").slice(0, 3));
+
+    return (
+      calendarAtInputOffset.getUTCFullYear() === Number(match[1]) &&
+      calendarAtInputOffset.getUTCMonth() + 1 === Number(match[2]) &&
+      calendarAtInputOffset.getUTCDate() === Number(match[3]) &&
+      calendarAtInputOffset.getUTCHours() === Number(match[4]) &&
+      calendarAtInputOffset.getUTCMinutes() === Number(match[5]) &&
+      calendarAtInputOffset.getUTCSeconds() === Number(match[6]) &&
+      calendarAtInputOffset.getUTCMilliseconds() === expectedMilliseconds
+    );
+  }
+
+  private complaintRequestFingerprint(
+    roomId: string,
+    input: CreateComplaintInput & { reportedVia?: ManagerProxyIntakeInput["reportedVia"] }
+  ) {
+    const payload: Record<string, unknown> = {
+      roomId,
+      title: input.title,
+      description: input.description,
+      location: input.location,
+      occurredAt: input.occurredAt ?? null,
+      availableTimes: input.availableTimes ?? null,
+      urgency: input.urgency ?? null,
+      attachmentUrls: input.attachmentUrls ?? []
+    };
+    if (input.reportedVia !== undefined) payload.reportedVia = input.reportedVia;
+
+    return createHash("sha256")
+      .update(JSON.stringify(payload))
+      .digest("hex");
   }
 
   private emptyDraft(): IntakeDraft {
@@ -11301,10 +12130,11 @@ export class RoomlogService implements OnModuleDestroy {
 
   private repeatIssueSummaryForTicket(
     ticket: Ticket,
-    analysis: AiAnalysis
+    analysis: AiAnalysis,
+    sourceStore: Store = this.store
   ): RepeatIssueSummary | undefined {
     const windowDays = 90;
-    const currentComplaint = this.findComplaint(ticket.complaintId);
+    const currentComplaint = this.findComplaint(ticket.complaintId, sourceStore);
     const detailCategory = analysis.detailCategory ?? analysis.category ?? ticket.category;
     const currentText = [
       currentComplaint.title,
@@ -11316,11 +12146,11 @@ export class RoomlogService implements OnModuleDestroy {
     ].join(" ");
     const referenceTime = this.issueReferenceTime(currentComplaint, ticket);
     const windowMs = windowDays * 24 * 60 * 60 * 1000;
-    const matchedTickets = this.store.tickets
+    const matchedTickets = sourceStore.tickets
       .filter((candidate) => candidate.id !== ticket.id && candidate.roomId === ticket.roomId)
       .map((candidate) => {
-        const complaint = this.findComplaint(candidate.complaintId);
-        const candidateAnalysis = this.store.analyses[candidate.id];
+        const complaint = this.findComplaint(candidate.complaintId, sourceStore);
+        const candidateAnalysis = sourceStore.analyses[candidate.id];
         const candidateText = [
           complaint.title,
           complaint.description,
@@ -11354,7 +12184,7 @@ export class RoomlogService implements OnModuleDestroy {
     }
 
     const isRepeated = matchedTickets.length >= 2;
-    const room = this.store.rooms.find((item) => item.id === ticket.roomId);
+    const room = sourceStore.rooms.find((item) => item.id === ticket.roomId);
     const roomLabel = [room?.buildingName, room?.roomNo].filter(Boolean).join(" ") || ticket.roomId;
     const label = isRepeated
       ? `최근 3개월 ${roomLabel} ${detailCategory} 관련 반복 민원 ${matchedTickets.length}건`
@@ -11944,7 +12774,8 @@ export class RoomlogService implements OnModuleDestroy {
                 : lower.includes("door")
                   ? "도어락"
                   : "설비";
-    const priority = isEmergency ? 1 : isLeak || isBoiler ? 2 : 3;
+    const aiPriority = isEmergency ? 1 : isLeak || isBoiler ? 2 : 3;
+    const priority = Math.min(aiPriority, input.urgency ?? aiPriority);
     const responsibilityHint = tenantHint ? "임차인 책임 가능성" : "임대인 책임 가능성";
 
     return {
@@ -11956,7 +12787,10 @@ export class RoomlogService implements OnModuleDestroy {
       confidenceScore: category === "설비" ? 0.62 : 0.78,
       reasons: [
         `${category} 관련 표현이 신고 내용에서 확인됨`,
-        priority === 1 ? "긴급 키워드가 포함됨" : "관리자 검토 후 일정 조율 가능"
+        aiPriority === 1 ? "긴급 키워드가 포함됨" : "관리자 검토 후 일정 조율 가능",
+        ...(input.urgency !== undefined
+          ? [`신고 지정 긴급도 ${input.urgency}순위 반영`]
+          : [])
       ],
       recommendedAction:
         priority === 1
@@ -12034,16 +12868,20 @@ export class RoomlogService implements OnModuleDestroy {
     ticket.aiSummary = analysis.summary;
   }
 
-  private presentRoomTimeline(roomId: string, scope: { tenantId?: string } = {}): RoomTimelineEntry[] {
-    const room = this.findRoom(roomId);
-    const tickets = this.store.tickets.filter(
+  private presentRoomTimeline(
+    roomId: string,
+    scope: { tenantId?: string } = {},
+    sourceStore: Store = this.store
+  ): RoomTimelineEntry[] {
+    const room = this.findRoom(roomId, sourceStore);
+    const tickets = sourceStore.tickets.filter(
       (ticket) =>
         ticket.roomId === roomId && (!scope.tenantId || ticket.tenantId === scope.tenantId)
     );
     const ticketIds = new Set(tickets.map((ticket) => ticket.id));
     const entries: RoomTimelineEntry[] = [];
 
-    for (const item of this.store.moveInChecklist.filter(
+    for (const item of sourceStore.moveInChecklist.filter(
       (entry) =>
         entry.roomId === roomId && (!scope.tenantId || entry.tenantId === scope.tenantId)
     )) {
@@ -12060,7 +12898,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const session of this.store.intakeSessions.filter(
+    for (const session of sourceStore.intakeSessions.filter(
       (item) => item.roomId === roomId && (!scope.tenantId || item.tenantId === scope.tenantId)
     )) {
       entries.push({
@@ -12084,7 +12922,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const complaint of this.store.complaints.filter(
+    for (const complaint of sourceStore.complaints.filter(
       (item) => item.roomId === roomId && (!scope.tenantId || item.tenantId === scope.tenantId)
     )) {
       entries.push({
@@ -12102,7 +12940,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const feedback of this.store.aiFeedback.filter((item) => ticketIds.has(item.ticketId))) {
+    for (const feedback of sourceStore.aiFeedback.filter((item) => ticketIds.has(item.ticketId))) {
       entries.push({
         id: `timeline-${feedback.id}`,
         type: "AI_FEEDBACK",
@@ -12118,8 +12956,8 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const history of this.store.history.filter((item) => ticketIds.has(item.ticketId))) {
-      const ticket = this.findTicket(history.ticketId);
+    for (const history of sourceStore.history.filter((item) => ticketIds.has(item.ticketId))) {
+      const ticket = this.findTicket(history.ticketId, sourceStore);
       entries.push({
         id: `timeline-${history.id}`,
         type: "STATUS_CHANGE",
@@ -12135,7 +12973,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const message of this.store.messages.filter((item) => ticketIds.has(item.ticketId))) {
+    for (const message of sourceStore.messages.filter((item) => ticketIds.has(item.ticketId))) {
       entries.push({
         id: `timeline-${message.id}`,
         type: "MESSAGE",
@@ -12151,8 +12989,8 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const repair of this.store.repairs.filter((item) => ticketIds.has(item.ticketId))) {
-      const ticket = this.findTicket(repair.ticketId);
+    for (const repair of sourceStore.repairs.filter((item) => ticketIds.has(item.ticketId))) {
+      const ticket = this.findTicket(repair.ticketId, sourceStore);
       entries.push({
         id: `timeline-${repair.id}`,
         type: "REPAIR",
@@ -12285,7 +13123,8 @@ export class RoomlogService implements OnModuleDestroy {
       DIRECT_FORM: "앱 입력",
       REALTIME_CHAT: "AI 채팅",
       VOICE_CHAT: "AI 음성",
-      CALLBOT: "콜봇"
+      CALLBOT: "콜봇",
+      MANAGER_PROXY: "관리자 대리 접수"
     };
 
     return labels[sourceChannel];
@@ -12483,7 +13322,8 @@ export class RoomlogService implements OnModuleDestroy {
       DIRECT_FORM: "앱 직접 입력",
       REALTIME_CHAT: "리얼타임 챗봇",
       VOICE_CHAT: "음성 챗봇",
-      CALLBOT: "콜봇"
+      CALLBOT: "콜봇",
+      MANAGER_PROXY: "관리자 대리 접수"
     };
 
     return labels[sourceChannel];
@@ -12723,10 +13563,10 @@ export class RoomlogService implements OnModuleDestroy {
     };
   }
 
-  private presentTicket(ticket: Ticket) {
-    const complaint = this.findComplaint(ticket.complaintId);
-    const room = this.store.rooms.find((item) => item.id === ticket.roomId);
-    const analysis = this.store.analyses[ticket.id];
+  private presentTicket(ticket: Ticket, sourceStore: Store = this.store) {
+    const complaint = this.findComplaint(ticket.complaintId, sourceStore);
+    const room = sourceStore.rooms.find((item) => item.id === ticket.roomId);
+    const analysis = sourceStore.analyses[ticket.id];
 
     if (!analysis) {
       throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
@@ -12734,36 +13574,123 @@ export class RoomlogService implements OnModuleDestroy {
 
     return {
       ...ticket,
+      responsibilityDecision:
+        ticket.responsibilityDecidedById &&
+        ticket.responsibilityDecidedAt &&
+        ticket.responsibilityDecisionNote
+          ? {
+              responsibility:
+                ticket.responsibilityHint === "임차인 책임 가능성" ? "TENANT" : "LANDLORD",
+              decidedById: ticket.responsibilityDecidedById,
+              decidedAt: ticket.responsibilityDecidedAt,
+              note: ticket.responsibilityDecisionNote
+            }
+          : undefined,
+      directHandling: ticket.directHandlingStartedAt
+        ? {
+            startedAt: ticket.directHandlingStartedAt,
+            ...(ticket.directHandlingCompletedAt
+              ? { completedAt: ticket.directHandlingCompletedAt }
+              : {}),
+            ...(ticket.directHandlingNote ? { note: ticket.directHandlingNote } : {})
+          }
+        : null,
       kind: this.ticketKindFromCategory(ticket.category),
       complaint,
       room,
-      analysis: this.presentAnalysis(analysis, ticket),
-      aiFeedback: this.store.aiFeedback
+      analysis: this.presentAnalysis(analysis, ticket, sourceStore),
+      aiFeedback: sourceStore.aiFeedback
         .filter((feedback) => feedback.ticketId === ticket.id)
         .map((feedback) => this.presentAiFeedback(feedback)),
       assignedVendor: ticket.assignedVendorId
-        ? this.store.vendors.find((vendor) => vendor.id === ticket.assignedVendorId)
+        ? sourceStore.vendors.find((vendor) => vendor.id === ticket.assignedVendorId)
         : undefined,
-      repairs: this.store.repairs.filter((repair) => repair.ticketId === ticket.id),
-      messages: this.store.messages
+      repairs: sourceStore.repairs.filter((repair) => repair.ticketId === ticket.id),
+      messages: sourceStore.messages
         .filter((message) => message.ticketId === ticket.id)
         .map((message) => this.presentTicketMessage(message)),
-      history: this.store.history.filter((history) => history.ticketId === ticket.id),
-      roomTimeline: this.presentRoomTimeline(ticket.roomId),
-      callbot: this.presentCallbotContext(ticket)
+      history: sourceStore.history.filter((history) => history.ticketId === ticket.id),
+      roomTimeline: this.presentRoomTimeline(ticket.roomId, {}, sourceStore),
+      callbot: this.presentCallbotContext(ticket, sourceStore)
     };
   }
 
-  private presentTicketForManager(managerId: string, ticket: Ticket) {
-    const managerReadAt = this.store.managerTicketReads?.find(
+  private presentTicketForManager(
+    managerId: string,
+    ticket: Ticket,
+    sourceStore: Store = this.store,
+    options: { includeDetail?: boolean } = {}
+  ) {
+    const managerReadAt = sourceStore.managerTicketReads?.find(
       (read) => read.managerId === managerId && read.ticketId === ticket.id,
     )?.readAt;
+    const selfRepair = sourceStore.repairs
+      .filter(
+        (repair) =>
+          repair.ticketId === ticket.id &&
+          repair.tenantInitiated === true &&
+          !["COMPLETED", "CANCELLED"].includes(repair.status)
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const presentedTicket = this.presentTicket(ticket, sourceStore);
+    const { messages: unsortedMessages, ...ticketWithoutMessages } = presentedTicket;
+    const vendorDecline = sourceStore.repairs
+      .filter(
+        (repair) =>
+          repair.ticketId === ticket.id &&
+          repair.status === "CANCELLED" &&
+          repair.latestEstimate?.status === "DECLINED" &&
+          Boolean(repair.latestEstimate.declineReason?.trim())
+      )
+      .sort((left, right) => {
+        const leftAt = left.latestEstimate?.submittedAt ?? left.updatedAt;
+        const rightAt = right.latestEstimate?.submittedAt ?? right.updatedAt;
+        return rightAt.localeCompare(leftAt);
+      })[0];
 
     return {
-      ...this.presentTicket(ticket),
+      ...ticketWithoutMessages,
       managerReadAt,
       isManagerUnread: !managerReadAt,
+      selfRepair: selfRepair
+        ? {
+            active: true as const,
+            statusLabel: this.repairStatusLabel(selfRepair.status)
+          }
+        : null,
+      ...(options.includeDetail
+        ? {
+            messages: [...unsortedMessages].sort(
+              (left, right) =>
+                left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+            ),
+            ...(vendorDecline
+              ? {
+                  vendorDecline: {
+                    repairId: vendorDecline.id,
+                    reason: vendorDecline.latestEstimate!.declineReason!.trim()
+                  }
+                }
+              : {})
+          }
+        : {}),
     };
+  }
+
+  private repairStatusLabel(status: RepairStatus) {
+    const labels: Record<RepairStatus, string> = {
+      REQUESTED: "견적 요청",
+      ACCEPTED: "견적 작성 중",
+      ESTIMATE_SUBMITTED: "견적 검토 중",
+      ESTIMATE_APPROVED: "일정 확인 필요",
+      SCHEDULED: "방문 예정",
+      IN_PROGRESS: "작업 중",
+      COMPLETION_REPORTED: "완료 확인 중",
+      COMPLETED: "작업 완료",
+      CANCELLED: "종료"
+    };
+
+    return labels[status];
   }
 
   private ticketKindFromCategory(category: string): TicketType {
@@ -12772,12 +13699,15 @@ export class RoomlogService implements OnModuleDestroy {
       : "defect";
   }
 
-  private presentCallbotContext(ticket: Ticket): CallbotTicketContext | undefined {
+  private presentCallbotContext(
+    ticket: Ticket,
+    sourceStore: Store = this.store
+  ): CallbotTicketContext | undefined {
     if (ticket.sourceChannel !== "CALLBOT") {
       return undefined;
     }
 
-    const messages = this.store.messages.filter((message) => message.ticketId === ticket.id);
+    const messages = sourceStore.messages.filter((message) => message.ticketId === ticket.id);
     const recordingMessage = messages.find((message) =>
       message.messageText.startsWith("콜봇 통화 녹음:")
     );
@@ -12841,9 +13771,13 @@ export class RoomlogService implements OnModuleDestroy {
     };
   }
 
-  private presentAnalysis(analysis: AiAnalysis, ticket?: Ticket) {
+  private presentAnalysis(
+    analysis: AiAnalysis,
+    ticket?: Ticket,
+    sourceStore: Store = this.store
+  ) {
     const repeatSummary = ticket
-      ? this.repeatIssueSummaryForTicket(ticket, analysis)
+      ? this.repeatIssueSummaryForTicket(ticket, analysis, sourceStore)
       : analysis.repeatSummary;
 
     return {
@@ -12996,7 +13930,7 @@ export class RoomlogService implements OnModuleDestroy {
     toStatus: TicketStatus,
     note?: string
   ) {
-    this.store.history.unshift({
+    const history: StatusHistory = {
       id: id("hst"),
       ticketId,
       changedByUserId,
@@ -13004,7 +13938,10 @@ export class RoomlogService implements OnModuleDestroy {
       toStatus,
       note,
       createdAt: now()
-    });
+    };
+    this.store.history.unshift(history);
+
+    return history;
   }
 
   private addMessageInternal(
@@ -13013,12 +13950,14 @@ export class RoomlogService implements OnModuleDestroy {
     senderUserId: string,
     senderRole: TicketMessage["senderRole"],
     messageText: string,
-    attachmentUrls: string[] = []
+    attachmentUrls: string[] = [],
+    repairId?: string
   ) {
     const message: TicketMessage = {
       id: id("msg"),
       ticketId,
       complaintId,
+      ...(repairId ? { repairId } : {}),
       senderUserId,
       senderRole,
       messageText,
@@ -13031,8 +13970,20 @@ export class RoomlogService implements OnModuleDestroy {
     return message;
   }
 
-  private findComplaint(complaintId: string) {
-    const complaint = this.store.complaints.find((item) => item.id === complaintId);
+  private activeRepairIdForTicket(ticketId: string): string | undefined {
+    return this.store.repairs
+      .filter(
+        (repair) =>
+          repair.ticketId === ticketId &&
+          !["COMPLETED", "CANCELLED"].includes(repair.status)
+      )
+      .sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id)
+      )[0]?.id;
+  }
+
+  private findComplaint(complaintId: string, sourceStore: Store = this.store) {
+    const complaint = sourceStore.complaints.find((item) => item.id === complaintId);
 
     if (!complaint) {
       throw new NotFoundException("민원을 찾을 수 없습니다.");
@@ -13041,8 +13992,8 @@ export class RoomlogService implements OnModuleDestroy {
     return complaint;
   }
 
-  private findTicket(ticketId: string) {
-    const ticket = this.store.tickets.find((item) => item.id === ticketId);
+  private findTicket(ticketId: string, sourceStore: Store = this.store) {
+    const ticket = sourceStore.tickets.find((item) => item.id === ticketId);
 
     if (!ticket) {
       throw new NotFoundException("티켓을 찾을 수 없습니다.");
@@ -13051,8 +14002,8 @@ export class RoomlogService implements OnModuleDestroy {
     return ticket;
   }
 
-  private findRoom(roomId: string) {
-    const room = this.store.rooms.find((item) => item.id === roomId);
+  private findRoom(roomId: string, sourceStore: Store = this.store) {
+    const room = sourceStore.rooms.find((item) => item.id === roomId);
 
     if (!room) {
       throw new NotFoundException("호실을 찾을 수 없습니다.");
@@ -13061,20 +14012,34 @@ export class RoomlogService implements OnModuleDestroy {
     return room;
   }
 
-  private canManagerAccessRoom(managerId: string, roomId: string) {
-    return this.store.rooms.some((room) => room.id === roomId && room.landlordId === managerId);
+  private canManagerAccessRoom(
+    managerId: string,
+    roomId: string,
+    sourceStore: Store = this.store
+  ) {
+    return sourceStore.rooms.some(
+      (room) => room.id === roomId && room.landlordId === managerId
+    );
   }
 
-  private assertManagerCanAccessRoom(managerId: string, roomId: string) {
-    const room = this.findRoom(roomId);
+  private assertManagerCanAccessRoom(
+    managerId: string,
+    roomId: string,
+    sourceStore: Store = this.store
+  ) {
+    const room = this.findRoom(roomId, sourceStore);
 
     if (room.landlordId !== managerId) {
       throw new ForbiddenException("담당 호실에만 접근할 수 있습니다.");
     }
   }
 
-  private assertManagerCanAccessTicket(managerId: string, ticket: Ticket) {
-    this.assertManagerCanAccessRoom(managerId, ticket.roomId);
+  private assertManagerCanAccessTicket(
+    managerId: string,
+    ticket: Ticket,
+    sourceStore: Store = this.store
+  ) {
+    this.assertManagerCanAccessRoom(managerId, ticket.roomId, sourceStore);
   }
 
   private findIntakeSession(tenantId: string, sessionId: string) {

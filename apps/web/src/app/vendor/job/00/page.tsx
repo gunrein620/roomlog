@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { vendorTradeLabel } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import { withId } from "@/lib/nav";
 import {
   listVendorWorkflowJobs,
-  nextVendorJobRoute,
   vendorJobStatusLabel,
 } from "@/lib/vendor-workflow-api";
+import { ROUTES } from "@/lib/vendor-nav";
 import {
   Body,
   DemoReadOnlyNotice,
@@ -40,13 +41,13 @@ export default async function Page() {
               </div>
               <Badge emphasis>{vendorJobStatusLabel(job.status)}</Badge>
             </div>
-            <InfoRow label="작업 분야" value={job.trade || "확인 필요"} />
+            <InfoRow label="작업 분야" value={vendorTradeLabel(job.trade) || "확인 필요"} />
             <InfoRow label="최근 업데이트" value={formatDateTime(job.updatedAt)} />
             <Link
-              href={withId(nextVendorJobRoute(job), job.repairId)}
+              href={withId(ROUTES["V-JOB-01"], job.repairId)}
               style={primaryLinkStyle}
             >
-              {job.status === "VENDOR_ASSIGNED" ? "견적 회신하기" : "작업 확인하기"}
+              작업 상세 보기
             </Link>
           </Card>
         ))}

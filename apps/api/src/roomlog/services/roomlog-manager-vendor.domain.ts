@@ -99,6 +99,24 @@ export class RoomlogManagerVendorDomain {
     );
   }
 
+  searchAssignmentCandidates(
+    managerId: string,
+    ticketId: string,
+    query?: string
+  ): Promise<VendorCatalogSearchResult[]> {
+    const normalizedTicketId = ticketId.trim();
+    if (!normalizedTicketId) {
+      throw new NotFoundException("배정할 하자 접수 건을 찾을 수 없습니다.");
+    }
+    return this.execute(() =>
+      this.repository.searchAssignmentCandidates(
+        managerId,
+        normalizedTicketId,
+        normalizedFilterValue(query)
+      )
+    );
+  }
+
   list(
     managerId: string,
     filters: VendorCatalogSearchFilters = {}
@@ -134,7 +152,7 @@ export class RoomlogManagerVendorDomain {
       this.repository.findJobByTicket(managerId, ticketId)
     );
     return result
-      ? { vendor: result.vendor, job: publicJob(result.job) }
+      ? { ...result, job: publicJob(result.job) }
       : null;
   }
 

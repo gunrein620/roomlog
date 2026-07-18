@@ -1364,7 +1364,9 @@ export class PrismaCreditCommandRepository
       data: {
         id: costId,
         managerId: request.managerId,
-        date: request.completionReport.completedAt,
+        date: input.mode === "DIRECT"
+          ? new Date(input.paidAt)
+          : request.completionReport.completedAt,
         item: `${unitId} ${request.repair.title}`,
         amount: request.amount,
         type: "REPAIR",

@@ -11,12 +11,13 @@ import {
   getTenantVendorWorkflow,
   reviewTenantVendorEstimate,
 } from "@/lib/tenant-vendor-workflow-api";
+import { TenantRepairPaymentCheckout } from "@/app/tenant/repair-payment/[paymentRequestId]/TenantRepairPaymentCheckout";
 
 type TenantVendorWorkflowPanelProps = {
   complaintId: string;
 };
 
-type NoteMode = "estimate" | "completion" | null;
+type NoteMode = "estimate" | "visit" | "completion" | null;
 
 const LINE_ITEM_LABEL: Record<VendorEstimateLineItemCategory, string> = {
   VISIT: "출장비",
@@ -68,6 +69,8 @@ export function TenantVendorWorkflowPanel({
   const [error, setError] = useState("");
   const [noteMode, setNoteMode] = useState<NoteMode>(null);
   const [note, setNote] = useState("");
+  const [visitTimes, setVisitTimes] = useState("");
+  const [paymentCheckoutOpen, setPaymentCheckoutOpen] = useState(false);
 
   const loadWorkflow = useCallback(async () => {
     setIsLoading(true);
@@ -88,6 +91,8 @@ export function TenantVendorWorkflowPanel({
     setError("");
     setNoteMode(null);
     setNote("");
+    setVisitTimes("");
+    setPaymentCheckoutOpen(false);
     void getTenantVendorWorkflow(complaintId)
       .then((result) => {
         if (active) setWorkflow(result);
@@ -114,11 +119,17 @@ export function TenantVendorWorkflowPanel({
       setWorkflow(await request());
       setNoteMode(null);
       setNote("");
+      setVisitTimes("");
     } catch (requestError) {
       setError(workflowErrorMessage(requestError));
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const closePaymentCheckout = async () => {
+    setPaymentCheckoutOpen(false);
+    await loadWorkflow();
   };
 
   if (isLoading) {
@@ -151,8 +162,26 @@ export function TenantVendorWorkflowPanel({
     && Boolean(estimate.visitAvailableAt);
   const canReviewCompletion = Boolean(completion && !completion.review)
     && workflow.status === "COMPLETION_REPORTED";
-  const canPayRepairCost = Boolean(payment && payment.status === "PENDING_APPROVAL");
-  const isRepairCostPaid = Boolean(payment && payment.status === "TOSS_PAID");
+  const isDirectPaymentPending = payment?.status === "PENDING_APPROVAL"
+    && payment.lastAttemptMode === "DIRECT";
+  const canPayRepairCost = Boolean(
+    payment
+    && payment.status === "PENDING_APPROVAL"
+    && !isDirectPaymentPending,
+  );
+  const isRepairCostPaid = payment?.status === "TOSS_PAID"
+    || payment?.status === "DIRECT_PAID";
+
+  if (paymentCheckoutOpen && payment) {
+    return (
+      <TenantRepairPaymentCheckout
+        paymentRequestId={payment.id}
+        complaintId={complaintId}
+        embedded
+        onClose={() => void closePaymentCheckout()}
+      />
+    );
+  }
 
   return (
     <section className="tenant-vendor-workflow" aria-label="협력업체 수리 진행">
@@ -228,21 +257,31 @@ export function TenantVendorWorkflowPanel({
                 <strong>{formatDateTime(estimate.visitAvailableAt)}</strong>
               </div>
               {canConfirmVisit ? (
-                <button
-                  type="button"
-                  className="tenant-vendor-primary"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => void updateWorkflow(
-                    "visit-confirm",
-                    () => confirmTenantVendorVisit(
-                      workflow.repairId,
-                      estimate.id,
-                      { scheduledAt: estimate.visitAvailableAt! },
-                    ),
-                  )}
-                >
-                  {busyAction === "visit-confirm" ? "확인 중..." : "이 일정으로 확인"}
-                </button>
+                <div className="tenant-vendor-workflow-actions">
+                  <button
+                    type="button"
+                    className="tenant-vendor-secondary"
+                    disabled={Boolean(busyAction)}
+                    onClick={() => setNoteMode("visit")}
+                  >
+                    다른 시간 요청
+                  </button>
+                  <button
+                    type="button"
+                    className="tenant-vendor-primary"
+                    disabled={Boolean(busyAction)}
+                    onClick={() => void updateWorkflow(
+                      "visit-confirm",
+                      () => confirmTenantVendorVisit(
+                        workflow.repairId,
+                        estimate.id,
+                        { scheduledAt: estimate.visitAvailableAt! },
+                      ),
+                    )}
+                  >
+                    {busyAction === "visit-confirm" ? "확인 중..." : "이 일정으로 확인"}
+                  </button>
+                </div>
               ) : null}
             </div>
           ) : (
@@ -250,6 +289,50 @@ export function TenantVendorWorkflowPanel({
               {estimate.declineReason ?? "업체가 요청을 진행하기 어렵다고 답변했습니다."}
             </p>
           )}
+
+          {noteMode === "visit" ? (
+            <div className="tenant-vendor-workflow-note-form">
+              <label>
+                제안된 시간이 어려운 이유를 적어주세요
+                <textarea
+                  value={note}
+                  maxLength={500}
+                  placeholder="예: 그 시간에는 근무 중이라 집에 없어요."
+                  onChange={(event) => setNote(event.target.value)}
+                />
+              </label>
+              <label>
+                가능한 시간대 (선택)
+                <input
+                  type="text"
+                  value={visitTimes}
+                  maxLength={200}
+                  placeholder="예: 평일 18시 이후, 주말 오전"
+                  onChange={(event) => setVisitTimes(event.target.value)}
+                />
+              </label>
+              <div>
+                <button type="button" className="tenant-vendor-text-button" onClick={() => setNoteMode(null)}>
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="tenant-vendor-secondary"
+                  disabled={!note.trim() || Boolean(busyAction)}
+                  onClick={() => void updateWorkflow(
+                    "visit-reschedule",
+                    () => reviewTenantVendorEstimate(workflow.repairId, estimate.id, {
+                      action: "REQUEST_REVISION",
+                      note: `방문 시간 재협의: ${note.trim()}`,
+                      ...(visitTimes.trim() ? { tenantAvailableTimes: visitTimes.trim() } : {}),
+                    }),
+                  )}
+                >
+                  {busyAction === "visit-reschedule" ? "요청 중..." : "다른 시간 요청 보내기"}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {noteMode === "estimate" ? (
             <div className="tenant-vendor-workflow-note-form">
@@ -379,17 +462,29 @@ export function TenantVendorWorkflowPanel({
           <div>
             <span>3</span>
             <div>
-              <strong>결제 준비 완료</strong>
+              <strong>
+                {payment.status === "DIRECT_PAID"
+                  ? "직접결제 완료"
+                  : payment.status === "TOSS_PAID"
+                    ? "Toss 결제 완료"
+                    : isDirectPaymentPending
+                      ? "직접결제 확인 대기"
+                      : "결제 준비 완료"}
+              </strong>
               <p>완료 확인 금액 {formatKrw(payment.amount)}</p>
+              {payment.processedAt ? <p>처리 시각 {formatDateTime(payment.processedAt)}</p> : null}
             </div>
           </div>
           {canPayRepairCost ? (
-            <a
+            <button
+              type="button"
               className="tenant-vendor-primary tenant-vendor-payment-link"
-              href={`/tenant/repair-payment/${encodeURIComponent(payment.id)}?complaintId=${encodeURIComponent(complaintId)}`}
+              onClick={() => setPaymentCheckoutOpen(true)}
             >
               결제하기
-            </a>
+            </button>
+          ) : isDirectPaymentPending ? (
+            <span className="tenant-vendor-payment-complete">업체 확인 대기</span>
           ) : isRepairCostPaid ? (
             <span className="tenant-vendor-payment-complete">결제 완료</span>
           ) : (

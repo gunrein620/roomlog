@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@roomlog/ui";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
+import type { DashboardRepairExpenseSummary } from "../dashboard-calculations";
 
 // M-HOME-02(임대 현황 리포트) 데모 콘텐츠 — 통합 대시보드의 차트 밴드.
 // 흰 미니 막대 카드(수익·수리비가 별자리 카드와 중복)를 걷어내고, 네 지표 전부를
@@ -21,21 +22,6 @@ const REVENUE_DATA: MonthValue[] = [
   { m: "10월", v: 1780 },
   { m: "11월", v: 1830 },
   { m: "12월", v: 1860 },
-];
-
-const REPAIR_DATA: MonthValue[] = [
-  { m: "1월", v: 120 },
-  { m: "2월", v: 260 },
-  { m: "3월", v: 90 },
-  { m: "4월", v: 180 },
-  { m: "5월", v: 340 },
-  { m: "6월", v: 110 },
-  { m: "7월", v: 150 },
-  { m: "8월", v: 300 },
-  { m: "9월", v: 80 },
-  { m: "10월", v: 220 },
-  { m: "11월", v: 130 },
-  { m: "12월", v: 260 },
 ];
 
 const OCCUPANCY_DATA: MonthValue[] = [
@@ -69,19 +55,35 @@ const TICKET_DATA: MonthValue[] = [
 ];
 
 // 별자리 스펙트럼 — 계기판 아크와 같은 계열(페리윙클·바이올렛·라벤더화이트·핑크)에서 카드마다 차등.
-const CHARTS = [
-  { chartId: "revenue", title: "월별 수익 추이", data: REVENUE_DATA, accent: "#a9c4ff", unit: "만원" },
-  { chartId: "repair", title: "월별 수리비", data: REPAIR_DATA, accent: "#d9b8f5", unit: "만원" },
-  { chartId: "occupancy", title: "공실률·입주율", data: OCCUPANCY_DATA, accent: "#f2edff", unit: "%", axisMax: 100 },
-  { chartId: "tickets", title: "민원처리율", data: TICKET_DATA, accent: "#f6a9cd", unit: "%", axisMax: 100 },
-] as const;
+const EMPTY_REPAIR_DATA: MonthValue[] = Array.from({ length: 12 }, (_, index) => ({
+  m: `${index + 1}월`,
+  v: 0
+}));
 
-export function ReportSection() {
+export function ReportSection({
+  repairExpenses
+}: {
+  repairExpenses: DashboardRepairExpenseSummary | null;
+}) {
+  const charts = [
+    { chartId: "revenue", title: "월별 수익 추이", data: REVENUE_DATA, accent: "#a9c4ff", unit: "만원" },
+    {
+      chartId: "repair",
+      title: "월별 수리비",
+      data: repairExpenses?.monthlyTrend ?? EMPTY_REPAIR_DATA,
+      accent: "#d9b8f5",
+      unit: "만원",
+      unavailable: !repairExpenses
+    },
+    { chartId: "occupancy", title: "공실률·입주율", data: OCCUPANCY_DATA, accent: "#f2edff", unit: "%", axisMax: 100 },
+    { chartId: "tickets", title: "민원처리율", data: TICKET_DATA, accent: "#f6a9cd", unit: "%", axisMax: 100 },
+  ] as const;
+
   return (
     <section id="report" aria-labelledby="report-section-title" className="manager-report-section">
       <div className="manager-report-head">
         <h2 id="report-section-title">임대 현황 리포트</h2>
-        <span className="manager-report-demo">데모</span>
+        <span className="manager-report-demo">일부 데모</span>
         <div className="manager-report-filters">
           <Badge>6M</Badge>
           <Badge emphasis>1Y</Badge>
@@ -90,7 +92,7 @@ export function ReportSection() {
       </div>
 
       <div className="manager-report-charts">
-        {CHARTS.map((chart) => (
+        {charts.map((chart) => (
           <ConstellationCard key={chart.chartId} {...chart} />
         ))}
       </div>
@@ -245,6 +247,7 @@ export function ReportSection() {
 
 // 데이터 최대값을 1·2·5·10 계열의 "깔끔한" 축 상한으로 올림 — 눈금이 4등분으로 딱 떨어지게.
 function niceAxisMax(dataMax: number): number {
+  if (!Number.isFinite(dataMax) || dataMax <= 0) return 4;
   const rough = dataMax / 4;
   const pow = 10 ** Math.floor(Math.log10(rough));
   const n = rough / pow;
@@ -263,6 +266,7 @@ function ConstellationCard({
   accent,
   unit = "만원",
   axisMax: fixedAxisMax,
+  unavailable = false,
 }: {
   chartId: string;
   title: string;
@@ -271,6 +275,7 @@ function ConstellationCard({
   unit?: string;
   /** %처럼 자연 상한이 있는 지표는 축을 고정한다(자동 올림이 200%를 만들지 않게). */
   axisMax?: number;
+  unavailable?: boolean;
 }) {
   const axisMax = fixedAxisMax ?? niceAxisMax(Math.max(...data.map((d) => d.v)));
   const latest = data[data.length - 1];
@@ -296,8 +301,8 @@ function ConstellationCard({
       <figcaption className="manager-constellation-header">
         <span className="manager-constellation-title">{title}</span>
         <strong className="manager-constellation-headline">
-          {latest.v.toLocaleString("ko-KR")}
-          <span>{unit}</span>
+          {unavailable ? "확인 필요" : latest.v.toLocaleString("ko-KR")}
+          {!unavailable ? <span>{unit}</span> : null}
         </strong>
       </figcaption>
 
@@ -306,7 +311,11 @@ function ConstellationCard({
         viewBox="0 0 360 210"
         preserveAspectRatio="xMidYMid meet"
         role="img"
-        aria-label={`${title} 12개월 추이, 최신 ${latest.v.toLocaleString("ko-KR")}${unit}`}
+        aria-label={
+          unavailable
+            ? `${title} 데이터를 확인할 수 없음`
+            : `${title} 12개월 추이, 최신 ${latest.v.toLocaleString("ko-KR")}${unit}`
+        }
       >
         <defs>
           <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
@@ -348,7 +357,7 @@ function ConstellationCard({
         {/* 월 라벨 */}
         {data.map((d, i) => (
           <text key={d.m} x={x(i)} y={198} textAnchor="middle" fontSize="10.5" fill="rgba(255,255,255,0.55)">
-            {i + 1}
+            {d.m.replace("월", "")}
           </text>
         ))}
 

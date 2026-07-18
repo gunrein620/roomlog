@@ -121,9 +121,15 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
     pageSource,
     /dashboardView === "dashboard"[\s\S]*<TicketDashboardAutoRefresh intervalMs=\{3000\} \/>[\s\S]*<ComplaintDashboard rows=\{rows\} \/>/,
   );
-  assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
+  const managerDashboardRender = pageSource.match(
+    /<ManagerDefectDashboard[\s\S]*?\/>/,
+  )?.[0];
+  assert.ok(managerDashboardRender);
+  assert.match(managerDashboardRender, /rows=\{rows\}/);
+  assert.match(managerDashboardRender, /initialTemplate=\{initialTemplate\}/);
+  assert.match(managerDashboardRender, /proxyIntakeRooms=\{proxyIntakeRooms\}/);
   assert.match(autoRefreshSource, /getRealtimeSocket/);
-  assert.match(autoRefreshSource, /isTicketActivity/);
+  assert.match(autoRefreshSource, /shouldRefreshTicketDashboard/);
   assert.match(autoRefreshSource, /router\.refresh\(\)/);
   assert.match(autoRefreshSource, /window\.setInterval/);
   assert.match(autoRefreshSource, /30000/);
@@ -138,6 +144,17 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /initialTemplate/);
   assert.match(componentSource, /markManagerTicketRead/);
   assert.match(componentSource, /void markManagerTicketRead\(row\.ticket\.id\)/);
+  assert.match(
+    componentSource,
+    /data-unread=\{row\.isManagerUnread \? "true" : undefined\}/,
+  );
+  assert.match(componentSource, />미확인<\/span>/);
+  assert.match(
+    componentSource,
+    /markManagerTicketRead\(row\.ticket\.id\)[\s\S]*setLocallyReadTicketIds/,
+  );
+  assert.match(cssSource, /manager-defect-dashboard__unread-badge/);
+  assert.match(cssSource, /tr\[data-unread="true"\]/);
   assert.match(componentSource, /disabled/);
   assert.match(componentSource, /row\.buildingName \?\? "—"/);
   assert.match(componentSource, /const buildings/);

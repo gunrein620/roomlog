@@ -4,17 +4,30 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 describe("contract OCR important-field scope", () => {
-  it("keeps the manager OCR correction form focused on deposit and special clauses", () => {
+  it("keeps the manager OCR correction form focused on deposit, rent and special clauses", () => {
     const pageSource = readFileSync(
       join(process.cwd(), "src/app/manager/contract/01/page.tsx"),
       "utf8",
     );
 
-    for (const fieldName of ["monthlyRent", "maintenanceFee", "paymentDay", "landlordAccount", "startDate", "endDate"]) {
+    // 청구·확정에 필요한 월세·관리비·납부일·계약기간은 이 화면에서 직접 넣을 수 있어야 한다.
+    // 임대인 계좌는 계속 02/03에서만 수정한다.
+    for (const fieldName of ["landlordAccount"]) {
       assert.doesNotMatch(pageSource, new RegExp(`name="${fieldName}"`));
     }
 
-    for (const fieldName of ["deposit", "specialTerms", "autoRenewal", "restorationDuty", "repairDuty"]) {
+    for (const fieldName of [
+      "deposit",
+      "monthlyRent",
+      "maintenanceFee",
+      "paymentDay",
+      "startDate",
+      "endDate",
+      "specialTerms",
+      "autoRenewal",
+      "restorationDuty",
+      "repairDuty",
+    ]) {
       assert.match(pageSource, new RegExp(`name="${fieldName}"`));
     }
 

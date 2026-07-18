@@ -3,12 +3,34 @@ import type {
   VendorAccountView,
   VendorActivationErrorCode,
   VendorActivationStatus,
-  VendorCatalogRecord
+  VendorCatalogRecord,
+  VendorTrade
 } from "@roomlog/types";
+
+export const RESCENE_ACTIVATION_ID_PREFIX = "rescene-activation-";
+export const RESCENE_VENDOR_ID_PREFIX = "rescene-vendor-";
+
+export interface ResceneVendorActivationIssuePersistenceInput {
+  vendorId: string;
+  activationId: string;
+  keyHash: string;
+  now: Date;
+  expiresAt: Date;
+  vendor: {
+    businessName: string;
+    contactPerson: string;
+    phone: string;
+    trades: VendorTrade[];
+    serviceAreas: string[];
+  };
+}
 
 export interface VendorActivationRepository {
   getByKeyHash(keyHash: string): Promise<VendorActivationRecord | undefined>;
-  getById(activationId: string): Promise<VendorActivationRecord | undefined>;
+  listRescene(): Promise<VendorActivationRecord[]>;
+  issue(
+    input: ResceneVendorActivationIssuePersistenceInput
+  ): Promise<VendorActivationRecord>;
   getActiveAccountLink(userId: string): Promise<VendorAccountLinkRecord | undefined>;
   claim(input: {
     activationId: string;
@@ -17,7 +39,6 @@ export interface VendorActivationRepository {
   }): Promise<{
     link: VendorAccountLinkRecord;
     vendor: VendorCatalogRecord;
-    idempotent: boolean;
   }>;
   close(): Promise<void>;
 }
@@ -37,12 +58,6 @@ export interface VendorActivationRecord {
 export interface VendorAccountResolver {
   resolveActiveVendorId(userId: string): Promise<string | undefined>;
   resolveActiveVendorAccount(userId: string): Promise<VendorAccountView | undefined>;
-}
-
-export interface VendorActivationSessionClaims {
-  activationId: string;
-  keyFingerprint: string;
-  expiresAt: string;
 }
 
 export type VendorActivationRepositoryErrorCode = Extract<

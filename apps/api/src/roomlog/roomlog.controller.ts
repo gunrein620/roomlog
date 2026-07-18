@@ -24,6 +24,7 @@ import type {
   ConfirmTenantVendorConnectionInput,
   DecideRepairCompletionInput,
   PrepareTenantVendorConnectionInput,
+  RequestTenantDirectPaymentInput,
   SubmitVendorCompletionInput,
   TenantVendorCompletionDecisionInput,
   TenantVendorEstimateReviewInput,
@@ -38,7 +39,9 @@ import {
   AnnouncementTranslationRequest,
   AttachmentCategory,
   AddTenantComplaintMessageInput,
+  AddVendorRepairMessageInput,
   ConfirmTenantCompletionInput,
+  CompleteDirectHandlingInput,
   ConfirmBillPaymentInput,
   CreateAnnouncementDraftInput,
   CreateManagerReportExternalShareInput,
@@ -59,6 +62,8 @@ import {
   CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
   DeletionState,
+  DecideTicketResponsibilityInput,
+  CancelDirectHandlingInput,
   EscalateMoveoutDisputeInput,
   FinalizeIntakeInput,
   FloorPlanOpeningDetectionInput,
@@ -68,6 +73,7 @@ import {
   CopilotChatRequest,
   ManagerAgentCommandInput,
   ManagerAssistantQueryInput,
+  ManagerProxyIntakeInput,
   ManagerReplyDraftInput,
   MessagingThreadContext,
   MoveoutAdjustDeductionInput,
@@ -87,6 +93,7 @@ import {
   SaveRoomWallsInput,
   SendIntakeMessageInput,
   SendDunningInput,
+  StartDirectHandlingInput,
   StartManagerConversationInput,
   SubmitTenantAiFeedbackInput,
   UpdateManagerContractInventoryInput,
@@ -97,10 +104,15 @@ import {
   UserRole
 } from "./roomlog.types";
 import { RoomlogService } from "./roomlog.service";
-import { VendorActivationDomainError } from "./services/roomlog-vendor-activation.domain";
+import {
+  VendorActivationDomainError,
+  VendorActivationIssueValidationError
+} from "./services/roomlog-vendor-activation.domain";
 import { RoomlogManagerVendorDomain } from "./services/roomlog-manager-vendor.domain";
 import { RoomlogVendorWorkflowDomain } from "./services/roomlog-vendor-workflow.domain";
 import { RoomlogTenantVendorConnectionDomain } from "./services/roomlog-tenant-vendor-connection.domain";
+import { RoomlogTenantComplaintDraftDomain } from "./services/roomlog-tenant-complaint-draft.domain";
+import type { SaveTenantComplaintDraftInput } from "./tenant-complaint-draft.repository";
 import { VendorCompletionAttachmentService } from "./vendor-completion-attachment.service";
 import { VendorActivationRepositoryError } from "./vendor-activation.repository";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -201,7 +213,9 @@ export class RoomlogController {
     @Optional()
     private readonly vendorCompletionAttachments?: VendorCompletionAttachmentService,
     @Optional()
-    private readonly tenantVendorConnection?: RoomlogTenantVendorConnectionDomain
+    private readonly tenantVendorConnection?: RoomlogTenantVendorConnectionDomain,
+    @Optional()
+    private readonly tenantComplaintDraft?: RoomlogTenantComplaintDraftDomain
   ) {}
 
   @Get("roomlog/demo")
@@ -225,19 +239,44 @@ export class RoomlogController {
     }
   }
 
+  @Get("auth/vendor-activations/rescene")
+  async listResceneVendorActivations(
+    @Headers("authorization") authorization: string | undefined
+  ) {
+    this.roomlogService.getUserFromToken(authorization);
+    try {
+      return await this.roomlogService.listResceneVendorActivations();
+    } catch (error) {
+      return rethrowVendorActivationError(error);
+    }
+  }
+
+  @Post("auth/vendor-activations/rescene")
+  async issueVendorActivation(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: unknown
+  ) {
+    this.roomlogService.getUserFromToken(authorization);
+    try {
+      return await this.roomlogService.issueVendorActivation(body);
+    } catch (error) {
+      if (error instanceof VendorActivationIssueValidationError) {
+        throw new BadRequestException("업체 입력값이 올바르지 않습니다.");
+      }
+      return rethrowVendorActivationError(error);
+    }
+  }
+
   @Post("auth/vendor-activations/claim")
   async claimVendorActivation(
     @Headers("authorization") authorization: string | undefined,
     @Body() body: unknown
   ) {
-    const activationSession = exactStringBody(body, "activationSession");
+    const key = exactStringBody(body, "key");
     const user = this.roomlogService.getUserFromToken(authorization);
 
     try {
-      return await this.roomlogService.claimVendorActivation(
-        user.id,
-        activationSession
-      );
+      return await this.roomlogService.claimVendorActivation(user.id, key);
     } catch (error) {
       return rethrowVendorActivationError(error);
     }
@@ -504,6 +543,36 @@ export class RoomlogController {
     return this.roomlogService.listTenantComplaints(user.id);
   }
 
+  @Get("tenant/complaints/draft")
+  async getTenantComplaintDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("roomId") roomId = ""
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    if (!this.tenantComplaintDraft) throw new ServiceUnavailableException("민원 초안 저장소를 사용할 수 없습니다.");
+    return { draft: await this.tenantComplaintDraft.get(user.id, roomId) };
+  }
+
+  @Put("tenant/complaints/draft")
+  saveTenantComplaintDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: SaveTenantComplaintDraftInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    if (!this.tenantComplaintDraft) throw new ServiceUnavailableException("민원 초안 저장소를 사용할 수 없습니다.");
+    return this.tenantComplaintDraft.save(user.id, body);
+  }
+
+  @Delete("tenant/complaints/draft")
+  deleteTenantComplaintDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("roomId") roomId = ""
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    if (!this.tenantComplaintDraft) throw new ServiceUnavailableException("민원 초안 저장소를 사용할 수 없습니다.");
+    return this.tenantComplaintDraft.remove(user.id, roomId);
+  }
+
   @Get("tenant/bills")
   listTenantBills(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);
@@ -593,12 +662,18 @@ export class RoomlogController {
   }
 
   @Post("tenant/complaints")
-  createComplaint(
+  async createComplaint(
     @Headers("authorization") authorization: string | undefined,
     @Body() body: CreateComplaintInput
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
+    if (body.roomId && this.tenantComplaintDraft) {
+      await this.tenantComplaintDraft.assertRoomAccess(user.id, body.roomId);
+    }
     const result = this.roomlogService.createComplaint(user.id, body);
+    if (body.roomId && this.tenantComplaintDraft) {
+      await this.tenantComplaintDraft.remove(user.id, body.roomId);
+    }
     this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
     return result;
   }
@@ -772,17 +847,20 @@ export class RoomlogController {
   }
 
   @Post("tenant/complaints/:complaintId/vendor-connection/confirm")
-  confirmTenantVendorConnection(
+  async confirmTenantVendorConnection(
     @Headers("authorization") authorization: string | undefined,
     @Param("complaintId") complaintId: string,
     @Body() body: ConfirmTenantVendorConnectionInput
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
-    return this.requireTenantVendorConnectionDomain().confirm(
+    const result = await this.requireTenantVendorConnectionDomain().confirm(
       user.id,
       complaintId,
       body
     );
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Get("tenant/complaints/:complaintId/vendor-workflow")
@@ -798,7 +876,7 @@ export class RoomlogController {
   }
 
   @Post("tenant/repairs/:repairId/estimates/:estimateId/review")
-  reviewTenantVendorEstimate(
+  async reviewTenantVendorEstimate(
     @Headers("authorization") authorization: string | undefined,
     @Param("repairId") repairId: string,
     @Param("estimateId") estimateId: string,
@@ -806,16 +884,19 @@ export class RoomlogController {
   ) {
     rejectCallerIdentity(body, ["tenantId", "managerId", "actorUserId", "vendorId"]);
     const user = this.requireRole(authorization, ["TENANT"]);
-    return this.requireVendorWorkflowDomain().reviewTenantEstimate(
+    const result = await this.requireVendorWorkflowDomain().reviewTenantEstimate(
       user.id,
       repairId,
       estimateId,
       body
     );
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Post("tenant/repairs/:repairId/estimates/:estimateId/confirm-visit")
-  confirmTenantVendorEstimateVisit(
+  async confirmTenantVendorEstimateVisit(
     @Headers("authorization") authorization: string | undefined,
     @Param("repairId") repairId: string,
     @Param("estimateId") estimateId: string,
@@ -823,26 +904,46 @@ export class RoomlogController {
   ) {
     rejectCallerIdentity(body, ["tenantId", "managerId", "actorUserId", "vendorId"]);
     const user = this.requireRole(authorization, ["TENANT"]);
-    return this.requireVendorWorkflowDomain().confirmTenantEstimateVisit(
+    const result = await this.requireVendorWorkflowDomain().confirmTenantEstimateVisit(
       user.id,
       repairId,
       estimateId,
       body
     );
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Post("tenant/repairs/:repairId/completion-decisions")
-  decideTenantVendorCompletion(
+  async decideTenantVendorCompletion(
     @Headers("authorization") authorization: string | undefined,
     @Param("repairId") repairId: string,
     @Body() body: TenantVendorCompletionDecisionInput
   ) {
     rejectCallerIdentity(body, ["tenantId", "managerId", "actorUserId", "vendorId"]);
     const user = this.requireRole(authorization, ["TENANT"]);
-    return this.requireVendorWorkflowDomain().decideTenantCompletion(
+    const result = await this.requireVendorWorkflowDomain().decideTenantCompletion(
       user.id,
       repairId,
       body
+    );
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
+  @Post("tenant/vendor-payment-requests/:paymentRequestId/direct-payment")
+  requestTenantDirectPayment(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("paymentRequestId") paymentRequestId: string,
+    @Body() body: RequestTenantDirectPaymentInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireVendorWorkflowDomain().requestTenantDirectPayment(
+      user.id,
+      paymentRequestId,
+      { idempotencyKey: exactStringBody(body, "idempotencyKey") }
     );
   }
 
@@ -884,6 +985,19 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.getTenantMessagingThread(user.id, threadId);
+  }
+
+  @Post("tenant/messaging/threads/:threadId/read")
+  markTenantMessagingThreadRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    const result = this.roomlogService.markTenantMessagingThreadRead(user.id, threadId);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging", action: "read" });
+
+    return result;
   }
 
   @Post("tenant/messaging/threads/:threadId/messages")
@@ -1373,7 +1487,28 @@ export class RoomlogController {
   listManagerTickets(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.listTicketsForManager(user.id);
+    return this.roomlogService.listCurrentTicketsForManager(user.id);
+  }
+
+  @Post("manager/tickets/proxy-intake")
+  async createManagerProxyIntake(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: ManagerProxyIntakeInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = await this.roomlogService.createManagerProxyIntake(user.id, body);
+    if (result.shouldBroadcast) {
+      this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    }
+
+    return result;
+  }
+
+  @Get("manager/proxy-intake/rooms")
+  listManagerProxyIntakeRooms(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerProxyIntakeRooms(user.id);
   }
 
   @Post("manager/tickets/:ticketId/read")
@@ -1383,7 +1518,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
     const result = this.roomlogService.markManagerTicketRead(user.id, ticketId);
-    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    this.realtime.broadcast("roomlog:activity", {
+      kind: "ticket",
+      action: "read",
+    });
 
     return result;
   }
@@ -1842,7 +1980,7 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getTicketDetailForManager(user.id, ticketId);
+    return this.roomlogService.getCurrentTicketDetailForManager(user.id, ticketId);
   }
 
   @Get("manager/rooms/:roomId/timeline")
@@ -1985,6 +2123,58 @@ export class RoomlogController {
     return this.roomlogService.updateTicket(user.id, ticketId, body);
   }
 
+  @Post("manager/tickets/:ticketId/responsibility-decision")
+  decideTicketResponsibility(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: DecideTicketResponsibilityInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = this.roomlogService.decideTicketResponsibility(user.id, ticketId, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
+  @Post("manager/tickets/:ticketId/direct-handling")
+  async startDirectHandling(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: StartDirectHandlingInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = await this.roomlogService.startDirectHandling(user.id, ticketId, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
+  @Post("manager/tickets/:ticketId/direct-handling/complete")
+  async completeDirectHandling(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: CompleteDirectHandlingInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = await this.roomlogService.completeDirectHandling(user.id, ticketId, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
+  @Post("manager/tickets/:ticketId/direct-handling/cancel")
+  async cancelDirectHandling(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: CancelDirectHandlingInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = await this.roomlogService.cancelDirectHandling(user.id, ticketId, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
   @Post("manager/tickets/:ticketId/request-info")
   requestInfo(
     @Headers("authorization") authorization: string | undefined,
@@ -2052,7 +2242,23 @@ export class RoomlogController {
     @Param("ticketId") ticketId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().findJobByTicket(user.id, ticketId);
+    return this.requireManagerVendorDomain()
+      .findJobByTicket(user.id, ticketId)
+      .then((data) => ({ data }));
+  }
+
+  @Get("manager/vendor-mgmt/tickets/:ticketId/candidates")
+  searchManagerVendorAssignmentCandidates(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Query("query") query?: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireManagerVendorDomain().searchAssignmentCandidates(
+      user.id,
+      ticketId,
+      query
+    );
   }
 
   @Get("manager/vendor-mgmt/vendors/:vendorId")
@@ -2218,6 +2424,23 @@ export class RoomlogController {
     return this.requireVendorWorkflowDomain().getJob(user.id, repairId);
   }
 
+  @Post("vendor/jobs/:repairId/messages")
+  async addVendorRepairMessage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: AddVendorRepairMessageInput
+  ) {
+    rejectCallerIdentity(body, ["vendorId", "userId", "managerId", "actorUserId"]);
+    const user = await this.requireVendorRole(authorization);
+    const message = await this.requireVendorWorkflowDomain().addVendorRepairMessage(
+      user.id,
+      repairId,
+      body
+    );
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    return message;
+  }
+
   @Put("vendor/jobs/:repairId/estimate-draft")
   async saveVendorEstimateDraft(
     @Headers("authorization") authorization: string | undefined,
@@ -2342,6 +2565,18 @@ export class RoomlogController {
   async listVendorSettlements(@Headers("authorization") authorization?: string) {
     const user = await this.requireVendorRole(authorization);
     return this.requireVendorWorkflowDomain().listSettlements(user.id);
+  }
+
+  @Post("vendor/vendor-payment-requests/:paymentRequestId/direct-payment/confirm")
+  async confirmVendorDirectPayment(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("paymentRequestId") paymentRequestId: string
+  ) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().confirmVendorDirectPayment(
+      user.id,
+      paymentRequestId
+    );
   }
 
   // 한 릴리스 동안만 유지하는 읽기 전용 별칭. 모든 mutation은 vendor/jobs로만 제공한다.

@@ -106,6 +106,47 @@ export async function intakeSplatAsset(input: IntakeSplatAssetInput): Promise<Sp
 }
 
 /**
+ * intakeSplatAsset과 동일한 접수 규약(멀티파트 field `listingId/title/address/file`)이되,
+ * 업로드 진행률(onProgress, 0~100)을 보고한다. fetch()는 업로드 진행 이벤트를 못 주므로
+ * XMLHttpRequest로 전환했다 — 매물 등록 흐름의 백그라운드 업로드(상단 진행바)가 이걸 쓴다.
+ * 인증은 same-origin 쿠키가 자동 동봉된다(fetch와 동일).
+ */
+export function intakeSplatAssetWithProgress(
+  input: IntakeSplatAssetInput,
+  onProgress?: (percent: number) => void
+): Promise<SplatAsset> {
+  const form = new FormData();
+  form.append("listingId", input.listingId);
+  if (input.title) form.append("title", input.title);
+  if (input.address) form.append("address", input.address);
+  form.append("file", input.file);
+
+  return new Promise<SplatAsset>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", apiUrl("/splat-assets/intake"));
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        // 100%는 서버 응답(onload) 시점에만 — 전송 완료 후 서버 처리 대기 구간을 99%로 둔다.
+        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100);
+        resolve(xhr.response as SplatAsset);
+      } else {
+        const detail = typeof xhr.response === "string" ? xhr.response : "";
+        reject(new Error(`splat-asset API ${xhr.status}: ${detail || xhr.statusText}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("splat-asset API 업로드 네트워크 오류"));
+    xhr.onabort = () => reject(new Error("splat-asset API 업로드 취소"));
+    xhr.send(form);
+  });
+}
+
+/**
  * 제작 실패(FAILED) 자산 재큐잉 — 파일 없이 호출하면 이미 저장된 원본으로 재시도(원클릭),
  * 파일을 주면 원본을 교체 후 재시도(멀티파트). 서버가 status=PROCESSING·jobState=QUEUED로 되돌린다.
  * intakeSplatAsset과 같은 멀티파트 규약(field `file`) — 인증은 쿠키→Bearer BFF 프록시가 처리한다.

@@ -418,7 +418,23 @@ label {
   font-weight: 800;
 }
 
-input,
+/* 라디오/체크박스 등 위젯형 input에는 width:100%가 레이아웃을 깨뜨리므로 텍스트 입력류만 한정한다. */
+input:not([type]),
+input:is(
+  [type="text"],
+  [type="search"],
+  [type="email"],
+  [type="url"],
+  [type="tel"],
+  [type="password"],
+  [type="file"],
+  [type="number"],
+  [type="date"],
+  [type="datetime-local"],
+  [type="month"],
+  [type="week"],
+  [type="time"]
+),
 textarea,
 select {
   width: 100%;

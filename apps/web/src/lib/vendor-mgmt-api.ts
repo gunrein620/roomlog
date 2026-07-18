@@ -2,6 +2,7 @@ import type {
   DecideRepairCompletionInput,
   ManagerVendorDetail,
   ManagerVendorJobLookup,
+  ManagerVendorJobLookupResponse,
   ManagerVendorView,
   VendorCatalogSearchFilters,
   VendorCatalogSearchResult,
@@ -114,6 +115,21 @@ export function searchVendorCatalog(
   );
 }
 
+export function searchAssignableVendorCandidates(
+  ticketId: string,
+  query?: string,
+): Promise<VendorReadResult<VendorCatalogSearchResult[]>> {
+  const suffix = query?.trim()
+    ? `?query=${encodeURIComponent(query.trim())}`
+    : "";
+  return readVendorData(
+    () => serverFetch<VendorCatalogSearchResult[]>(
+      `/manager/vendor-mgmt/tickets/${encodeURIComponent(ticketId)}/candidates${suffix}`,
+    ),
+    filterSearchDemo({ query }).filter((candidate) => candidate.canAssign),
+  );
+}
+
 export function getManagerVendorDetail(
   vendorId: string,
 ): Promise<VendorReadResult<ManagerVendorDetail>> {
@@ -154,7 +170,7 @@ export function findDemoManagerVendorJobByTicket(
   const candidates = DEMO_MANAGER_VENDOR_DETAILS.flatMap((detail) =>
     detail.jobs
       .filter((job) => job.ticketId === ticketId && job.status !== "CANCELLED")
-      .map((job) => ({ vendor: detail.vendor, job })),
+      .map((job) => ({ partnership: "REGISTERED" as const, vendor: detail.vendor, job })),
   );
   return candidates.find(({ job }) => job.status !== "COMPLETED")
     ?? candidates.find(({ job }) => job.status === "COMPLETED")
@@ -165,9 +181,9 @@ export function findManagerVendorJobByTicket(
   ticketId: string,
 ): Promise<VendorReadResult<ManagerVendorJobLookup | null>> {
   return readVendorData(
-    () => serverFetch<ManagerVendorJobLookup | null>(
+    () => serverFetch<ManagerVendorJobLookupResponse>(
       `/manager/vendor-mgmt/tickets/${encodeURIComponent(ticketId)}/job`,
-    ),
+    ).then(({ data }) => data),
     findDemoManagerVendorJobByTicket(ticketId),
   );
 }

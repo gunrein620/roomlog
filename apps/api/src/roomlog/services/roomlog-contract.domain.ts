@@ -380,6 +380,45 @@ export class RoomlogContractDomain {
     return this.presentContract(contract);
   }
 
+  /**
+   * 거래 계약 해지 → 세입자-호실 연결 해제. 계약 레코드는 지우지 않고 expired로만 전환한다
+   * (돈/이력 데이터 파괴 금지 — 청구·이력 소비자가 계속 참조할 수 있어야 한다).
+   */
+  disconnectAcceptedTradeContract(input: { tradeContractId: string; tenantId: string }): void {
+    const tradeContractId =
+      typeof input.tradeContractId === "string" ? input.tradeContractId.trim() : "";
+    const tenantId = typeof input.tenantId === "string" ? input.tenantId.trim() : "";
+    if (!tradeContractId) {
+      throw new BadRequestException("거래 계약 ID를 확인할 수 없습니다.");
+    }
+    if (!tenantId) {
+      throw new BadRequestException("거래 계약 임차인을 확인할 수 없습니다.");
+    }
+
+    const contractId = `ct_trade_${tradeContractId}`;
+    // 결정적 id(ct_trade_*)로 만들어진 계약 + 기존 활성 계약에 마커만 얹힌 계약 둘 다 커버.
+    const targets = this.store.contracts.filter(
+      (contract) =>
+        contract.tenantId === tenantId &&
+        (contract.id === contractId ||
+          this.tradeAcceptanceMarker(contract)?.tradeContractId === tradeContractId)
+    );
+
+    let changed = false;
+    for (const contract of targets) {
+      if (contract.lifecycle !== "expired") {
+        contract.lifecycle = "expired";
+        contract.updatedAt = now();
+        changed = true;
+      }
+      if (this.store.tenantRooms[tenantId] === contract.roomId) {
+        delete this.store.tenantRooms[tenantId];
+        changed = true;
+      }
+    }
+    if (changed) this.persistStore();
+  }
+
   ensureTradeContractDraft(input: EnsureTradeContractDraftInput): Contract {
     const room = this.findRoom(input.roomId);
     if (room.landlordId !== input.landlordId) {
@@ -1948,7 +1987,9 @@ export class RoomlogContractDomain {
     return this.contractDateKey(value, field);
   }
 
-  private contractDateKey(value: string, field: string) {
+  private contractDateKey(rawValue: string, field: string) {
+    // 저장된 계약 날짜가 ISO 전체 문자열(2026-03-01T00:00:00+09:00)인 경우가 있어 날짜부만 본다.
+    const value = rawValue.trim().slice(0, 10);
     if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u.test(value)) {
       throw new BadRequestException(`${field}은 YYYY-MM-DD 형식이어야 합니다.`);
     }

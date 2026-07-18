@@ -1,6 +1,7 @@
 import type {
   DecideRepairCompletionInput,
   RepairCompletionDecision,
+  RequestTenantDirectPaymentInput,
   StartVendorJobResult,
   SubmitVendorCompletionInput,
   TenantVendorCompletionDecisionInput,
@@ -12,11 +13,14 @@ import type {
   VendorEstimateDraftInput,
   VendorEstimateReviewInput,
   VendorJobDetail,
+  VendorJobMessageView,
+  VendorJobPaymentView,
   VendorJobSummary,
   VendorPaymentRequest,
   VendorSettlementRow,
   VendorVisitScheduleInput
 } from "@roomlog/types";
+import type { AddVendorRepairMessageInput } from "./roomlog.types";
 
 export const VENDOR_WORKFLOW_REPOSITORY = Symbol("VENDOR_WORKFLOW_REPOSITORY");
 
@@ -33,7 +37,6 @@ export type VendorWorkflowRepositoryErrorCode =
   | "TICKET_NOT_FOUND"
   | "TICKET_ACCESS_DENIED"
   | "VENDOR_NOT_ASSIGNABLE"
-  | "TRADE_MISMATCH"
   | "CONCURRENT_ASSIGNMENT"
   | "REPAIR_NOT_FOUND"
   | "REPAIR_ACCESS_DENIED"
@@ -88,10 +91,38 @@ export interface DecisionCommit {
   eventKey: string;
 }
 
+/**
+ * 업체 발신 메시지의 내부 원장 레코드 — Prisma 저장 직후 인메모리 스토어 동기화에 쓴다.
+ * (스토어를 안 거치는 저장소 직행 쓰기라서, 이 레코드를 서비스에 되돌려 세입자/관리자
+ * 읽기 경로가 재하이드레이션 없이 즉시 메시지를 보게 한다.)
+ */
+export interface VendorRepairMessageRecord {
+  id: string;
+  ticketId: string;
+  complaintId: string;
+  repairId: string;
+  senderUserId: string;
+  senderRole: "VENDOR";
+  messageText: string;
+  attachmentUrls: string[];
+  createdAt: string;
+}
+
+export interface VendorRepairMessageResult {
+  view: VendorJobMessageView;
+  record: VendorRepairMessageRecord;
+}
+
 export interface VendorWorkflowRepository {
   assignVendor(command: AssignVendorCommand): Promise<VendorJobDetail>;
   listJobs(vendorId: string): Promise<VendorJobSummary[]>;
   getJob(vendorId: string, repairId: string): Promise<VendorJobDetail | null>;
+  addRepairMessage(
+    vendorId: string,
+    vendorUserId: string,
+    repairId: string,
+    input: AddVendorRepairMessageInput
+  ): Promise<VendorRepairMessageResult>;
   saveEstimateDraft(command: {
     vendorId: string;
     repairId: string;
@@ -147,6 +178,9 @@ export interface VendorWorkflowRepository {
     tenantId: string,
     complaintId: string
   ): Promise<TenantVendorWorkflowView | null>;
+  listTenantPayableWorkflows(
+    tenantId: string
+  ): Promise<TenantVendorWorkflowView[]>;
   reviewTenantEstimate(
     tenantId: string,
     repairId: string,
@@ -164,5 +198,15 @@ export interface VendorWorkflowRepository {
     repairId: string,
     input: TenantVendorCompletionDecisionInput
   ): Promise<TenantVendorWorkflowView>;
+  requestTenantDirectPayment(
+    tenantId: string,
+    paymentRequestId: string,
+    input: RequestTenantDirectPaymentInput
+  ): Promise<VendorJobPaymentView>;
+  confirmVendorDirectPayment(
+    vendorId: string,
+    vendorUserId: string,
+    paymentRequestId: string
+  ): Promise<VendorJobPaymentView>;
   listSettlements(vendorId: string): Promise<VendorSettlementRow[]>;
 }

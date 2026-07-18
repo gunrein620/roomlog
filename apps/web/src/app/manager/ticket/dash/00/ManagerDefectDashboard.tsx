@@ -3,6 +3,10 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
+import type { ManagerProxyIntakeRoom } from "@/lib/ticket-manager-api";
+import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
+import { ManagerProxyIntakeDialog } from "./ManagerProxyIntakeDialog";
+import styles from "./proxy-intake.module.css";
 import { TicketActionMenu } from "./TicketActionMenu";
 import { TicketDetailDialog } from "./TicketDetailDialog";
 import {
@@ -34,6 +38,7 @@ const TABLE_COLUMNS = [
 
 const statusFilterLabel: Record<DefectStatusFilter, string> = {
   all: "전체",
+  unread: "미확인",
   waiting: "대기",
   in_progress: "진행중",
   completed: "완료",
@@ -57,7 +62,7 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
   const displayStatus = defectDisplayStatus(row);
 
   return (
-    <tr>
+    <tr data-unread={row.isManagerUnread ? "true" : undefined}>
       <td>
         <span
           className="manager-defect-dashboard__type-badge"
@@ -73,7 +78,16 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
           className="manager-defect-dashboard__job-link"
           onClick={() => onSelect(row)}
         >
-          {row.ticket.title}
+          {row.isManagerUnread ? (
+            <span className="manager-defect-dashboard__unread-label">
+              <span
+                className="manager-defect-dashboard__unread-dot"
+                aria-hidden="true"
+              />
+              <span className="manager-defect-dashboard__unread-badge">미확인</span>
+            </span>
+          ) : null}
+          <span>{row.ticket.title}</span>
         </button>
       </td>
       <td className="manager-defect-dashboard__muted-cell">
@@ -90,12 +104,15 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
         {formatDefectMoney(row.repair?.quoteAmount)}
       </td>
       <td>
-        <span
-          className="manager-defect-dashboard__status-badge"
-          data-status={displayStatus}
-        >
-          {displayStatusLabel[displayStatus]}
-        </span>
+        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
+          <span
+            className="manager-defect-dashboard__status-badge"
+            data-status={displayStatus}
+          >
+            {displayStatusLabel[displayStatus]}
+          </span>
+          <SelfRepairBadge ticket={row.ticket} />
+        </div>
       </td>
       <td>
         <div className="manager-defect-dashboard__action">
@@ -111,9 +128,11 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
 
 export function ManagerDefectDashboard({
   rows,
+  proxyIntakeRooms,
   initialTemplate = "all",
 }: {
   rows: readonly DefectDashboardRow[];
+  proxyIntakeRooms: readonly ManagerProxyIntakeRoom[];
   initialTemplate?: DefectDashboardFilters["template"];
 }) {
   const [filters, setFilters] = useState<DefectDashboardFilters>({
@@ -124,29 +143,47 @@ export function ManagerDefectDashboard({
   });
   const [page, setPage] = useState(1);
   const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
+  const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [proxyIntakeOpen, setProxyIntakeOpen] = useState(false);
 
-  const counts = useMemo(() => countDefectStatuses(rows), [rows]);
+  const effectiveRows = useMemo(
+    () =>
+      rows.map((row) =>
+        locallyReadTicketIds.has(row.ticket.id)
+          ? { ...row, isManagerUnread: false }
+          : row,
+      ),
+    [locallyReadTicketIds, rows],
+  );
+  const counts = useMemo(() => countDefectStatuses(effectiveRows), [effectiveRows]);
   const workers = useMemo(
     () =>
       Array.from(
         new Set(
-          rows.flatMap((row) =>
+          effectiveRows.flatMap((row) =>
             row.repair?.vendorName ? [row.repair.vendorName] : [],
           ),
         ),
       ).sort((left, right) => left.localeCompare(right, "ko")),
-    [rows],
+    [effectiveRows],
   );
   const buildings = useMemo(
     () =>
       Array.from(
         new Set(
-          rows.flatMap((row) => (row.buildingName ? [row.buildingName] : [])),
+          effectiveRows.flatMap((row) =>
+            row.buildingName ? [row.buildingName] : [],
+          ),
         ),
       ).sort((left, right) => left.localeCompare(right, "ko")),
-    [rows],
+    [effectiveRows],
   );
-  const filteredRows = useMemo(() => filterDefectRows(rows, filters), [rows, filters]);
+  const filteredRows = useMemo(
+    () => filterDefectRows(effectiveRows, filters),
+    [effectiveRows, filters],
+  );
   const pageResult = paginateDefectRows(filteredRows, page, PAGE_SIZE);
   const firstResult = filteredRows.length === 0 ? 0 : (pageResult.page - 1) * PAGE_SIZE + 1;
   const lastResult = Math.min(pageResult.page * PAGE_SIZE, filteredRows.length);
@@ -158,16 +195,40 @@ export function ManagerDefectDashboard({
 
   function selectRow(row: DefectDashboardRow) {
     setSelectedRow(row);
-    void markManagerTicketRead(row.ticket.id).catch(() => {
-      // 모달 확인은 유지하고 배지는 서버 저장이 성공할 때만 갱신한다.
-    });
+    void markManagerTicketRead(row.ticket.id)
+      .then(() => {
+        setLocallyReadTicketIds((current) => {
+          const next = new Set(current);
+          next.add(row.ticket.id);
+          return next;
+        });
+      })
+      .catch(() => {
+        // 모달 확인은 유지하고 배지는 서버 저장이 성공할 때만 갱신한다.
+      });
   }
 
   return (
     <section className="manager-defect-dashboard" aria-labelledby="manager-defect-title">
-      <h2 id="manager-defect-title">
-        {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원/하자 관리"}
-      </h2>
+      <div className={styles.header}>
+        <h2 id="manager-defect-title">
+          {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원/하자 관리"}
+        </h2>
+        <div className={styles.headerAction}>
+          <button
+            type="button"
+            className={styles.openButton}
+            disabled={proxyIntakeRooms.length === 0}
+            aria-describedby={proxyIntakeRooms.length === 0 ? "proxy-intake-empty-hint" : undefined}
+            onClick={() => setProxyIntakeOpen(true)}
+          >대리 접수</button>
+          {proxyIntakeRooms.length === 0 ? (
+            <span id="proxy-intake-empty-hint" className={styles.emptyHint}>
+              대리 접수 가능한 호실이 없습니다.
+            </span>
+          ) : null}
+        </div>
+      </div>
 
       <div
         className="manager-defect-dashboard__status-filters"
@@ -301,6 +362,13 @@ export function ManagerDefectDashboard({
           </button>
         </nav>
       </footer>
+
+      {proxyIntakeOpen ? (
+        <ManagerProxyIntakeDialog
+          rooms={proxyIntakeRooms}
+          onClose={() => setProxyIntakeOpen(false)}
+        />
+      ) : null}
 
       <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
     </section>

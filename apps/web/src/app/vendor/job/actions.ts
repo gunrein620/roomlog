@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { VendorEstimateDraftInput } from "@roomlog/types";
 import {
+  confirmVendorDirectPayment,
   saveVendorEstimateDraft,
+  sendVendorRepairMessage,
   scheduleVendorWorkflowJob,
   startVendorWorkflowJob,
   submitVendorCompletionReport,
@@ -29,11 +31,22 @@ function optional(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function positiveNumber(formData: FormData, key: string, label: string) {
-  const value = Number(required(formData, key));
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`${label}을 확인해 주세요.`);
-  return value;
+const MAX_DATABASE_INT = 2_147_483_647;
+
+function positiveInteger(value: string, label: string) {
+  const parsed = Number(value.trim());
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_DATABASE_INT) {
+    throw new Error(`${label}을 확인해 주세요.`);
+  }
+  return parsed;
 }
+
+function positiveIntegerField(formData: FormData, key: string, label: string) {
+  return positiveInteger(required(formData, key), label);
+}
+
+/** 업체 견적은 금액 한 칸으로 받으므로 저장 시 단일 일괄 항목으로 정규화한다. */
+const ESTIMATE_LUMP_SUM_DESCRIPTION = "수리 견적 일괄";
 
 function errorMessage(error: unknown) {
   return error instanceof Error && error.message.trim()
@@ -44,6 +57,30 @@ function errorMessage(error: unknown) {
 function errorHref(route: string, repairId: string, error: unknown) {
   const separator = withId(route, repairId).includes("?") ? "&" : "?";
   return `${withId(route, repairId)}${separator}error=${encodeURIComponent(errorMessage(error))}`;
+}
+
+export async function confirmDirectPaymentAction(paymentRequestId: string) {
+  try {
+    await confirmVendorDirectPayment(paymentRequestId);
+    revalidatePath(ROUTES["V-JOB-SETTLEMENT"]);
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: errorMessage(error) };
+  }
+}
+
+export async function sendVendorRepairMessageAction(formData: FormData) {
+  const repairId = required(formData, "repairId");
+  try {
+    await sendVendorRepairMessage(repairId, {
+      messageText: required(formData, "messageText"),
+    });
+    revalidatePath(withId(ROUTES["V-JOB-01"], repairId));
+    redirect(`${withId(ROUTES["V-JOB-01"], repairId)}&sent=1`);
+  } catch (error) {
+    if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) throw error;
+    redirect(errorHref(ROUTES["V-JOB-01"], repairId, error));
+  }
 }
 
 function estimateInput(formData: FormData): VendorEstimateDraftInput {
@@ -60,30 +97,18 @@ function estimateInput(formData: FormData): VendorEstimateDraftInput {
   }
   if (responseType !== "FIXED_ESTIMATE") throw new Error("회신 유형을 확인해 주세요.");
 
-  const lineItems: Extract<VendorEstimateDraftInput, { responseType: "FIXED_ESTIMATE" }>["lineItems"] = [];
-  for (const suffix of ["1", "2"]) {
-    const description = optional(formData, `lineDescription${suffix}`);
-    const rawAmount = optional(formData, `lineAmount${suffix}`);
-    if (!description && !rawAmount) continue;
-    if (!description) throw new Error("견적 항목명을 입력해 주세요.");
-    const unitAmount = Number(rawAmount);
-    if (!Number.isFinite(unitAmount) || unitAmount <= 0) {
-      throw new Error("견적 항목 금액을 확인해 주세요.");
-    }
-    lineItems.push({
-      category: suffix === "1" ? "MATERIAL" : "LABOR",
-      description,
+  // 업체는 금액 한 칸 + 내용 한 칸만 입력한다. 저장은 일괄 단일 항목으로 보낸다.
+  const totalAmount = positiveIntegerField(formData, "totalAmount", "견적 금액");
+  const workDescription = required(formData, "workDescription");
+  const lineItems: Extract<VendorEstimateDraftInput, { responseType: "FIXED_ESTIMATE" }>["lineItems"] = [
+    {
+      category: "LABOR",
+      description: ESTIMATE_LUMP_SUM_DESCRIPTION,
       quantity: 1,
-      unitAmount,
-    });
-  }
-  if (lineItems.length === 0) throw new Error("견적 항목을 한 개 이상 입력해 주세요.");
-  return {
-    responseType,
-    workDescription: required(formData, "workDescription"),
-    estimatedDurationMinutes: positiveNumber(formData, "estimatedDurationMinutes", "예상 작업 시간"),
-    lineItems,
-  };
+      unitAmount: totalAmount,
+    },
+  ];
+  return { responseType, workDescription, lineItems };
 }
 
 export async function saveEstimateAction(formData: FormData) {

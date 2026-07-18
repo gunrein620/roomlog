@@ -83,13 +83,19 @@ async function updateManualCorrectionAction(formData: FormData) {
 
   const contractId = String(formData.get("contractId") ?? "");
   const detailUrl = `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`;
+  const startDate = dateValue(formData, "startDate");
+  const endDate = dateValue(formData, "endDate");
+
+  if (startDate && endDate && endDate < startDate) {
+    redirect(`${detailUrl}&error=${encodeURIComponent("계약 종료일은 시작일보다 빠를 수 없습니다.")}`);
+  }
 
   try {
     await updateManagerContractManualValues(contractId, {
       deposit: textValue(formData, "deposit"),
       monthlyRent: numberValue(formData, "monthlyRent"),
-      startDate: dateValue(formData, "startDate"),
-      endDate: dateValue(formData, "endDate"),
+      startDate,
+      endDate,
       specialTerms: textValue(formData, "specialTerms"),
       autoRenewal: textValue(formData, "autoRenewal"),
       restorationDuty: textValue(formData, "restorationDuty"),
@@ -818,7 +824,7 @@ function ocrFailureInfo(highlights: string[]): OcrFailureInfo {
 }
 
 function pageNotice(sourceParam?: string) {
-  if (sourceParam === "manual-saved") return "수정한 보증금·특약 검토값을 저장했습니다.";
+  if (sourceParam === "manual-saved") return "수정한 보증금·월 임대료·계약 기간·특약 검토값을 저장했습니다.";
   if (sourceParam === "ocr-first") return "계약서 입력 후 OCR 분석을 실행했습니다. 보증금과 특약성 조항만 확인해 주세요.";
   return "";
 }

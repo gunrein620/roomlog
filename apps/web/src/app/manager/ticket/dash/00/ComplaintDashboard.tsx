@@ -23,6 +23,7 @@ import {
 } from "./complaint-dashboard-model";
 import { TicketDetailDialog } from "./TicketDetailDialog";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
+import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
 
 const METRICS = [
   { id: "total", label: "전체 접수", icon: ListChecks },
@@ -285,7 +286,12 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
                   </td>
                   <td>{row.buildingName ?? "—"} / {row.ticket.unitId || "—"}</td>
                   <td>{formatComplaintDate(row.ticket.createdAt)}</td>
-                  <td><span className="manager-complaint-dashboard__status" data-status={complaintStatusLabel(row.ticket.status)}>{complaintStatusLabel(row.ticket.status)}</span></td>
+                  <td>
+                    <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
+                      <span className="manager-complaint-dashboard__status" data-status={complaintStatusLabel(row.ticket.status)}>{complaintStatusLabel(row.ticket.status)}</span>
+                      <SelfRepairBadge ticket={row.ticket} />
+                    </div>
+                  </td>
                 </tr>
               ))}
               {dashboard.recent.length === 0 ? <tr><td colSpan={5} className="manager-complaint-dashboard__empty">선택한 기간에 접수된 민원/하자가 없습니다.</td></tr> : null}

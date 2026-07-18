@@ -22,6 +22,26 @@ export type VendorTrade =
   | "general" // 종합
   | "other"; // 기타
 
+export const VENDOR_TRADE_OPTIONS = [
+  { value: "plumbing", label: "배관·누수" },
+  { value: "electrical", label: "전기" },
+  { value: "hvac", label: "냉난방·에어컨" },
+  { value: "appliance", label: "가전" },
+  { value: "locksmith", label: "도어락·잠금" },
+  { value: "waterproofing", label: "방수" },
+  { value: "cleaning", label: "청소" },
+  { value: "general", label: "종합" },
+  { value: "other", label: "기타" }
+] as const satisfies readonly { value: VendorTrade; label: string }[];
+
+const VENDOR_TRADE_LABELS = new Map<string, string>(
+  VENDOR_TRADE_OPTIONS.map(({ value, label }) => [value, label])
+);
+
+export function vendorTradeLabel(value: string) {
+  return VENDOR_TRADE_LABELS.get(value.trim().toLocaleLowerCase("ko")) ?? value;
+}
+
 /** 업체 상태 (M-VEND-01/03). 폐업=closed(비활성과 구분). */
 export type VendorStatus = "active" | "inactive" | "closed";
 

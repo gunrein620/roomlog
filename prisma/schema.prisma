@@ -59,6 +59,7 @@ enum ComplaintSourceChannel {
   REALTIME_CHAT
   VOICE_CHAT
   CALLBOT
+  MANAGER_PROXY
 }
 
 enum ComplaintStatus {
@@ -323,6 +324,15 @@ enum RepairPaymentOrderStatus {
   APPROVED
   FAILED
   CANCELLED
+}
+
+enum AgentToolActionStatus {
+  PENDING
+  EXECUTING
+  EXECUTED
+  CANCELLED
+  EXPIRED
+  FAILED
 }
 
 enum CreditLedgerEntryType {
@@ -611,6 +621,7 @@ model UserAccount {
   floorPlans                 FloorPlan[]                @relation("OwnedFloorPlans")
   intakeSessions             IntakeSession[]            @relation("TenantIntakeSessions")
   complaints                 Complaint[]                @relation("TenantComplaints")
+  complaintDrafts            TenantComplaintDraft[]     @relation("TenantComplaintDrafts")
   tickets                    Ticket[]                   @relation("TenantTickets")
   moveoutRequests            MoveoutRequest[]           @relation("TenantMoveouts")
   moveInChecklistItems       MoveInChecklistItem[]
@@ -625,6 +636,7 @@ model UserAccount {
   vendorPaymentRequests      VendorPaymentRequest[]     @relation("VendorPaymentManager")
   payerVendorPaymentRequests VendorPaymentRequest[]     @relation("VendorPaymentPayer")
   repairPaymentOrders        RepairPaymentOrder[]       @relation("RepairPaymentOrderPayer")
+  agentToolActions           AgentToolAction[]
   vendorPaymentAuditEvents   VendorPaymentAuditEvent[]  @relation("VendorPaymentAuditActor")
   managedDomainEvents        DomainEventOutbox[]        @relation("DomainEventManager")
   actedDomainEvents          DomainEventOutbox[]        @relation("DomainEventActor")
@@ -667,6 +679,7 @@ model Room {
   splatAssets          SplatAsset[]
   contracts            Contract[]
   complaints           Complaint[]
+  complaintDrafts      TenantComplaintDraft[]
   tickets              Ticket[]
   moveoutRequests      MoveoutRequest[]
   intakeSessions       IntakeSession[]
@@ -706,6 +719,7 @@ model TenantRoom {
   room   Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, roomId])
+  @@unique([tenantId])
   @@index([roomId])
 }
 
@@ -1086,6 +1100,32 @@ model RepairPaymentOrder {
   @@index([payerRole, payerUserId, status, updatedAt])
   @@index([retryOfOrderId])
   @@unique([id, paymentRequestId])
+}
+
+model AgentToolAction {
+  id               String                 @id
+  activeKey        String?                @unique
+  principalUserId  String
+  principalRole    String
+  toolName         String
+  executorName     String?
+  toolCallId       String
+  arguments        Json
+  commandPayload   Json?
+  confirmationCard Json?
+  result           Json?
+  failureSummary   String?
+  status           AgentToolActionStatus
+  initiatedBy      RepairPaymentInitiator @default(AI_AGENT)
+  expiresAt        DateTime?
+  confirmedAt      DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  principal        UserAccount            @relation(fields: [principalUserId], references: [id], onDelete: Restrict)
+
+  @@unique([principalUserId, principalRole, toolCallId])
+  @@index([principalUserId, status, createdAt])
 }
 
 model CreditAccount {
@@ -1524,6 +1564,8 @@ model Complaint {
   roomId         String
   ticketId       String                 @unique
   sourceChannel  ComplaintSourceChannel
+  clientRequestId String?
+  requestFingerprint String?
   title          String
   description    String
   location       String
@@ -1539,6 +1581,27 @@ model Complaint {
 
   @@index([tenantId, createdAt])
   @@index([roomId, createdAt])
+  @@unique([tenantId, clientRequestId])
+}
+
+model TenantComplaintDraft {
+  id             String   @id
+  tenantId       String
+  roomId         String
+  category       String
+  title          String
+  occurredAt     DateTime?
+  description    String
+  attachmentUrls String[]
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant UserAccount @relation("TenantComplaintDrafts", fields: [tenantId], references: [id], onDelete: Cascade)
+  room   Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, roomId])
+  @@index([expiresAt])
 }
 
 model Ticket {
@@ -1552,6 +1615,12 @@ model Ticket {
   priority           Int
   status             TicketStatus
   responsibilityHint String
+  responsibilityDecidedById String?
+  responsibilityDecidedAt DateTime?
+  responsibilityDecisionNote String?
+  directHandlingStartedAt DateTime?
+  directHandlingCompletedAt DateTime?
+  directHandlingNote String?
   aiSummary          String
   dueAt              DateTime?
   createdAt          DateTime               @default(now())
@@ -1630,6 +1699,7 @@ model RepairRequest {
   ticketId             String
   vendorId             String
   status               RepairStatus
+  tenantInitiated      Boolean           @default(false)
   title                String
   description          String
   estimateAmount       Int?

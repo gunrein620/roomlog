@@ -1,3 +1,4 @@
+import type { Cost } from "@roomlog/types";
 import type { BriefingInput } from "./briefing-input";
 
 export type TodayTaskKind = "overdue" | "urgent_ticket" | "expiring" | "unanswered";
@@ -19,7 +20,22 @@ export type DashboardSourceKey =
   | "billing"
   | "tickets"
   | "contractDashboard"
-  | "messaging";
+  | "messaging"
+  | "costs";
+
+export type DashboardRepairExpenseRow = Pick<
+  Cost,
+  "id" | "date" | "unitId" | "item" | "amount" | "repairPayment"
+>;
+
+export type DashboardRepairExpenseMonth = { m: string; v: number };
+
+export type DashboardRepairExpenseSummary = {
+  month: string;
+  totalAmount: number;
+  recent: DashboardRepairExpenseRow[];
+  monthlyTrend: DashboardRepairExpenseMonth[];
+};
 
 export const DASHBOARD_SOURCE_LABELS: Record<DashboardSourceKey, string> = {
   listings: "미계약 매물",
@@ -27,7 +43,8 @@ export const DASHBOARD_SOURCE_LABELS: Record<DashboardSourceKey, string> = {
   billing: "청구",
   tickets: "하자",
   contractDashboard: "계약 만료",
-  messaging: "메시지"
+  messaging: "메시지",
+  costs: "비용"
 };
 
 export type DashboardBillingRow = {
@@ -108,6 +125,60 @@ export type ManagerHomeCard = {
 
 export function sortTodayTasks(tasks: TodayTask[]): TodayTask[] {
   return [...tasks].sort((a, b) => a.priority - b.priority || a.title.localeCompare(b.title, "ko-KR"));
+}
+
+export function recentActiveRepairCosts(
+  costs: Cost[],
+  limit = 5
+): DashboardRepairExpenseRow[] {
+  return activeRepairCosts(costs)
+    .sort(
+      (a, b) =>
+        Date.parse(b.date) - Date.parse(a.date) ||
+        Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+    )
+    .slice(0, Math.max(0, limit))
+    .map(({ id, date, unitId, item, amount, repairPayment }) => ({
+      id,
+      date,
+      unitId,
+      item,
+      amount,
+      repairPayment
+    }));
+}
+
+export function monthlyRepairCostTrend(
+  costs: Cost[],
+  referenceMonth: string
+): DashboardRepairExpenseMonth[] {
+  const [year, month] = referenceMonth.split("-").map(Number);
+  const activeCosts = activeRepairCosts(costs);
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(Date.UTC(year, month - 12 + index, 1));
+    const key = date.toISOString().slice(0, 7);
+    const amount = activeCosts
+      .filter((cost) => cost.date.startsWith(key))
+      .reduce((sum, cost) => sum + cost.amount, 0);
+
+    return { m: `${date.getUTCMonth() + 1}월`, v: amount / 10_000 };
+  });
+}
+
+function activeRepairCosts(costs: Cost[]): Cost[] {
+  const supersededIds = new Set(
+    costs
+      .filter((cost) => cost.status === "amended" && cost.supersedesId)
+      .map((cost) => cost.supersedesId as string)
+  );
+
+  return costs.filter(
+    (cost) =>
+      cost.type === "repair" &&
+      (cost.status === "confirmed" || cost.status === "amended") &&
+      !supersededIds.has(cost.id)
+  );
 }
 
 export function isOpenTicket(ticket: Pick<DashboardTicket, "status">): boolean {
