@@ -23,10 +23,6 @@ const furnitureDatasetSource = readFileSync(
   "utf8",
 );
 const dockerIgnoreSource = readFileSync(join(process.cwd(), "../../.dockerignore"), "utf8");
-const viewerSource = readFileSync(
-  join(process.cwd(), "../../services/mitunet/viewer/index.html"),
-  "utf8",
-);
 
 test("serves the MitUNet viewer through a RoomLog route", () => {
   assert.match(routeSource, /readMitunetViewerFile\("index\.html"\)/);
@@ -36,7 +32,6 @@ test("serves the MitUNet viewer through a RoomLog route", () => {
   assert.match(proxySource, /\/floor-plan-3d\/room-materials/);
   assert.match(proxySource, /\/floor-plan-3d\/mitunet-api\/integration-config/);
   assert.match(proxySource, /\/floor-plan-3d\/mitunet-api\/healthz/);
-  assert.match(viewerSource, /millimetersPerPixel:\s*currentComposedPlan\.calibration\?\.millimetersPerPixel/);
 });
 
 test("serves MitUNet viewer assets without exposing arbitrary local files", () => {

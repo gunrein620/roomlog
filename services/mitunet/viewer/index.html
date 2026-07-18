@@ -1208,7 +1208,6 @@ async function ensureRoomFloorMaterials() {
   currentComposedPlan.floor_materials = buildRoomFloorMaterialMap({
     height,
     interiorMask,
-    millimetersPerPixel: currentComposedPlan.calibration?.millimetersPerPixel ?? null,
     openings: currentComposedPlan.openings ?? [],
     polygons: currentComposedPlan.polygons ?? {},
     rooms: analysis.rooms,
