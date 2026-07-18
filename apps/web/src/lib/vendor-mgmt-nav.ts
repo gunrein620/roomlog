@@ -11,7 +11,6 @@ export const MANAGER_VENDOR_MGMT_PATHS = {
 
 export const MANAGER_VENDOR_MGMT_NAV = [
   { href: MANAGER_VENDOR_MGMT_PATHS.vendors, label: "내 업체" },
-  { href: MANAGER_VENDOR_MGMT_PATHS.search, label: "업체 찾기" },
   { href: MANAGER_VENDOR_MGMT_PATHS.credit, label: "크레딧·결제" },
 ] as const;
 
