@@ -42,3 +42,8 @@ test("opens the direct vendor registration form and submits it through the manag
   assert.match(clientSource, /manager\/vendor-mgmt\/vendors\/manual/);
   assert.match(controllerSource, /@Post\("manager\/vendor-mgmt\/vendors\/manual"\)/);
 });
+
+test("does not expose an unlink control from the my-vendors list", () => {
+  assert.doesNotMatch(pageSource, /ManagerVendorArchiveControl/);
+  assert.doesNotMatch(pageSource, /renderManagement=/);
+});
