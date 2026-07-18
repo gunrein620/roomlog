@@ -13,4 +13,5 @@ test("/gara renders registered vendors with payout request controls", () => {
   assert.match(source, /listManagerVendors/);
   assert.match(source, /getManagerCreditAccount/);
   assert.match(source, /GaraPayoutWorkspace/);
+  assert.doesNotMatch(source, /ManagerAppShell/);
 });
