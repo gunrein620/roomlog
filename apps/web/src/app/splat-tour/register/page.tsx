@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef, type ReactNode } from "react";
 import { SplatScene, loadSplatTuningProfile, type SplatTuningProfile } from "../splat-scene";
 import { composeWithPickViewTuning, solveSimilarity } from "../similarity-solve";
 import { defaultRotationXDegreesForSrc } from "../splat-orientation";
@@ -26,8 +26,7 @@ import { fetchOwnerListings, resolveRegisterPlanSource } from "@/lib/owner-tour-
 // 문서: docs/remote-3d-tour.md §4.
 
 const SPLAT_SRC = "/samples/room.spz";
-const PLAN_PX_PER_M = 70; // 도면 SVG 렌더 스케일
-const POINT_COLORS = ["#2563eb", "#dc2626"]; // A, B
+const POINT_COLORS = ["#20184a", "#e32952"]; // A(딥퍼플), B(라즈베리) — 5b 테마 문법
 
 type PickView = "splat" | "plan";
 
@@ -220,6 +219,12 @@ export default function Page() {
     }
   }, [splatPicks, planPicks, pickProfile]);
 
+  // 변환이 계산되는 순간 자동 미리보기 — 별도 버튼 없이 2점째 클릭 즉시 정합 결과가 보인다.
+  // 픽을 다시 찍으면 addPick이 preview를 끄고, 변환이 다시 계산되면 여기서 다시 켠다.
+  useEffect(() => {
+    if (transform) setPreview(true);
+  }, [transform]);
+
   function addPick(view: PickView, point: Point2) {
     const setter = view === "splat" ? setSplatPicks : setPlanPicks;
     setter((current) => (current.length >= 2 ? [point] : [...current, point]));
@@ -267,12 +272,9 @@ export default function Page() {
     <div style={page}>
       <header style={header}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>도면–splat 2점 정합</div>
+          <div style={pageTitle}>도면–splat 2점 정합</div>
           <div style={muted}>양쪽에서 같은 방 모서리 2곳(A, B)을 순서대로 클릭하세요.</div>
         </div>
-        <button type="button" style={ghostBtn} onClick={reset}>
-          초기화
-        </button>
       </header>
 
       {assetBanner ? <div style={{ ...assetBannerStyle, ...assetBannerTone[assetBanner.tone] }}>{assetBanner.message}</div> : null}
@@ -362,61 +364,47 @@ export default function Page() {
 
         <section style={pane}>
           <PaneTitle step="2" label="도면 — 같은 모서리 클릭" picks={planPicks.length} />
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-            <label style={{ ...ghostBtn, cursor: "pointer", fontSize: 13 }}>
-              도면 JSON 업로드
-              <input
-                type="file"
-                accept=".json,application/json"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void uploadPlanJson(file);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            <span style={muted}>
-              {planSource === "upload"
-                ? planMessage
-                : planSource === "listing-db"
-                  ? `매물 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
-                  : planSource === "storage"
-                    ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
-                    : planMessage || "도면 없음 — 정합 건너뜀 (3D는 그대로 표시)"}
-            </span>
-          </div>
-          <PlanPicker walls={planWalls} picks={planPicks} onPick={(x, y) => addPick("plan", { x, y })} />
-          <span style={hint}>클릭 → 도면 좌표 (m)</span>
+          {/* 업로드·출처 안내는 패널 안 좌상단 오버레이 — 좌측 패널(천장 자르기)과 같은 코너 문법, 좌우 시작선도 맞는다. */}
+          <PlanPicker
+            walls={planWalls}
+            picks={planPicks}
+            onPick={(x, y) => addPick("plan", { x, y })}
+            overlay={
+              <div style={planOverlay}>
+                <label style={uploadBtn}>
+                  도면 JSON 업로드
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void uploadPlanJson(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <span style={planSourceChip}>
+                  {planSource === "upload"
+                    ? planMessage
+                    : planSource === "listing-db"
+                      ? `매물 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                      : planSource === "storage"
+                        ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                        : planMessage || "도면 없음 — 정합 건너뜀 (3D는 그대로 표시)"}
+                </span>
+              </div>
+            }
+          />
         </section>
       </div>
 
+      {/* 푸터 — 좌측 상태 한 줄 + 우측 핑크 저장. SplatAsset id는 ?asset= 쿼리로만 받는다(사용자 노출 입력·raw JSON 제거).
+          미리보기는 2점째 클릭 시 자동 반영이라 별도 버튼이 없다. */}
       <footer style={footer}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            style={{ ...primaryBtn, opacity: transform ? 1 : 0.45, cursor: transform ? "pointer" : "not-allowed" }}
-            disabled={!transform}
-            onClick={() => setPreview((v) => !v)}
-          >
-            {preview ? "미리보기 끄기" : "정합 미리보기"}
-          </button>
-          <input
-            style={input}
-            placeholder="SplatAsset id (저장용)"
-            value={assetId}
-            onChange={(e) => setAssetId(e.target.value)}
-          />
-          <button
-            type="button"
-            style={{ ...primaryBtn, opacity: transform ? 1 : 0.45, cursor: transform ? "pointer" : "not-allowed" }}
-            disabled={!transform || saveState === "saving"}
-            onClick={save}
-          >
-            {saveState === "saving" ? "저장 중…" : "저장"}
-          </button>
+        <span style={muted}>
           {saveMessage ? (
-            <span style={{ ...muted, color: saveState === "error" ? "#dc2626" : "#16a34a" }}>
+            <span style={{ color: saveState === "error" ? "#c62b45" : "#1f8a4c", fontWeight: 600 }}>
               {saveMessage}
               {saveState === "saved" && assetId.trim() ? (
                 <>
@@ -427,13 +415,28 @@ export default function Page() {
                 </>
               ) : null}
             </span>
-          ) : null}
+          ) : !transform ? (
+            "양쪽에서 같은 모서리를 2점씩 찍으면 저장할 수 있어요."
+          ) : !assetId.trim() ? (
+            "저장할 자산이 없어요 — 매물의 3D 관리에서 정합으로 들어오면 저장할 수 있어요."
+          ) : (
+            "정합 결과가 왼쪽 미리보기에 반영됐어요 — 저장하면 투어에 적용됩니다."
+          )}
+        </span>
+        {/* 우측 액션 그룹 — 보조(초기화)·주(저장)가 워크플로우 종착점에 나란히 */}
+        <div style={footerActions}>
+          <button type="button" style={ghostBtn} onClick={reset}>
+            초기화
+          </button>
+          <button
+            type="button"
+            style={{ ...saveBtn, ...(transform && assetId.trim() && saveState !== "saving" ? null : saveBtnDisabled) }}
+            disabled={!transform || !assetId.trim() || saveState === "saving"}
+            onClick={save}
+          >
+            {saveState === "saving" ? "저장 중…" : "저장"}
+          </button>
         </div>
-        <pre style={result}>
-          {transform
-            ? JSON.stringify(transform, null, 2)
-            : "// 양쪽에서 2점씩 클릭하면 SplatTransform이 계산됩니다."}
-        </pre>
       </footer>
     </div>
   );
@@ -476,20 +479,40 @@ function PickPlane({ onPick }: { onPick: (x: number, z: number) => void }) {
 // 도면 2D SVG. 실벽(walls)이 있으면 발자국 폴리곤을 그린다. 도면이 없으면 가짜
 // 플레이스홀더 박스를 깔지 않고 "도면 없음" 빈 상태를 보여준다(정합 건너뜀).
 // 클릭 → 도면 프레임 미터 좌표(투어 월드와 동일 프레임 — 벽·가구·미니맵이 쓰는 그 좌표계).
+// overlay(업로드 버튼·출처 칩)는 도면 유무와 무관하게 좌상단에 떠야 해서 양쪽 분기 모두에 그린다.
+const PLAN_MAX_PX_PER_M = 160; // 초소형 도면이 우스꽝스럽게 확대되지 않는 상한
+
 function PlanPicker({
   walls,
   picks,
-  onPick
+  onPick,
+  overlay
 }: {
   walls: WheretoputWall3D[] | null;
   picks: Point2[];
   onPick: (x: number, y: number) => void;
+  overlay?: ReactNode;
 }) {
+  // 패널 실측 크기 — 고정 캡(520×420) 대신 패널을 꽉 채우는 스케일을 계산한다.
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [wrapSize, setWrapSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setWrapSize({ w: rect.width, h: rect.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   if (!walls || walls.length === 0) {
     return (
-      <div style={canvasWrap}>
+      <div ref={wrapRef} style={canvasWrap}>
+        {overlay}
         <div style={planEmptyState}>
-          <strong style={{ fontSize: 14, color: "#334155" }}>도면 없음</strong>
+          <strong style={{ fontSize: 14, color: "#17133a" }}>도면 없음</strong>
           <span>정합할 도면이 없어 이 단계를 건너뜁니다. 3D는 그대로 표시됩니다.</span>
           <span style={{ fontSize: 12 }}>매물에 도면을 추가하면 이 자산과 정합할 수 있어요.</span>
         </div>
@@ -501,17 +524,20 @@ function PlanPicker({
   const minZ = bounds.minZ;
   const width = bounds.width;
   const depth = bounds.depth;
-  // 큰 도면이 패널을 넘지 않게 스케일 캡 (기본 70px/m)
-  const scale = Math.min(PLAN_PX_PER_M, 520 / Math.max(width, 0.5), 420 / Math.max(depth, 0.5));
+  const pad = 24;
+  // 패널에 맞춰 채우기 — 오버레이 행(상단 ~52px)을 침범하지 않게 세로 여유를 더 뺀다.
+  const availW = (wrapSize?.w ?? 560) - pad * 2 - 8;
+  const availH = (wrapSize?.h ?? 440) - pad * 2 - 60;
+  const scale = Math.min(PLAN_MAX_PX_PER_M, availW / Math.max(width, 0.5), availH / Math.max(depth, 0.5));
   const w = width * scale;
   const h = depth * scale;
-  const pad = 24;
   return (
-    <div style={canvasWrap}>
+    <div ref={wrapRef} style={canvasWrap}>
+      {overlay}
       <svg
         width={w + pad * 2}
         height={h + pad * 2}
-        style={{ display: "block", cursor: "crosshair", background: "var(--surface, #fff)" }}
+        style={{ display: "block", cursor: "crosshair", background: "transparent" }}
         onPointerDown={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           const px = event.clientX - rect.left - pad;
@@ -527,8 +553,8 @@ function PlanPicker({
             points={planWallFootprint(wall)
               .map((c) => `${pad + (c.x - minX) * scale},${pad + (c.z - minZ) * scale}`)
               .join(" ")}
-            fill="#cbd5e1"
-            stroke="#64748b"
+            fill="#ddd6f3"
+            stroke="#8b83c0"
             strokeWidth={1}
           />
         ))}
@@ -542,6 +568,7 @@ function PlanPicker({
           />
         ))}
       </svg>
+      <span style={hint}>클릭 → 도면 좌표 (m)</span>
     </div>
   );
 }
@@ -556,7 +583,22 @@ function PaneTitle({ step, label, picks }: { step: string; label: string; picks:
   );
 }
 
-const page: CSSProperties = { display: "flex", flexDirection: "column", height: "100vh", padding: 16, gap: 12 };
+/* ── 스타일 — 우주(5b) 테마 문법: 딥퍼플·연보라 라인·세리프 헤딩. 이 화면만의 옛 slate 팔레트를 걷어냈다. ── */
+const page: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  height: "100dvh",
+  padding: "18px 22px",
+  gap: 12,
+  background: "var(--canvas)",
+  color: "#17133a"
+};
+const pageTitle: CSSProperties = {
+  fontFamily: '"Gowun Batang", serif',
+  fontSize: 22,
+  fontWeight: 600,
+  color: "#17133a"
+};
 const header: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center" };
 const panes: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, flex: 1, minHeight: 0 };
 const pane: CSSProperties = { display: "flex", flexDirection: "column", minHeight: 0 };
@@ -564,15 +606,17 @@ const canvasWrap: CSSProperties = {
   position: "relative",
   flex: 1,
   minHeight: 300,
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
+  border: "1px solid var(--line)",
+  borderRadius: 16,
   overflow: "hidden",
   display: "flex",
   justifyContent: "center",
-  alignItems: "center"
+  alignItems: "center",
+  background: "#ffffff"
 };
-const footer: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
-const muted: CSSProperties = { color: "#64748b", fontSize: 13 };
+const footer: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 };
+const footerActions: CSSProperties = { display: "flex", alignItems: "center", gap: 10, flex: "none" };
+const muted: CSSProperties = { color: "var(--muted)", fontSize: 13 };
 const planEmptyState: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -583,76 +627,125 @@ const planEmptyState: CSSProperties = {
   height: "100%",
   minHeight: 200,
   padding: 24,
-  color: "#64748b",
+  color: "var(--muted)",
   fontSize: 13,
-  border: "1px dashed #cbd5e1",
-  borderRadius: 8,
-  background: "var(--surface, #f8fafc)"
+  border: "1px dashed #cbbff5",
+  borderRadius: 12,
+  background: "var(--canvas)"
 };
 const assetBannerStyle: CSSProperties = {
   border: "1px solid",
-  borderRadius: 8,
+  borderRadius: 10,
   padding: "9px 12px",
   fontSize: 13,
-  fontWeight: 700
+  fontWeight: 600
 };
 const assetBannerTone: Record<AssetBanner["tone"], CSSProperties> = {
   info: {
-    background: "var(--surface-container-lowest)",
-    borderColor: "var(--outline-variant)",
-    color: "var(--on-surface)"
+    background: "#ffffff",
+    borderColor: "var(--line)",
+    color: "#17133a"
   },
   warning: {
-    background: "var(--primary-container)",
-    borderColor: "var(--primary)",
-    color: "var(--on-primary-container)"
+    background: "#fdf2f5",
+    borderColor: "var(--pink)",
+    color: "#8a2540"
   },
   error: {
-    background: "var(--error-container)",
-    borderColor: "var(--error)",
-    color: "var(--on-error-container)"
+    background: "#fdf1f1",
+    borderColor: "#f0a7a7",
+    color: "#b42318"
   }
 };
-const hint: CSSProperties = { position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "#64748b" };
+/* 패널 위 안내 힌트 — splat·도면 어느 배경 위에서든 읽히는 다크 글래스 pill */
+const hint: CSSProperties = {
+  position: "absolute",
+  bottom: 10,
+  right: 10,
+  zIndex: 2,
+  padding: "5px 11px",
+  borderRadius: 999,
+  background: "rgba(23, 19, 58, 0.72)",
+  color: "#ffffff",
+  fontSize: 11,
+  fontWeight: 600,
+  pointerEvents: "none",
+  backdropFilter: "blur(6px)"
+};
 const topDownBtn: CSSProperties = {
   position: "absolute",
-  top: 8,
-  right: 8,
+  top: 10,
+  right: 10,
   zIndex: 2,
-  background: "#0f172a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "7px 12px",
+  background: "rgba(23, 19, 58, 0.72)",
+  color: "#ebe5ff",
+  border: "1px solid rgba(203, 191, 245, 0.4)",
+  borderRadius: 999,
+  padding: "7px 14px",
   fontWeight: 700,
   fontSize: 12,
-  cursor: "pointer"
+  cursor: "pointer",
+  backdropFilter: "blur(8px)"
 };
 const ceilingPanel: CSSProperties = {
   position: "absolute",
-  top: 8,
-  left: 8,
+  top: 10,
+  left: 10,
   zIndex: 2,
   display: "flex",
   flexDirection: "column",
   gap: 6,
-  background: "rgba(15, 23, 42, 0.82)",
-  color: "#fff",
-  borderRadius: 8,
-  padding: "8px 10px",
+  background: "rgba(23, 19, 58, 0.72)",
+  color: "#ebe5ff",
+  border: "1px solid rgba(203, 191, 245, 0.4)",
+  borderRadius: 12,
+  padding: "8px 12px",
   fontSize: 12,
-  fontWeight: 700
+  fontWeight: 700,
+  backdropFilter: "blur(8px)"
 };
 const ceilingToggle: CSSProperties = { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" };
 const ceilingSliderRow: CSSProperties = { display: "flex", alignItems: "center", gap: 6 };
+/* 도면 패널 좌상단 — 업로드 버튼 + 출처 칩(좌측 패널의 천장 자르기와 같은 코너 문법) */
+const planOverlay: CSSProperties = {
+  position: "absolute",
+  top: 10,
+  left: 10,
+  right: 10,
+  zIndex: 2,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap"
+};
+const uploadBtn: CSSProperties = {
+  background: "#ffffff",
+  color: "var(--blue)",
+  border: "1px solid var(--line)",
+  borderRadius: 999,
+  padding: "7px 14px",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(23, 19, 58, 0.08)"
+};
+const planSourceChip: CSSProperties = {
+  background: "rgba(255, 255, 255, 0.92)",
+  border: "1px solid var(--line)",
+  borderRadius: 999,
+  padding: "5px 11px",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--muted)"
+};
 const loadingOverlay: CSSProperties = {
   position: "absolute",
   inset: 0,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "rgba(248, 250, 252, 0.7)",
-  color: "#334155",
+  background: "rgba(250, 248, 252, 0.72)",
+  color: "#17133a",
   fontSize: 14,
   fontWeight: 600,
   zIndex: 1
@@ -668,13 +761,13 @@ const errorOverlay: CSSProperties = {
   textAlign: "center",
   padding: 24,
   // 검정 폴백 위를 확실히 덮도록 로딩(zIndex 1)보다 위. 반투명 어둠 위에 흰 텍스트로 "실패"를 분명히.
-  background: "rgba(15, 23, 42, 0.82)",
-  color: "#f8fafc",
+  background: "rgba(23, 19, 58, 0.85)",
+  color: "#faf8fc",
   // 코너 컨트롤(위에서 보기·천장 자르기 = zIndex 2)까지 덮는다 — 로드 실패 시 그 버튼들은 무의미.
   zIndex: 3
 };
 const badge: CSSProperties = {
-  background: "#0f172a",
+  background: "var(--blue)",
   color: "#fff",
   borderRadius: 999,
   width: 20,
@@ -683,33 +776,33 @@ const badge: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   fontSize: 12,
-  fontWeight: 800
-};
-const primaryBtn: CSSProperties = {
-  background: "#0f172a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 16px",
   fontWeight: 700
+};
+/* 저장 — DS 액센트 핑크 CTA(매물 상세 "문자로 문의하기"와 같은 문법). 변환 전엔 비활성. */
+const saveBtn: CSSProperties = {
+  background: "var(--pink)",
+  color: "#0b0b12",
+  border: "none",
+  borderRadius: 12,
+  padding: "12px 30px",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
+  boxShadow: "0 8px 22px rgba(242, 137, 157, 0.35)"
+};
+const saveBtnDisabled: CSSProperties = {
+  opacity: 0.45,
+  cursor: "not-allowed",
+  boxShadow: "none"
 };
 const ghostBtn: CSSProperties = {
-  background: "transparent",
-  color: "#0f172a",
-  border: "1px solid #cbd5e1",
-  borderRadius: 8,
-  padding: "8px 14px",
-  fontWeight: 700
+  background: "#ffffff",
+  color: "var(--blue)",
+  border: "1px solid var(--line)",
+  borderRadius: 12,
+  padding: "11px 18px",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer"
 };
-const input: CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 8, padding: "9px 12px", fontSize: 14, minWidth: 220 };
-const tourLink: CSSProperties = { color: "inherit", fontWeight: 800, textDecoration: "underline" };
-const result: CSSProperties = {
-  margin: 0,
-  background: "#0f172a",
-  color: "#e2e8f0",
-  borderRadius: 8,
-  padding: 12,
-  fontSize: 12,
-  maxHeight: 160,
-  overflow: "auto"
-};
+const tourLink: CSSProperties = { color: "inherit", fontWeight: 700, textDecoration: "underline" };
