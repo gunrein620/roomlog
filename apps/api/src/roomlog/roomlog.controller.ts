@@ -22,6 +22,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import type {
   ConfirmTenantVendorConnectionInput,
+  CreateManagerVendorInput,
   DecideRepairCompletionInput,
   PrepareTenantVendorConnectionInput,
   RequestTenantDirectPaymentInput,
@@ -2309,29 +2310,14 @@ export class RoomlogController {
     return detail.performance;
   }
 
-  @Get("manager/vendor-mgmt/search")
-  searchManagerVendorCatalog(
+  @Post("manager/vendor-mgmt/vendors/manual")
+  createManualManagerVendor(
     @Headers("authorization") authorization: string | undefined,
-    @Query("query") query?: string,
-    @Query("trade") trade?: string,
-    @Query("serviceArea") serviceArea?: string,
-    @Query("verificationStatus") verificationStatus?: string,
-    @Query("isActive") isActive?: string
+    @Body() body: CreateManagerVendorInput
   ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId"]);
     const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().searchCatalog(
-      user.id,
-      catalogFilters(query, trade, serviceArea, verificationStatus, isActive)
-    );
-  }
-
-  @Put("manager/vendor-mgmt/vendors/:vendorId/registration")
-  registerManagerVendor(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("vendorId") vendorId: string
-  ) {
-    const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().register(user.id, vendorId);
+    return this.requireManagerVendorDomain().createManual(user.id, body);
   }
 
   @Delete("manager/vendor-mgmt/vendors/:vendorId/registration")
