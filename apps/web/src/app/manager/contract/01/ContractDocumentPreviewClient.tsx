@@ -50,9 +50,13 @@ export function ContractDocumentPreviewClient({
 }: ContractDocumentPreviewClientProps) {
   const [showOcrOverlay, setShowOcrOverlay] = useState(false);
   const highlightBoxes = useMemo(() => buildHighlightBoxes(highlights, previewKind), [highlights, previewKind]);
-  const showHighlights = showOcrOverlay && highlightBoxes.length > 0;
+  const hasHighlightBoxes = highlightBoxes.length > 0;
+  const showHighlights = showOcrOverlay && hasHighlightBoxes;
 
-  const showReadValues = () => setShowOcrOverlay(true);
+  const showReadValues = () => {
+    if (!hasHighlightBoxes) return;
+    setShowOcrOverlay(true);
+  };
   const hideReadValues = () => setShowOcrOverlay(false);
   const handleReadValuesKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== " " && event.key !== "Enter") return;
@@ -70,7 +74,12 @@ export function ContractDocumentPreviewClient({
       <div style={documentChipRowStyle}>
         <button
           type="button"
+          data-contract-highlight-button="read-values"
+          data-highlight-count={highlightBoxes.length}
+          data-preview-kind={previewKind}
+          disabled={!hasHighlightBoxes}
           aria-pressed={showOcrOverlay}
+          title={hasHighlightBoxes ? "읽어온 값 위치를 누르는 동안만 표시합니다." : "저장된 OCR 위치 좌표가 없습니다. OCR을 다시 실행해야 표시됩니다."}
           onPointerDown={showReadValues}
           onPointerUp={hideReadValues}
           onPointerCancel={hideReadValues}
@@ -81,7 +90,7 @@ export function ContractDocumentPreviewClient({
           onKeyDown={handleReadValuesKeyDown}
           onKeyUp={handleReadValuesKeyUp}
           onBlur={hideReadValues}
-          style={showOcrOverlay ? readValuesButtonActiveStyle : readValuesButtonStyle}
+          style={!hasHighlightBoxes ? readValuesButtonDisabledStyle : showOcrOverlay ? readValuesButtonActiveStyle : readValuesButtonStyle}
         >
           읽어온 값
         </button>
@@ -129,18 +138,30 @@ function PdfDocumentFrame({
 function HighlightOverlay({ boxes, previewKind }: { boxes: HighlightBox[]; previewKind: PreviewKind }) {
   if (previewKind === "pdf") {
     return (
-      <div style={highlightOverlayStyle} aria-hidden="true">
+      <div
+        data-contract-highlight-overlay="pdf"
+        data-highlight-count={boxes.length}
+        style={highlightOverlayStyle}
+        aria-hidden="true"
+      >
         <PdfHighlightPageStack boxes={boxes} />
       </div>
     );
   }
 
   return (
-    <div style={highlightOverlayStyle} aria-hidden="true">
+    <div
+      data-contract-highlight-overlay="image"
+      data-highlight-count={boxes.length}
+      style={highlightOverlayStyle}
+      aria-hidden="true"
+    >
       <div style={imagePageGuideStyle}>
         {boxes.map((box) => (
           <div
             key={box.key}
+            data-contract-highlight={box.label}
+            data-highlight-page={box.page ?? 1}
             style={{
               ...highlightBoxStyle,
               ...highlightToneStyle(box.tone, box.needsCheck),
@@ -172,6 +193,8 @@ function PdfHighlightPageStack({ boxes }: { boxes: HighlightBox[] }) {
             {pageBoxes.map((box) => (
               <div
                 key={box.key}
+                data-contract-highlight={box.label}
+                data-highlight-page={page}
                 style={{
                   ...highlightBoxStyle,
                   ...highlightToneStyle(box.tone, box.needsCheck),
@@ -432,6 +455,13 @@ const readValuesButtonActiveStyle = {
   ...readValuesButtonStyle,
   transform: "translateY(1px)",
   boxShadow: "0 6px 16px rgba(86, 68, 212, 0.22)",
+} as const;
+
+const readValuesButtonDisabledStyle = {
+  ...readValuesButtonStyle,
+  opacity: 0.46,
+  cursor: "not-allowed",
+  boxShadow: "none",
 } as const;
 
 const documentPreviewClientStyle = {
