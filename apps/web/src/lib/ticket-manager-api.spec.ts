@@ -62,6 +62,33 @@ describe("manager ticket row loading", () => {
     assert.equal(row?.isManagerUnread, true);
   });
 
+  it("places a newly assigned vendor ticket ahead of older dashboard rows", async () => {
+    const rows = await listManagerTicketRows(async () => [
+      detailTicket,
+      {
+        ...detailTicket,
+        id: "ticket-newly-assigned",
+        complaintId: "complaint-newly-assigned",
+        complaint: {
+          ...detailTicket.complaint,
+          updatedAt: "2026-07-19T09:00:00+09:00",
+        },
+        assignedVendor: { businessName: "테스트1" },
+        repairs: [{
+          id: "repair-newly-assigned",
+          ticketId: "ticket-newly-assigned",
+          status: "REQUESTED",
+        }],
+      },
+    ]);
+
+    assert.deepEqual(rows.map((row) => row.ticket.id), [
+      "ticket-newly-assigned",
+      "ticket-1",
+    ]);
+    assert.equal(rows[0]?.repair?.vendorName, "테스트1");
+  });
+
   it("propagates API failures instead of returning an empty dashboard", async () => {
     const failure = new Error("manager tickets unavailable");
 
