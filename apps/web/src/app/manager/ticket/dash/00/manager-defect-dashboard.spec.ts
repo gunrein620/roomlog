@@ -77,13 +77,15 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
     "건물",
     "호실",
     "작업자",
-    "예정일시",
+    "업체 선정",
     "청구 금액",
     "상태",
     "작업",
   ]) {
     assert.match(componentSource, new RegExp(column));
   }
+  assert.doesNotMatch(componentSource, /"예정일시"/);
+  assert.match(componentSource, /row\.repair\?\.vendorName \?\? "미선정"/);
 
   assert.match(componentSource, /aria-pressed/);
   assert.match(componentSource, /defectDisplayStatus/);

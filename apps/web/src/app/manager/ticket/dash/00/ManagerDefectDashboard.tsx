@@ -11,7 +11,6 @@ import {
   countDefectStatuses,
   defectDisplayStatus,
   filterDefectRows,
-  formatDefectDate,
   formatDefectMoney,
   paginateDefectRows,
   type DefectDashboardFilters,
@@ -27,7 +26,7 @@ const TABLE_COLUMNS = [
   "건물",
   "호실",
   "작업자",
-  "예정일시",
+  "업체 선정",
   "청구 금액",
   "상태",
   "작업",
@@ -95,7 +94,7 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
         {row.repair?.vendorName ?? "미배정"}
       </td>
       <td className="manager-defect-dashboard__muted-cell">
-        {formatDefectDate(row.repair?.scheduledAt)}
+        {row.repair?.vendorName ?? "미선정"}
       </td>
       <td className="manager-defect-dashboard__amount">
         {formatDefectMoney(row.repair?.quoteAmount)}
