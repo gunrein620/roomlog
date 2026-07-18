@@ -20,22 +20,16 @@ import {
   type DefectStatusFilter,
 } from "./ticket-dashboard-model";
 import { ticketLaneOf, type TicketLane } from "./ticket-lane";
-import {
-  applyTicketLaneOverrides,
-  reconcileTicketLaneOverrides,
-  ticketStatusForLane,
-  type TicketLaneOverride,
-} from "./ticket-lane-local-state";
 
 const PAGE_SIZE = 10;
 const TABLE_COLUMNS = [
-  "유형",
+  "상태",
   "작업명",
   "건물",
   "호실",
   "작업자",
   "예정일시",
-  "상태",
+  "유형",
   "작업",
 ] as const;
 
@@ -80,12 +74,15 @@ function DashboardRow({
       onClick={() => onSelect(row)}
     >
       <td>
-        <span
-          className="manager-defect-dashboard__type-badge"
-          data-ticket-type={row.ticket.type}
-        >
-          {ticketTypeLabel[row.ticket.type]}
-        </span>
+        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
+          <span
+            className="manager-defect-dashboard__status-badge"
+            data-status={displayStatus}
+          >
+            {displayStatusLabel[displayStatus]}
+          </span>
+          <SelfRepairBadge ticket={row.ticket} />
+        </div>
       </td>
       <td>
         {/* 행 전체가 대화 패널을 연다 — 작업명은 그 안에서 눌러도 같은 동작이라 버튼만 유지 */}
@@ -113,15 +110,12 @@ function DashboardRow({
         {formatDefectDate(row.repair?.scheduledAt)}
       </td>
       <td>
-        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
-          <span
-            className="manager-defect-dashboard__status-badge"
-            data-status={displayStatus}
-          >
-            {displayStatusLabel[displayStatus]}
-          </span>
-          <SelfRepairBadge ticket={row.ticket} />
-        </div>
+        <span
+          className="manager-defect-dashboard__type-badge"
+          data-ticket-type={row.ticket.type}
+        >
+          {ticketTypeLabel[row.ticket.type]}
+        </span>
       </td>
       <td onClick={(event) => event.stopPropagation()}>
         <div className="manager-defect-dashboard__action">
@@ -151,26 +145,32 @@ export function ManagerDefectDashboard({
     template: initialTemplate,
   });
   const [page, setPage] = useState(1);
-  const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
     () => new Set(),
   );
   const [proxyIntakeOpen, setProxyIntakeOpen] = useState(false);
-  const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
+  // 패널에서 바꾼 레인을 목록에 바로 반영한다(서버 트리를 다시 그리면 패널이 닫히므로).
+  const [laneById, setLaneById] = useState<Record<string, TicketLane>>({});
 
-  useEffect(() => {
-    setTicketLaneOverrides((current) => reconcileTicketLaneOverrides(current, rows));
-  }, [rows]);
+  // 서버 목록이 새로 오면 그게 최신이다 — 들고 있던 낙관적 값은 버린다.
+  useEffect(() => setLaneById({}), [rows]);
 
   const effectiveRows = useMemo(
     () =>
-      applyTicketLaneOverrides(rows, ticketLaneOverrides).map((row) =>
-        locallyReadTicketIds.has(row.ticket.id)
-          ? { ...row, isManagerUnread: false }
-          : row,
-      ),
-    [locallyReadTicketIds, rows, ticketLaneOverrides],
+      rows.map((row) => {
+        const lane = laneById[row.ticket.id];
+        const patched = lane ? { ...row, ticket: { ...row.ticket, status: lane } } : row;
+
+        return locallyReadTicketIds.has(patched.ticket.id)
+          ? { ...patched, isManagerUnread: false }
+          : patched;
+      }),
+    [laneById, locallyReadTicketIds, rows],
   );
+  // 열린 패널이 가리키는 행은 항상 최신 rows에서 되찾는다 — 새로고침돼도 선택이 살아 있다.
+  const selectedRow =
+    effectiveRows.find((row) => row.ticket.id === selectedTicketId) ?? null;
   const counts = useMemo(() => countDefectStatuses(effectiveRows), [effectiveRows]);
   const workers = useMemo(
     () =>
@@ -208,7 +208,7 @@ export function ManagerDefectDashboard({
   }
 
   function selectRow(row: DefectDashboardRow) {
-    setSelectedRow(row);
+    setSelectedTicketId(row.ticket.id);
     void markManagerTicketRead(row.ticket.id)
       .then(() => {
         setLocallyReadTicketIds((current) => {
@@ -220,15 +220,6 @@ export function ManagerDefectDashboard({
       .catch(() => {
         // 패널은 그대로 열어두고 배지는 서버 저장이 성공할 때만 갱신한다.
       });
-  }
-
-  function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
-    setTicketLaneOverrides((current) => ({ ...current, [ticketId]: { lane, updatedAt } }));
-    setSelectedRow((current) =>
-      current?.ticket.id === ticketId
-        ? { ...current, ticket: { ...current.ticket, status: ticketStatusForLane(lane) } }
-        : current,
-    );
   }
 
   return (
@@ -400,8 +391,10 @@ export function ManagerDefectDashboard({
 
       <TicketChatPanel
         row={selectedRow}
-        onClose={() => setSelectedRow(null)}
-        onTicketLaneChanged={applyConfirmedTicketLane}
+        onClose={() => setSelectedTicketId(null)}
+        onLaneChange={(ticketId, lane) =>
+          setLaneById((current) => ({ ...current, [ticketId]: lane }))
+        }
       />
     </section>
   );

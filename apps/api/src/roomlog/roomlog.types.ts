@@ -1292,7 +1292,6 @@ export type ManagerTicketLane = "received" | "processing" | "resolved";
 
 export type SetManagerTicketLaneInput = {
   lane: ManagerTicketLane;
-  clientRequestId?: string;
 };
 
 export type ManagerReplyDraftResult = {

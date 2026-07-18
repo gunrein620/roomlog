@@ -1,13 +1,15 @@
 "use client";
 
 // 민원/하자 대화 사이드 패널 — 대시보드에서 행을 누르면 오른쪽 절반이 열린다.
-// 모달로 상세 정보를 늘어놓던 것을 접고 "세입자와의 대화" 하나에 집중한다: 티켓 스레드
-// (GET manager/tickets/:id → messages)를 그대로 읽고 쓰므로 세입자탭 진행 메시지와 같은 소스다.
-// 갱신은 소켓 broadcast(roomlog:activity kind=ticket)로만 즉시 반영한다.
+// 세입자탭 진행 메시지와 같은 티켓 스레드를 읽고 쓴다.
+//
+// 스레드를 다시 조회하는 건 패널을 열 때 딱 한 번뿐이다. 그 뒤로는
+//  - 내가 보낸 메시지: POST 응답의 message를 그대로 붙이고
+//  - 상대가 보낸 메시지: 소켓 roomlog:ticket-message 페이로드를 그대로 붙인다.
+// 쓰기 직후 재조회는 Postgres 투영이 따라오기 전이라 "한 박자 밀린" 스레드를 돌려줬다.
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TicketThreadMessage } from "@roomlog/types";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import {
@@ -26,11 +28,7 @@ import {
   ticketLaneOf,
   type TicketLane,
 } from "./ticket-lane";
-import {
-  abandonLocalTicketLaneMutation,
-  beginLocalTicketLaneMutation,
-  completeLocalTicketLaneMutation,
-} from "./ticket-lane-mutation-activity";
+import { appendTicketMessage, ticketMessageFor } from "./ticket-message-event";
 
 const ticketTypeLabel = {
   defect: "하자 민원",
@@ -118,13 +116,12 @@ function MessageBubble({ message }: { message: TicketThreadMessage }) {
 export function TicketChatPanel({
   row,
   onClose,
-  onTicketLaneChanged,
+  onLaneChange,
 }: {
   row: DefectDashboardRow | null;
   onClose: () => void;
-  onTicketLaneChanged?: (ticketId: string, lane: TicketLane, updatedAt?: string) => void;
+  onLaneChange?: (ticketId: string, lane: TicketLane) => void;
 }) {
-  const router = useRouter();
   const ticketId = row?.ticket.id;
   const [messages, setMessages] = useState<TicketThreadMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -136,51 +133,51 @@ export function TicketChatPanel({
   const [isSwitchingLane, setIsSwitchingLane] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
 
-  const refresh = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!ticketId) return;
-      if (!options?.silent) setIsLoading(true);
-
-      try {
-        setMessages(await fetchTicketMessages(ticketId));
-        setError("");
-      } catch {
-        // 조용한 갱신 실패는 화면에 이미 있는 대화를 남겨두고 다음 주기에 다시 시도한다.
-        if (!options?.silent) setError("대화를 불러오지 못했습니다.");
-      } finally {
-        if (!options?.silent) setIsLoading(false);
-      }
-    },
-    [ticketId],
-  );
-
+  // 스레드 최초 적재 — 패널을 열 때 한 번만. 이후 갱신은 전부 소켓·응답으로 들어온다.
   useEffect(() => {
+    if (!ticketId) return;
+
+    let active = true;
     setMessages([]);
     setDraft("");
     setError("");
-    if (ticketId) void refresh();
-  }, [refresh, ticketId]);
+    setIsLoading(true);
+
+    fetchTicketMessages(ticketId)
+      .then((loaded) => {
+        if (active) setMessages(loaded);
+      })
+      .catch(() => {
+        if (active) setError("대화를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [ticketId]);
 
   useEffect(() => {
     setLane(row ? ticketLaneOf(row.ticket.status) : null);
   }, [row?.ticket.status, ticketId]);
 
-  // 실시간: 세입자·업체 쪽 티켓 활동 신호를 받으면 스레드를 다시 읽는다.
+  // 실시간: 상대가 보낸 메시지를 페이로드 그대로 받아 붙인다(재조회 없음).
   useEffect(() => {
     if (!ticketId) return;
 
-    function onActivity(payload: unknown) {
-      const kind =
-        payload && typeof payload === "object" ? (payload as { kind?: string }).kind : undefined;
-      if (kind === "ticket" || kind === "messaging") void refresh({ silent: true });
+    function onTicketMessage(payload: unknown) {
+      const message = ticketMessageFor(ticketId!, payload);
+      if (message) setMessages((current) => appendTicketMessage(current, message));
     }
 
     const socket = getRealtimeSocket();
-    socket.on("roomlog:activity", onActivity);
+    socket.on("roomlog:ticket-message", onTicketMessage);
     return () => {
-      socket.off("roomlog:activity", onActivity);
+      socket.off("roomlog:ticket-message", onTicketMessage);
     };
-  }, [refresh, ticketId]);
+  }, [ticketId]);
 
   useEffect(() => {
     if (!ticketId) return;
@@ -215,15 +212,19 @@ export function TicketChatPanel({
         },
       );
 
+      const data = (await response.json().catch(() => undefined)) as
+        | { message?: unknown }
+        | undefined;
+
       if (!response.ok) {
-        const data = (await response.json().catch(() => undefined)) as
-          | { message?: string }
-          | undefined;
-        throw new Error(data?.message || "메시지를 보내지 못했습니다.");
+        const failure = typeof data?.message === "string" ? data.message : "";
+        throw new Error(failure || "메시지를 보내지 못했습니다.");
       }
 
+      // 응답이 방금 저장된 메시지를 그대로 준다 — 재조회 없이 붙인다.
+      const sent = ticketMessageFor(ticketId, { ticketId, message: data?.message });
+      if (sent) setMessages((current) => appendTicketMessage(current, sent));
       setDraft("");
-      await refresh({ silent: true });
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "메시지를 보내지 못했습니다.");
     } finally {
@@ -235,8 +236,6 @@ export function TicketChatPanel({
     if (!ticketId || isSwitchingLane || nextLane === lane) return;
 
     const previousLane = lane;
-    const clientRequestId = crypto.randomUUID();
-    beginLocalTicketLaneMutation(clientRequestId);
     setLane(nextLane); // 낙관적 반영 — 실패하면 되돌린다.
     setIsSwitchingLane(true);
     setError("");
@@ -245,25 +244,22 @@ export function TicketChatPanel({
       const response = await fetch(`/api/manager/tickets/${encodeURIComponent(ticketId)}/lane`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lane: nextLane, clientRequestId }),
+        body: JSON.stringify({ lane: nextLane }),
       });
 
       const data = (await response.json().catch(() => undefined)) as
-        | { message?: string; ticket?: { status?: unknown; updatedAt?: unknown } }
+        | { message?: string; ticket?: { status?: unknown } }
         | undefined;
       if (!response.ok) {
         throw new Error(data?.message || "진행 상태를 바꾸지 못했습니다.");
       }
 
-      const confirmedLane = ticketLaneFromServerStatus(data?.ticket?.status) ?? nextLane;
-      const confirmedUpdatedAt =
-        typeof data?.ticket?.updatedAt === "string" ? data.ticket.updatedAt : undefined;
-      completeLocalTicketLaneMutation(clientRequestId);
-      setLane(confirmedLane);
-      onTicketLaneChanged?.(ticketId, confirmedLane, confirmedUpdatedAt);
-      router.refresh();
+      const confirmed = ticketLaneFromServerStatus(data?.ticket?.status) ?? nextLane;
+      setLane(confirmed);
+      // 목록 배지만 그 자리에서 바꾼다. 라우터 새로고침으로 서버 트리를 다시 그리면
+      // 패널이 닫히는데, 상태는 목록 맨 왼쪽 열에 보이므로 새로고침할 이유가 없다.
+      onLaneChange?.(ticketId, confirmed);
     } catch (laneError) {
-      abandonLocalTicketLaneMutation(clientRequestId);
       setLane(previousLane);
       setError(laneError instanceof Error ? laneError.message : "진행 상태를 바꾸지 못했습니다.");
     } finally {

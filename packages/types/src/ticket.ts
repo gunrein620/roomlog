@@ -150,7 +150,6 @@ export type ManagerTicketLane = "received" | "processing" | "resolved";
 
 export interface SetManagerTicketLaneInput {
   lane: ManagerTicketLane;
-  clientRequestId?: string;
 }
 
 export interface DecideTicketResponsibilityInput {

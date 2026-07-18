@@ -71,18 +71,22 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
       componentSource.indexOf('htmlFor="manager-defect-worker"'),
   );
 
-  for (const column of [
-    "유형",
+  // 상태가 맨 왼쪽 — 레인 토글 결과를 패널을 닫지 않고 바로 확인할 수 있어야 한다.
+  const tableColumns = componentSource
+    .match(/const TABLE_COLUMNS = \[([\s\S]*?)\] as const;/)?.[1]
+    ?.match(/"([^"]+)"/g)
+    ?.map((column) => column.replaceAll('"', ""));
+
+  assert.deepEqual(tableColumns, [
+    "상태",
     "작업명",
     "건물",
     "호실",
     "작업자",
     "예정일시",
-    "상태",
+    "유형",
     "작업",
-  ]) {
-    assert.match(componentSource, new RegExp(column));
-  }
+  ]);
 
   // 청구 금액은 목록에서 뺐다 — 금액은 결제·비용 승인 화면에서만 다룬다.
   assert.doesNotMatch(componentSource, /청구 금액/);
@@ -90,9 +94,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
 
   assert.match(componentSource, /aria-pressed/);
   assert.match(componentSource, /ticketLaneOf/);
-  assert.match(componentSource, /applyTicketLaneOverrides\(rows, ticketLaneOverrides\)/);
-  assert.match(componentSource, /reconcileTicketLaneOverrides\(current, rows\)/);
-  assert.match(componentSource, /function applyConfirmedTicketLane/);
+  // 레인 오버라이드 맵은 걷어냈다 — 읽기 저장소가 밀린 쓰기를 기다리므로 서버 행이 곧 진실이다.
+  assert.doesNotMatch(componentSource, /LaneOverride/);
   assert.match(componentSource, /received: "접수"/);
   assert.match(componentSource, /processing: "진행"/);
   assert.match(componentSource, /resolved: "완료"/);
@@ -149,7 +152,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(autoRefreshSource, /refreshGateRef/);
   assert.match(autoRefreshSource, /refreshGateRef\.current\.request/);
   assert.match(autoRefreshSource, /refreshGateRef\.current\.flush/);
-  assert.match(autoRefreshSource, /isLocalTicketLaneMutationActivity/);
+  // 레인 브로드캐스트는 별도 이벤트(roomlog:ticket-lane)라 대시보드 새로고침을 건드리지 않는다.
+  assert.doesNotMatch(autoRefreshSource, /LocalTicketLaneMutation/);
   assert.match(autoRefreshSource, /queueMicrotask\(flushPendingRefresh\)/);
   assert.match(autoRefreshSource, /addEventListener\("focusout", flushAfterFocusSettles\)/);
   assert.match(autoRefreshSource, /addEventListener\("visibilitychange", flushPendingRefresh\)/);
