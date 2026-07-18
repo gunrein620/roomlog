@@ -3326,13 +3326,33 @@ p {
   background: radial-gradient(ellipse at 50% 40%, #2a2158 0%, #171235 60%, #0f0b24 100%);
 }
 
-/* 어두운 스테이지 위 흰 헤더가 뚝 끊기지 않게 — 3D 매물은 헤더도 밤하늘 톤 */
+/* 시안: 헤더는 별도 바가 아니라 스테이지 위 오버레이 — 스테이지가 최상단부터 시작 */
+.listing-detail-screen.has-3d {
+  position: relative;
+}
+
 .listing-detail-screen.has-3d .detail-top-title {
-  background: #17133a;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 9;
+  min-height: 0;
+  padding: 18px 16px 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.listing-detail-screen.has-3d .detail-top-title button,
+.listing-detail-screen.has-3d .detail-top-title a {
+  pointer-events: auto;
 }
 
 .listing-detail-screen.has-3d .detail-top-title h1 {
   color: #ffffff;
+  font-family: "Gowun Batang", serif;
+  font-size: 1.22rem;
+  font-weight: 700;
 }
 
 .listing-detail-screen.has-3d .detail-back-button,
@@ -12542,6 +12562,54 @@ p {
     padding: 12px 18px 18px;
     background: #ffffff;
     box-shadow: 0 -10px 14px rgba(255, 255, 255, 0.92);
+  }
+
+  /* 오버레이 헤더 우측(공유·찜)은 밝은 패널 위에 얹힘 — 라이트 버튼으로 복원 */
+  .listing-detail-screen.has-3d .detail-header-actions button {
+    border-color: var(--line);
+    background: #ffffff;
+    color: var(--blue);
+  }
+
+  .listing-detail-screen.has-3d .detail-header-actions button.active {
+    border-color: #ffd2dc;
+    background: #fff0f4;
+    color: #e32952;
+  }
+
+  /* 하단 섹션(시안) — 카드 상자 없이 세리프 헤딩 + 본문이 배경 위에 직접 */
+  .detail-lower-duo .detail-info-section,
+  .detail-lower-duo .detail-similar-section {
+    padding: 14px 0 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .detail-lower-duo .detail-section-heading h2,
+  .detail-lower-duo .detail-map-section h2 {
+    font-family: "Gowun Batang", serif;
+    font-size: 1.35rem;
+    font-weight: 700;
+  }
+
+  /* 시안엔 보조 라벨이 없다 — 하단 2단에선 숨김 */
+  .detail-lower-duo .detail-section-heading span {
+    display: none;
+  }
+
+  .detail-lower-duo .detail-description-text {
+    max-width: 620px;
+    padding: 10px 0 0;
+  }
+
+  .detail-lower-duo .detail-similar-grid {
+    padding: 14px 0 0;
+  }
+
+  /* 오너 배지 행이 있으면 오버레이 헤더에 가리지 않게 내린다 */
+  .listing-detail-screen.has-3d .detail-owner-bar {
+    margin-top: 74px;
   }
 
   .detail-price-block {
