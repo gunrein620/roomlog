@@ -4024,6 +4024,163 @@ p {
   background: rgba(32, 24, 74, 0.05);
 }
 
+/* ══ 상세 타이포 정합 — DS 스케일(400/600/700, 세리프는 400)로 재보정.
+      앱 관성(750~950 헤비)이 시안과 가장 크게 어긋나던 지점이라 일괄 오버라이드. ══ */
+
+.detail-title-caption {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.listing-detail-screen.has-3d .detail-top-title h1 {
+  font-weight: 400;
+}
+
+.detail-price-caption {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.detail-price-block .detail-price-main {
+  font-weight: 400;
+}
+
+.detail-side-panel .detail-address-line,
+.detail-side-panel .detail-address-line span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 400;
+}
+
+.detail-side-panel .listing-number-bar button {
+  font-weight: 500;
+}
+
+.detail-spec-table > div {
+  font-size: 0.875rem;
+}
+
+.detail-spec-table dt {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.detail-spec-table dd {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.detail-panel-options strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.detail-panel-options p {
+  font-weight: 400;
+}
+
+.detail-panel-option-chips span {
+  background: #efecfa;
+  border-color: transparent;
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.detail-side-panel .detail-tags span {
+  font-weight: 500;
+}
+
+.detail-owner-card strong {
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.detail-owner-card div > span {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.detail-panel-cta-note {
+  font-weight: 400;
+}
+
+.detail-panel-primary,
+.detail-panel-ghost {
+  font-weight: 600;
+}
+
+/* 히어로(스테이지) 쪽 */
+.hero-furniture-toggle {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.hero-stage .listing-tour-furniture-head strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.hero-stage .listing-tour-furniture-head span {
+  font-weight: 400;
+}
+
+.hero-furniture-list button {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.hero-furniture-empty {
+  font-weight: 400;
+}
+
+.hero-tour-cta {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.hero-photo-caption {
+  font-weight: 400;
+}
+
+/* 하단 섹션·비슷한 매물 */
+.detail-description-text {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.detail-similar-card strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.detail-similar-title {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.detail-similar-card small {
+  font-weight: 400;
+}
+
+/* 가격·건물 정보 테이블(공용 detail-info-table)도 같은 스케일로 */
+.detail-info-pair .detail-info-table dt {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.detail-info-pair .detail-info-table dd {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.photo-lightbox header strong {
+  font-weight: 600;
+}
+
 /* 터치 기기 — 히어로 컨트롤도 48px 터치 타깃 확보 (hallmark 게이트) */
 @media (pointer: coarse) {
   .hero-furniture-toggle {
@@ -12590,7 +12747,7 @@ p {
   .detail-lower-duo .detail-map-section h2 {
     font-family: "Gowun Batang", serif;
     font-size: 1.35rem;
-    font-weight: 700;
+    font-weight: 400;
   }
 
   /* 시안엔 보조 라벨이 없다 — 하단 2단에선 숨김 */
