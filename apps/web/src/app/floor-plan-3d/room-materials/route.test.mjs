@@ -11,3 +11,8 @@ test("sends the room and entry constraints as the room-material user prompt", ()
   assert.match(routeSource, /공용 복도, 계단실, 엘리베이터 홀/);
   assert.match(routeSource, /세대 내부에 있는 바닥 영역만/);
 });
+
+test("asks for mutually exclusive room polygons in one open floor area", () => {
+  assert.match(routeSource, /polygon끼리 겹치지 마세요/);
+  assert.match(routeSource, /중복 반환하지 마세요/);
+});
