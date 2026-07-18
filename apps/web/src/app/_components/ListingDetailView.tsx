@@ -317,11 +317,8 @@ export function ListingDetailView({
         )}
       </div>
 
-      <div className="detail-tags" aria-label="매물 태그">
-        {listing.tags.map((tag) => (
-          <span key={tag}>{tag}</span>
-        ))}
-      </div>
+      {/* 태그 줄 제거 — 등록 폼에 특징 태그 입력이 없다. 데모는 하드코딩 더미였고,
+          직접등록은 거래유형·방종류·옵션의 재조합이라 캡션·스펙표·옵션 칩과 전부 중복. */}
 
       {/* 패널 하단 묶음 — 데스크톱에서 margin-top:auto로 바닥 정렬(시안). */}
       <div className="detail-panel-bottom">

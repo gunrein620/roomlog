@@ -4087,10 +4087,6 @@ p {
   font-weight: 500;
 }
 
-.detail-side-panel .detail-tags span {
-  font-weight: 500;
-}
-
 .detail-owner-card strong {
   color: var(--ink);
   font-size: 0.875rem;
