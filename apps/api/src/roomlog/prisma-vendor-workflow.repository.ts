@@ -28,6 +28,7 @@ import type { AddVendorRepairMessageInput } from "./roomlog.types";
 import type { DomainEventRepository } from "../domain-events/domain-event.repository";
 import { mapRepairPaymentOrder } from "../credit/prisma-repair-payment-order.repository";
 import { publicRepairPaymentOrder } from "../credit/repair-payment-order-public";
+import { withDeadlockRetry } from "./prisma-deadlock-retry";
 import {
   requiredVendorTrade
 } from "./vendor-trade-compatibility";
@@ -551,7 +552,9 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       throw workflowError("INVALID_REQUEST", "업체에 전달할 요청 내용을 입력해 주세요.");
     }
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      // 스토어 프로젝터의 전체 미러 트랜잭션과 겹치면 데드락(40P01) 피해자로
+      // 롤백될 수 있다 — 트랜잭션 전체를 짧게 재시도한다(2026-07-19 운영 장애).
+      return await withDeadlockRetry(() => this.prisma.$transaction(async (tx) => {
         const manager = await tx.userAccount.findFirst({
           where: { id: command.managerId, status: "ACTIVE" },
           select: { id: true }
@@ -679,7 +682,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         });
 
         return await this.projectJob(tx, repair.id);
-      });
+      }));
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
         throw error;
