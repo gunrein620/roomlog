@@ -4,17 +4,18 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 describe("contract OCR important-field scope", () => {
-  it("keeps the manager OCR correction form focused on deposit and special clauses", () => {
+  it("keeps the manager OCR correction form focused on deposit, rent and special clauses", () => {
     const pageSource = readFileSync(
       join(process.cwd(), "src/app/manager/contract/01/page.tsx"),
       "utf8",
     );
 
-    for (const fieldName of ["monthlyRent", "maintenanceFee", "paymentDay", "landlordAccount", "startDate", "endDate"]) {
+    // 월세는 관리인이 이 화면에서 직접 넣을 수 있어야 한다. 나머지 DB 보유 필드는 02/03에서만 수정한다.
+    for (const fieldName of ["maintenanceFee", "paymentDay", "landlordAccount", "startDate", "endDate"]) {
       assert.doesNotMatch(pageSource, new RegExp(`name="${fieldName}"`));
     }
 
-    for (const fieldName of ["deposit", "specialTerms", "autoRenewal", "restorationDuty", "repairDuty"]) {
+    for (const fieldName of ["deposit", "monthlyRent", "specialTerms", "autoRenewal", "restorationDuty", "repairDuty"]) {
       assert.match(pageSource, new RegExp(`name="${fieldName}"`));
     }
 
