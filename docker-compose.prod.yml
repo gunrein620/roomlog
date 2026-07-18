@@ -8,6 +8,7 @@ services:
         NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: ${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}
         NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-https://api.woo-zu.com}
         NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
+        NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL: ${NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL:-}
     container_name: roomlog-web
     restart: unless-stopped
     environment:
@@ -15,6 +16,7 @@ services:
       NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: ${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}
       NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-https://api.woo-zu.com}
       NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
+      NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL: ${NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL:-}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
       ROOMLOG_PUBLIC_ORIGIN: ${ROOMLOG_PUBLIC_ORIGIN:-https://www.woo-zu.com}
       GOOGLE_LOGIN_CLIENT_ID: ${GOOGLE_LOGIN_CLIENT_ID:-}
@@ -23,10 +25,16 @@ services:
       # web은 env_file이 없으므로 여기 명시해야 키가 전달된다(secret은 api 전용이라 불필요).
       KAKAO_LOGIN_REST_API_KEY: ${KAKAO_LOGIN_REST_API_KEY:-}
       KAKAO_LOGIN_CALLBACK_URL: ${KAKAO_LOGIN_CALLBACK_URL:-}
+      MITUNET_INTERNAL_SERVICE_URL: ${MITUNET_INTERNAL_SERVICE_URL:-http://127.0.0.1:8012}
+      MITUNET_PROJECT_ROOT: /mitunet
+      FURNITURE_DATASET_ROOT: /furniture
     depends_on:
       - api
     ports:
       - "3000:3000"
+    volumes:
+      - ${MITUNET_HOST_PROJECT_ROOT:-./services/mitunet}:/mitunet:ro
+      - ${FURNITURE_HOST_DATASET_ROOT:-./runtime-assets/furniture-glb-dataset}:/furniture:ro
 
   api:
     build:

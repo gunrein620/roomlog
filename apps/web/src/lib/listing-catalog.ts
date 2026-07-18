@@ -94,6 +94,10 @@ export type Listing = (typeof demoListings)[number] & {
   options?: string[];
 };
 
+export function shouldShow3DTourControls(listing: Pick<Listing, "has3DTour">): boolean {
+  return listing.has3DTour === true;
+}
+
 // 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
 export type TradeListing = {
   id: string;
@@ -123,6 +127,16 @@ export type TradeListing = {
 
 export const TRADE_LISTING_NO_PREFIX = "TRADE-";
 export const DETAIL_ADDRESS_FALLBACK = "세부주소 없음";
+
+export function hasSavedFloorPlan3D(
+  floorPlan: ListingFloorPlan3D | null | undefined
+): floorPlan is ListingFloorPlan3D {
+  if (!floorPlan) return false;
+  return (
+    (Array.isArray(floorPlan.walls3D) && floorPlan.walls3D.length > 0) ||
+    Boolean(floorPlan.mitunet)
+  );
+}
 
 export function listingDetailAddressLabel(listing: object & { detailAddress?: string | null }): string {
   const detailAddress = listing.detailAddress?.trim();
@@ -176,10 +190,7 @@ export function tradeListingToCard(listing: TradeListing): Listing {
   const uploaded = Array.isArray(listing.images) ? listing.images.filter((url) => typeof url === "string" && url) : [];
   const image = uploaded[0] ?? LISTING_PHOTO_PLACEHOLDER;
   const gallery = uploaded.length > 0 ? uploaded : [LISTING_PHOTO_PLACEHOLDER];
-  const floorPlan3D =
-    listing.floorPlan && Array.isArray(listing.floorPlan.walls3D) && listing.floorPlan.walls3D.length > 0
-      ? listing.floorPlan
-      : undefined;
+  const floorPlan3D = hasSavedFloorPlan3D(listing.floorPlan) ? listing.floorPlan : undefined;
   const options = Array.isArray(listing.options)
     ? listing.options.filter((item) => typeof item === "string" && item)
     : [];
@@ -268,6 +279,20 @@ export const listingRoomTypes = ["원룸", "투룸", "오피스텔", "아파트"
 // 등록 폼에서 선택 가능한 옵션 목록 — API(trade.service ALLOWED_LISTING_OPTIONS)와 같은 값·순서.
 // 데모 매물 상세는 options가 없어 이 목록 전체를 폴백으로 보여준다.
 export const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
+
+export const safetyReportItems = [
+  { label: "등기 변동", value: "최근 변동 없음", status: "안전" },
+  { label: "보증금 비율", value: "권장 범위", status: "양호" },
+  { label: "대출·특약", value: "방문 시 확인", status: "확인" },
+  { label: "주변 치안", value: "야간 동선 양호", status: "양호" }
+];
+
+export const neighborhoodItems = [
+  { label: "편의점", value: "4곳" },
+  { label: "지하철", value: "도보 5분" },
+  { label: "치안센터", value: "1곳" },
+  { label: "공원", value: "650m" }
+];
 
 // 지도 탭 데모 매물 마커/패널 아이템 — NaverMapPreview의 폴백 마커로도 쓰인다.
 export const mapListings = [

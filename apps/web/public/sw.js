@@ -1,4 +1,4 @@
-const CACHE_NAME = "jibwoojibju-homes-v2";
+const CACHE_NAME = "jibwoojibju-homes-v3";
 const APP_SHELL = [
   "/",
   "/icon.svg",
@@ -38,7 +38,9 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/_next/") ||
     // API는 동적 데이터(매물 목록·인증 등) — 항상 네트워크로. 여기서 캐시-우선으로 잡으면
     // fetch의 cache:"no-store"까지 무력화되어 "새로고침해야만 최신이 보이는" 문제가 생긴다.
-    url.pathname.startsWith("/api/")
+    url.pathname.startsWith("/api/") ||
+    // 가구 카탈로그에는 제품명·이미지 URL이 포함되므로, 배포 뒤에도 이전 JSON을 재사용하면 안 된다.
+    url.pathname.startsWith("/floor-plan-3d/furniture-assets/")
   ) {
     return;
   }

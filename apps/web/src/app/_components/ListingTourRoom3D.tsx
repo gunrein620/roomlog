@@ -13,6 +13,11 @@ import {
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
+import {
+  normalizeTourScenePoint,
+  resolveTourSceneScale
+} from "../floor-plan-3d/room-scene/mitunet-geometry";
+import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 
 export type ListingFloorPlanWall = {
   id: string;
@@ -40,6 +45,7 @@ export type ListingFloorPlan3D = {
   walls3D: ListingFloorPlanWall[];
   furnitures: ListingFloorPlanFurniture[];
   name?: string;
+  mitunet?: MitunetFloorPlan;
 };
 
 const TOUR_HORIZONTAL_SCALE = 1.85;
@@ -70,6 +76,7 @@ function catalogSearchText(item: FurnitureCatalogItem) {
 
 export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFloorPlan3D }) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
+  const sceneHorizontalScale = resolveTourSceneScale(floorPlan.mitunet, TOUR_HORIZONTAL_SCALE);
   const [isPlacementOpen, setIsPlacementOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
@@ -124,10 +131,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
   }
 
   function normalizedScenePoint(point: { x: number; z: number }) {
-    return {
-      x: point.x / TOUR_HORIZONTAL_SCALE,
-      z: point.z / TOUR_HORIZONTAL_SCALE
-    };
+    return normalizeTourScenePoint(point, sceneHorizontalScale);
   }
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
@@ -273,9 +277,10 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
         controlsEnabled={!isFurnitureDragging}
         frameloop="always"
         furnitureData={placedFurnitures}
-        furnitureVerticalScale={TOUR_HORIZONTAL_SCALE}
+        furnitureVerticalScale={sceneHorizontalScale}
         hideHint
-        horizontalScale={TOUR_HORIZONTAL_SCALE}
+        horizontalScale={sceneHorizontalScale}
+        mitunetPlan={floorPlan.mitunet}
         orbitMinDistance={1.6}
         onFloorPointerDown={handleFloorPointerDown}
         onFloorPointerMove={handleFloorPointerMove}
