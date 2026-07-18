@@ -3216,6 +3216,21 @@ html:has(.manager-workspace) {
   background: var(--error-container);
 }
 
+.manager-defect-dashboard__status-badge[data-status="received"] {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-defect-dashboard__status-badge[data-status="processing"] {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-defect-dashboard__status-badge[data-status="resolved"] {
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
 .manager-defect-dashboard__action {
   min-height: var(--touch-target);
   display: inline-flex;

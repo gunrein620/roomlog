@@ -19,7 +19,8 @@ test("행 클릭은 모달이 아니라 대화 사이드 패널을 연다", () =
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
 
   for (const source of [dashboardSource, complaintDashboardSource]) {
-    assert.match(source, /<TicketChatPanel row=\{selectedRow\}/);
+    assert.match(source, /<TicketChatPanel\s+row=\{selectedRow\}/);
+    assert.match(source, /onTicketLaneChanged=\{applyConfirmedTicketLane\}/);
     assert.doesNotMatch(source, /TicketDetailDialog/);
   }
 
@@ -39,15 +40,15 @@ test("패널은 티켓 스레드를 세입자와 같은 소스로 읽고 쓴다"
   assert.match(panelSource, /messageText/);
 });
 
-test("패널은 실시간 신호로 갱신되고 폴링으로 폴백한다", () => {
+test("패널은 실시간 신호로만 갱신한다", () => {
   const panelSource = readFileSync(panelPath, "utf8");
 
   assert.match(panelSource, /getRealtimeSocket/);
   assert.match(panelSource, /socket\.on\("roomlog:activity", onActivity\)/);
   assert.match(panelSource, /socket\.off\("roomlog:activity", onActivity\)/);
   assert.match(panelSource, /kind === "ticket"/);
-  assert.match(panelSource, /window\.setInterval/);
-  assert.match(panelSource, /POLL_INTERVAL_MS/);
+  assert.doesNotMatch(panelSource, /window\.setInterval/);
+  assert.doesNotMatch(panelSource, /POLL_INTERVAL_MS/);
 });
 
 test("패널은 오른쪽 절반을 차지하는 고정 사이드 표면이다", () => {
@@ -87,4 +88,29 @@ test("레인 전환은 낙관적으로 반영하고 실패하면 되돌린다", 
   assert.match(panelSource, /const previousLane = lane/);
   assert.match(panelSource, /setLane\(nextLane\)/);
   assert.match(panelSource, /setLane\(previousLane\)/);
+});
+
+test("레인 전환 성공은 소켓 왕복을 기다리지 않고 대시보드를 즉시 갱신한다", () => {
+  const panelSource = readFileSync(panelPath, "utf8");
+  const switchLaneSource = panelSource.match(
+    /async function switchLane[\s\S]*?\n  }\n\n  if \(!row/,
+  )?.[0];
+
+  assert.match(panelSource, /useRouter/);
+  assert.match(panelSource, /const router = useRouter\(\)/);
+  assert.ok(switchLaneSource);
+  assert.match(switchLaneSource, /const clientRequestId = crypto\.randomUUID\(\)/);
+  assert.match(switchLaneSource, /beginLocalTicketLaneMutation\(clientRequestId\)/);
+  assert.match(switchLaneSource, /body: JSON\.stringify\(\{ lane: nextLane, clientRequestId \}\)/);
+  assert.match(switchLaneSource, /completeLocalTicketLaneMutation\(clientRequestId\)/);
+  assert.match(switchLaneSource, /abandonLocalTicketLaneMutation\(clientRequestId\)/);
+  assert.match(switchLaneSource, /ticketLaneFromServerStatus\(data\?\.ticket\?\.status\) \?\? nextLane/);
+  assert.match(
+    switchLaneSource,
+    /onTicketLaneChanged\?\.\(ticketId, confirmedLane, confirmedUpdatedAt\)/,
+  );
+  assert.match(
+    switchLaneSource,
+    /if \(!response\.ok\)[\s\S]*throw new Error[\s\S]*router\.refresh\(\)/,
+  );
 });

@@ -2226,7 +2226,13 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     const result = this.roomlogService.setManagerTicketLane(user.id, ticketId, body);
-    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    const clientRequestId = body.clientRequestId?.trim().slice(0, 100);
+    this.realtime.broadcast("roomlog:activity", {
+      kind: "ticket",
+      action: "lane_changed",
+      ticketId,
+      ...(clientRequestId ? { clientRequestId } : {}),
+    });
 
     return result;
   }

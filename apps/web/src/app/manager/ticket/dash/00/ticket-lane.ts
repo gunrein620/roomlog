@@ -28,6 +28,27 @@ export function ticketLaneOf(status: TicketStatus): TicketLane | null {
   return STATUS_LANE[status] ?? null;
 }
 
+/** BFF가 그대로 전달하는 API TicketStatus(대문자)도 응답 경계에서 3레인으로 접는다. */
+export function ticketLaneFromServerStatus(status: unknown): TicketLane | null {
+  if (typeof status !== "string") return null;
+
+  const serverStatusLane: Record<string, TicketLane | null> = {
+    RECEIVED: "received",
+    REVIEWING: "received",
+    ADDITIONAL_INFO_REQUESTED: "received",
+    REOPENED: "received",
+    VENDOR_ASSIGNMENT_PENDING: "processing",
+    VENDOR_ASSIGNED: "processing",
+    ESTIMATE_REVIEW: "processing",
+    REPAIR_IN_PROGRESS: "processing",
+    COMPLETION_REPORTED: "processing",
+    COMPLETED: "resolved",
+    CANCELLED: null,
+  };
+
+  return serverStatusLane[status] ?? null;
+}
+
 /** 취소 건은 토글로 되살리지 않는다 — 재요청은 세입자 경로로만 열린다. */
 export function canSwitchTicketLane(status: TicketStatus): boolean {
   return status !== "cancelled";
