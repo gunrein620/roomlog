@@ -629,6 +629,7 @@ model UserAccount {
   vendorAccountLinks         VendorAccountLink[]
   claimedVendorActivations   VendorActivation[]
   managerVendors             ManagerVendor[]            @relation("ManagerVendorManager")
+  createdVendorProfiles      VendorProfile[]            @relation("ManagerCreatedVendorProfiles")
   reviewedVendorEstimates    VendorEstimate[]           @relation("VendorEstimateReviewer")
   reviewedTenantVendorEstimates VendorEstimate[]        @relation("VendorEstimateTenantReviewer")
   repairCompletionDecisions  RepairCompletionDecision[] @relation("RepairCompletionManager")
@@ -874,6 +875,7 @@ model VendorProfile {
   verificationStatus VendorVerificationStatus @default(PENDING)
   isActive           Boolean                  @default(true)
   activeJobs         Int                      @default(0)
+  createdByManagerId String?
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
@@ -885,6 +887,10 @@ model VendorProfile {
   completionReports VendorCompletionReport[]
   paymentRequests   VendorPaymentRequest[]
   domainEvents      DomainEventOutbox[]
+  createdByManager  UserAccount?             @relation("ManagerCreatedVendorProfiles", fields: [createdByManagerId], references: [id], onDelete: Restrict)
+
+  @@unique([createdByManagerId, phone])
+  @@index([createdByManagerId])
 }
 
 model VendorAccountLink {
@@ -923,6 +929,7 @@ model ManagerVendor {
   vendorId     String
   status       ManagerVendorStatus @default(ACTIVE)
   managerNote  String?
+  settlementAccountNumber String?
   registeredAt DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   manager      UserAccount         @relation("ManagerVendorManager", fields: [managerId], references: [id], onDelete: Restrict)

@@ -1,15 +1,14 @@
 import { listManagerVendors } from "@/lib/vendor-mgmt-api";
-import { MANAGER_VENDOR_MGMT_PATHS } from "@/lib/vendor-mgmt-nav";
 import {
   EmptyState,
   ErrorState,
-  LinkButton,
   ManagerVendorTable,
   VendorPageStack,
   VendorScreenHeader,
   VendorSection,
 } from "../_components";
 import { ManagerVendorArchiveControl } from "./ManagerVendorArchiveControl";
+import { ManagerVendorRegistrationDialog } from "./ManagerVendorRegistrationDialog";
 
 type SearchParams = Promise<{ query?: string; trade?: string }>;
 
@@ -28,7 +27,7 @@ export default async function ManagerVendorsPage({ searchParams }: { searchParam
           title="내 업체"
           description="운영팀이 검증한 업체 중 직접 등록한 협력업체와 진행 중인 작업을 관리합니다. 업체 원장 정보는 이 화면에서 수정하지 않습니다."
           demo={result.source === "DEMO"}
-          actions={<LinkButton href={MANAGER_VENDOR_MGMT_PATHS.search}>업체 찾기</LinkButton>}
+          actions={<ManagerVendorRegistrationDialog disabled={result.source === "DEMO"} />}
         />
         <VendorSection
           title={`${activeVendors.length}개 업체`}
@@ -46,7 +45,7 @@ export default async function ManagerVendorsPage({ searchParams }: { searchParam
               )}
             />
           ) : (
-            <EmptyState title="등록한 업체가 없습니다" description="업체 찾기에서 검증된 업체를 내 업체로 등록해 주세요." />
+            <EmptyState title="등록한 업체가 없습니다" description="업체 등록 버튼에서 협력업체 정보를 등록해 주세요." />
           )}
         </VendorSection>
       </VendorPageStack>

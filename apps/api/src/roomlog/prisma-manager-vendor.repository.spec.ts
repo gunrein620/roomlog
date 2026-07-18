@@ -146,3 +146,101 @@ describe("PrismaManagerVendorRepository.findJobByTicket", () => {
     }
   );
 });
+
+describe("PrismaManagerVendorRepository.createManual", () => {
+  it("exposes a durable manager-private creation operation", () => {
+    const repository = new PrismaManagerVendorRepository(
+      "postgresql://roomlog:roomlog@localhost:5433/roomlog",
+    );
+    const candidate = repository as unknown as { createManual?: unknown };
+
+    assert.equal(typeof candidate.createManual, "function");
+  });
+
+  it(
+    "persists the vendor for its manager without leaking it to another manager",
+    { skip: !databaseUrl },
+    async () => {
+      const prisma = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: databaseUrl! }),
+      });
+      const repository = new PrismaManagerVendorRepository(databaseUrl!);
+      const suffix = Date.now().toString(36);
+      const managerAId = `usr_mgr_manual_a_${suffix}`;
+      const managerBId = `usr_mgr_manual_b_${suffix}`;
+      let vendorId: string | undefined;
+
+      try {
+        await prisma.userAccount.createMany({
+          data: [
+            {
+              id: managerAId,
+              email: `manager-manual-a-${suffix}@roomlog.test`,
+              passwordHash: "salt:hash",
+              name: "수동 업체 관리자 A",
+              role: "LANDLORD",
+            },
+            {
+              id: managerBId,
+              email: `manager-manual-b-${suffix}@roomlog.test`,
+              passwordHash: "salt:hash",
+              name: "수동 업체 관리자 B",
+              role: "LANDLORD",
+            },
+          ],
+        });
+
+        const candidate = repository as unknown as {
+          createManual(
+            managerId: string,
+            input: { businessName: string; phone: string; accountNumber: string },
+          ): Promise<{
+            vendorId: string;
+            managerId: string;
+            settlementAccountNumber?: string;
+            catalog: { businessName: string; phone: string };
+          }>;
+        };
+        const created = await candidate.createManual(managerAId, {
+          businessName: "새봄 설비",
+          phone: "01012345678",
+          accountNumber: "1234567890",
+        });
+        vendorId = created.vendorId;
+
+        assert.equal(created.managerId, managerAId);
+        assert.equal(created.catalog.businessName, "새봄 설비");
+        assert.equal(created.catalog.phone, "01012345678");
+        assert.equal(created.settlementAccountNumber, "1234567890");
+        assert.equal((await repository.list(managerAId, {})).length, 1);
+        assert.equal((await repository.list(managerBId, {})).length, 0);
+        assert.equal(await repository.getDetail(managerBId, created.vendorId), null);
+        assert.equal(
+          (await repository.searchCatalog(managerBId, {}))
+            .some((row) => row.catalog.id === created.vendorId),
+          false,
+        );
+
+        await assert.rejects(
+          () => candidate.createManual(managerAId, {
+            businessName: "중복 설비",
+            phone: "01012345678",
+            accountNumber: "9999999999",
+          }),
+          (error: unknown) =>
+            error instanceof Error
+            && "code" in error
+            && error.code === "DUPLICATE_VENDOR",
+        );
+      } finally {
+        if (vendorId) {
+          await prisma.managerVendor.deleteMany({ where: { managerId: managerAId, vendorId } });
+          await prisma.vendorProfile.deleteMany({ where: { id: vendorId } });
+        }
+        await prisma.userAccount.deleteMany({ where: { id: { in: [managerAId, managerBId] } } });
+        await repository.close();
+        await prisma.$disconnect();
+      }
+    },
+  );
+});
