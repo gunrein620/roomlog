@@ -407,7 +407,11 @@ export function buildRoomFloorMaterialMap({
       room,
       centroid: polygonCentroid(room?.polygon, width, height),
     }))
-    .filter(({ room, centroid }) => centroid && Number(room?.confidence) >= MIN_CONFIDENCE);
+    .filter(({ room, centroid }) => (
+      centroid
+      && interiorMask[centroid.y * width + centroid.x]
+      && Number(room?.confidence) >= MIN_CONFIDENCE
+    ));
   if (!validRooms.length) {
     return buildLabelFreeFloorMap({
       height,

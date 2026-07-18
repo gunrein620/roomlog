@@ -313,3 +313,26 @@ test("rejects an out-of-bounds entrance centroid instead of snapping it into the
   assert.deepEqual(map.zones.map((zone) => zone.material), ["WOOD"]);
   assert.deepEqual(new Set(decodeRoomFloorLabels(map)), new Set([0, 1]));
 });
+
+test("rejects a semantic centroid in exterior whitespace instead of snapping it into the floor", () => {
+  const width = 60;
+  const height = 40;
+  const interiorMask = new Uint8Array(width * height);
+  for (let y = 4; y < 36; y += 1) {
+    for (let x = 4; x < 56; x += 1) interiorMask[y * width + x] = 1;
+  }
+
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask,
+    openings: [],
+    polygons: { door: [], wall: [], window: [] },
+    rooms: [
+      { confidence: 0.99, label: "Bathroom", polygon: normalizedBox(0, 0, 3, 3, width, height) },
+    ],
+    width,
+  });
+
+  assert.deepEqual(map.zones.map((zone) => zone.material), ["WOOD"]);
+  assert.deepEqual(new Set(decodeRoomFloorLabels(map)), new Set([0, 1]));
+});
