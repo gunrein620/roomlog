@@ -34,6 +34,7 @@ export interface Thread {
   context: ThreadContext;
   contextRef?: string; // 연결된 티켓/청구 id 등 (맥락 카드 source)
   contextLabel?: string; // 맥락 배지 표시용
+  isManagerTicketUnread?: boolean; // 관리자 메시징 투영: 연결 티켓 자체의 미확인 여부
   lastMessage: string;
   lastMessageSender?: MessageSender; // 목록 응답에도 포함 — 관리인 미응답(마지막 발신자=세입자) 판정용
   unreadCount: number; // 단일 미읽음 소스

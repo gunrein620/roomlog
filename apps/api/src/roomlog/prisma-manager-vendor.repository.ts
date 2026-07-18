@@ -10,6 +10,7 @@ import {
 } from "@prisma/client";
 import type {
   ManagerVendorDetail,
+  ManagerVendorJobLookup,
   ManagerVendorView,
   VendorAccountProjectionStatus,
   VendorCatalogRecord,
@@ -54,6 +55,7 @@ type CompletionProjection = Prisma.VendorCompletionReportGetPayload<{
 type PaymentProjection = Prisma.VendorPaymentRequestGetPayload<Record<string, never>>;
 const MANAGER_JOB_INCLUDE = {
   ticket: { include: { room: true } },
+  vendor: true,
   estimates: {
     include: { lineItems: true },
     orderBy: [{ version: "desc" as const }, { id: "desc" as const }]
@@ -405,7 +407,10 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     };
   }
 
-  async findJobByTicket(managerId: string, ticketId: string) {
+  async findJobByTicket(
+    managerId: string,
+    ticketId: string
+  ): Promise<ManagerVendorJobLookup | null> {
     await this.assertValidManager(this.prisma, managerId);
     const ownedTicket = { ticketId, ticket: { room: { landlordId: managerId } } };
     const active = await this.prisma.repairRequest.findFirst({
@@ -428,9 +433,22 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       managerId,
       repair.vendorId
     );
-    if (!relation) return null;
+    if (!relation) {
+      return {
+        partnership: "UNREGISTERED" as const,
+        vendor: {
+          vendorId: repair.vendorId,
+          catalog: mapCatalog(repair.vendor)
+        },
+        job: mapManagerJob(repair, managerId)
+      };
+    }
     const [vendor] = await this.projectViews(this.prisma, managerId, [relation]);
-    return { vendor, job: mapManagerJob(repair, managerId) };
+    return {
+      partnership: "REGISTERED" as const,
+      vendor,
+      job: mapManagerJob(repair, managerId)
+    };
   }
 
   async register(managerId: string, vendorId: string) {

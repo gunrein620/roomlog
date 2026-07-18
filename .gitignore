@@ -38,3 +38,6 @@ apps/web/public/samples/dryrun.ply
 
 # Claude Code 개인 로컬 설정 (커밋 금지)
 .claude/settings.local.json
+
+# Codex E2E 검증 스크래치(스크린샷 등)
+artifacts/

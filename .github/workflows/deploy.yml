@@ -45,6 +45,8 @@ jobs:
           API_INTERNAL_URL: "${{ secrets.API_INTERNAL_URL }}"
           NEXT_PUBLIC_API_URL: "${{ secrets.NEXT_PUBLIC_API_URL }}"
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: "${{ secrets.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID }}"
+          NEXT_PUBLIC_TOSS_CLIENT_KEY: "${{ secrets.NEXT_PUBLIC_TOSS_CLIENT_KEY }}"
+          TOSS_SECRET_KEY: "${{ secrets.TOSS_SECRET_KEY }}"
           ROOMLOG_PUBLIC_ORIGIN: "${{ secrets.ROOMLOG_PUBLIC_ORIGIN }}"
           GOOGLE_LOGIN_CLIENT_ID: "${{ secrets.GOOGLE_LOGIN_CLIENT_ID }}"
           GOOGLE_LOGIN_CLIENT_SECRET: "${{ secrets.GOOGLE_LOGIN_CLIENT_SECRET }}"
@@ -247,6 +249,12 @@ jobs:
           fi
           if [ -n "$ROBOFLOW_API_KEY" ]; then
             echo "ROBOFLOW_API_KEY=${ROBOFLOW_API_KEY}" >> .env.production
+          fi
+          if [ -n "$NEXT_PUBLIC_TOSS_CLIENT_KEY" ]; then
+            echo "NEXT_PUBLIC_TOSS_CLIENT_KEY=${NEXT_PUBLIC_TOSS_CLIENT_KEY}" >> .env.production
+          fi
+          if [ -n "$TOSS_SECRET_KEY" ]; then
+            echo "TOSS_SECRET_KEY=${TOSS_SECRET_KEY}" >> .env.production
           fi
           if [ -n "$S3_UPLOADS_ENABLED" ]; then
             echo "S3_UPLOADS_ENABLED=${S3_UPLOADS_ENABLED}" >> .env.production

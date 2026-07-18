@@ -19,18 +19,26 @@ import type {
   VendorEstimateDraftInput,
   VendorEstimateReviewInput,
   VendorJobDetail,
+  VendorJobMessageView,
   VendorJobSummary,
   VendorSettlementRow,
   VendorVisitScheduleInput
 } from "@roomlog/types";
+import type { AddVendorRepairMessageInput } from "../roomlog.types";
 import type { DomainEventDispatcher } from "../../domain-events/domain-event.dispatcher";
 import type { VendorAccountResolver } from "../vendor-activation.repository";
 import {
   VendorWorkflowRepositoryError,
   type CompletionCommit,
   type DecisionCommit,
+  type VendorRepairMessageRecord,
   type VendorWorkflowRepository
 } from "../vendor-workflow.repository";
+
+/** 저장소 직행으로 생성된 업체 메시지를 인메모리 스토어에 반영하는 선택 훅(RoomlogService가 구현). */
+export interface VendorRepairMessageStoreSync {
+  ingestVendorRepairMessage?(record: VendorRepairMessageRecord): void;
+}
 
 export interface AssignVendorInput {
   vendorId: string;
@@ -46,6 +54,17 @@ function normalizeIdentifier(value: unknown, message: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeTenantAvailableTimes(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new BadRequestException("방문 가능 시간을 올바르게 입력해 주세요.");
+  }
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 200) {
+    throw new BadRequestException("방문 가능 시간은 1자 이상 200자 이하로 입력해 주세요.");
+  }
+  return normalized;
 }
 
 function translateWorkflowError(error: unknown): never {
@@ -143,7 +162,7 @@ function publicCompletionDecision(
 export class RoomlogVendorWorkflowDomain {
   constructor(
     private readonly repository: VendorWorkflowRepository,
-    private readonly vendorAccounts: VendorAccountResolver,
+    private readonly vendorAccounts: VendorAccountResolver & VendorRepairMessageStoreSync,
     private readonly events?: Pick<DomainEventDispatcher, "dispatchPending">
   ) {}
 
@@ -193,6 +212,46 @@ export class RoomlogVendorWorkflowDomain {
     const job = await this.execute(() => this.repository.getJob(vendorId, normalizedRepairId));
     if (!job) throw new NotFoundException("수리 작업을 찾을 수 없습니다.");
     return job;
+  }
+
+  async addVendorRepairMessage(
+    userId: string,
+    repairId: string,
+    input: AddVendorRepairMessageInput
+  ): Promise<VendorJobMessageView> {
+    const normalizedRepairId = normalizeIdentifier(
+      repairId,
+      "수리 작업 정보가 올바르지 않습니다."
+    );
+    if (!isRecord(input)) {
+      throw new BadRequestException("메시지 내용을 확인해 주세요.");
+    }
+    const messageText = typeof input.messageText === "string"
+      ? input.messageText.trim()
+      : "";
+    if (input.attachmentUrls !== undefined && !Array.isArray(input.attachmentUrls)) {
+      throw new BadRequestException("첨부 사진 목록을 확인해 주세요.");
+    }
+    const attachmentUrls = [...new Set((input.attachmentUrls ?? []).map((value) => {
+      if (typeof value !== "string" || !value.trim()) {
+        throw new BadRequestException("첨부 사진 정보를 확인해 주세요.");
+      }
+      return value.trim();
+    }))];
+    if (!messageText && attachmentUrls.length === 0) {
+      throw new BadRequestException("메시지 또는 사진을 입력해 주세요.");
+    }
+
+    const vendorId = await this.requireVendorId(userId);
+    const result = await this.execute(() => this.repository.addRepairMessage(
+      vendorId,
+      normalizeIdentifier(userId, "업체 계정 정보가 올바르지 않습니다."),
+      normalizedRepairId,
+      { messageText, attachmentUrls }
+    ));
+    // 저장소 직행 쓰기라 스토어 기반 읽기(세입자 상세 등)가 재하이드레이션 전엔 못 본다 — 즉시 반영.
+    this.vendorAccounts.ingestVendorRepairMessage?.(result.record);
+    return result.view;
   }
 
   async saveEstimateDraft(
@@ -317,7 +376,14 @@ export class RoomlogVendorWorkflowDomain {
       ? { action: "APPROVE" as const }
       : {
           action: "REQUEST_REVISION" as const,
-          note: normalizeIdentifier(input.note, "수정 요청 사유를 입력해 주세요.")
+          note: normalizeIdentifier(input.note, "수정 요청 사유를 입력해 주세요."),
+          ...(input.tenantAvailableTimes === undefined
+            ? {}
+            : {
+                tenantAvailableTimes: normalizeTenantAvailableTimes(
+                  input.tenantAvailableTimes
+                )
+              })
         };
     return this.execute(() => this.repository.reviewTenantEstimate(
       normalizeIdentifier(tenantId, "임차인 정보가 올바르지 않습니다."),
@@ -583,6 +649,19 @@ export class RoomlogVendorWorkflowDomain {
     }
     const note = typeof input.note === "string" ? input.note.trim() : "";
     if (!note) throw new BadRequestException("검토 사유를 입력해 주세요.");
+    if (action === "REQUEST_REVISION") {
+      return {
+        action,
+        note,
+        ...(input.tenantAvailableTimes === undefined
+          ? {}
+          : {
+              tenantAvailableTimes: normalizeTenantAvailableTimes(
+                input.tenantAvailableTimes
+              )
+            })
+      };
+    }
     return { action, note };
   }
 

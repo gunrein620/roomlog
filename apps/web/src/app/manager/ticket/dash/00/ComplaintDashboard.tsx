@@ -21,8 +21,16 @@ import {
   latestComplaintMonth,
   serializeComplaintDashboardCsv,
 } from "./complaint-dashboard-model";
-import { TicketDetailDialog } from "./TicketDetailDialog";
+import { TicketChatPanel } from "./TicketChatPanel";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
+import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
+import type { TicketLane } from "./ticket-lane";
+import {
+  applyTicketLaneOverrides,
+  reconcileTicketLaneOverrides,
+  ticketStatusForLane,
+  type TicketLaneOverride,
+} from "./ticket-lane-local-state";
 
 const METRICS = [
   { id: "total", label: "전체 접수", icon: ListChecks },
@@ -72,8 +80,13 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
   const [pickerYear, setPickerYear] = useState(() => monthParts(latestComplaintMonth(rows)).year);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
+  const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
   const calendarRef = useRef<HTMLDivElement>(null);
-  const dashboard = useMemo(() => buildComplaintDashboard(rows, month), [rows, month]);
+  const effectiveRows = useMemo(
+    () => applyTicketLaneOverrides(rows, ticketLaneOverrides),
+    [rows, ticketLaneOverrides],
+  );
+  const dashboard = useMemo(() => buildComplaintDashboard(effectiveRows, month), [effectiveRows, month]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
   const donutSegments = dashboard.categories.reduce<string[]>((segments, category, index) => {
     const start = dashboard.categories.slice(0, index).reduce((total, item) => total + item.percent, 0);
@@ -101,11 +114,24 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     };
   }, [calendarOpen]);
 
+  useEffect(() => {
+    setTicketLaneOverrides((current) => reconcileTicketLaneOverrides(current, rows));
+  }, [rows]);
+
   function changeMonth(amount: number) {
     const nextMonth = moveMonth(month, amount);
     setMonth(nextMonth);
     setPickerYear(monthParts(nextMonth).year);
     setCalendarOpen(false);
+  }
+
+  function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
+    setTicketLaneOverrides((current) => ({ ...current, [ticketId]: { lane, updatedAt } }));
+    setSelectedRow((current) =>
+      current?.ticket.id === ticketId
+        ? { ...current, ticket: { ...current.ticket, status: ticketStatusForLane(lane) } }
+        : current,
+    );
   }
 
   return (
@@ -186,7 +212,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
           <button
             type="button"
             className="manager-complaint-dashboard__download"
-            onClick={() => downloadCsv(rows, month, dashboard.monthLabel)}
+            onClick={() => downloadCsv(effectiveRows, month, dashboard.monthLabel)}
           >
             <Download aria-hidden="true" />
             보고서 다운로드
@@ -285,7 +311,12 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
                   </td>
                   <td>{row.buildingName ?? "—"} / {row.ticket.unitId || "—"}</td>
                   <td>{formatComplaintDate(row.ticket.createdAt)}</td>
-                  <td><span className="manager-complaint-dashboard__status" data-status={complaintStatusLabel(row.ticket.status)}>{complaintStatusLabel(row.ticket.status)}</span></td>
+                  <td>
+                    <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
+                      <span className="manager-complaint-dashboard__status" data-status={complaintStatusLabel(row.ticket.status)}>{complaintStatusLabel(row.ticket.status)}</span>
+                      <SelfRepairBadge ticket={row.ticket} />
+                    </div>
+                  </td>
                 </tr>
               ))}
               {dashboard.recent.length === 0 ? <tr><td colSpan={5} className="manager-complaint-dashboard__empty">선택한 기간에 접수된 민원/하자가 없습니다.</td></tr> : null}
@@ -294,7 +325,11 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
         </div>
       </article>
 
-      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <TicketChatPanel
+        row={selectedRow}
+        onClose={() => setSelectedRow(null)}
+        onTicketLaneChanged={applyConfirmedTicketLane}
+      />
     </section>
   );
 }

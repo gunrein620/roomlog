@@ -114,6 +114,9 @@ class UnavailableVendorWorkflowRepository implements VendorWorkflowRepository {
   async getJob() {
     return workflowUnavailable();
   }
+  async addRepairMessage(): Promise<never> {
+    return workflowUnavailable();
+  }
   async listSettlements() {
     return workflowUnavailable();
   }

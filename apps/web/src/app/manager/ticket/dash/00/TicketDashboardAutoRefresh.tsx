@@ -4,10 +4,8 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { shouldRefreshTicketDashboard } from "./ticket-dashboard-activity";
-
-type TicketDashboardAutoRefreshProps = {
-  intervalMs?: number;
-};
+import { createTicketDashboardRefreshGate } from "./ticket-dashboard-refresh-gate";
+import { isLocalTicketLaneMutationActivity } from "./ticket-lane-mutation-activity";
 
 function hasFocusedControl(): boolean {
   const activeElement = document.activeElement;
@@ -20,55 +18,44 @@ function hasFocusedControl(): boolean {
   );
 }
 
-export function TicketDashboardAutoRefresh({
-  intervalMs = 3000,
-}: TicketDashboardAutoRefreshProps) {
+export function TicketDashboardAutoRefresh() {
   const router = useRouter();
-  const isSocketLiveRef = useRef(false);
+  const refreshGateRef = useRef(createTicketDashboardRefreshGate());
 
   useEffect(() => {
-    if (intervalMs <= 0) return undefined;
-
-    const refreshVisibleDashboard = () => {
-      if (document.visibilityState !== "visible" || hasFocusedControl()) return;
+    let mounted = true;
+    const canRefreshDashboard = () =>
+      document.visibilityState === "visible" && !hasFocusedControl();
+    const refreshDashboard = () => {
       router.refresh();
     };
     const socket = getRealtimeSocket();
-    const onConnect = () => {
-      isSocketLiveRef.current = true;
-    };
-    const onDisconnect = () => {
-      isSocketLiveRef.current = false;
-    };
     const onActivity = (payload: unknown) => {
-      if (shouldRefreshTicketDashboard(payload)) refreshVisibleDashboard();
+      if (isLocalTicketLaneMutationActivity(payload)) return;
+      if (!shouldRefreshTicketDashboard(payload)) return;
+      if (!refreshGateRef.current.request(canRefreshDashboard())) return;
+      refreshDashboard();
     };
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refreshVisibleDashboard();
+    const flushPendingRefresh = () => {
+      if (!mounted) return;
+      if (!refreshGateRef.current.flush(canRefreshDashboard())) return;
+      refreshDashboard();
+    };
+    const flushAfterFocusSettles = () => {
+      queueMicrotask(flushPendingRefresh);
     };
 
-    isSocketLiveRef.current = socket.connected;
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
     socket.on("roomlog:activity", onActivity);
-
-    const fallbackId = window.setInterval(() => {
-      if (!isSocketLiveRef.current) refreshVisibleDashboard();
-    }, intervalMs);
-    const safetyId = window.setInterval(refreshVisibleDashboard, 30000);
-    window.addEventListener("focus", refreshVisibleDashboard);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
+    document.addEventListener("focusout", flushAfterFocusSettles);
+    document.addEventListener("visibilitychange", flushPendingRefresh);
 
     return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
+      mounted = false;
       socket.off("roomlog:activity", onActivity);
-      window.clearInterval(fallbackId);
-      window.clearInterval(safetyId);
-      window.removeEventListener("focus", refreshVisibleDashboard);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      document.removeEventListener("focusout", flushAfterFocusSettles);
+      document.removeEventListener("visibilitychange", flushPendingRefresh);
     };
-  }, [intervalMs, router]);
+  }, [router]);
 
   return null;
 }

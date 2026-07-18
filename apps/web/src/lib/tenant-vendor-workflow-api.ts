@@ -62,12 +62,20 @@ export function getTenantVendorWorkflow(
 export function reviewTenantVendorEstimate(
   repairId: string,
   estimateId: string,
-  input: TenantVendorEstimateReviewInput,
+  // tenantAvailableTimes: 방문 시간 재협의 시 세입자 가능 시간대를 함께 갱신(2C).
+  input: TenantVendorEstimateReviewInput & { tenantAvailableTimes?: string },
   fetcher: BrowserFetcher = fetch,
 ) {
-  const body: TenantVendorEstimateReviewInput = input.action === "APPROVE"
-    ? { action: "APPROVE" }
-    : { action: "REQUEST_REVISION", note: input.note.trim() };
+  const body: TenantVendorEstimateReviewInput & { tenantAvailableTimes?: string } =
+    input.action === "APPROVE"
+      ? { action: "APPROVE" }
+      : {
+          action: "REQUEST_REVISION",
+          note: input.note.trim(),
+          ...(input.tenantAvailableTimes?.trim()
+            ? { tenantAvailableTimes: input.tenantAvailableTimes.trim() }
+            : {}),
+        };
   return workflowJson<TenantVendorWorkflowView>(
     `${tenantRepairPath(repairId)}/estimates/${encodeURIComponent(estimateId)}/review`,
     { method: "POST", body: JSON.stringify(body) },

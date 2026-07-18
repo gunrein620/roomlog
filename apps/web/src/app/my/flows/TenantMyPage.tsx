@@ -30,16 +30,15 @@ import {
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
 import { TenantVendorConnectionCard } from "./TenantVendorConnectionCard";
-import { TenantVendorWorkflowPanel } from "./TenantVendorWorkflowPanel";
 import { tenantVendorConnectionEligible } from "./tenant-vendor-connection";
 import {
-  createTenantComplaintDraftLoadGuard,
   createTenantComplaintDraftMutationGuard,
   deleteTenantComplaintDraft,
   loadTenantComplaintDraft,
   mergeTenantComplaintDraftImageUrls,
   saveTenantComplaintDraft,
   serializeTenantComplaintDraftOccurredAt,
+  type TenantComplaintDraft,
   type TenantComplaintDraftImage
 } from "@/lib/tenant-complaint-draft";
 
@@ -108,6 +107,7 @@ type TenantRepairRequest = {
   location?: string;
   occurredAt?: string;
   createdAt?: string;
+  sourceChannel?: string;
   attachments: TenantRepairAttachment[];
   /** 서버 티켓 표시 상태(접수됨/검토중/업체 배정…) 그대로 */
   status: string;
@@ -120,19 +120,30 @@ type TenantRepairAttachment = {
 };
 
 type TenantComplaintMessage = {
+  senderRole?: string;
   messageText?: string;
   attachmentUrls?: string[];
+  createdAt?: string;
+};
+
+// 티켓 부속 정보 — presentTicket 응답 중 세입자탭 상세가 쓰는 필드만 발췌.
+type TenantComplaintTicketInfo = {
+  status?: string;
+  priority?: number;
 };
 
 type TenantComplaintResponse = {
   id: string;
   title: string;
+  roomId?: string;
   description?: string;
   location?: string;
   occurredAt?: string;
   createdAt?: string;
+  sourceChannel?: string;
   displayStatus?: string;
   status?: string;
+  ticket?: TenantComplaintTicketInfo;
   messages?: TenantComplaintMessage[];
 };
 
@@ -207,21 +218,6 @@ function repairDateLabel(iso?: string): string {
   return iso.slice(0, 10).replaceAll("-", ".");
 }
 
-function repairDateTimeLabel(iso?: string): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  }).format(date);
-}
-
 function dateTimeLocalValue(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -281,6 +277,7 @@ function normalizeTenantRepairRequest(item: TenantComplaintResponse): TenantRepa
     location: item.location,
     occurredAt: item.occurredAt,
     createdAt: item.createdAt,
+    sourceChannel: item.sourceChannel,
     attachments,
     status: item.displayStatus ?? item.status ?? "접수됨",
     date: repairDateLabel(item.createdAt)
@@ -836,10 +833,10 @@ export default function TenantMyPage({
   const [landlordChatDraft, setLandlordChatDraft] = useState("");
   const [isLandlordMessageSending, setIsLandlordMessageSending] = useState(false);
   const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
+  const [savedRequestDraft, setSavedRequestDraft] = useState<TenantComplaintDraft | null>(null);
   const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
   const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
   const requestImagesRef = useRef<RequestImagePreview[]>([]);
-  const requestDraftLoadGuardRef = useRef(createTenantComplaintDraftLoadGuard());
   const requestDraftMutationGuardRef = useRef(createTenantComplaintDraftMutationGuard());
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [isLoadingRequestDraft, setIsLoadingRequestDraft] = useState(false);
@@ -847,8 +844,12 @@ export default function TenantMyPage({
   const [requestError, setRequestError] = useState("");
   const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
   const returnedComplaintOpenedRef = useRef(false);
-  const [isRepairDetailLoading, setIsRepairDetailLoading] = useState(false);
   const [repairDetailError, setRepairDetailError] = useState("");
+  const [selectedComplaintDetail, setSelectedComplaintDetail] = useState<TenantComplaintResponse | null>(null);
+  const [complaintChatDraft, setComplaintChatDraft] = useState("");
+  const [isSendingComplaintMessage, setIsSendingComplaintMessage] = useState(false);
+  const [requestUrgency, setRequestUrgency] = useState<1 | 2 | 3 | 4 | undefined>(undefined);
+  const [requestAvailableTimes, setRequestAvailableTimes] = useState("");
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
   const [aiMode, setAiMode] = useState<TenantAiMode>("text");
   const [aiDraft, setAiDraft] = useState("");
@@ -912,6 +913,26 @@ export default function TenantMyPage({
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [loadLandlordUnreadCount, selectedTenantRoomId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSavedRequestDraft(null);
+    if (!selectedTenantRoomId) return () => {
+      cancelled = true;
+    };
+
+    void loadTenantComplaintDraft(selectedTenantRoomId)
+      .then((draft) => {
+        if (!cancelled) setSavedRequestDraft(draft);
+      })
+      .catch(() => {
+        if (!cancelled) setSavedRequestDraft(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTenantRoomId]);
 
   // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
   const ai = useTenantAiAssistant({
@@ -1149,63 +1170,122 @@ export default function TenantMyPage({
       : announcementState.status === "error"
         ? "공지사항을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요."
         : "임대인으로부터 전달된 새로운 소식이 없습니다.";
-  const selectedRepairOccurredAtLabel = selectedRepairRequest
-    ? repairDateTimeLabel(selectedRepairRequest.occurredAt ?? selectedRepairRequest.createdAt)
-    : "";
-  const selectedRepairBody = selectedRepairRequest?.description.trim() || "본문 내용이 없습니다.";
-  const selectedRepairPhotos =
-    selectedRepairRequest?.attachments.filter((attachment): attachment is TenantRepairAttachment & { url: string } =>
-      typeof attachment.url === "string" && attachment.url.trim().length > 0
-    ) ?? [];
+  const detailTicket = selectedComplaintDetail?.ticket;
+  const detailStatusLabel = selectedComplaintDetail?.displayStatus ?? selectedRepairRequest?.status ?? "";
+  const detailMessages = (selectedComplaintDetail?.messages ?? []).filter(
+    (message) => (message.messageText ?? "").trim().length > 0
+  );
+  const isTicketClosed = detailTicket?.status === "COMPLETED" || detailTicket?.status === "CANCELLED";
 
-  const openRequestSheet = async () => {
+  const openNewRequestSheet = () => {
     setRequestError("");
-    setIsRequestSheetOpen(true);
-    if (!selectedTenantRoomId) return;
-
-    const loadToken = requestDraftLoadGuardRef.current.begin(selectedTenantRoomId);
     setRequestDraft(EMPTY_REQUEST_DRAFT);
+    // 긴급도·방문 가능 시간은 임시저장에 포함되지 않는 즉석 입력 — 새 작성은 항상 빈 값에서 시작한다.
+    setRequestUrgency(undefined);
+    setRequestAvailableTimes("");
     clearRequestImages();
-    setIsLoadingRequestDraft(true);
-    try {
-      const draft = await loadTenantComplaintDraft(selectedTenantRoomId);
-      if (!requestDraftLoadGuardRef.current.isCurrent(loadToken)) return;
-      if (!draft) return;
-      setRequestDraft({
-        category: draft.category,
-        title: draft.title,
-        occurredAt: draft.occurredAt ? dateTimeLocalValue(draft.occurredAt) : "",
-        description: draft.description
-      });
-      setRequestImages(draft.attachmentUrls.map((url) => ({
-        id: `draft-image-${crypto.randomUUID()}`,
-        url,
-        uploadedUrl: url
-      })));
-    } catch (error) {
-      if (!requestDraftLoadGuardRef.current.isCurrent(loadToken)) return;
-      setRequestError(error instanceof Error ? error.message : "임시 저장 내용을 불러오지 못했습니다.");
-    } finally {
-      if (requestDraftLoadGuardRef.current.isCurrent(loadToken)) {
-        setIsLoadingRequestDraft(false);
-      }
-    }
+    setIsLoadingRequestDraft(false);
+    setIsRequestSheetOpen(true);
+  };
+
+  const openSavedRequestSheet = () => {
+    if (!savedRequestDraft) return;
+    setRequestError("");
+    setRequestDraft({
+      category: savedRequestDraft.category,
+      title: savedRequestDraft.title,
+      occurredAt: savedRequestDraft.occurredAt ? dateTimeLocalValue(savedRequestDraft.occurredAt) : "",
+      description: savedRequestDraft.description
+    });
+    // 임시저장엔 긴급도·방문 가능 시간이 없으므로 이전 세션 값이 새어들지 않게 초기화.
+    setRequestUrgency(undefined);
+    setRequestAvailableTimes("");
+    clearRequestImages();
+    setRequestImages(savedRequestDraft.attachmentUrls.map((url) => ({
+      id: `draft-image-${crypto.randomUUID()}`,
+      url,
+      uploadedUrl: url
+    })));
+    setIsLoadingRequestDraft(false);
+    setIsRequestSheetOpen(true);
   };
 
   const openRepairDetailSheet = async (request: TenantRepairRequest) => {
     setSelectedRepairRequest(request);
+    setSelectedComplaintDetail(null);
     setRepairDetailError("");
-    setIsRepairDetailLoading(true);
 
     try {
       const res = await fetch(`/api/tenant/complaints/${encodeURIComponent(request.id)}`, { cache: "no-store" });
       if (!res.ok) throw new Error("민원/하자 상세 조회 실패");
       const detail = (await res.json()) as TenantComplaintResponse;
+      setSelectedComplaintDetail(detail);
       setSelectedRepairRequest(normalizeTenantRepairRequest(detail));
     } catch {
       setRepairDetailError("상세 내용을 불러오지 못했습니다. 목록에 남아있는 접수 정보만 표시합니다.");
+    }
+  };
+
+  // 상세 시트가 열려 있는 동안 업체·관리자 새 메시지를 실시간 반영 (2D broadcast 수신).
+  useEffect(() => {
+    const complaintId = selectedRepairRequest?.id;
+    if (!complaintId) return;
+    const onActivity = (payload: unknown) => {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "kind" in payload &&
+        (payload as { kind?: string }).kind === "ticket"
+      ) {
+        void refreshComplaintDetail(complaintId);
+      }
+    };
+    const socket = getRealtimeSocket();
+    socket.on("roomlog:activity", onActivity);
+    return () => {
+      socket.off("roomlog:activity", onActivity);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRepairRequest?.id]);
+
+  // 새 메시지와 실시간 상태를 다시 읽어 상세 시트를 최신으로 맞춘다. 실패 시 기존 표시 유지.
+  const refreshComplaintDetail = async (complaintId: string) => {
+    try {
+      const res = await fetch(`/api/tenant/complaints/${encodeURIComponent(complaintId)}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const detail = (await res.json()) as TenantComplaintResponse;
+      setSelectedComplaintDetail(detail);
+      setSelectedRepairRequest(normalizeTenantRepairRequest(detail));
+    } catch {
+      // 새로고침 실패는 치명적이지 않다 — 다음 열람 때 다시 읽는다.
+    }
+  };
+
+  const handleSendComplaintMessage = async () => {
+    if (!selectedRepairRequest || isSendingComplaintMessage) return;
+    const messageText = complaintChatDraft.trim();
+    if (!messageText) return;
+    setIsSendingComplaintMessage(true);
+    setRepairDetailError("");
+    try {
+      const res = await fetch(
+        `/api/tenant/complaints/${encodeURIComponent(selectedRepairRequest.id)}/messages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageText })
+        }
+      );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => undefined)) as { message?: string } | undefined;
+        throw new Error(data?.message || "메시지를 보내지 못했습니다.");
+      }
+      setComplaintChatDraft("");
+      await refreshComplaintDetail(selectedRepairRequest.id);
+    } catch (error) {
+      setRepairDetailError(error instanceof Error ? error.message : "메시지를 보내지 못했습니다.");
     } finally {
-      setIsRepairDetailLoading(false);
+      setIsSendingComplaintMessage(false);
     }
   };
 
@@ -1224,8 +1304,9 @@ export default function TenantMyPage({
 
   const closeRepairDetailSheet = () => {
     setSelectedRepairRequest(null);
+    setSelectedComplaintDetail(null);
+    setComplaintChatDraft("");
     setRepairDetailError("");
-    setIsRepairDetailLoading(false);
   };
 
   useEffect(() => {
@@ -1249,12 +1330,13 @@ export default function TenantMyPage({
   };
 
   const closeRequestSheet = (resetDraft = false) => {
-    requestDraftLoadGuardRef.current.invalidate();
     setIsLoadingRequestDraft(false);
     setIsRequestSheetOpen(false);
     setRequestError("");
     if (resetDraft) {
       setRequestDraft(EMPTY_REQUEST_DRAFT);
+      setRequestUrgency(undefined);
+      setRequestAvailableTimes("");
       clearRequestImages();
     }
   };
@@ -1300,6 +1382,7 @@ export default function TenantMyPage({
         description: requestDraft.description,
         attachmentUrls
       });
+      setSavedRequestDraft(saved);
       clearRequestImages();
       setRequestImages(saved.attachmentUrls.map((url) => ({
         id: `draft-image-${crypto.randomUUID()}`,
@@ -1324,6 +1407,7 @@ export default function TenantMyPage({
     setIsSavingRequestDraft(true);
     try {
       await deleteTenantComplaintDraft(selectedTenantRoomId);
+      setSavedRequestDraft(null);
       closeRequestSheet(true);
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : "임시 저장 내용을 삭제하지 못했습니다.");
@@ -1352,6 +1436,7 @@ export default function TenantMyPage({
         description: requestDraft.description,
         attachmentUrls
       });
+      setSavedRequestDraft(stagedDraft);
       const requestSubmissionId = stagedDraft.id;
       clearRequestImages();
       setRequestImages(stagedDraft.attachmentUrls.map((url) => ({
@@ -1369,6 +1454,8 @@ export default function TenantMyPage({
           title: requestDraft.title.trim(),
           location: tenantRoomTitle,
           occurredAt: requestDraft.occurredAt ? new Date(requestDraft.occurredAt).toISOString() : undefined,
+          ...(requestUrgency ? { urgency: requestUrgency } : {}),
+          ...(requestAvailableTimes.trim() ? { availableTimes: requestAvailableTimes.trim() } : {}),
           description: [
             `[${requestDraft.category}]`,
             requestDraft.description.trim()
@@ -1380,8 +1467,11 @@ export default function TenantMyPage({
         setRequestError(data?.message || "요청을 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
         return;
       }
+      setSavedRequestDraft(null);
       setIsRequestSheetOpen(false);
       setRequestDraft(EMPTY_REQUEST_DRAFT);
+      setRequestUrgency(undefined);
+      setRequestAvailableTimes("");
       clearRequestImages();
       showToast("민원/하자 요청이 접수되었습니다.");
       void loadRepairRequests();
@@ -1572,10 +1662,17 @@ export default function TenantMyPage({
       <section className="tenant-history-card" aria-label="민원/하자 이력">
         <header className="tenant-section-head">
           <h3>민원/하자 이력</h3>
-          <button type="button" onClick={openRequestSheet}>
-            신규 요청하기
-            <span aria-hidden="true">+</span>
-          </button>
+          <div className="tenant-section-actions">
+            {savedRequestDraft ? (
+              <button type="button" onClick={openSavedRequestSheet}>
+                임시 저장
+              </button>
+            ) : null}
+            <button type="button" onClick={openNewRequestSheet}>
+              신규 요청하기
+              <span aria-hidden="true">+</span>
+            </button>
+          </div>
         </header>
         <div className="tenant-history-list">
           {repairHistory.map((item, index) => {
@@ -1928,9 +2025,9 @@ export default function TenantMyPage({
       ) : null}
 
       {selectedRepairRequest ? (
-        <div className="notification-sheet-backdrop" role="presentation" onClick={closeRepairDetailSheet}>
+        <div className="notification-sheet-backdrop tenant-request-detail-backdrop" role="presentation" onClick={closeRepairDetailSheet}>
           <section
-            className="notification-sheet tenant-request-sheet tenant-request-detail-sheet"
+            className="notification-sheet tenant-request-sheet tenant-request-detail-sheet tenant-request-detail-panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby="tenant-request-detail-title"
@@ -1941,6 +2038,9 @@ export default function TenantMyPage({
               <div>
                 <span>민원/하자 접수 내용</span>
                 <h2 id="tenant-request-detail-title">{selectedRepairRequest.title}</h2>
+                {selectedRepairRequest.sourceChannel === "MANAGER_PROXY" ? (
+                  <span className="tenant-manager-proxy-badge">관리자 대리 접수</span>
+                ) : null}
               </div>
               <button type="button" onClick={closeRepairDetailSheet} aria-label="접수 내용 닫기">
                 <X size={18} strokeWidth={2.5} aria-hidden="true" />
@@ -1950,54 +2050,73 @@ export default function TenantMyPage({
             {repairDetailError ? <p className="tenant-request-error" role="alert">{repairDetailError}</p> : null}
 
             <div className="tenant-request-form tenant-request-detail-form">
-              <div className="tenant-request-detail-meta-row">
-                <div className="tenant-request-type-toggle" role="group" aria-label="요청 유형">
-                  {(["민원", "하자"] as const).map((category) => (
-                    <button
-                      key={category}
-                      className={selectedRepairRequest.category === category ? "active" : ""}
-                      type="button"
-                      disabled
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-                <label className="tenant-request-date-field">
-                  <span>발생일시</span>
-                  <input type="text" value={selectedRepairOccurredAtLabel} placeholder="연도-월-일 --:--" readOnly />
-                </label>
-              </div>
-
-              <label className="tenant-request-body-field">
-                <span>본문 내용</span>
-                <textarea value={selectedRepairBody} rows={6} readOnly />
-              </label>
-
-              {selectedRepairRequest.location ? (
-                <label className="tenant-request-title-field">
-                  <span>발생 위치</span>
-                  <input type="text" value={selectedRepairRequest.location} readOnly />
-                </label>
+              {detailTicket ? (
+                <section className="tenant-defect-progress" aria-label="처리 상태">
+                  <div className="tenant-defect-progress-head">
+                    <strong>{detailStatusLabel}</strong>
+                    {typeof detailTicket.priority === "number" ? (
+                      <span className="tenant-defect-chip">긴급도 {detailTicket.priority}</span>
+                    ) : null}
+                  </div>
+                </section>
               ) : null}
 
-              {selectedRepairPhotos.length > 0 ? (
-                <div className="tenant-request-image-strip" aria-label="첨부 이미지">
-                  {selectedRepairPhotos.map((attachment) => (
-                    <div className="tenant-request-image-preview tenant-request-image-file" key={attachment.url}>
-                      <img src={attachment.url} alt={`${attachment.name} 첨부 이미지`} />
+              {detailTicket ? (
+                <section className="tenant-defect-messages" aria-label="진행 메시지">
+                  <strong>진행 메시지</strong>
+                  <ul>
+                    {detailMessages.length === 0 ? (
+                      <li className="tenant-defect-message-empty">
+                        <p>아직 진행 메시지가 없습니다.</p>
+                      </li>
+                    ) : (
+                      /* CSS column-reverse와 짝: 역순 렌더로 최신이 항상 하단·스크롤 고정 */
+                      [...detailMessages].reverse().map((message, index) => {
+                          const senderLabel =
+                            message.senderRole === "TENANT"
+                              ? "나"
+                              : message.senderRole === "LANDLORD"
+                                ? "관리자"
+                                : message.senderRole === "VENDOR"
+                                  ? "업체"
+                                  : "시스템";
+                          return (
+                            <li key={`${message.createdAt ?? index}-${index}`} data-sender={message.senderRole ?? "SYSTEM"}>
+                              <span>{senderLabel}</span>
+                              <p>{message.messageText}</p>
+                            </li>
+                          );
+                        })
+                    )}
+                  </ul>
+                  {!isTicketClosed ? (
+                    <div className="tenant-defect-chat-input">
+                      <input
+                        type="text"
+                        value={complaintChatDraft}
+                        onChange={(event) => setComplaintChatDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                            event.preventDefault();
+                            void handleSendComplaintMessage();
+                          }
+                        }}
+                        maxLength={500}
+                        placeholder="관리자·업체에게 메시지 보내기"
+                        aria-label="진행 메시지 입력"
+                      />
+                      <button
+                        type="button"
+                        disabled={isSendingComplaintMessage || complaintChatDraft.trim().length === 0}
+                        onClick={() => void handleSendComplaintMessage()}
+                      >
+                        {isSendingComplaintMessage ? "전송 중" : "보내기"}
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  ) : null}
+                </section>
               ) : null}
 
-              <TenantVendorWorkflowPanel complaintId={selectedRepairRequest.id} />
-
-              <div className="tenant-request-actions">
-                <button className="primary" type="button" onClick={closeRepairDetailSheet}>
-                  닫기
-                </button>
-              </div>
             </div>
           </section>
         </div>
@@ -2067,6 +2186,38 @@ export default function TenantMyPage({
                   rows={6}
                   maxLength={1000}
                   required
+                />
+              </label>
+
+              <div className="tenant-request-urgency" role="group" aria-label="긴급도 (선택)">
+                <span>긴급도 (선택)</span>
+                <div className="tenant-request-type-toggle">
+                  {([
+                    [1, "1 즉시"],
+                    [2, "2 빠른 처리"],
+                    [3, "3 일반"],
+                    [4, "4 문의성"]
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={requestUrgency === value ? "active" : ""}
+                      type="button"
+                      onClick={() => setRequestUrgency((current) => (current === value ? undefined : value))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="tenant-request-title-field">
+                <span>방문 가능 시간 (선택)</span>
+                <input
+                  type="text"
+                  value={requestAvailableTimes}
+                  maxLength={200}
+                  placeholder="예: 평일 18시 이후, 주말 오전"
+                  onChange={(event) => setRequestAvailableTimes(event.target.value)}
                 />
               </label>
 

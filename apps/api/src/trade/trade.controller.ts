@@ -96,6 +96,20 @@ export class TradeController {
     return listing;
   }
 
+  /** 계약 해지 — 소유자 전용. 세입자-호실 연결을 해제하고 매물을 다시 노출 상태로 되돌린다. */
+  @Post("listings/:listingId/contract/terminate")
+  async terminateListingContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("listingId") listingId: string
+  ) {
+    const user = this.user(authorization);
+    const { contract, thread, listing } = this.tradeService.terminateContract(user, listingId);
+    await this.contractBillingBridge.release(contract);
+    await this.tradeService.ensureListingDurability();
+    this.notifyThread(thread, user.id);
+    return listing;
+  }
+
   /** 매물 삭제(내리기) — 소유자 전용. */
   @Delete("listings/:listingId")
   deleteListing(

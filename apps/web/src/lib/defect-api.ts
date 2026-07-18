@@ -1,7 +1,22 @@
-import type { Ticket, DefectAnalysis, RepairJob } from "@roomlog/types";
+import type {
+  CreateDefectComplaintInput,
+  DefectAnalysis,
+  RepairJob,
+  SubmitTicketAiFeedbackInput,
+  Ticket,
+  TicketAiFeedback,
+  TicketResponsibilityDecision,
+} from "@roomlog/types";
 import { DEMO_TICKET, DEMO_ANALYSIS, DEMO_REPAIR } from "./demo-ticket";
 import { serverFetch } from "./server-api";
-import { toTicket, toAnalysis, toRepair, type TeamComplaint } from "./defect-mapping";
+import {
+  toTicket,
+  toAnalysis,
+  toRepair,
+  toTicketAiFeedback,
+  type TeamAiFeedback,
+  type TeamComplaint,
+} from "./defect-mapping";
 
 // 룸로그 하자 슬라이스 API 클라이언트 — 팀 실 백엔드(/tenant/complaints)에 쿠키 인증으로 연결.
 // [레퍼런스 패턴] 서버 컴포넌트에서만 호출: serverFetch가 httpOnly 쿠키의 토큰을
@@ -35,6 +50,67 @@ async function getComplaintById(id: string): Promise<TeamComplaint | null> {
     console.error(`[tenant/api] /tenant/complaints/${id} 조회 실패:`, error);
     return null;
   }
+}
+
+export type CreateDefectComplaintResult = {
+  complaint: TeamComplaint;
+  ticket: TeamComplaint["ticket"];
+  analysis: NonNullable<TeamComplaint["ticket"]["analysis"]>;
+};
+
+export type TenantDefectDetail = {
+  complaintId: string;
+  roomId?: string;
+  ticket: Ticket;
+  repair: RepairJob | null;
+  aiFeedback: TicketAiFeedback[];
+  responsibilityDecision?: TicketResponsibilityDecision;
+};
+
+export function createDefectComplaint(
+  input: CreateDefectComplaintInput,
+): Promise<CreateDefectComplaintResult> {
+  return serverFetch<CreateDefectComplaintResult>("/tenant/complaints", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function submitResponsibilityFeedback(
+  complaintId: string,
+  input: Omit<SubmitTicketAiFeedbackInput, "target">,
+): Promise<TicketAiFeedback> {
+  return serverFetch<TicketAiFeedback>(
+    `/tenant/complaints/${encodeURIComponent(complaintId)}/ai-feedback`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ...input, target: "RESPONSIBILITY" }),
+    },
+  );
+}
+
+export async function getTenantDefectDetail(id?: string): Promise<TenantDefectDetail> {
+  const complaint = await resolveComplaint(id);
+  if (!complaint) {
+    return {
+      complaintId: DEMO_TICKET_ID,
+      ticket: DEMO_TICKET,
+      repair: DEMO_REPAIR,
+      aiFeedback: [],
+    };
+  }
+
+  const rawFeedback: TeamAiFeedback[] =
+    complaint.aiFeedback ?? complaint.ticket.aiFeedback ?? [];
+  const ticket = toTicket(complaint);
+  return {
+    complaintId: complaint.id,
+    roomId: complaint.room?.id,
+    ticket,
+    repair: toRepair(complaint),
+    aiFeedback: rawFeedback.map(toTicketAiFeedback),
+    responsibilityDecision: ticket.responsibilityDecision,
+  };
 }
 
 // id가 실제 complaint id면 그 건을, "active"/미지정이면 목록 첫 활성 건을 해석.

@@ -88,6 +88,17 @@ export function updateManagerListing(
   );
 }
 
+export async function terminateManagerListingContract(
+  listingId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<TradeListing> {
+  return request(
+    `/api/trade/listings/${encodeURIComponent(listingId)}/contract/terminate`,
+    { method: "POST" },
+    fetchImpl,
+  );
+}
+
 export async function removeManagerListing(
   listingId: string,
   fetchImpl: typeof fetch = fetch,

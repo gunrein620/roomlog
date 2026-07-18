@@ -56,7 +56,7 @@ type TradeContract = {
   threadId: string;
   landlordId: string;
   tenantId: string;
-  status: "proposed" | "accepted" | "declined" | "cancelled";
+  status: "proposed" | "accepted" | "declined" | "cancelled" | "terminated";
   tradeType: "월세" | "반전세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
@@ -569,7 +569,10 @@ export function TradeChatCenter({
     if (!openThreadId || !openThread) return null;
     const iAmOwner = openThread.ownerId === myUserId;
     const counterpart = openThread.buyerId === myUserId ? openThread.ownerName : openThread.buyerName;
-    const contractClosed = openContract?.status === "declined" || openContract?.status === "cancelled";
+    const contractClosed =
+      openContract?.status === "declined" ||
+      openContract?.status === "cancelled" ||
+      openContract?.status === "terminated";
     const canPropose = iAmOwner && Boolean(openThread.listingId) && (!openContract || contractClosed);
 
     // 계약 바 — 양쪽 모두에게 항상 보인다. 집주인은 "계약 제안하기",

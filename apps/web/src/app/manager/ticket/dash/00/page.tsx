@@ -1,5 +1,8 @@
 import { headers } from "next/headers";
-import { listManagerTicketRows } from "@/lib/ticket-manager-api";
+import {
+  listManagerProxyIntakeRooms,
+  listManagerTicketRows,
+} from "@/lib/ticket-manager-api";
 import { ComplaintDashboard } from "./ComplaintDashboard";
 import { appendLocalTicketDemoRows } from "./local-ticket-demo";
 import { ManagerDefectDashboard } from "./ManagerDefectDashboard";
@@ -18,19 +21,25 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   if (dashboardView === "dashboard") {
     return (
       <>
-        <TicketDashboardAutoRefresh intervalMs={3000} />
+        <TicketDashboardAutoRefresh />
         <ComplaintDashboard rows={rows} />
       </>
     );
   }
 
   const initialTemplate = dashboardView === "management" ? "all" : dashboardView;
+  const proxyIntakeRooms = await listManagerProxyIntakeRooms();
   return (
     <>
       {dashboardView === "management" ? (
-        <TicketDashboardAutoRefresh intervalMs={3000} />
+        <TicketDashboardAutoRefresh />
       ) : null}
-      <ManagerDefectDashboard rows={rows} initialTemplate={initialTemplate} key={initialTemplate} />
+      <ManagerDefectDashboard
+        rows={rows}
+        proxyIntakeRooms={proxyIntakeRooms}
+        initialTemplate={initialTemplate}
+        key={initialTemplate}
+      />
     </>
   );
 }

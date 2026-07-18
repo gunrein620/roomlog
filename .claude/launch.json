@@ -32,6 +32,22 @@
       "cwd": "apps/web",
       "port": 3200,
       "autoPort": false
+    },
+    {
+      "name": "api-local-4100",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PORT=4100", "pnpm", "dev:api"],
+      "cwd": ".",
+      "port": 4100,
+      "autoPort": false
+    },
+    {
+      "name": "web-local-3300",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["API_INTERNAL_URL=http://localhost:4100", "node", "scripts/next-with-root-env.mjs", "dev", "-p", "3300"],
+      "cwd": "apps/web",
+      "port": 3300,
+      "autoPort": false
     }
   ]
 }

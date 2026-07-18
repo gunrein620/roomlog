@@ -31,14 +31,30 @@ test("sums only manager unread general inquiry messages", () => {
 
 test("marks a thread read from a mounted client receipt instead of server rendering", () => {
   assert.match(detailPage, /getManagerThread\(id\)/);
-  assert.match(detailPage, /<ManagerThreadReadReceipt threadId=\{thread\.id\} \/>/);
+  assert.match(
+    detailPage,
+    /<ManagerThreadReadReceipt[\s\S]*threadId=\{thread\.id\}[\s\S]*\/>/,
+  );
   assert.doesNotMatch(detailPage, /markManagerThreadRead/);
   assert.match(readReceipt, /useEffect\(\(\) =>/);
   assert.match(readReceipt, /method: "POST"/);
-  assert.match(readReceipt, /\[threadId\]/);
+  assert.match(readReceipt, /\[threadId, ticketId\]/);
   assert.match(readReceipt, /window\.dispatchEvent/);
   assert.match(unreadSource, /window\.addEventListener\(MANAGER_MESSAGING_READ_EVENT/);
   assert.match(unreadSource, /window\.removeEventListener\(MANAGER_MESSAGING_READ_EVENT/);
+});
+
+test("marks a linked ticket read independently when its conversation opens", () => {
+  assert.match(
+    detailPage,
+    /ticketId=\{thread\.context === "defect" \? thread\.contextRef : undefined\}/,
+  );
+  assert.match(readReceipt, /ticketId\?: string/);
+  assert.match(
+    readReceipt,
+    /if \(ticketId\)[\s\S]*markManagerTicketRead\(ticketId\)/,
+  );
+  assert.match(readReceipt, /\[threadId, ticketId\]/);
 });
 
 test("refreshes the manager unread badge from realtime messaging activity", () => {

@@ -2,6 +2,7 @@ import type { RepairJob, Ticket, TicketStatus } from "@roomlog/types";
 
 export type DefectStatusFilter =
   | "all"
+  | "unread"
   | "waiting"
   | "in_progress"
   | "completed"
@@ -13,6 +14,7 @@ export type DefectDashboardRow = {
   repair?: RepairJob;
   buildingName?: string;
   attachmentUrls?: string[];
+  isManagerUnread?: boolean;
 };
 
 export type DefectDisplayStatus =
@@ -30,6 +32,7 @@ export type DefectDashboardFilters = {
 
 export const DEFECT_STATUS_FILTERS = [
   ["all", "전체"],
+  ["unread", "미확인"],
   ["waiting", "대기"],
   ["in_progress", "진행중"],
   ["completed", "완료"],
@@ -37,7 +40,7 @@ export const DEFECT_STATUS_FILTERS = [
   ["periodic", "정기점검"],
 ] as const;
 
-type TicketStatusGroup = Exclude<DefectStatusFilter, "all" | "periodic">;
+type TicketStatusGroup = Exclude<DefectStatusFilter, "all" | "unread" | "periodic">;
 
 export function ticketStatusGroup(status: TicketStatus): TicketStatusGroup {
   if (["received", "reviewing", "info_requested", "reopened"].includes(status)) {
@@ -69,6 +72,7 @@ export function defectDisplayStatus(row: DefectDashboardRow): DefectDisplayStatu
 export function countDefectStatuses(rows: readonly DefectDashboardRow[]) {
   const counts: Record<DefectStatusFilter, number> = {
     all: rows.length,
+    unread: 0,
     waiting: 0,
     in_progress: 0,
     completed: 0,
@@ -77,6 +81,7 @@ export function countDefectStatuses(rows: readonly DefectDashboardRow[]) {
   };
 
   for (const row of rows) {
+    if (row.isManagerUnread) counts.unread += 1;
     counts[ticketStatusGroup(row.ticket.status)] += 1;
   }
 
@@ -91,7 +96,10 @@ export function filterDefectRows(
 
   return rows.filter((row) => {
     const statusMatches =
-      filters.status === "all" || ticketStatusGroup(row.ticket.status) === filters.status;
+      filters.status === "all" ||
+      (filters.status === "unread"
+        ? row.isManagerUnread === true
+        : ticketStatusGroup(row.ticket.status) === filters.status);
     const workerMatches =
       filters.worker === "all" || row.repair?.vendorName === filters.worker;
     const buildingMatches =

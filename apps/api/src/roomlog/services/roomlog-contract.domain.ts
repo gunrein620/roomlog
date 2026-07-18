@@ -130,16 +130,20 @@ export class RoomlogContractDomain {
         (contract.valueSource === "confirmed" ? 10 : 0)
       );
     };
-    const current = this.tenantContracts(tenantId)
-      .filter(
-        (contract) =>
-          contract.roomId === roomId &&
-          (!contract.tenantId || contract.tenantId === tenantId)
-      )
-      .sort(
-        (left, right) =>
-          score(right) - score(left) || this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt)
-      )[0];
+    const candidates = this.tenantContracts(tenantId).filter(
+      (contract) =>
+        contract.roomId === roomId &&
+        (!contract.tenantId || contract.tenantId === tenantId)
+    );
+    // 해지된 계약을 현재 계약으로 내주지 않는다. 다만 lifecycle=expired는 해지와 기간 만료
+    // 둘 다에서 생기므로, 아직 그 방에 연결돼 있으면(=거주 중 자연 만료) 폴백으로 허용한다.
+    const stillLinked = this.store.tenantRooms[tenantId] === roomId;
+    const live = candidates.filter((contract) => contract.lifecycle !== "expired");
+    const pool = live.length > 0 ? live : stillLinked ? candidates : [];
+    const current = pool.sort(
+      (left, right) =>
+        score(right) - score(left) || this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt)
+    )[0];
 
     return current ? this.presentContract(current) : null;
   }
@@ -194,7 +198,11 @@ export class RoomlogContractDomain {
     }
 
     const room = this.findRoom(roomId);
-    const existing = this.tenantContracts(tenantId)[0];
+    // 종료된 계약에 새 계약서가 붙지 않도록 살아있는 계약을 먼저 고른다
+    // (해지 이력이 쌓이면 updatedAt 정렬만으로는 죽은 계약이 앞설 수 있다).
+    const myContracts = this.tenantContracts(tenantId);
+    const existing =
+      myContracts.find((contract) => contract.lifecycle !== "expired") ?? myContracts[0];
     const contract = existing ?? this.createContractRecord({
       room,
       tenantId,
@@ -359,6 +367,62 @@ export class RoomlogContractDomain {
     return this.presentContract(contract);
   }
 
+  /**
+   * 거래 계약 해지 → 세입자-호실 연결 해제. 계약 레코드는 지우지 않고 expired로만 전환한다
+   * (돈/이력 데이터 파괴 금지 — 청구·이력 소비자가 계속 참조할 수 있어야 한다).
+   */
+  disconnectAcceptedTradeContract(input: { tradeContractId: string; tenantId: string }): void {
+    const tradeContractId =
+      typeof input.tradeContractId === "string" ? input.tradeContractId.trim() : "";
+    const tenantId = typeof input.tenantId === "string" ? input.tenantId.trim() : "";
+    if (!tradeContractId) {
+      throw new BadRequestException("거래 계약 ID를 확인할 수 없습니다.");
+    }
+    if (!tenantId) {
+      throw new BadRequestException("거래 계약 임차인을 확인할 수 없습니다.");
+    }
+
+    const contractId = `ct_trade_${tradeContractId}`;
+    // 결정적 id(ct_trade_*)로 만들어진 계약 + 기존 활성 계약에 마커만 얹힌 계약 둘 다 커버.
+    const targets = this.store.contracts.filter(
+      (contract) =>
+        contract.tenantId === tenantId &&
+        (contract.id === contractId ||
+          this.tradeAcceptanceMarker(contract)?.tradeContractId === tradeContractId)
+    );
+
+    let changed = false;
+    let unlinkedRoomId: string | undefined;
+    for (const contract of targets) {
+      if (contract.lifecycle !== "expired") {
+        contract.lifecycle = "expired";
+        contract.updatedAt = now();
+        changed = true;
+      }
+      if (this.store.tenantRooms[tenantId] === contract.roomId) {
+        unlinkedRoomId = contract.roomId;
+        delete this.store.tenantRooms[tenantId];
+        changed = true;
+      }
+    }
+
+    // 해지 전부터 살던 다른 집이 있으면 그쪽으로 되돌린다 — 이 계약 하나 해지했다고
+    // 원래 집의 청구·이력 접근까지 잃으면 안 된다.
+    if (unlinkedRoomId) {
+      const fallback = this.store.contracts
+        .filter(
+          (contract) =>
+            contract.tenantId === tenantId &&
+            contract.roomId !== unlinkedRoomId &&
+            contract.lifecycle !== "expired"
+        )
+        .sort((left, right) => this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt))[0];
+      if (fallback) this.store.tenantRooms[tenantId] = fallback.roomId;
+    }
+
+    if (changed) this.persistStore();
+  }
+
   ensureTradeContractDraft(input: EnsureTradeContractDraftInput): Contract {
     const room = this.findRoom(input.roomId);
     if (room.landlordId !== input.landlordId) {
@@ -428,9 +492,12 @@ export class RoomlogContractDomain {
   }
 
   getManagerContractDashboard(managerId: string) {
-    const rows = this.managerContracts(managerId).map((contract) =>
+    const allRows = this.managerContracts(managerId).map((contract) =>
       this.buildManagerContractRow(managerId, contract)
     );
+    // 종료된 계약은 기본 뷰·할 일 카운트에서 뺀다 — 해지할 때마다 같은 호실에 죽은 행이
+    // 쌓이고 "확인 대기"를 영구히 차지하는 걸 막는다. (레코드 자체는 보존)
+    const rows = allRows.filter((row) => row.contract.lifecycle !== "expired");
     const managedRoomIds = new Set(
       this.store.rooms.filter((room) => room.landlordId === managerId).map((room) => room.id)
     );
@@ -443,7 +510,8 @@ export class RoomlogContractDomain {
         slaOverdue: rows.filter((row) => row.slaOverdue).length,
         expiringSoon: rows.filter((row) => row.daysToExpire <= 30).length,
         unregistered: Array.from(managedRoomIds).filter((roomId) => !contractedRoomIds.has(roomId)).length,
-        deletionRequests: rows.filter((row) => row.contract.deletion === "requested").length
+        // 삭제 요청은 종료된 계약 것도 관리인이 처리해야 하므로 전체를 센다.
+        deletionRequests: allRows.filter((row) => row.contract.deletion === "requested").length
       },
       rows
     };
@@ -1103,11 +1171,17 @@ export class RoomlogContractDomain {
     return this.getManagerContractDetail(managerId, contract.id);
   }
 
+  // 내 계약 + 내 방의 임차인 미연결 계약(관리인이 먼저 올린 초안)만.
+  // 같은 방이라도 다른 임차인 명의 계약은 제외 — 재계약 시 전 세입자 계약이 새 세입자에게 새면 안 된다.
   private tenantContracts(tenantId: string) {
     const roomId = this.store.tenantRooms[tenantId];
 
     return this.store.contracts
-      .filter((contract) => contract.tenantId === tenantId || contract.roomId === roomId)
+      .filter(
+        (contract) =>
+          contract.tenantId === tenantId ||
+          (contract.roomId === roomId && !contract.tenantId)
+      )
       .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt));
   }
 
@@ -1877,7 +1951,9 @@ export class RoomlogContractDomain {
     return this.contractDateKey(value, field);
   }
 
-  private contractDateKey(value: string, field: string) {
+  private contractDateKey(rawValue: string, field: string) {
+    // 저장된 계약 날짜가 ISO 전체 문자열(2026-03-01T00:00:00+09:00)인 경우가 있어 날짜부만 본다.
+    const value = rawValue.trim().slice(0, 10);
     if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u.test(value)) {
       throw new BadRequestException(`${field}은 YYYY-MM-DD 형식이어야 합니다.`);
     }

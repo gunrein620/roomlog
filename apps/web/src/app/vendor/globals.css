@@ -340,7 +340,22 @@ label {
   font-weight: 700;
 }
 
-input,
+input:not([type]),
+input:is(
+  [type="text"],
+  [type="search"],
+  [type="email"],
+  [type="url"],
+  [type="tel"],
+  [type="password"],
+  [type="file"],
+  [type="number"],
+  [type="date"],
+  [type="datetime-local"],
+  [type="month"],
+  [type="week"],
+  [type="time"]
+),
 textarea {
   width: 100%;
   border: 1px solid var(--border);
@@ -350,7 +365,22 @@ textarea {
   background: var(--paper);
 }
 
-input:disabled {
+input:not([type]):disabled,
+input:is(
+  [type="text"],
+  [type="search"],
+  [type="email"],
+  [type="url"],
+  [type="tel"],
+  [type="password"],
+  [type="file"],
+  [type="number"],
+  [type="date"],
+  [type="datetime-local"],
+  [type="month"],
+  [type="week"],
+  [type="time"]
+):disabled {
   color: var(--slate);
   background: var(--mist);
 }

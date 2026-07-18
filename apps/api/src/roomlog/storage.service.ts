@@ -1,4 +1,5 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { mkdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,10 +16,25 @@ export type StoredFile = {
   fileUrl: string;
 };
 
+export type PresignedUpload = {
+  uploadUrl: string;
+  key: string;
+  headers: Record<string, string>;
+  expiresAt: Date;
+  /** 저장 후 공개 접근 URL (videoUrl/fileUrl에 기록될 값). */
+  publicUrl: string;
+};
+
 export interface FileStorageAdapter {
   save(input: SaveStoredFileInput): Promise<StoredFile>;
   /** 저장된 파일 재조회 — AI 분석 등이 원본 바이트를 다시 읽을 때 사용. 없으면 null. */
   read(fileName: string): Promise<Buffer | null>;
+  /** presigned PUT 발급. 미지원 어댑터(local)는 정의하지 않는다. */
+  presignUpload?(input: { key: string; mimeType: string; expiresInSeconds: number }): Promise<PresignedUpload>;
+  /** 업로드 완료 검증용 HEAD. 객체가 없으면 null. */
+  headObject?(key: string): Promise<{ sizeBytes: number; mimeType: string | null } | null>;
+  /** 이미 저장된 key의 공개 URL. complete 요청은 publicUrl을 신뢰하지 않고 어댑터에서 계산한다. */
+  publicUrl?(key: string): string;
 }
 
 function safeKeyPrefix(value: string | undefined) {
@@ -88,8 +104,68 @@ export class S3StorageAdapter implements FileStorageAdapter {
 
     return {
       fileName: key,
-      fileUrl: `${this.publicBaseUrl}/${key}`
+      fileUrl: this.publicUrl(key)
     };
+  }
+
+  async presignUpload(input: {
+    key: string;
+    mimeType: string;
+    expiresInSeconds: number;
+  }): Promise<PresignedUpload> {
+    const expiresAt = new Date(Date.now() + input.expiresInSeconds * 1000);
+    const uploadUrl = await getSignedUrl(
+      this.client,
+      new PutObjectCommand({
+        Bucket: this.bucketName,
+        ContentType: input.mimeType,
+        Key: input.key
+      }),
+      { expiresIn: input.expiresInSeconds }
+    );
+
+    return {
+      uploadUrl,
+      key: input.key,
+      headers: { "Content-Type": input.mimeType },
+      expiresAt,
+      publicUrl: this.publicUrl(input.key)
+    };
+  }
+
+  async headObject(key: string): Promise<{ sizeBytes: number; mimeType: string | null } | null> {
+    try {
+      const result = await this.client.send(
+        new HeadObjectCommand({
+          Bucket: this.bucketName,
+          Key: key
+        })
+      );
+      if (typeof result.ContentLength !== "number" || !Number.isFinite(result.ContentLength)) {
+        return null;
+      }
+      return {
+        sizeBytes: result.ContentLength,
+        mimeType: result.ContentType ?? null
+      };
+    } catch (error) {
+      const response = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      // ListBucket 권한이 없으면 존재하지 않는 key도 S3가 404 대신 403으로 응답한다.
+      if (
+        response.$metadata?.httpStatusCode === 404 ||
+        response.$metadata?.httpStatusCode === 403 ||
+        response.name === "NotFound" ||
+        response.name === "NoSuchKey" ||
+        response.name === "AccessDenied"
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  publicUrl(key: string): string {
+    return `${this.publicBaseUrl}/${key}`;
   }
 
   async read(fileName: string): Promise<Buffer | null> {

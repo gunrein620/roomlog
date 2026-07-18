@@ -78,6 +78,7 @@ export interface TenantVendorWorkflowAuthority {
     id: string;
     vendorId: string;
     status: RepairStatus;
+    tenantInitiated: boolean;
     title: string;
     description: string;
     costBearer?: RepairCostBearer;

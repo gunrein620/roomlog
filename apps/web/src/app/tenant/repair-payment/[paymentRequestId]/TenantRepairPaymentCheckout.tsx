@@ -36,6 +36,8 @@ type TenantRepairPaymentCheckoutProps = {
   paymentRequestId: string;
   complaintId: string;
   callbackMarker?: string;
+  embedded?: boolean;
+  onClose?: () => void;
 };
 
 type PaymentMethod = "TOSS" | "DIRECT";
@@ -102,6 +104,8 @@ export function TenantRepairPaymentCheckout({
   paymentRequestId,
   complaintId,
   callbackMarker,
+  embedded = false,
+  onClose,
 }: TenantRepairPaymentCheckoutProps) {
   const lifecycleRef = useRef<RepairPaymentLifecycle | null>(null);
   const lifecycle = lifecycleRef.current
@@ -279,7 +283,11 @@ export function TenantRepairPaymentCheckout({
       return;
     }
 
-    const returnPath = `${window.location.pathname}?complaintId=${encodeURIComponent(complaintId)}`;
+    const returnUrl = new URL(window.location.href);
+    returnUrl.searchParams.set("complaintId", complaintId);
+    returnUrl.searchParams.delete("repairPayment");
+    returnUrl.searchParams.delete("repairPaymentOrderId");
+    const returnPath = `${window.location.pathname}${returnUrl.search}${window.location.hash}`;
     const checkoutPath = latestRepairPaymentOrder && recovery?.canRetry
       ? `/api/tenant/repair-payment-orders/${encodeURIComponent(latestRepairPaymentOrder.orderId)}/retry`
       : `/api/tenant/vendor-payment-requests/${encodeURIComponent(payment.id)}/toss-orders`;
@@ -381,7 +389,7 @@ export function TenantRepairPaymentCheckout({
     ));
 
   return (
-    <div className={styles.screen}>
+    <div className={`${styles.screen} ${embedded ? styles.embedded : ""}`}>
       <Script
         src={TOSS_PAYMENTS_SDK_URL}
         strategy="afterInteractive"
@@ -393,7 +401,11 @@ export function TenantRepairPaymentCheckout({
       />
 
       <header className={styles.header}>
-        <a href={returnHref} aria-label="수리 상세로 돌아가기">←</a>
+        {embedded && onClose ? (
+          <button type="button" onClick={onClose} aria-label="수리비 결제 닫기">←</button>
+        ) : (
+          <a href={returnHref} aria-label="수리 상세로 돌아가기">←</a>
+        )}
         <div>
           <span>협력업체 수리</span>
           <h1>수리비 결제</h1>
@@ -533,6 +545,10 @@ export function TenantRepairPaymentCheckout({
             onClick={() => void updateStoredOrder("cancel")}
           >
             주문 취소
+          </button>
+        ) : embedded && onClose ? (
+          <button type="button" className={styles.secondaryButton} onClick={onClose}>
+            수리 상세
           </button>
         ) : (
           <a className={styles.secondaryButton} href={returnHref}>수리 상세</a>

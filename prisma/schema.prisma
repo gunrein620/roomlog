@@ -59,6 +59,7 @@ enum ComplaintSourceChannel {
   REALTIME_CHAT
   VOICE_CHAT
   CALLBOT
+  MANAGER_PROXY
 }
 
 enum ComplaintStatus {
@@ -1614,6 +1615,12 @@ model Ticket {
   priority           Int
   status             TicketStatus
   responsibilityHint String
+  responsibilityDecidedById String?
+  responsibilityDecidedAt DateTime?
+  responsibilityDecisionNote String?
+  directHandlingStartedAt DateTime?
+  directHandlingCompletedAt DateTime?
+  directHandlingNote String?
   aiSummary          String
   dueAt              DateTime?
   createdAt          DateTime               @default(now())
@@ -1692,6 +1699,7 @@ model RepairRequest {
   ticketId             String
   vendorId             String
   status               RepairStatus
+  tenantInitiated      Boolean           @default(false)
   title                String
   description          String
   estimateAmount       Int?

@@ -3,20 +3,28 @@ import { redirect } from "next/navigation";
 import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
 import { getVendorWorkflowJob, nextVendorJobRoute } from "@/lib/vendor-workflow-api";
+import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
 import {
   AttachmentGallery,
   Body,
   DemoReadOnlyNotice,
   Footer,
+  InlineNotice,
   LinkButton,
   ScreenHeader,
+  TenantAvailableTimes,
+  VendorJobChat,
   WorkflowEstimateSummary,
   WorkflowJobSummary,
   mutedStyle,
 } from "../_components";
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
-  const { id } = await searchParams;
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string; sent?: string; error?: string }>;
+}) {
+  const { id, sent, error } = await searchParams;
   const { data: job, source, accessDenied } = await getVendorWorkflowJob(id);
   if (accessDenied) redirect(ROUTES["V-JOB-E0"]);
   if (!job) redirect(ROUTES["V-JOB-00"]);
@@ -27,7 +35,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ i
       <ScreenHeader title="수리 요청 상세" backTo={ROUTES["V-JOB-00"]} />
       <Body>
         {source === "DEMO" ? <DemoReadOnlyNotice /> : null}
+        {sent ? <InlineNotice tone="success">메시지를 보냈습니다.</InlineNotice> : null}
+        {error ? <InlineNotice tone="danger">{error}</InlineNotice> : null}
         <WorkflowJobSummary job={job} />
+        <TenantAvailableTimes value={job.tenantAvailableTimes} />
         <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           <div style={{ fontWeight: 800 }}>전달된 자료</div>
           <AttachmentGallery
@@ -43,6 +54,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ i
             표시하지 않습니다.
           </p>
         </Card>
+        {/* 세입자·관리자 새 메시지를 화면 새로고침 없이 반영 (입력 중엔 갱신 보류) */}
+        <MessageAutoRefresh intervalMs={8000} />
+        <VendorJobChat job={job} readOnly={source === "DEMO"} />
         <WorkflowEstimateSummary job={job} />
       </Body>
       <Footer>
