@@ -252,6 +252,7 @@ const notificationItems = [
 
 // 하드코딩 데모 지표/추천/체크리스트 상수들 제거 — 데모 컨셉 정리(4d1010a8 후속)
 
+const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 
 const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   source: "default",
@@ -277,6 +278,7 @@ const MAP_QUERY_TYPE_LABELS: Record<MapQueryType, string> = {
 };
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
+const mapTopbarInputValueForArea = (area: string) => area === CURRENT_LOCATION_AREA_LABEL ? "" : area;
 
 let naverMapServiceLoadPromise: Promise<boolean> | null = null;
 
@@ -1504,13 +1506,13 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
         setMapSearchContext({
           source: "user-location",
-          label: "내 위치 주변",
+          label: CURRENT_LOCATION_AREA_LABEL,
           center,
           radiusM: 3000
         });
         setMapSearchMatchedListingNos([]);
         setHasResolvedMapContext(true);
-        setSelectedArea("내 위치 주변");
+        setSelectedArea(CURRENT_LOCATION_AREA_LABEL);
         setActiveMapResultTab("rooms");
         setMapLocationStatus("granted");
       },
@@ -1538,7 +1540,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).
   useEffect(() => {
     if (!isSearchSheetOpen && mapQueryStatus !== "resolving" && (hasResolvedMapContext || mapQueryStatus === "fallback")) {
-      setMapTopbarSearchValue(selectedArea);
+      setMapTopbarSearchValue(mapTopbarInputValueForArea(selectedArea));
     }
   }, [hasResolvedMapContext, isSearchSheetOpen, mapQueryStatus, selectedArea]);
 
@@ -2137,7 +2139,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const submitMapTopbarSearch = async () => {
     const keyword = mapTopbarSearchValue.trim();
     if (!keyword) {
-      setMapTopbarSearchValue(selectedArea);
+      setMapTopbarSearchValue(mapTopbarInputValueForArea(selectedArea));
       return;
     }
 
