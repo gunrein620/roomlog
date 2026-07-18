@@ -24,13 +24,6 @@ import {
 import { TicketChatPanel } from "./TicketChatPanel";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
-import type { TicketLane } from "./ticket-lane";
-import {
-  applyTicketLaneOverrides,
-  reconcileTicketLaneOverrides,
-  ticketStatusForLane,
-  type TicketLaneOverride,
-} from "./ticket-lane-local-state";
 
 const METRICS = [
   { id: "total", label: "전체 접수", icon: ListChecks },
@@ -79,13 +72,11 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
   const [month, setMonth] = useState(() => latestComplaintMonth(rows));
   const [pickerYear, setPickerYear] = useState(() => monthParts(latestComplaintMonth(rows)).year);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
-  const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
-  const effectiveRows = useMemo(
-    () => applyTicketLaneOverrides(rows, ticketLaneOverrides),
-    [rows, ticketLaneOverrides],
-  );
+  const effectiveRows = rows;
+  // 열린 패널이 가리키는 행은 항상 최신 rows에서 되찾는다 — 새로고침돼도 선택이 살아 있다.
+  const selectedRow = effectiveRows.find((row) => row.ticket.id === selectedTicketId) ?? null;
   const dashboard = useMemo(() => buildComplaintDashboard(effectiveRows, month), [effectiveRows, month]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
   const donutSegments = dashboard.categories.reduce<string[]>((segments, category, index) => {
@@ -114,24 +105,11 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     };
   }, [calendarOpen]);
 
-  useEffect(() => {
-    setTicketLaneOverrides((current) => reconcileTicketLaneOverrides(current, rows));
-  }, [rows]);
-
   function changeMonth(amount: number) {
     const nextMonth = moveMonth(month, amount);
     setMonth(nextMonth);
     setPickerYear(monthParts(nextMonth).year);
     setCalendarOpen(false);
-  }
-
-  function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
-    setTicketLaneOverrides((current) => ({ ...current, [ticketId]: { lane, updatedAt } }));
-    setSelectedRow((current) =>
-      current?.ticket.id === ticketId
-        ? { ...current, ticket: { ...current.ticket, status: ticketStatusForLane(lane) } }
-        : current,
-    );
   }
 
   return (
@@ -304,7 +282,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
                     <button
                       type="button"
                       className="manager-complaint-dashboard__row-link"
-                      onClick={() => setSelectedRow(row)}
+                      onClick={() => setSelectedTicketId(row.ticket.id)}
                     >
                       {row.ticket.title}
                     </button>
@@ -327,8 +305,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
 
       <TicketChatPanel
         row={selectedRow}
-        onClose={() => setSelectedRow(null)}
-        onTicketLaneChanged={applyConfirmedTicketLane}
+        onClose={() => setSelectedTicketId(null)}
       />
     </section>
   );

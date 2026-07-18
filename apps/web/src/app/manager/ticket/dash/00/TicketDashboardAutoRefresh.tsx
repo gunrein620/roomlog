@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { shouldRefreshTicketDashboard } from "./ticket-dashboard-activity";
 import { createTicketDashboardRefreshGate } from "./ticket-dashboard-refresh-gate";
-import { isLocalTicketLaneMutationActivity } from "./ticket-lane-mutation-activity";
 
 function hasFocusedControl(): boolean {
   const activeElement = document.activeElement;
@@ -31,7 +30,6 @@ export function TicketDashboardAutoRefresh() {
     };
     const socket = getRealtimeSocket();
     const onActivity = (payload: unknown) => {
-      if (isLocalTicketLaneMutationActivity(payload)) return;
       if (!shouldRefreshTicketDashboard(payload)) return;
       if (!refreshGateRef.current.request(canRefreshDashboard())) return;
       refreshDashboard();

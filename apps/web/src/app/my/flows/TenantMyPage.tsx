@@ -816,11 +816,17 @@ export default function TenantMyPage({
         void loadRepairRequests();
       }
     };
+    // 관리인 레인 변경은 목록 배지에도 반영돼야 한다.
+    const reloadRepairRequests = () => {
+      void loadRepairRequests();
+    };
     const socket = getRealtimeSocket();
     socket.on("roomlog:activity", refreshRepairRequests);
+    socket.on("roomlog:ticket-lane", reloadRepairRequests);
 
     return () => {
       socket.off("roomlog:activity", refreshRepairRequests);
+      socket.off("roomlog:ticket-lane", reloadRepairRequests);
     };
   }, [loadRepairRequests]);
   const [billingCard, setBillingCard] = useState<TenantBillingCardModel>(EMPTY_BILLING_CARD);
@@ -1226,24 +1232,22 @@ export default function TenantMyPage({
     }
   };
 
-  // 상세 시트가 열려 있는 동안 업체·관리자 새 메시지를 실시간 반영 (2D broadcast 수신).
+  // 상세 시트가 열려 있는 동안 업체·관리자 새 메시지를 실시간 반영.
+  // 관리자 답변은 roomlog:ticket-message로 오고, 레인 변경은 roomlog:ticket-lane으로 온다.
+  // 세입자 상세 조회는 인메모리 스토어를 읽으므로 여기서는 다시 읽어도 밀리지 않는다.
   useEffect(() => {
     const complaintId = selectedRepairRequest?.id;
     if (!complaintId) return;
-    const onActivity = (payload: unknown) => {
-      if (
-        payload &&
-        typeof payload === "object" &&
-        "kind" in payload &&
-        (payload as { kind?: string }).kind === "ticket"
-      ) {
-        void refreshComplaintDetail(complaintId);
-      }
+
+    const onTicketEvent = () => {
+      void refreshComplaintDetail(complaintId);
     };
     const socket = getRealtimeSocket();
-    socket.on("roomlog:activity", onActivity);
+    socket.on("roomlog:ticket-message", onTicketEvent);
+    socket.on("roomlog:ticket-lane", onTicketEvent);
     return () => {
-      socket.off("roomlog:activity", onActivity);
+      socket.off("roomlog:ticket-message", onTicketEvent);
+      socket.off("roomlog:ticket-lane", onTicketEvent);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepairRequest?.id]);

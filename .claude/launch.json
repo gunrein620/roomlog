@@ -44,7 +44,7 @@
     {
       "name": "web-local-3300",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["API_INTERNAL_URL=http://localhost:4100", "node", "scripts/next-with-root-env.mjs", "dev", "-p", "3300"],
+      "runtimeArgs": ["API_INTERNAL_URL=http://localhost:4100", "NEXT_PUBLIC_SOCKET_URL=http://localhost:4100", "node", "scripts/next-with-root-env.mjs", "dev", "-p", "3300"],
       "cwd": "apps/web",
       "port": 3300,
       "autoPort": false

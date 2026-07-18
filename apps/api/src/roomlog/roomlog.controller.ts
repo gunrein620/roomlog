@@ -806,8 +806,11 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     const result = this.roomlogService.addTenantComplaintMessage(user.id, complaintId, body);
-    // 관리인 대화 패널이 세입자 메시지를 즉시 받아본다.
-    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    // 메시지 본문을 그대로 실어 보낸다 — 받는 쪽이 다시 조회하지 않아도 되도록.
+    this.realtime.broadcast("roomlog:ticket-message", {
+      ticketId: result.ticket.id,
+      message: result.message
+    });
 
     return result;
   }
@@ -2211,8 +2214,11 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     const result = this.roomlogService.sendManagerTicketReply(user.id, ticketId, body);
-    // 세입자 상세 시트·관리인 대화 패널이 같은 신호로 스레드를 다시 읽는다.
-    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    // 메시지 본문을 그대로 실어 보낸다 — 세입자 상세 시트가 다시 조회하지 않아도 되도록.
+    this.realtime.broadcast("roomlog:ticket-message", {
+      ticketId,
+      message: result.message
+    });
 
     return result;
   }
@@ -2226,12 +2232,10 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     const result = this.roomlogService.setManagerTicketLane(user.id, ticketId, body);
-    const clientRequestId = body.clientRequestId?.trim().slice(0, 100);
-    this.realtime.broadcast("roomlog:activity", {
-      kind: "ticket",
-      action: "lane_changed",
+    // 바꾼 본인 화면은 응답으로 이미 갱신된다. 신호는 다른 화면(세입자 상세)만 보면 된다.
+    this.realtime.broadcast("roomlog:ticket-lane", {
       ticketId,
-      ...(clientRequestId ? { clientRequestId } : {}),
+      status: result.ticket.status
     });
 
     return result;

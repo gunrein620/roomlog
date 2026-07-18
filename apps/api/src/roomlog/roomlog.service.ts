@@ -6080,6 +6080,12 @@ export class RoomlogService implements OnModuleDestroy {
 
   private async currentManagerReadStore() {
     if (!this.storeProjector?.load) return this.store;
+
+    // projectStore()는 Postgres 반영을 큐에 걸고 바로 리턴한다. 그 직후 여기서 DB를 읽으면
+    // 방금 쓴 메시지·상태가 아직 없어 화면이 "한 박자 밀린다"(관리인 대화·레인 토글 증상).
+    // 밀린 쓰기를 먼저 흘려보내고 읽는다. 실패해도 읽기는 막지 않는다 — 그건 쓰기 경로의 책임.
+    await this.pendingPersistence.catch(() => undefined);
+
     return (await this.storeProjector.load()) ?? createEmptyStore();
   }
 
