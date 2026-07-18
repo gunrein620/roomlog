@@ -5634,6 +5634,7 @@ p {
 
 .owner-draft-status {
   display: block;
+  width: fit-content;
   margin: 10px 0 0;
   padding: 8px 10px;
   border-radius: 10px;
@@ -5988,6 +5989,16 @@ p {
 @media (max-width: 900px) {
   .owner-lanes {
     grid-template-columns: 1fr;
+  }
+}
+
+/* 두 레인이 나란히 있는 구간(>900px)에서만 첨부 레인을 고정 — 96px는 이 화면(.owner-screen)에서
+   이미 쓰는 고정 헤더 여유값(owner-dashboard-sidebar sticky top, owner-hero 등 scroll-margin-top과 동일). */
+@media (min-width: 901px) {
+  .owner-lane-attach {
+    position: sticky;
+    top: 96px;
+    align-self: start;
   }
 }
 
@@ -6615,19 +6626,21 @@ p {
   background: var(--blue-soft);
 }
 
-/* 첨부 레인이 나머지 폭을 전부 가져가면서 예전보다 넓어졌다 — 190px를 기본값으로 두고,
-   사진(최중요·최빈 행동)은 더 크게, 드롭 불가인 3D는 더 컴팩트하게 아래에서 각각 되돌린다. */
+/* 첨부 레인 sticky(96px 오프셋)가 뷰포트를 넘지 않도록 7라운드에서 전체적으로 낮췄다
+   (사진 240→200 · 3D 140→120 · 영상 190→150) — 기본값을 영상 높이(150px)로 두고
+   사진(최중요·최빈 행동)은 더 크게, 드롭 불가인 3D는 더 컴팩트하게 아래에서 되돌린다. */
 .owner-lane-attach .summary-media-card.is-empty {
-  height: 190px;
+  height: 150px;
 }
 
 .owner-lane-attach .summary-media-photos.is-empty {
-  height: 240px;
+  height: 200px;
 }
 
 .owner-lane-attach .summary-media-3d.is-empty {
-  height: 140px;
-  /* 3D는 드롭을 지원하지 않는다 — 점선(드롭 가능 신호)을 solid로 되돌려 거짓 신호를 없앤다 */
+  height: 120px;
+  /* 3D 도면 박스는 사진/영상처럼 일반 드롭을 지원하지 않는다(도면 JSON 숨은 드롭만 지원, 시각 피드백 없음) —
+     점선(드롭 가능 신호)을 solid로 되돌려 거짓 신호를 없앤다 */
   border-style: solid;
 }
 
@@ -6688,11 +6701,17 @@ p {
   font-weight: 800;
 }
 
-/* label(사진 드롭 트리거)·a(3D 빈 상태 링크)로도 쓰인다 — 링크/라벨 기본 스타일(밑줄·포인터 아닌 커서)을 지운다 */
-.summary-media-empty,
-.summary-media-loading {
-  display: grid;
-  place-items: center;
+/* label(사진 드롭 트리거)·a(3D 빈 상태 링크)로도 쓰인다 — 링크/라벨 기본 스타일(밑줄·포인터 아닌 커서)을 지운다.
+   grid+place-items는 카드가 콘텐츠보다 훨씬 클 때(사진 240px 등) 아이콘·문구 블록이 위쪽에 붙어버려서
+   flex 세로열로 바꿔 아이콘+문구를 한 덩어리로 카드 정중앙에 놓는다.
+   .summary-media-card를 붙여 스코프 — 사진 쪽 빈 상태 트리거가 <label>이라 .owner-form label(class+element,
+   특이도 0,0,1,1)에 밀려 grid로 되돌아가며 아이콘·문구 간격이 100px 가까이 벌어지던 버그의 원인이었다. */
+.summary-media-card .summary-media-empty,
+.summary-media-card .summary-media-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   width: 100%;
   height: 100%;
@@ -6790,18 +6809,21 @@ p {
   font-weight: 900;
 }
 
-/* 영상 패널 빈 상태의 보조 카피(zip 권장·소요시간 등) — 주 카피보다 한 단 작게 */
+/* 영상 패널 빈 상태의 보조 카피(zip 권장·소요시간 등) — 주 카피보다 한 단 작게.
+   var(--subtle)은 대비가 낮아 거의 안 읽혀서 var(--muted)로 — 다른 보조 카피들과 같은 톤 */
 .summary-media-hint {
-  color: var(--subtle);
+  color: var(--muted);
   font-size: 0.68rem;
   font-weight: 600;
 }
 
 /* 도면 JSON 업로드 — 개발자용 기능이라 버튼 줄에서 빼고 작은 텍스트 링크로 강등 */
+/* 3D 도면 버튼 바로 아래, 우측 정렬 — 개발자용 기능이라 카드 폭을 다 안 쓰고 구석에 자리잡는다 */
 .owner-form .summary-media-json-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  justify-self: end;
   width: fit-content;
   margin-top: 2px;
   color: var(--muted);
@@ -6885,9 +6907,16 @@ p {
    오른쪽 "사진·3D 자료"(.form-heading h3, 1.05rem)보다 뚜렷하게 크게 잡아 위계를 드러낸다. */
 .owner-form-title {
   font-family: "Gowun Batang", serif;
-  font-size: 1.4rem;
+  font-size: 1.6rem;
   font-weight: 600;
   color: var(--blue);
+}
+
+.owner-form-subtitle {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .form-heading > strong {
@@ -7090,10 +7119,12 @@ p {
 
 /* 필드 묶음 캡션 — 그룹 사이 여백으로 의미 단위를 나눈다 */
 /* 소제목급으로 승격 — 헤어라인(border-top)으로 그룹 사이를 끊는다. 첫 캡션은 카드 헤딩
-   바로 아래라 구분선·여백 없이 시작한다. */
+   바로 아래라 구분선·여백 없이 시작한다. 여백은 20px→10px로 한 단계 축소(7라운드,
+   첨부 레인 sticky 오버플로 해소용 — 첨부 레인에 캡션 2개가 늘어난 만큼 폼 레인도 같이 낮춰
+   두 레인의 세로 리듬을 맞춘다). */
 .owner-group-caption {
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
   font-size: 0.85rem;
   font-weight: 800;
@@ -7102,6 +7133,13 @@ p {
 }
 
 .owner-group-caption:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* 첨부 레인의 첫 캡션(사진)은 form-heading 다음이라 :first-child가 안 걸린다 — 명시적으로 재사용 */
+.owner-group-caption--first {
   margin-top: 0;
   padding-top: 0;
   border-top: 0;

@@ -6,7 +6,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Box, Braces, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
+import { Box, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
 import type { PlacedFurniture, WheretoputWall3D } from "@/app/floor-plan-3d/room-model/types";
@@ -441,6 +441,18 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     }).catch(() => {
       setOwnerToast("도면 JSON을 읽지 못했습니다. 파일 내용을 확인해 주세요.");
     });
+  };
+  // 도면 JSON 드롭 — 가시 UI 없는 개발자 전용 숨은 기능이라 dragover에서도 시각 피드백을 넣지 않는다
+  // (무신호가 의도). preventDefault만 해서 drop이 실제로 발생하게 한다.
+  const handleFloorPlanJsonDragOver = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+  };
+  const handleFloorPlanJsonDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    const file = Array.from(event.dataTransfer.files ?? []).find(
+      (candidate) => candidate.type === "application/json" || /\.json$/i.test(candidate.name)
+    );
+    handleFloorPlanJsonUpload(file);
   };
   // 주소 지오코딩 결과 — 등록 페이로드의 lat/lng로 실린다(실패/미활성 시 null).
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -910,11 +922,11 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
               </label>
               <label className="owner-w-md">
-                건물명
+                건물명 (선택)
                 <input
                   value={ownerForm.buildingName}
                   onChange={(event) => updateOwnerForm("buildingName", event.target.value)}
-                  placeholder="예: 방배 루미에르 (선택)"
+                  placeholder="예: 방배 루미에르"
                 />
               </label>
 
@@ -930,7 +942,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 </div>
               </label>
               <label className="owner-w-md">
-                세부주소
+                세부주소 (선택)
                 <input
                   value={ownerForm.detailAddress}
                   onChange={(event) => updateOwnerForm("detailAddress", event.target.value)}
@@ -957,7 +969,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                   </div>
                 </label>
                 <label>
-                  층수
+                  층수 (선택)
                   <input value={ownerForm.floor} onChange={(event) => updateOwnerForm("floor", event.target.value)} placeholder="예: 4층 / 16층" />
                 </label>
               </div>
@@ -1011,14 +1023,14 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 </div>
               )}
               <label className="owner-w-sm">
-                관리비
+                관리비 (선택)
                 <div className="owner-input-suffix">
                   <input inputMode="numeric" value={ownerForm.maintenance} onChange={(event) => updateOwnerForm("maintenance", event.target.value)} placeholder="예: 5" />
                   <span aria-hidden="true">만원</span>
                 </div>
               </label>
               <label className="owner-w-sm">
-                입주가능일
+                입주가능일 (선택)
                 {/* QA: 자유 텍스트 대신 달력에서 선택 — 기존 초안의 비날짜 값("즉시" 등)은 빈 값으로 보이지만 지우지 않는다 */}
                 <input
                   type="date"
@@ -1056,6 +1068,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               </div>
             </div>
 
+            {/* 폼 레인의 owner-group-caption을 재사용 — 첫 캡션(사진)은 :first-child가 아니라서
+                (form-heading이 먼저 온다) --first modifier로 border/margin을 따로 리셋한다. */}
+            <span className="owner-group-caption owner-group-caption--first">사진</span>
             {/* 사진 패널 — 빈 상태는 패널 자체가 클릭+드롭 액션존(label이 hidden input을 감싼다).
                 사진이 있으면 미리보기(prev/next/count)+썸네일 그리드로 바뀌고, 이때만 "사진 추가" 버튼이 뜬다.
                 드롭은 상태와 무관하게 항상 동작(있어도 병합) — 핸들러가 패널 자체에 붙어 있다. */}
@@ -1108,15 +1123,6 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 )}
               </figure>
 
-              {/* 사진이 있을 때만 — 패널이 이미 빈 상태의 업로드 버튼 역할을 하므로 중복 노출하지 않는다 */}
-              {photoCount > 0 ? (
-                <label className="summary-media-btn">
-                  <Camera size={16} strokeWidth={2.2} aria-hidden="true" />
-                  {`사진 추가 (${photoCount}장)`}
-                  <input type="file" multiple accept="image/*" aria-label="사진 업로드" onChange={handlePhotoInputChange} />
-                </label>
-              ) : null}
-
               {photoPreviewUrls.length > 0 ? (
                 <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
                   {photoPreviewUrls.map((url, index) => (
@@ -1132,14 +1138,29 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                   ))}
                 </div>
               ) : null}
+
+              {/* 사진이 있을 때만, 목록 아래에서 — 패널이 이미 빈 상태의 업로드 버튼 역할을 하므로 중복 노출하지 않는다 */}
+              {photoCount > 0 ? (
+                <label className="summary-media-btn">
+                  <Camera size={16} strokeWidth={2.2} aria-hidden="true" />
+                  {`사진 추가 (${photoCount}장)`}
+                  <input type="file" multiple accept="image/*" aria-label="사진 업로드" onChange={handlePhotoInputChange} />
+                </label>
+              ) : null}
             </div>
 
-            {/* 3D 패널 — 드롭 불가라 점선 대신 solid 보더(정직한 기호). 빈 상태는 패널 클릭 = "3D 도면 만들기"와
-                동일 동작(새 탭). 도면이 있으면 실제 오빗 컨트롤 프리뷰라 링크로 감싸지 않는다(드래그=카메라 조작). */}
+            <span className="owner-group-caption">3D 도면</span>
+            {/* 3D 패널 — 박스 단일 진입. 드롭 불가(정확히는 도면 JSON 숨은 드롭만 지원)라 solid 보더 유지,
+                dragover 시각 피드백도 일부러 안 넣는다(개발자 전용 숨은 기능, 무신호가 의도).
+                빈 상태는 박스 클릭 자체가 "3D 도면 만들기"(새 탭) — 아래 버튼 없음.
+                도면 있는 상태는 오빗 컨트롤 프리뷰라 박스를 링크로 못 감싸서(드래그=카메라 조작),
+                박스 아래 작은 텍스트 링크 "다시 열기"로 에디터 재진입 경로만 남긴다. */}
             <div className="summary-media-col">
               <div
                 className={`summary-media-card summary-media-3d${floorPlan3D ? "" : " is-empty"}`}
                 aria-label="3D 도면 미리보기"
+                onDragOver={handleFloorPlanJsonDragOver}
+                onDrop={handleFloorPlanJsonDrop}
               >
                 {floorPlan3D ? (
                   <FloorPlan3DPreview
@@ -1166,39 +1187,28 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                     onClick={() => setRegistrationStatus("작성 중")}
                   >
                     <Box size={22} aria-hidden="true" />
-                    <span>3D 도면을 만들면 여기에서 돌려볼 수 있어요</span>
+                    <span>눌러서 3D 도면을 만들어요 ↗</span>
                   </a>
                 )}
               </div>
 
-              {/* 패널 아래 — 도면 만들기(에디터로 이동) 버튼 + 그 아래 작은 텍스트 링크(도면 JSON 업로드, 개발자용) */}
-              <div className="summary-media-actions">
+              {/* floorPlan3D 기준(has3DRoom이 아니라) — 박스가 실제로 프리뷰를 그리고 있을 때만 재진입 링크를 보여줘야
+                  "복원 시 has3DRoom은 true인데 스냅샷이 없어 박스는 빈 상태"인 경우 링크·빈 상태 안내가 동시에 뜨는 걸 막는다. */}
+              {floorPlan3D ? (
                 <a
-                  className="summary-media-btn"
+                  className="summary-media-json-link"
                   href="/floor-plan-3d"
                   target="_blank"
                   rel="noopener"
                   onClick={() => setRegistrationStatus("작성 중")}
                 >
-                  <Box size={16} strokeWidth={2.2} aria-hidden="true" />
-                  {has3DRoom ? "다시 열기 ↗" : "3D 도면 만들기 ↗"}
+                  <Box size={13} strokeWidth={2.2} aria-hidden="true" />
+                  다시 열기 ↗
                 </a>
-              </div>
-              <label className="summary-media-json-link">
-                <Braces size={13} strokeWidth={2.2} aria-hidden="true" />
-                도면 JSON 업로드
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  aria-label="도면 JSON 업로드"
-                  onChange={(event) => {
-                    handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
-                    event.currentTarget.value = "";
-                  }}
-                />
-              </label>
+              ) : null}
             </div>
 
+            <span className="owner-group-caption">투어 영상</span>
             {/* 영상/스플랫 패널 — upload-tile 문법을 버리고 사진 패널과 같은 카드 문법(클릭+드롭)으로 통일.
                 단일 파일이라 드롭 시 첫 유효 파일만 받는다(isAcceptableTourFile). */}
             <div className="summary-media-col" id="owner-tour-intake">

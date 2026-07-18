@@ -1208,8 +1208,7 @@ test("shows a landlord my page with property registration fields and media actio
     "층수",
     "사진·3D 자료",
     "사진 업로드",
-    "3D 도면 만들기",
-    "도면 JSON 업로드",
+    "눌러서 3D 도면을 만들어요",
     "3D 투어용 영상·캡처 파일을 끌어다 놓거나 눌러서 올려요",
     "등록 요약",
     "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
@@ -1229,6 +1228,10 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(pageSource, /submitOwnerListing/);
   assert.match(pageSource, /id="owner-registration-form"/);
   assert.doesNotMatch(pageSource, /업로드 버튼 대기|전용 업로드 영역|자료 대기/);
+  // 도면 JSON 업로드는 7라운드에서 가시 UI를 없애고 3D 도면 박스에 숨은 드롭으로 옮겼다(개발자 전용,
+  // 시각 피드백 없음) — "도면 JSON 업로드" 라벨 대신 실제 처리 함수가 여전히 배선돼 있는지로 검증한다.
+  assert.match(pageSource, /handleFloorPlanJsonUpload/);
+  assert.match(pageSource, /handleFloorPlanJsonDrop/);
   assert.match(cssSource, /\.owner-preview-card/);
   assert.match(cssSource, /\.owner-preview-actions/);
   assert.match(cssSource, /\.owner-preview-actions button/);
@@ -1545,7 +1548,8 @@ test("removes obvious mockup copy from the visible product shell", () => {
 
 test("links the landlord 3D floor plan action to the dedicated creation page", () => {
   assert.match(pageSource, /href="\/floor-plan-3d"/);
-  assert.match(pageSource, /3D 도면 만들기/);
+  // 7라운드부터 빈 상태는 버튼이 아니라 박스 자체가 진입 링크(카피: "눌러서 3D 도면을 만들어요 ↗")
+  assert.match(pageSource, /3D 도면을 만들어요/);
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 
