@@ -4453,7 +4453,8 @@ html:has(.manager-workspace) {
   right: 0;
   bottom: 0;
   z-index: 41;
-  width: min(50vw, 620px);
+  /* 화면의 정확히 절반. 상한을 두면 넓은 모니터에서 "절반"이 깨진다(1920에서 620px = 32%). */
+  width: 50vw;
   min-width: min(100vw, 360px);
   display: grid;
   grid-template-rows: auto 1fr auto;

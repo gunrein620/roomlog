@@ -57,7 +57,10 @@ test("패널은 오른쪽 절반을 차지하는 고정 사이드 표면이다",
   assert.ok(panelBlock, ".manager-ticket-panel 규칙이 있어야 한다");
   assert.match(panelBlock, /position: fixed/);
   assert.match(panelBlock, /right: 0/);
-  assert.match(panelBlock, /width: min\(50vw/);
+  // px 상한을 다시 씌우면 넓은 모니터에서 "절반"이 깨진다(1920에서 620px 상한 = 32%).
+  // min-width의 min()은 걸리면 안 되므로 width 선언만 떼어내 본다.
+  const widthDeclaration = panelBlock.match(/(?:^|\n)\s*width:\s*([^;]+);/)?.[1];
+  assert.equal(widthDeclaration, "50vw");
   assert.match(cssSource, /\.manager-ticket-panel__stream/);
   assert.match(cssSource, /\.manager-ticket-panel__composer/);
 });
