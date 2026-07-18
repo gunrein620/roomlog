@@ -8,16 +8,13 @@
   background: var(--surface-container-lowest);
 }
 .requestMain,
-.requestAmount,
-.topupRow > div {
+.requestAmount {
   display: grid;
   gap: var(--space-xs);
 }
 
 .requestLabel,
-.requestMeta,
-.topupRow span,
-.topupRow small {
+.requestMeta {
   color: var(--on-surface-variant);
   font-size: var(--fs-caption);
 }
@@ -359,7 +356,6 @@
 .limitField:focus-within,
 .noteField input:focus-visible,
 .historyScroll:focus-visible,
-.topupScroll:focus-visible,
 .paymentList:focus-visible {
   outline: 0;
   box-shadow: var(--focus-ring);
@@ -392,8 +388,7 @@
 }
 
 .requestMain > strong,
-.requestAmount > strong,
-.topupRow strong {
+.requestAmount > strong {
   color: var(--on-surface);
   font-size: var(--fs-body);
 }
@@ -467,19 +462,7 @@
   justify-self: end;
 }
 
-.historyGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(340px, .75fr);
-  gap: var(--space-md);
-  align-items: start;
-}
-
-.historyGrid > .panel {
-  align-content: start;
-}
-
 .historyScroll,
-.topupScroll,
 .paymentList {
   --history-visible-rows: 8;
   --history-max-height: calc(
@@ -495,11 +478,6 @@
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-}
-
-.topupScroll {
-  overflow-y: auto;
-  padding-right: var(--space-xs);
 }
 
 .tableWrap {
@@ -545,29 +523,6 @@
   font-weight: var(--fw-subtitle);
 }
 
-.topupList {
-  display: grid;
-}
-
-.topupRow {
-  min-height: var(--touch-target);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--table-row-divider);
-  padding: var(--space-sm) 0;
-}
-
-.topupRow:last-child {
-  border-bottom: 0;
-}
-
-.topupRow > .secondaryButton {
-  grid-column: 1 / -1;
-  justify-self: end;
-}
-
 .loadMoreButton {
   min-height: calc(var(--touch-target) - var(--space-sm));
   width: 100%;
@@ -579,12 +534,6 @@
   font-size: var(--fs-caption);
   font-weight: var(--fw-subtitle);
   cursor: pointer;
-}
-
-.topupList > .loadMoreButton {
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-btn);
-  margin-top: var(--space-sm);
 }
 
 .loadMoreButton:hover:not(:disabled) {
@@ -614,10 +563,6 @@
 }
 
 @media (max-width: 1180px) {
-  .historyGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .paymentCard {
     grid-template-columns: minmax(0, 1fr) minmax(150px, .4fr);
   }

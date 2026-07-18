@@ -6,7 +6,6 @@ import Link from "next/link";
 import type {
   AutoPayPolicyMode,
   CreditLedgerEntryType,
-  CreditTopupOrderStatus,
   RepairPaymentOrderPublicView,
   RepairPaymentOrderStatus,
   VendorPaymentRequestStatus,
@@ -18,7 +17,6 @@ import { repairPaymentRecovery } from "@/lib/repair-payment-recovery";
 import {
   cancelCreditPaymentAction,
   loadMoreCreditHistoryAction,
-  reconcileCreditTopupAction,
   refreshCreditWorkspaceAction,
   settleCreditPaymentAction,
   updateCreditPolicyAction,
@@ -77,15 +75,6 @@ const ledgerTypeLabel: Record<CreditLedgerEntryType, string> = {
   AUTO_DEBIT: "자동 업체 지급",
   MANUAL_DEBIT: "수동 업체 지급",
   REVERSAL: "크레딧 지급 기록 정정",
-};
-
-const topupStatusLabel: Record<CreditTopupOrderStatus, string> = {
-  READY: "결제 대기",
-  CONFIRMING: "승인 확인 중",
-  RECONCILIATION_REQUIRED: "결제 상태 확인 필요",
-  APPROVED: "충전 완료",
-  FAILED: "충전 실패",
-  CANCELLED: "충전 취소",
 };
 
 function won(amount: number): string {
@@ -341,13 +330,6 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     () => [...workspace.ledgerEntries].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [workspace.ledgerEntries],
   );
-  const topupOrders = useMemo(
-    () => [...workspace.topupOrders]
-      .filter((order) => order.status !== "READY")
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [workspace.topupOrders],
-  );
-
   function markBusy(key: string, busy: boolean) {
     setBusyKeys((current) => {
       const next = new Set(current);
@@ -358,7 +340,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
   }
 
   async function loadMoreHistory(
-    kind: "ledger" | "topup" | "payment",
+    kind: "ledger" | "payment",
     cursor: string,
   ) {
     const key = `history:${kind}`;
@@ -374,9 +356,6 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
           ledgerEntries: kind === "ledger"
             ? [...current.data.ledgerEntries, ...nextResult.data.ledgerEntries]
             : current.data.ledgerEntries,
-          topupOrders: kind === "topup"
-            ? [...current.data.topupOrders, ...nextResult.data.topupOrders]
-            : current.data.topupOrders,
           paymentRequests: kind === "payment"
             ? [...current.data.paymentRequests, ...nextResult.data.paymentRequests]
             : current.data.paymentRequests,
@@ -384,10 +363,6 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
         if (kind === "ledger") {
           if (nextResult.data.nextLedgerCursor) data.nextLedgerCursor = nextResult.data.nextLedgerCursor;
           else delete data.nextLedgerCursor;
-        }
-        if (kind === "topup") {
-          if (nextResult.data.nextTopupCursor) data.nextTopupCursor = nextResult.data.nextTopupCursor;
-          else delete data.nextTopupCursor;
         }
         if (kind === "payment") {
           if (nextResult.data.nextPaymentCursor) data.nextPaymentCursor = nextResult.data.nextPaymentCursor;
@@ -827,86 +802,39 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
         )}
       </section>
 
-      <div className={styles.historyGrid}>
-        <section className={styles.panel}>
-          <div className={styles.sectionHeader}>
-            <div><h2>크레딧 원장</h2><p>충전과 업체 지급으로 변한 잔액을 순서대로 확인합니다.</p></div>
+      <section className={styles.panel}>
+        <div className={styles.sectionHeader}>
+          <div><h2>크레딧 원장</h2><p>충전과 업체 지급으로 변한 잔액을 순서대로 확인합니다.</p></div>
+        </div>
+        <div className={styles.historyScroll} tabIndex={0} aria-label="크레딧 원장 내역">
+          <div className={styles.tableWrap}>
+            <table>
+              <thead><tr><th>일자</th><th>구분</th><th>관련 업무</th><th>변동</th><th>잔액</th></tr></thead>
+              <tbody>
+                {ledgerEntries.map((entry) => (
+                  <tr key={entry.rowKey}>
+                    <td>{formatDate(entry.createdAt)}</td>
+                    <td>{ledgerTypeLabel[entry.type]}</td>
+                    <td>{ledgerReferenceLabel(entry.referenceType)}</td>
+                    <td className={entry.signedAmount >= 0 ? styles.amountPositive : styles.amountNegative}>{signedWon(entry.signedAmount)}</td>
+                    <td>{won(entry.balanceAfter)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {workspace.nextLedgerCursor ? (
+              <button
+                className={styles.loadMoreButton}
+                type="button"
+                disabled={busyKeys.has("history:ledger")}
+                onClick={() => void loadMoreHistory("ledger", workspace.nextLedgerCursor!)}
+              >
+                {busyKeys.has("history:ledger") ? "불러오는 중" : "이전 원장 더 보기"}
+              </button>
+            ) : null}
           </div>
-          <div className={styles.historyScroll} tabIndex={0} aria-label="크레딧 원장 내역">
-            <div className={styles.tableWrap}>
-              <table>
-                <thead><tr><th>일자</th><th>구분</th><th>관련 업무</th><th>변동</th><th>잔액</th></tr></thead>
-                <tbody>
-                  {ledgerEntries.map((entry) => (
-                    <tr key={entry.rowKey}>
-                      <td>{formatDate(entry.createdAt)}</td>
-                      <td>{ledgerTypeLabel[entry.type]}</td>
-                      <td>{ledgerReferenceLabel(entry.referenceType)}</td>
-                      <td className={entry.signedAmount >= 0 ? styles.amountPositive : styles.amountNegative}>{signedWon(entry.signedAmount)}</td>
-                      <td>{won(entry.balanceAfter)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {workspace.nextLedgerCursor ? (
-                <button
-                  className={styles.loadMoreButton}
-                  type="button"
-                  disabled={busyKeys.has("history:ledger")}
-                  onClick={() => void loadMoreHistory("ledger", workspace.nextLedgerCursor!)}
-                >
-                  {busyKeys.has("history:ledger") ? "불러오는 중" : "이전 원장 더 보기"}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.panel}>
-          <div className={styles.sectionHeader}>
-            <div><h2>충전 내역</h2><p>카드 충전의 승인·실패·확인 상태를 조회합니다.</p></div>
-          </div>
-          {topupOrders.length > 0 ? (
-            <div className={styles.topupScroll} tabIndex={0} aria-label="크레딧 충전 내역">
-              <div className={styles.topupList}>
-                {topupOrders.map((order) => {
-                  const key = `topup:${order.orderId}`;
-                  const reconcilable = order.status === "CONFIRMING"
-                    || order.status === "RECONCILIATION_REQUIRED";
-                  return (
-                    <article className={styles.topupRow} key={order.orderId}>
-                      <div><strong>{won(order.amount)}</strong><span>{formatDate(order.createdAt)}{order.method ? ` · ${order.method}` : ""}</span>{order.failureReason ? <small>{userFacingFailure(order.failureReason)}</small> : null}</div>
-                      <span className={order.status === "APPROVED" ? styles.statusPositive : styles.statusNeutral}>{topupStatusLabel[order.status]}</span>
-                      {reconcilable ? (
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          disabled={busyKeys.has(key) || demoReadOnly}
-                          onClick={() => void runMutation(key, "결제 상태를 다시 확인했습니다.", () => reconcileCreditTopupAction(order.orderId))}
-                        >
-                          결제 상태 재확인
-                        </button>
-                      ) : null}
-                    </article>
-                  );
-                })}
-                {workspace.nextTopupCursor ? (
-                  <button
-                    className={styles.loadMoreButton}
-                    type="button"
-                    disabled={busyKeys.has("history:topup")}
-                    onClick={() => void loadMoreHistory("topup", workspace.nextTopupCursor!)}
-                  >
-                    {busyKeys.has("history:topup") ? "불러오는 중" : "이전 충전 내역 더 보기"}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            <div className={styles.emptyState}>아직 크레딧 충전 내역이 없습니다.</div>
-          )}
-        </section>
-      </div>
+        </div>
+      </section>
       <ManagerRepairPaymentDialog
         ref={repairPaymentDialogRef}
         onResultMessage={handleRepairPaymentDialogMessage}
