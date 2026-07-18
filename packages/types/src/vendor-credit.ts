@@ -29,6 +29,28 @@ export type AutoPayPolicyMode =
 
 export type VendorPaymentSettlementMode = "MANUAL_CREDIT" | "DIRECT";
 
+/** Gara에서 관리자 크레딧을 차감하고 생성하는 업체 지급 요청의 상태. */
+export type GaraVendorPayoutStatus = "CREDIT_DEBITED";
+
+export interface CreateGaraVendorPayoutInput {
+  managerVendorId: string;
+  amount: number;
+  idempotencyKey: string;
+}
+
+export interface GaraVendorPayoutRequestPublicView {
+  id: string;
+  amount: number;
+  accountNumber: string;
+  status: GaraVendorPayoutStatus;
+  createdAt: string;
+}
+
+export interface CreateGaraVendorPayoutResult {
+  request: GaraVendorPayoutRequestPublicView;
+  account: ManagerCreditAccountPublicView;
+}
+
 export interface ManagerCreditAccountView {
   id: string;
   balance: number;

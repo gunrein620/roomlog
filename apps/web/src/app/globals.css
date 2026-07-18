@@ -14709,5 +14709,26 @@ p {
     height: 100dvh;
     padding: 18px 18px 24px;
     border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tenant-request-detail-panel .tenant-request-detail-form {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tenant-request-detail-panel .tenant-defect-messages {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tenant-defect-chat-input {
+    margin-top: auto;
+    padding-top: 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    background: var(--paper);
   }
 }

@@ -12,12 +12,19 @@ export interface VendorCatalogSearchFilters {
   isActive?: boolean;
 }
 
+export interface CreateManagerVendorInput {
+  businessName: string;
+  phone: string;
+  accountNumber: string;
+}
+
 export interface ManagerVendorView {
   id: string;
   managerId: string;
   vendorId: string;
   status: ManagerVendorStatus;
   managerNote?: string;
+  settlementAccountNumber?: string;
   registeredAt: string;
   catalog: VendorCatalogRecord;
   accountStatus: VendorAccountProjectionStatus;

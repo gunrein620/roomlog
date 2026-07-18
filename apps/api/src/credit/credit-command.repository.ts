@@ -1,5 +1,6 @@
 import type {
   AutoPayPolicyMode,
+  GaraVendorPayoutRequestPublicView,
   ManagerAutoPayPolicyView,
   ManagerCreditAccountView,
   ManagerCreditTopupOrderView,
@@ -18,6 +19,18 @@ export type CreateTopupOrderCommand = Readonly<{
 
 export type CreateTopupOrderResult = Readonly<{
   order: ManagerCreditTopupOrderView;
+}>;
+
+export type CreateGaraVendorPayoutCommand = Readonly<{
+  managerId: string;
+  managerVendorId: string;
+  amount: number;
+  idempotencyKey: string;
+}>;
+
+export type CreateGaraVendorPayoutResult = Readonly<{
+  request: GaraVendorPayoutRequestPublicView;
+  account: ManagerCreditAccountView;
 }>;
 
 export type ClaimTopupConfirmationCommand = Readonly<{
@@ -148,6 +161,9 @@ export interface CreditCommandRepository {
   createTopupOrder(
     input: CreateTopupOrderCommand
   ): Promise<CreateTopupOrderResult>;
+  createGaraVendorPayout(
+    input: CreateGaraVendorPayoutCommand
+  ): Promise<CreateGaraVendorPayoutResult>;
   claimTopupConfirmation(
     input: ClaimTopupConfirmationCommand
   ): Promise<TopupConfirmationClaim>;
