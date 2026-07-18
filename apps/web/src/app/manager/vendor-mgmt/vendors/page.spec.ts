@@ -72,6 +72,10 @@ test("manual vendor creation uses the authenticated API and refreshes the manage
   assert.match(apiClientSource, /`\/manager\/vendor-mgmt\/vendors\/manual`/);
   assert.match(apiClientSource, /method: "POST"/);
   assert.match(apiClientSource, /body: JSON\.stringify\(input\)/);
+  assert.equal(
+    (apiClientSource.match(/export function createManagerVendor/g) ?? []).length,
+    1,
+  );
 
   assert.match(actionsSource, /export async function createManualVendorAction/);
   for (const field of ["businessName", "phone", "accountNumber"]) {
@@ -80,4 +84,5 @@ test("manual vendor creation uses the authenticated API and refreshes the manage
   assert.match(actionsSource, /await createManagerVendor\(/);
   assert.match(actionsSource, /revalidatePath\(MANAGER_VENDOR_MGMT_PATHS\.vendors\)/);
   assert.match(actionsSource, /managerMutationSuccess\("업체를 등록했습니다\."\)/);
+  assert.doesNotMatch(actionsSource, /}\s*_previousState: ManagerMutationState/);
 });

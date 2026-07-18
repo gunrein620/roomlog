@@ -32,6 +32,8 @@ import {
   requiredVendorTrade
 } from "./vendor-trade-compatibility";
 import {
+  isDirectManagerVendor,
+  managerVendorAssignmentWhere,
   vendorAssignmentWhere,
   vendorServesAddress
 } from "./vendor-assignment-eligibility";
@@ -53,6 +55,8 @@ const NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES = [
   "REVIEWING",
   "ADDITIONAL_INFO_REQUESTED",
   "VENDOR_ASSIGNMENT_PENDING",
+  "VENDOR_ASSIGNED",
+  "REPAIR_IN_PROGRESS",
   "REOPENED"
 ] as const;
 const PRESERVED_REPAIR_LIFECYCLE_STATUSES = ["SCHEDULED", "IN_PROGRESS"] as const;
@@ -582,7 +586,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         const candidate = await tx.vendorProfile.findFirst({
           where: {
             id: command.vendorId,
-            ...vendorAssignmentWhere(command.managerId)
+            ...managerVendorAssignmentWhere(command.managerId)
           },
           include: {
             accountLinks: {
@@ -596,15 +600,16 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
             }
           }
         });
-        if (
-          !candidate ||
-          candidate.accountLinks.length === 0 ||
-          candidate.managerVendors.length === 0
-        ) {
+        const directRegistration = candidate
+          ? isDirectManagerVendor(candidate, command.managerId)
+          : false;
+        if (!candidate || candidate.managerVendors.length === 0 || (
+          !directRegistration && candidate.accountLinks.length === 0
+        )) {
           throw workflowError("VENDOR_NOT_ASSIGNABLE", "현재 상태의 업체는 배정할 수 없습니다.");
         }
 
-        if (!vendorServesAddress(candidate, ticket.room.address)) {
+        if (!directRegistration && !vendorServesAddress(candidate, ticket.room.address)) {
           throw workflowError("VENDOR_NOT_ASSIGNABLE", "해당 하자 위치에 출동 가능한 업체가 아닙니다.");
         }
 

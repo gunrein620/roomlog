@@ -2,7 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  NotFoundException
+  NotFoundException,
 } from "@nestjs/common";
 import type {
   CreateManagerVendorInput,
@@ -168,7 +168,7 @@ export class RoomlogManagerVendorDomain {
 
   createManual(
     managerId: string,
-    input: CreateManagerVendorInput
+    input: CreateManagerVendorInput,
   ): Promise<ManagerVendorView> {
     const businessName = input.businessName.trim();
     const phone = input.phone.replace(/[\s-]/g, "");
@@ -190,7 +190,7 @@ export class RoomlogManagerVendorDomain {
     return this.execute(() => this.repository.createManual(managerId, {
       businessName,
       phone,
-      accountNumber
+      accountNumber,
     }));
   }
 
