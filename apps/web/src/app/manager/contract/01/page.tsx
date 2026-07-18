@@ -177,7 +177,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </div>
 
         <Section title="보증금·특약 수정">
-          <ManualCorrectionForm detail={detail} sourceKind={source.kind} />
+          <ManualCorrectionForm detail={detail} sourceKind={source.kind} valueRows={valueRows} />
         </Section>
 
         <Card style={footerCardStyle}>
@@ -337,7 +337,6 @@ function ComparisonTable({ rows }: { rows: ValueRow[] }) {
               <div style={compareBoxStrongStyle}>
                 <span style={compareLabelStyle}>최종값</span>
                 <ValueText value={row.finalValue} strong />
-                <span style={finalSourceStyle}>{row.finalSource}</span>
               </div>
             </div>
             {row.evidence ? <div style={coreEvidenceStyle}>{row.evidence}</div> : null}
@@ -431,8 +430,16 @@ function ValueText({ value, strong = false }: { value: string; strong?: boolean 
   );
 }
 
-function ManualCorrectionForm({ detail, sourceKind }: { detail: ManagerContractDetailResult; sourceKind: OcrSourceKind }) {
-  const values = manualDefaults(detail, sourceKind);
+function ManualCorrectionForm({
+  detail,
+  sourceKind,
+  valueRows,
+}: {
+  detail: ManagerContractDetailResult;
+  sourceKind: OcrSourceKind;
+  valueRows: ValueRow[];
+}) {
+  const values = manualDefaults(detail, sourceKind, valueRows);
 
   return (
     <Card style={manualCardStyle}>
@@ -547,7 +554,6 @@ type ValueRow = {
   ocrValue: string;
   dbValue: string;
   finalValue: string;
-  finalSource: string;
   status: string;
   statusEmphasis: boolean;
   evidence?: string;
@@ -572,7 +578,7 @@ function buildValueRows(detail: ManagerContractDetailResult, sourceKind: OcrSour
     makeValueRow(detail, "월세", storedManualValue(detail, "월세", detail.manualValues.rent), sourceKind),
     makeValueRow(detail, "계약 시작일", storedManualValue(detail, "계약 시작일", detail.manualValues.startDate), sourceKind),
     makeValueRow(detail, "계약 종료일", storedManualValue(detail, "계약 종료일", detail.manualValues.endDate), sourceKind),
-    makeValueRow(detail, "특약", storedManualValue(detail, "특약", detail.manualValues.specialTerms), sourceKind),
+    makeValueRow(detail, "특약", "", sourceKind),
     makeValueRow(detail, "자동연장", "", sourceKind),
     makeValueRow(detail, "원상복구", "", sourceKind),
     makeValueRow(detail, "수선 책임", "", sourceKind),
@@ -607,19 +613,6 @@ function makeValueRow(
       : normalizedDbValue || "직접 입력 필요";
   const missingFinal = isMissingDisplayValue(finalRawValue) || finalRawValue === "직접 입력 필요";
   const documentAbsent = isDocumentAbsentValue(finalRawValue);
-  const finalSource = missingFinal
-    ? "직접 입력 필요"
-    : documentAbsent
-      ? "원문에 해당 조항 없음"
-    : shouldPreferDbValue
-      ? ocrFailed
-        ? "OCR 실패로 저장값 사용"
-        : "확인 필요 OCR 대신 저장값 사용"
-      : hasUsableOcrValue
-        ? "OCR값 사용"
-        : hasDbValue
-          ? "저장값 사용"
-          : "직접 입력 필요";
   const displayOcrValue = ocrFailed ? "OCR 실패 - 미추출" : summarizeContractValue(label, rawOcrValue);
   const displayDbValue = normalizedDbValue ? summarizeContractValue(label, normalizedDbValue) : "없음";
   const displayFinalValue = summarizeContractValue(label, finalRawValue);
@@ -629,7 +622,6 @@ function makeValueRow(
     ocrValue: displayOcrValue,
     dbValue: displayDbValue,
     finalValue: displayFinalValue,
-    finalSource,
     status: documentAbsent ? "해당 없음" : missingFinal ? "부족" : ocrFailed ? "원문 확인" : item?.needsCheck ? "확인 필요" : "확인",
     statusEmphasis: !documentAbsent && (missingFinal || (!ocrFailed && Boolean(item?.needsCheck))),
     evidence: ocrFailed ? undefined : item?.evidence ?? (inferredDocumentAbsent ? "성공한 OCR에서 해당 조항을 찾지 못했습니다." : undefined),
@@ -735,20 +727,27 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function manualDefaults(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind) {
+function manualDefaults(
+  detail: ManagerContractDetailResult,
+  sourceKind: OcrSourceKind,
+  valueRows: ValueRow[],
+) {
   return {
     deposit:
       storedManualValue(detail, "보증금", detail.manualValues.deposit) ||
       textInputCandidate(detail, "보증금", sourceKind),
     monthlyRent:
-      moneyInputCandidate(storedManualValue(detail, "월세", detail.manualValues.rent)) ||
-      moneyInputCandidate(textInputCandidate(detail, "월세", sourceKind)),
+      moneyInputCandidate(valueRowFinalValue(valueRows, "월세")) ||
+      moneyInputCandidate(valueRowOcrValue(valueRows, "월세")) ||
+      moneyInputCandidate(storedManualValue(detail, "월세", detail.manualValues.rent)),
     startDate:
-      dateInputCandidate(storedManualValue(detail, "계약 시작일", detail.manualValues.startDate)) ||
-      dateInputCandidate(textInputCandidate(detail, "계약 시작일", sourceKind)),
+      dateInputCandidate(valueRowFinalValue(valueRows, "계약 시작일")) ||
+      ocrDateInputCandidate(detail, "start", sourceKind) ||
+      dateInputCandidate(storedManualValue(detail, "계약 시작일", detail.manualValues.startDate)),
     endDate:
-      dateInputCandidate(storedManualValue(detail, "계약 종료일", detail.manualValues.endDate)) ||
-      dateInputCandidate(textInputCandidate(detail, "계약 종료일", sourceKind)),
+      dateInputCandidate(valueRowFinalValue(valueRows, "계약 종료일")) ||
+      ocrDateInputCandidate(detail, "end", sourceKind) ||
+      dateInputCandidate(storedManualValue(detail, "계약 종료일", detail.manualValues.endDate)),
     specialTerms:
       storedManualValue(detail, "특약", detail.manualValues.specialTerms) ||
       textInputCandidate(detail, "특약", sourceKind),
@@ -756,6 +755,16 @@ function manualDefaults(detail: ManagerContractDetailResult, sourceKind: OcrSour
     restorationDuty: textInputCandidate(detail, "원상복구", sourceKind),
     repairDuty: textInputCandidate(detail, "수선 책임", sourceKind),
   };
+}
+
+function valueRowFinalValue(valueRows: ValueRow[], label: string) {
+  const value = valueRows.find((row) => row.label === label)?.finalValue ?? "";
+  return isMissingDisplayValue(value) || value === DOCUMENT_ABSENT_VALUE ? "" : value;
+}
+
+function valueRowOcrValue(valueRows: ValueRow[], label: string) {
+  const value = valueRows.find((row) => row.label === label)?.ocrValue ?? "";
+  return isMissingDisplayValue(value) || value === DOCUMENT_ABSENT_VALUE ? "" : value;
 }
 
 function extractionItem(detail: ManagerContractDetailResult, label: string) {
@@ -782,6 +791,20 @@ function moneyInputCandidate(value: string) {
 
 function dateInputCandidate(value: string) {
   return extractDateValues(value)[0] ?? "";
+}
+
+function ocrDateInputCandidate(
+  detail: ManagerContractDetailResult,
+  position: "start" | "end",
+  sourceKind: OcrSourceKind,
+) {
+  const directLabel = position === "start" ? "계약 시작일" : "계약 종료일";
+  const directDate = dateInputCandidate(textInputCandidate(detail, directLabel, sourceKind));
+  if (directDate) return directDate;
+
+  const periodDates = extractDateValues(textInputCandidate(detail, "계약 기간", sourceKind));
+  if (periodDates.length === 0) return "";
+  return position === "start" ? periodDates[0] ?? "" : periodDates[periodDates.length - 1] ?? "";
 }
 
 function isMissingDisplayValue(value?: string) {
@@ -1177,14 +1200,6 @@ const compareLabelStyle = {
   color: "var(--on-surface-variant)",
   fontSize: "var(--fs-caption)",
   fontWeight: 900,
-} as const;
-
-const finalSourceStyle = {
-  width: "fit-content",
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  fontWeight: 800,
-  lineHeight: "var(--lh-caption)",
 } as const;
 
 const coreEvidenceStyle = {
