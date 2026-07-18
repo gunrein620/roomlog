@@ -55,3 +55,25 @@ test("saved project includes furniture placements without runtime objects", () =
   assert.equal(saved.furnitures.length, 1);
   assert.equal("runtimeMesh" in saved.furnitures[0], false);
 });
+
+test("saved project keeps room floor materials without sharing mutable state", () => {
+  const floorMaterials = {
+    encoding: "rle-u8",
+    height: 2,
+    labels: "2:1,2:2",
+    version: 1,
+    width: 2,
+    zones: [
+      { confidence: 0.98, id: "room-1", label: "침실", material: "WOOD", roomType: "침실", seed: [0, 0] },
+      { confidence: 0.97, id: "room-2", label: "욕실", material: "TILE", roomType: "욕실", seed: [1, 1] },
+    ],
+  };
+  const saved = buildPlanExport({
+    floor_materials: floorMaterials,
+    polygons: { wall: [{}], door: [], window: [] },
+  });
+
+  assert.deepEqual(saved.plan.floor_materials, floorMaterials);
+  assert.notEqual(saved.plan.floor_materials, floorMaterials);
+  assert.notEqual(saved.plan.floor_materials.zones, floorMaterials.zones);
+});

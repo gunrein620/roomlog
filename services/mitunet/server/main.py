@@ -90,11 +90,11 @@ if DEMOS_DIR.is_dir():
     app.mount("/demos", StaticFiles(directory=DEMOS_DIR), name="demos")
 
 
-def attach_input_image(image: Image.Image, result: dict) -> dict:
-    """Inline the exact 1024px image seen by MitUNet below the 3D geometry."""
+def attach_input_image(image: Image.Image, result: dict, field_name: str = "input_image_b64") -> dict:
+    """Inline a PNG image payload under the requested response field."""
     buffer = BytesIO()
     image.save(buffer, format="PNG")
-    result["input_image_b64"] = base64.b64encode(buffer.getvalue()).decode("ascii")
+    result[field_name] = base64.b64encode(buffer.getvalue()).decode("ascii")
     return result
 
 
@@ -116,7 +116,10 @@ async def extract_image(image: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=422, detail="upload a readable PNG or JPEG floor plan") from error
     opening_result = yolo_client.detect(rendered_image)
     result = compose_opening_review(wall_mask, opening_result)
-    return attach_input_image(rendered_image, result)
+    # Geometry stays aligned to MitUNet's 1024px render; AI room/OCR analysis
+    # receives the untouched upload so labels are not stretched to a square.
+    attach_input_image(rendered_image, result)
+    return attach_input_image(source, result, "analysis_image_b64")
 
 
 @app.post("/compose-edits")

@@ -35,6 +35,27 @@ test("maps Korean and English room labels to deterministic floor materials", () 
   assert.equal(materialForRoomLabel("Bedroom"), "WOOD");
 });
 
+test("uses the structured room type when the label is generic", () => {
+  const width = 32;
+  const height = 24;
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask: new Uint8Array(width * height).fill(1),
+    openings: [],
+    polygons: { door: [], wall: [], window: [] },
+    rooms: [{
+      confidence: 0.96,
+      label: "공간 1",
+      polygon: normalizedBox(6, 6, 24, 18, width, height),
+      roomType: "BATHROOM",
+    }],
+    sourceRgba: new Uint8ClampedArray(width * height * 4).fill(255),
+    width,
+  });
+
+  assert.equal(map.zones[0].material, "TILE");
+});
+
 test("round-trips compact room label maps", () => {
   const labels = Uint8Array.from([0, 0, 1, 1, 1, 2, 2, 0]);
   const encoded = encodeRoomFloorLabels(labels, 4, 2);
@@ -76,7 +97,7 @@ test("partitions floor pixels by room seeds without crossing a sealed doorway", 
   }
 });
 
-test("uses one material across one open structural component", () => {
+test("keeps distinct material types inside one open structural component", () => {
   const width = 36;
   const height = 24;
   const interiorMask = new Uint8Array(width * height).fill(1);
@@ -94,10 +115,32 @@ test("uses one material across one open structural component", () => {
   });
   const decoded = decodeRoomFloorLabels(map);
 
-  assert.equal(map.zones.length, 1);
-  assert.equal(map.zones[0].label, "거실");
-  assert.equal(map.zones[0].material, "WOOD");
-  assert.deepEqual(new Set(decoded), new Set([1]));
+  assert.deepEqual(map.zones.map((zone) => zone.material).sort(), ["TILE", "WOOD"]);
+  const bathroom = map.zones.findIndex((zone) => zone.material === "TILE") + 1;
+  const livingRoom = map.zones.findIndex((zone) => zone.material === "WOOD") + 1;
+  assert.equal(decoded[4 * width + 5], bathroom);
+  assert.equal(decoded[18 * width + 24], livingRoom);
+});
+
+test("keeps separate semantic rooms even when they share one material and component", () => {
+  const width = 40;
+  const height = 24;
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask: new Uint8Array(width * height).fill(1),
+    polygons: { door: [], wall: [], window: [] },
+    rooms: [
+      { confidence: 0.98, label: "left room", polygon: normalizedBox(3, 3, 15, 20, width, height), roomType: "BEDROOM" },
+      { confidence: 0.97, label: "right room", polygon: normalizedBox(25, 3, 37, 20, width, height), roomType: "LIVING_ROOM" },
+    ],
+    sourceRgba: new Uint8ClampedArray(width * height * 4).fill(255),
+    width,
+  });
+  const decoded = decodeRoomFloorLabels(map);
+
+  assert.equal(map.zones.length, 2);
+  assert.deepEqual(map.zones.map((zone) => zone.material), ["WOOD", "WOOD"]);
+  assert.notEqual(decoded[11 * width + 9], decoded[11 * width + 31]);
 });
 
 test("keeps an entrance polygon separate inside an open kitchen component", () => {
@@ -200,7 +243,7 @@ test("moves a semantic seed out of a small dark fixture enclosure", () => {
   assert.ok(decodeRoomFloorLabels(map).reduce((sum, value) => sum + Number(value === 1), 0) > 500);
 });
 
-test("uses default wood with one conservative entrance tile when room analysis is unavailable", () => {
+test("uses only default wood when room analysis is unavailable", () => {
   const width = 60;
   const height = 40;
   const interiorMask = new Uint8Array(width * height);
@@ -221,15 +264,11 @@ test("uses default wood with one conservative entrance tile when room analysis i
   });
   const labels = decodeRoomFloorLabels(map);
   const woodLabel = map.zones.findIndex((zone) => zone.material === "WOOD") + 1;
-  const entranceLabel = map.zones.findIndex((zone) => zone.material === "STONE_TILE") + 1;
 
   assert.ok(woodLabel > 0);
-  assert.ok(entranceLabel > 0);
+  assert.deepEqual(map.zones.map((zone) => zone.material), ["WOOD"]);
   assert.equal(labels[10 * width + 30], woodLabel);
-  const entrancePixels = labels.reduce((sum, label) => sum + Number(label === entranceLabel), 0);
-  const interiorPixels = interiorMask.reduce((sum, value) => sum + value, 0);
-  assert.ok(entrancePixels > 0);
-  assert.ok(entrancePixels <= interiorPixels * 0.15);
+  assert.equal(labels[35 * width + 30], woodLabel);
 });
 
 test("falls back to the label-free floor map when semantic rooms are unusable", () => {
@@ -256,7 +295,7 @@ test("falls back to the label-free floor map when semantic rooms are unusable", 
 
   assert.deepEqual(
     map.zones.map((zone) => zone.material).sort(),
-    ["STONE_TILE", "WOOD"],
+    ["WOOD"],
   );
 });
 

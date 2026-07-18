@@ -53,6 +53,26 @@ test("finds an exterior door and rejects an internal door", () => {
   assert.equal(candidates[0].spanPixels, 12);
 });
 
+test("keeps rejected doors excluded even when confidence is high", () => {
+  const width = 64;
+  const height = 48;
+  const interiorMask = rectangularInterior(width, height, 8, 6, 56, 42);
+  const opening = {
+    axis: "vertical",
+    center_x: 16,
+    center_y: 24,
+    confidence: 0.9,
+    height: 12,
+    id: "front-rejected",
+    kind: "door",
+    mask_polygon: [[8, 18], [24, 18], [24, 30], [8, 30]],
+    valid: false,
+    width: 16,
+  };
+
+  assert.deepEqual(findExteriorDoorCandidates({ height, interiorMask, openings: [opening], width }), []);
+});
+
 test("uses a validated entrance polygon next to the front door", () => {
   const fixture = entranceFixture();
   const result = buildEntranceFloorOverride({
@@ -65,6 +85,22 @@ test("uses a validated entrance polygon next to the front door", () => {
   assert.equal(result.baseLabel, 1);
   assert.ok(result.pixels.length > 80);
   assert.ok(result.pixels.every((index) => fixture.labels[index] === 1));
+});
+
+test("uses a typed entrance polygon when its visible label is generic", () => {
+  const fixture = entranceFixture();
+  const result = buildEntranceFloorOverride({
+    ...fixture,
+    millimetersPerPixel: 100,
+    rooms: [{
+      confidence: 0.92,
+      label: "space 1",
+      polygon: normalizedBox(32, 38, 48, 52, fixture.width, fixture.height),
+      roomType: "ENTRY",
+    }],
+  });
+  assert.ok(result);
+  assert.equal(result.confidence, 0.92);
 });
 
 test("creates a conservative entrance zone when the drawing has no room names", () => {
@@ -110,6 +146,21 @@ test("rejects a fallback zone that overlaps an AI balcony polygon", () => {
   assert.equal(result, null);
 });
 
+test("rejects a fallback zone that overlaps a typed balcony polygon with a generic label", () => {
+  const fixture = entranceFixture();
+  const result = buildEntranceFloorOverride({
+    ...fixture,
+    millimetersPerPixel: 100,
+    rooms: [{
+      confidence: 0.95,
+      label: "space 1",
+      polygon: normalizedBox(32, 36, 48, 47, fixture.width, fixture.height),
+      roomType: "BALCONY",
+    }],
+  });
+  assert.equal(result, null);
+});
+
 test("uses the standard door scale to limit uncalibrated semantic entrance area", () => {
   const width = 400;
   const height = 200;
@@ -129,4 +180,28 @@ test("uses the standard door scale to limit uncalibrated semantic entrance area"
   const estimatedScale = 900 / 12;
   assert.ok(result.pixels.length * estimatedScale * estimatedScale <= 6_000_000);
   assert.ok(result.pixels.length < 1_000);
+});
+
+test("paints a confident entrance polygon even when no exterior door was detected", () => {
+  const fixture = entranceFixture();
+  const result = buildEntranceFloorOverride({
+    ...fixture,
+    millimetersPerPixel: 100,
+    openings: [],
+    rooms: [{
+      confidence: 0.86,
+      label: "현관",
+      polygon: normalizedBox(10, 6, 24, 20, fixture.width, fixture.height),
+      roomType: "ENTRY",
+    }],
+  });
+
+  assert.ok(result);
+  assert.equal(result.label, "현관");
+  assert.ok(result.pixels.length > 0);
+  assert.ok(result.pixels.every((index) => {
+    const x = index % fixture.width;
+    const y = Math.floor(index / fixture.width);
+    return x >= 10 && x < 24 && y >= 6 && y < 20;
+  }));
 });

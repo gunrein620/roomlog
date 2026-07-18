@@ -120,6 +120,12 @@ class ComposeEditsApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["opening_detection"]["model"], "yolo-segv1.pt")
         self.assertEqual(result["opening_detection"]["accepted_windows"], 1)
         self.assertEqual([item["id"] for item in result["openings"]], ["yolo-1"])
+        source_bytes = base64.b64decode(result["analysis_image_b64"])
+        with Image.open(BytesIO(source_bytes)) as source_image:
+            self.assertEqual(source_image.size, (32, 32))
+        rendered_bytes = base64.b64decode(result["input_image_b64"])
+        with Image.open(BytesIO(rendered_bytes)) as rendered_image:
+            self.assertEqual(rendered_image.size, (1024, 1024))
 
     async def test_compose_edits_returns_reviewed_polygons(self) -> None:
         wall = np.zeros((review_edits.CANVAS_SIZE, review_edits.CANVAS_SIZE), dtype=np.uint8)

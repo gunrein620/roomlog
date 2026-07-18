@@ -1,13 +1,17 @@
-export const FURNITURE_MANIFEST_URL = "/floor-plan-3d/furniture-assets/manifest.json";
+export const FURNITURE_MANIFEST_URL = "/floor-plan-3d/furniture-assets/catalog.json";
 export const FURNITURE_ASSET_BASE_URL = "/floor-plan-3d/furniture-assets/";
 
 const cleanPath = value => String(value ?? "").replace(/^\/+/, "");
 
 export function normalizeFurnitureCatalog(manifest) {
   return (Array.isArray(manifest?.items) ? manifest.items : [])
-    .filter(item => item?.relativePath && item?.fileName && item?.category)
+    .filter(item => item?.relativePath && item?.fileName && item?.category
+      && typeof item.thumbnailUrl === "string" && item.thumbnailUrl.trim())
     .map(item => ({
-      category: String(item.category),
+      category: String(item.catalogCategoryLabel || item.catalogCategory || item.category),
+      displayName: typeof item.displayNameKo === "string" && item.displayNameKo.trim()
+        ? item.displayNameKo.trim()
+        : String(item.fileName),
       fileName: String(item.fileName),
       relativePath: cleanPath(item.relativePath),
       modelUrl: FURNITURE_ASSET_BASE_URL + cleanPath(item.relativePath),
@@ -21,6 +25,9 @@ export function normalizeFurnitureCatalog(manifest) {
         height: (Number(item.sizeMm?.height) || 1000) / 1000,
         depth: (Number(item.sizeMm?.depth) || 1000) / 1000,
       },
+      thumbnailUrl: typeof item.thumbnailUrl === "string" && item.thumbnailUrl.trim()
+        ? item.thumbnailUrl.trim()
+        : undefined,
     }));
 }
 
@@ -32,7 +39,7 @@ export function filterFurnitureCatalog(items, query = "", category = "all", limi
   const pageOffset = Math.max(0, Number.isFinite(numericOffset) ? Math.trunc(numericOffset) : 0);
   return items.filter(item => (
     (category === "all" || item.category === category)
-    && (!term || item.fileName.toLowerCase().includes(term))
+    && (!term || `${item.fileName} ${item.displayName} ${item.category}`.toLowerCase().includes(term))
   )).slice(pageOffset, pageOffset + pageSize);
 }
 

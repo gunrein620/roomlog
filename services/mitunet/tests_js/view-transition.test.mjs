@@ -4,7 +4,15 @@ import assert from "node:assert/strict";
 import {
   applyRiseAnimationFrame,
   replayRiseAnimations,
+  waveDelayMs,
 } from "../viewer/view-transition.mjs";
+
+test("wall rise delays spread across a visible wave instead of firing together", () => {
+  assert.equal(waveDelayMs(0, 3), 0);
+  assert.equal(waveDelayMs(1, 3), 400);
+  assert.equal(waveDelayMs(2, 3), 800);
+  assert.equal(waveDelayMs(0, 1), 0);
+});
 
 test("rise animations reset raised sections to the floor on every replay", () => {
   const animation = {

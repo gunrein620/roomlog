@@ -126,6 +126,65 @@ class ViewerShellTests(unittest.TestCase):
         )
         self.assertIn('await transitionCanvasView("original")', self.html)
 
+    def test_camera_presets_are_available_in_structure_and_furnishing_views(self):
+        for label in ["입체", "위", "정면", "왼쪽", "오른쪽", "자동 둘러보기"]:
+            self.assertIn(f">{label}</button>", self.html)
+        self.assertIn('id="camera-view-controls" hidden', self.html)
+        self.assertIn('data-camera-view="perspective"', self.html)
+        self.assertIn('data-camera-view="auto"', self.html)
+        self.assertIn(
+            "cameraViewControls.hidden = !hasRenderedPlan || !showingThreeDimensional",
+            self.html,
+        )
+        self.assertIn('["3d", "furnishing"].includes(currentView)', self.html)
+
+    def test_camera_presets_reuse_the_tween_and_respect_reduced_motion(self):
+        self.assertIn('from "/viewer-assets/camera-view-presets.mjs"', self.html)
+        self.assertIn("const CAMERA_PRESET_TWEEN_MS = 700", self.html)
+        self.assertIn("async function applyCameraPreset(view)", self.html)
+        self.assertIn("cameraPresetPosition(view, center, distance)", self.html)
+        self.assertIn("reducedMotionQuery.matches", self.html)
+        self.assertIn(
+            "await tweenCamera(toPosition, center, CAMERA_PRESET_TWEEN_MS)",
+            self.html,
+        )
+
+    def test_auto_orbit_stops_on_direct_manipulation_and_original_view(self):
+        self.assertIn("controls.autoRotate = true", self.html)
+        self.assertIn("controls.autoRotateSpeed = 3.0", self.html)
+        self.assertIn("function stopAutoOrbit", self.html)
+        pointer_body = self.html.split(
+            'sceneCanvas.addEventListener("pointermove"', 1
+        )[1]
+        self.assertIn(
+            "if (distance > 5 && controls.autoRotate) stopAutoOrbit()",
+            pointer_body.split("});", 1)[0],
+        )
+        original_body = self.html.split("async function showOriginalView()", 1)[1]
+        self.assertIn(
+            "stopAutoOrbit()",
+            original_body.split("function syncCorrectedOpenings", 1)[0],
+        )
+
+    def test_camera_presets_do_not_clear_furniture_state(self):
+        self.assertIn("async function applyCameraPreset(view)", self.html)
+        self.assertIn("function toggleAutoOrbit()", self.html)
+        preset_body = self.html.split("async function applyCameraPreset(view)", 1)[1]
+        preset_body = preset_body.split("function toggleAutoOrbit()", 1)[0]
+        self.assertNotIn("cancelFurnitureInteraction", preset_body)
+        self.assertNotIn("resetFurniturePlacements", preset_body)
+
+    def test_furniture_ui_does_not_unlock_camera_during_preset_transition(self):
+        self.assertIn("let cameraPresetTransitionActive = false", self.html)
+        self.assertIn("cameraPresetTransitionActive = true", self.html)
+        interaction_body = self.html.split(
+            "function updateFurnitureInteractionUi()", 1
+        )[1].split("function activeFurnitureToolbarObject()", 1)[0]
+        self.assertIn(
+            "controls.enabled = !cameraPresetTransitionActive",
+            interaction_body,
+        )
+
     def test_window_glass_is_visible_and_has_a_frame_edge(self):
         self.assertIn("opacity: 0.72", self.html)
         self.assertIn("transmission: 0.12", self.html)
@@ -166,11 +225,19 @@ class ViewerShellTests(unittest.TestCase):
         self.assertIn("[wallCapMat, wallSideMat]", self.html)
 
     def test_floor_finish_transform_matches_pointer_mask_coordinates(self):
-        self.assertIn("texture.flipY = false", self.html)
+        self.assertIn("texture.flipY = true", self.html)
         self.assertIn("(width / 2 - cx) * scale", self.html)
-        self.assertIn("-(height / 2 - cy) * scale", self.html)
+        self.assertIn("(height / 2 - cy) * scale", self.html)
         self.assertIn("function pointIsInsideFinishedFloor(point)", self.html)
         self.assertIn("worldToMaskPixel(point, floorPlacementState)", self.html)
+
+    def test_input_plan_texture_preserves_wall_alignment(self):
+        self.assertNotIn("tex.repeat.x = -1", self.html)
+        self.assertNotIn("tex.offset.x = 1", self.html)
+        self.assertIn("const sy = -(y - cy) * scale", self.html)
+        self.assertIn("tex.flipY = true", self.html)
+        self.assertIn("(left + innerW / 2 - cx) * scale", self.html)
+        self.assertIn("(top + innerH / 2 - cy) * scale", self.html)
 
     def test_show_3d_leaves_furnishing_before_starting_a_transition(self):
         function_body = self.html.split(

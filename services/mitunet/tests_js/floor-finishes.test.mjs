@@ -145,7 +145,7 @@ test("real demo doorway remains continuous floor after sealing the flood barrier
 
 test("world coordinates map back to the plan mask", () => {
   assert.deepEqual(
-    worldToMaskPixel({ x: 1, z: -2 }, { scale: 0.5, cx: 10, cy: 20 }),
+    worldToMaskPixel({ x: 1, z: 2 }, { scale: 0.5, cx: 10, cy: 20 }),
     { x: 12, y: 24 },
   );
 });
@@ -176,4 +176,49 @@ test("renders deterministic material colors and preserves a legacy wood fallback
   const legacy = buildFloorFinishRgba({ height, interiorMask, width });
   assert.equal(legacy[3], 255);
   assert.deepEqual([...legacy.slice(0, 4)], [...buildFloorFinishRgba({ height, interiorMask, width }).slice(0, 4)]);
+});
+
+test("renders previously saved kitchen floor zones as wood", () => {
+  const width = 8;
+  const height = 4;
+  const interiorMask = new Uint8Array(width * height).fill(1);
+  const floorMaterials = {
+    ...encodeRoomFloorLabels(new Uint8Array(width * height).fill(1), width, height),
+    zones: [{ material: "KITCHEN_FLOOR" }],
+  };
+
+  assert.deepEqual(
+    buildFloorFinishRgba({ floorMaterials, height, interiorMask, width }),
+    buildFloorFinishRgba({ height, interiorMask, width }),
+  );
+});
+
+test("keeps rooms interior when an undetected boundary door leaks the outside flood", () => {
+  const width = 100;
+  const height = 100;
+  const wall = (left, top, right, bottom) => ({
+    outer: [[left, top], [right, top], [right, bottom], [left, bottom]],
+    holes: [],
+  });
+  const polygons = {
+    wall: [
+      wall(0, 0, 100, 4),
+      wall(0, 96, 44, 100),
+      wall(56, 96, 100, 100),
+      wall(0, 0, 4, 100),
+      wall(96, 0, 100, 100),
+    ],
+    door: [],
+    window: [],
+  };
+  // A detected door elsewhere gives the sealer its scale; the boundary gap at
+  // x 44-56 has no detection at all, mirroring a missed main entrance door.
+  const openings = [
+    { id: "detected", kind: "door", valid: true, axis: "horizontal", center_x: 20, center_y: 50, width: 12, height: 3 },
+  ];
+
+  const mask = buildInteriorMask(polygons, width, height, openings);
+
+  assert.equal(maskContains(mask, width, height, 50, 50), true);
+  assert.equal(maskContains(mask, width, height, 20, 20), true);
 });

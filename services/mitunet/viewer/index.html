@@ -40,6 +40,12 @@
     transition: opacity var(--view-fade-ms) ease;
   }
   canvas[hidden], [hidden] { display: none !important; }
+  /* Sky gradient lives in CSS, not in the WebGL scene: a scene.background
+     texture pollutes GTAOPass's depth/normal passes (black-slab artifact), so
+     the canvas is transparent and this gradient shows through from behind. */
+  canvas#scene {
+    background: linear-gradient(#a8cbe8, #cfe2f1 60%, #eef2f0);
+  }
   #review-canvas {
     background: #e9e7e2;
   }
@@ -153,6 +159,32 @@
   }
   .segment.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
   .segment:disabled { opacity: 0.4; cursor: default; }
+
+  .camera-preset-row {
+    display: flex;
+    gap: 6px;
+    margin: 0 -2px;
+    padding: 0 2px 5px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .camera-preset {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .camera-preset:hover { background: #fafaf7; border-color: rgba(0, 0, 0, 0.16); }
+  .camera-preset.active { border-color: var(--ink); background: var(--ink); color: #fff; }
+  .camera-preset:disabled { opacity: 0.4; cursor: default; }
 
   .tool-grid {
     display: grid;
@@ -359,11 +391,19 @@
     border-color: rgba(0, 0, 0, 0.16);
   }
   .furniture-card-swatch {
+    flex: 0 0 auto;
     width: 28px;
     height: 28px;
+    overflow: hidden;
     border-radius: 6px;
     background: var(--floor);
     border: 1px solid var(--hairline);
+  }
+  .furniture-card-swatch img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
   }
   .furniture-card-name {
     display: block;
@@ -510,6 +550,18 @@
     </div>
   </div>
 
+  <div id="camera-view-controls" hidden>
+    <div class="label">3D View</div>
+    <div class="camera-preset-row" role="toolbar" aria-label="3D 카메라 뷰">
+      <button class="camera-preset active" data-camera-view="perspective" type="button">입체</button>
+      <button class="camera-preset" data-camera-view="top" type="button">위</button>
+      <button class="camera-preset" data-camera-view="front" type="button">정면</button>
+      <button class="camera-preset" data-camera-view="left" type="button">왼쪽</button>
+      <button class="camera-preset" data-camera-view="right" type="button">오른쪽</button>
+      <button class="camera-preset" data-camera-view="auto" type="button" aria-pressed="false">자동 둘러보기</button>
+    </div>
+  </div>
+
   <div class="label" id="upload-label" hidden>Upload floor plan</div>
   <button class="btn primary with-icon" id="upload-btn" title="Choose a floor plan image" hidden>
     <i data-lucide="upload" aria-hidden="true"></i><span>Choose PNG or JPG…</span>
@@ -624,8 +676,10 @@
     <button class="furniture-toolbar-button danger" id="furniture-delete-btn" type="button" title="가구 삭제" aria-label="가구 삭제"><i data-lucide="trash-2" aria-hidden="true"></i></button>
   </div>
   <div id="furniture-pending-toolbar-actions" hidden>
-    <button class="furniture-toolbar-button cancel" id="furniture-cancel-btn" type="button" title="배치 취소" aria-label="배치 취소"><i data-lucide="x" aria-hidden="true"></i></button>
-    <button class="furniture-toolbar-button confirm" id="furniture-confirm-btn" type="button" title="배치 완료" aria-label="배치 완료"><i data-lucide="check" aria-hidden="true"></i></button>
+    <button class="furniture-toolbar-button cancel" id="furniture-cancel-btn" type="button" title="배치 취소 (Esc)" aria-label="배치 취소"><i data-lucide="x" aria-hidden="true"></i></button>
+    <button class="furniture-toolbar-button" id="furniture-pending-rotate-left-btn" type="button" title="왼쪽으로 90도 회전 (Shift+R)" aria-label="왼쪽으로 90도 회전"><i data-lucide="rotate-ccw" aria-hidden="true"></i></button>
+    <button class="furniture-toolbar-button" id="furniture-pending-rotate-right-btn" type="button" title="오른쪽으로 90도 회전 (R)" aria-label="오른쪽으로 90도 회전"><i data-lucide="rotate-cw" aria-hidden="true"></i></button>
+    <button class="furniture-toolbar-button confirm" id="furniture-confirm-btn" type="button" title="배치 완료 (Enter)" aria-label="배치 완료"><i data-lucide="check" aria-hidden="true"></i></button>
   </div>
 </div>
 
@@ -638,6 +692,10 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import {
   buildPlanExport,
   downloadPlanJson,
@@ -664,7 +722,11 @@ import {
   resolveFurnitureToolbarMode,
   shouldUpdateFurniturePreview,
 } from "/viewer-assets/furniture-placement.mjs";
-import { applyRiseAnimationFrame, replayRiseAnimations } from "/viewer-assets/view-transition.mjs";
+import { applyRiseAnimationFrame, replayRiseAnimations, waveDelayMs } from "/viewer-assets/view-transition.mjs";
+import {
+  FIXED_CAMERA_VIEWS,
+  cameraPresetPosition,
+} from "/viewer-assets/camera-view-presets.mjs";
 
 // -----------------------------------------------------------------------------
 // Constants — physical dimensions are in arbitrary world units. We rescale each
@@ -678,9 +740,9 @@ const WINDOW_TOP       = 0.45;       // top of glass
 const PHYSICAL_WALL_HEIGHT = 2.7;
 const PHYSICAL_WINDOW_SILL = 0.9;
 const PHYSICAL_WINDOW_TOP = 2.1;
-const RISE_DURATION_MS = 1200;
-const STAGGER_MS       = 28;
+const RISE_DURATION_MS = 1600;
 const CAMERA_TWEEN_MS = 600;
+const CAMERA_PRESET_TWEEN_MS = 700;
 const VIEW_FADE_MS     = 220;
 const EDGE_ANGLE_DEG   = 14;          // smaller -> more crease lines
 const FURNITURE_PAGE_SIZE = 60;
@@ -713,7 +775,9 @@ const COLOR_INK    = 0x111111;
 // -----------------------------------------------------------------------------
 const canvas = document.getElementById("scene");
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// alpha:true so the CSS sky gradient behind the canvas shows through;
+// see the canvas#scene style block for why the sky is not a scene texture.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 // ACES filmic tone mapping rolls off highlights gently so the pure-white walls
@@ -726,7 +790,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(COLOR_BG);
+scene.background = null; // transparent — the CSS gradient behind the canvas is the sky
 // Soft image-based lighting: a neutral indoor probe gives the matte white walls
 // and GLB furniture believable ambient fill and subtle gradients that no amount
 // of flat ambient/hemisphere light can match. Cheap (baked once at startup).
@@ -745,6 +809,21 @@ controls.minDistance   = 3.5;
 controls.maxDistance   = 40;
 controls.maxPolarAngle = Math.PI / 2 - 0.04;  // never go below ground
 
+// --- On-demand rendering -----------------------------------------------------
+// The GTAO composer is fill-rate heavy; re-drawing an unchanging scene wastes the
+// GPU and stutters on integrated graphics. Render only when something changes:
+// `invalidate()` requests a short burst of frames so discrete edits and async
+// GLB/texture loads settle; camera motion (incl. damping) is detected each frame
+// from controls.update(); rise/tween animations keep drawing while active.
+// Quality is unchanged — idle scenes simply pause.
+let renderFrames = 3;
+function invalidate(frames = 8) {
+  if (frames > renderFrames) renderFrames = frames;
+}
+for (const ev of ["pointerdown", "pointermove", "pointerup", "wheel", "keydown"]) {
+  window.addEventListener(ev, () => invalidate(), { passive: true, capture: true });
+}
+
 // Lights: hemisphere for soft fill, one warm-ish directional sun for shape,
 // minimal ambient to lift shadows. Pure-white walls need careful balance —
 // too much directional makes them look gray on the lit side; too little
@@ -759,6 +838,10 @@ sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
 sun.shadow.camera.top  = 8;  sun.shadow.camera.bottom = -8;
 sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 40;
 sun.shadow.bias = -0.0005;
+// Softer penumbra + a small normal bias: edges of wall shadows blur naturally
+// instead of ending in a hard sawtooth, without acne on the thin wall caps.
+sun.shadow.radius = 4;
+sun.shadow.normalBias = 0.02;
 scene.add(sun);
 scene.add(new THREE.AmbientLight(0xffffff, 0.08));
 // Downward-facing faces (door-header soffits, window lintels) receive neither
@@ -768,6 +851,34 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.08));
 const uplight = new THREE.DirectionalLight(0xffffff, 0.7);
 uplight.position.set(0, -6, 0);
 scene.add(uplight);
+
+// Post-processing: ground-truth ambient occlusion darkens the creases where
+// walls meet the floor and the recesses inside door/window reveals, so the
+// structure reads as connected geometry instead of floating panels. Rendered
+// through an EffectComposer; the tick loop uses composer.render, and onResize
+// keeps its buffers matched to the canvas. OutputPass performs the sRGB +
+// tone-mapping conversion the direct renderer used to do, so the look of lit
+// surfaces is preserved and only contact shadows are added.
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const gtaoPass = new GTAOPass(scene, camera);
+gtaoPass.output = GTAOPass.OUTPUT.Default;
+// Radius/scale tuned for the ~0.5–2.7m wall heights used here: tight enough
+// that AO stays in the corners and does not smudge open wall faces.
+const gtaoAoParameters = {
+  radius: 0.28,
+  distanceExponent: 1.0,
+  thickness: 1.0,
+  scale: 1.0,
+  // AO is low-frequency (soft corner shading), so fewer samples + the half-res
+  // buffers below (see onResize) cut the fill-rate cost sharply with no visible
+  // quality loss — the denoise pass smooths the result either way.
+  samples: 8,
+  screenSpaceRadius: false,
+};
+gtaoPass.updateGtaoMaterial(gtaoAoParameters);
+composer.addPass(gtaoPass);
+composer.addPass(new OutputPass());
 
 // Exterior ground: a calm light-concrete courtyard, so the interior finish
 // and white structure remain the focus during furniture placement.
@@ -823,6 +934,7 @@ const furnitureModelCache = new Map();
 const furnitureRaycaster = new THREE.Raycaster();
 const furniturePointer = new THREE.Vector2();
 const furnitureToolbarBounds = new THREE.Box3();
+const furnitureSupportBounds = new THREE.Box3();
 const furnitureToolbarAnchor = new THREE.Vector3();
 const furniturePlacementPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const placedFurnitures = [];
@@ -842,6 +954,7 @@ let suppressCanvasClick = false;
 // pixels classified as enclosed interior floor.
 let floorPlacementState = null;
 let floorFinishLayout = null;
+let roomLogSessionBridgeAttempted = false;
 
 function createConcreteTexture() {
   // One tile = one courtyard slab. The plane repeats it on a grid, so the
@@ -900,6 +1013,12 @@ function onResize() {
   // (viewport * devicePixelRatio) — bigger than the viewport, with the
   // optical-axis center offscreen to the bottom-right.
   renderer.setSize(w, h, true);
+  composer.setSize(w, h);
+  // AO runs at half resolution: GTAOPass.setSize only resizes its internal
+  // depth/normal/AO/denoise targets — the final composite still copies the
+  // full-res beauty and blends the (bilinearly upsampled) half-res AO over it,
+  // so the scene stays sharp and only the low-frequency AO is coarser.
+  gtaoPass.setSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   if (oldFitDistance && currentDistance > 0) {
@@ -910,6 +1029,7 @@ function onResize() {
     );
     controls.update();
   }
+  invalidate(30);
 }
 window.addEventListener("resize", onResize);
 onResize();
@@ -965,6 +1085,63 @@ function tweenCamera(toPos, toTarget, duration = CAMERA_TWEEN_MS) {
   return new Promise(resolve => { cameraTween.resolve = resolve; });
 }
 
+function updateCameraPresetButtons() {
+  cameraViewButtons.forEach(button => {
+    const active = button.dataset.cameraView === activeCameraView;
+    button.classList.toggle("active", active);
+    if (button.dataset.cameraView === "auto") {
+      button.setAttribute("aria-pressed", String(active));
+    }
+  });
+}
+
+function stopAutoOrbit({ clearActive = true } = {}) {
+  controls.autoRotate = false;
+  if (clearActive && activeCameraView === "auto") activeCameraView = null;
+  updateCameraPresetButtons();
+}
+
+async function applyCameraPreset(view) {
+  if (!FIXED_CAMERA_VIEWS.includes(view) || !currentFraming || currentView === "original") return;
+  stopAutoOrbit();
+  const transitionId = ++cameraPresetTransitionId;
+  const { center, radius } = currentFraming;
+  const distance = framingDistance(radius, camera.aspect);
+  const point = cameraPresetPosition(view, center, distance);
+  const toPosition = new THREE.Vector3(point.x, point.y, point.z);
+  activeCameraView = view;
+  updateCameraPresetButtons();
+
+  if (reducedMotionQuery.matches) {
+    cameraPresetTransitionActive = false;
+    moveCameraImmediately(toPosition, center);
+    return;
+  }
+  cameraPresetTransitionActive = true;
+  controls.enabled = false;
+  await tweenCamera(toPosition, center, CAMERA_PRESET_TWEEN_MS);
+  if (transitionId === cameraPresetTransitionId && currentView !== "original") {
+    cameraPresetTransitionActive = false;
+    controls.enabled = true;
+    updateFurnitureInteractionUi();
+  }
+}
+
+function toggleAutoOrbit() {
+  if (controls.autoRotate) {
+    stopAutoOrbit();
+    return;
+  }
+  finishCameraTween(false);
+  cameraPresetTransitionId += 1;
+  cameraPresetTransitionActive = false;
+  controls.enabled = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 3.0;
+  activeCameraView = "auto";
+  updateCameraPresetButtons();
+}
+
 // -----------------------------------------------------------------------------
 // Polygon -> mesh
 //
@@ -979,7 +1156,7 @@ function buildShape(outer, holes, scale, cx, cy) {
   const shape = new THREE.Shape();
   outer.forEach(([x, y], i) => {
     const sx = (x - cx) * scale;
-    const sy = (y - cy) * scale;
+    const sy = -(y - cy) * scale;
     if (i === 0) shape.moveTo(sx, sy);
     else shape.lineTo(sx, sy);
   });
@@ -988,7 +1165,7 @@ function buildShape(outer, holes, scale, cx, cy) {
     const path = new THREE.Path();
     hole.forEach(([x, y], i) => {
       const sx = (x - cx) * scale;
-      const sy = (y - cy) * scale;
+      const sy = -(y - cy) * scale;
       if (i === 0) path.moveTo(sx, sy);
       else path.lineTo(sx, sy);
     });
@@ -1064,12 +1241,10 @@ function buildInputImagePlane(b64, contentRect, scale, cx, cy) {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.minFilter = THREE.LinearFilter;
       tex.magFilter = THREE.LinearFilter;
-      // We position the plane so canvas-top maps to world +Z (north), and the
-      // texture's natural orientation (image pixel (0,0) at top-left) needs to
-      // line up with that. flipY=false keeps the texture un-flipped so pixel
-      // (0,0) lands at UV (0,0) at the plane's south-west corner — which is
-      // exactly where canvas-top-left ends up after our rotation/translation.
-      tex.flipY = false;
+      // Pixel Y increases toward world +Z for both the texture and polygons.
+      // After rotating the plane flat, Three.js's normal image flip maps the
+      // source image rows to that same axis.
+      tex.flipY = true;
       tex.needsUpdate = true;
 
       const [left, top, innerW, innerH] = contentRect;
@@ -1087,7 +1262,7 @@ function buildInputImagePlane(b64, contentRect, scale, cx, cy) {
       plane.position.set(
         (left + innerW / 2 - cx) * scale,
         0.002,                                  // tiny lift to avoid z-fighting with the floor
-        -(top + innerH / 2 - cy) * scale,
+        (top + innerH / 2 - cy) * scale,
       );
       plane.userData.disposable = { texture: tex };
       // Marker so the "Show original" toggle can leave this plane visible
@@ -1126,7 +1301,7 @@ function rebuildFloorFinish(data, layout) {
 
   const texture = new THREE.CanvasTexture(textureCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.flipY = false;
+  texture.flipY = true;
   texture.needsUpdate = true;
   const geometry = new THREE.PlaneGeometry(width * scale, height * scale);
   geometry.rotateX(-Math.PI / 2);
@@ -1140,7 +1315,7 @@ function rebuildFloorFinish(data, layout) {
   mesh.position.set(
     (width / 2 - cx) * scale,
     0.004,
-    -(height / 2 - cy) * scale,
+    (height / 2 - cy) * scale,
   );
   mesh.receiveShadow = true;
   mesh.userData.disposable = { texture };
@@ -1156,6 +1331,7 @@ function rebuildFloorFinish(data, layout) {
     furnitureSceneScale,
   };
   floorFinishLayout = layout;
+  invalidate(90);
 }
 
 function decodeInputImageRgba(base64, width, height) {
@@ -1178,15 +1354,40 @@ function decodeInputImageRgba(base64, width, height) {
   });
 }
 
+async function ensureRoomLogSession() {
+  if (roomLogSessionBridgeAttempted || !window.location.pathname.startsWith("/floor-plan-3d/")) return;
+  roomLogSessionBridgeAttempted = true;
+
+  const token = window.localStorage.getItem("floorPlanAccessToken");
+  if (!token) return;
+
+  try {
+    const response = await fetch("/api/auth/floor-plan-session", {
+      credentials: "same-origin",
+      headers: { Authorization: `Bearer ${token}` },
+      method: "POST",
+    });
+    if (response.status === 401) {
+      window.localStorage.removeItem("floorPlanAccessToken");
+    }
+    if (!response.ok) {
+      console.warn("RoomLog floor-plan session bridge unavailable.", response.status);
+    }
+  } catch (error) {
+    console.warn("RoomLog floor-plan session bridge unavailable.", error);
+  }
+}
+
 async function ensureRoomFloorMaterials() {
   if (currentComposedPlan?.floor_materials) return true;
   if (!currentComposedPlan?.input_image_b64 || !floorFinishLayout) return false;
 
   let analysisRooms = [];
   try {
+    await ensureRoomLogSession();
     const response = await fetch("/room-materials", {
       body: JSON.stringify({
-        imageDataUrl: `data:image/png;base64,${currentComposedPlan.input_image_b64}`,
+        imageDataUrl: `data:image/png;base64,${currentComposedPlan.analysis_image_b64 ?? currentComposedPlan.input_image_b64}`,
       }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
@@ -1245,8 +1446,13 @@ function pointIsInsideFinishedFloor(point) {
 const animations = [];
 
 function tick(now) {
+  let active = false;
   for (const a of animations) {
     applyRiseAnimationFrame(a, now);
+    const delay = Number.isFinite(a.delay) ? a.delay : 0;
+    const dur = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : 1;
+    const start = Number.isFinite(a.start) ? a.start : now;
+    if (now - start - delay < dur) active = true;
   }
   if (cameraTween.active) {
     const t = Math.min(1, (now - cameraTween.t0) / cameraTween.duration);
@@ -1254,10 +1460,14 @@ function tick(now) {
     camera.position.lerpVectors(cameraTween.fromPos, cameraTween.toPos, eased);
     controls.target.lerpVectors(cameraTween.fromTarget, cameraTween.toTarget, eased);
     if (t >= 1) finishCameraTween(true);
+    active = true;
   }
-  controls.update();
+  const controlsChanged = controls.update();
   updateFurnitureFloatingToolbarPosition();
-  renderer.render(scene, camera);
+  if (active || controlsChanged || renderFrames > 0) {
+    if (renderFrames > 0) renderFrames--;
+    composer.render();
+  }
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -1272,6 +1482,10 @@ function disposeMeshDeep(obj) {
 }
 function clearPlan() {
   finishCameraTween(false);
+  cameraPresetTransitionId += 1;
+  cameraPresetTransitionActive = false;
+  stopAutoOrbit();
+  currentFraming = null;
   resetFurniturePlacements({ silent: true });
   while (planGroup.children.length > 0) {
     const c = planGroup.children[0];
@@ -1336,6 +1550,8 @@ async function loadPlan(data) {
   const radius = Math.hypot(halfW, halfD, wallHeight);
   currentFraming = { center, radius };
   frameModel(center, radius);
+  activeCameraView = "perspective";
+  updateCameraPresetButtons();
 
   // Drop the input image in first so it appears under the geometry as the
   // walls start rising. Awaiting here also lets the texture decode finish
@@ -1379,6 +1595,7 @@ async function loadPlan(data) {
       meshes.push(buildVerticalSection(item.poly, scale, cx, cy, windowTop, wallHeight, wallMaterials, true));
     }
     meshes.filter(Boolean).forEach((mesh, sectionIndex) => {
+      mesh.userData.structureKind = item.kind;
       const finalBottom = mesh.position.y;
       mesh.position.y = 0;
       mesh.scale.z = 0.001;  // start collapsed
@@ -1387,7 +1604,7 @@ async function loadPlan(data) {
         mesh,
         finalBottom,
         start,
-        delay:    i * STAGGER_MS + sectionIndex * 6,
+        delay:    waveDelayMs(i, items.length) + sectionIndex * 36,
         duration: RISE_DURATION_MS,
       });
     });
@@ -1404,9 +1621,11 @@ const sceneCanvas = document.getElementById("scene");
 const reviewCanvas = document.getElementById("review-canvas");
 const editorTools = document.getElementById("editor-tools");
 const viewControls = document.getElementById("view-controls");
+const cameraViewControls = document.getElementById("camera-view-controls");
 const demoControls = document.getElementById("demo-controls");
 const demoSelect = document.getElementById("demo-select");
 const viewButtons = [...document.querySelectorAll("[data-view]")];
+const cameraViewButtons = [...document.querySelectorAll("[data-camera-view]")];
 const toolButtons = [...document.querySelectorAll("[data-tool]")];
 const visibilityInputs = [...document.querySelectorAll("[data-visibility]")];
 const brushSize = document.getElementById("brush-size");
@@ -1437,6 +1656,8 @@ const furnitureRotateLeftButton = document.getElementById("furniture-rotate-left
 const furnitureRotateRightButton = document.getElementById("furniture-rotate-right-btn");
 const furnitureDeleteButton = document.getElementById("furniture-delete-btn");
 const furnitureCancelButton = document.getElementById("furniture-cancel-btn");
+const furniturePendingRotateLeftButton = document.getElementById("furniture-pending-rotate-left-btn");
+const furniturePendingRotateRightButton = document.getElementById("furniture-pending-rotate-right-btn");
 const furnitureConfirmButton = document.getElementById("furniture-confirm-btn");
 const furnitureResetButton = document.getElementById("furniture-reset-btn");
 const undoButton = document.getElementById("undo-btn");
@@ -1456,6 +1677,9 @@ let currentSourceName = "";
 let currentView = "3d";
 let inFlight = false;
 let roomLogContext = null;
+let activeCameraView = "perspective";
+let cameraPresetTransitionId = 0;
+let cameraPresetTransitionActive = false;
 const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)")
   ?? { matches: false };
 
@@ -1463,7 +1687,11 @@ function furnitureCategoryLabel(category) {
   return category === "all" ? "전체" : FURNITURE_CATEGORY_LABELS[category] ?? category;
 }
 
-function furnitureDisplayName(fileName) {
+function furnitureDisplayName(itemOrFileName) {
+  if (typeof itemOrFileName === "object" && itemOrFileName?.displayName) {
+    return itemOrFileName.displayName;
+  }
+  const fileName = typeof itemOrFileName === "object" ? itemOrFileName?.fileName : itemOrFileName;
   const cleaned = String(fileName ?? "")
     .replace(/\.glb$/i, "")
     .replace(/^ikea-/i, "")
@@ -1488,7 +1716,7 @@ function furnitureSearchPool() {
   return furnitureCatalog.filter(item => {
     const category = furnitureCategoryLabel(item.category).toLowerCase();
     return item.fileName.toLowerCase().includes(term)
-      || furnitureDisplayName(item.fileName).toLowerCase().includes(term)
+      || furnitureDisplayName(item).toLowerCase().includes(term)
       || item.category.toLowerCase().includes(term)
       || category.includes(term);
   });
@@ -1524,11 +1752,19 @@ function renderFurnitureCatalog() {
 
     const swatch = document.createElement("span");
     swatch.className = "furniture-card-swatch";
+    if (item.thumbnailUrl) {
+      const image = document.createElement("img");
+      image.alt = "";
+      image.loading = "lazy";
+      image.src = item.thumbnailUrl;
+      image.addEventListener("error", () => image.remove());
+      swatch.append(image);
+    }
 
     const details = document.createElement("span");
     const name = document.createElement("span");
     name.className = "furniture-card-name";
-    name.textContent = furnitureDisplayName(item.fileName);
+    name.textContent = furnitureDisplayName(item);
     const meta = document.createElement("span");
     meta.className = "furniture-card-meta";
     meta.textContent = furnitureCategoryLabel(item.category);
@@ -1725,10 +1961,12 @@ function setPreviewAppearance(object, valid) {
     materials.forEach((material, index) => {
       const state = node.userData.previewMaterialState[index];
       material.transparent = true;
-      material.opacity = Math.min(state.opacity, 0.58);
+      // Mostly-opaque preview: the furniture itself must stay readable while
+      // being placed; the valid/invalid tint is only a light wash on top.
+      material.opacity = Math.min(state.opacity, 0.88);
       material.depthWrite = false;
       if (material.color && state.color) {
-        material.color.copy(state.color).lerp(tint, 0.55);
+        material.color.copy(state.color).lerp(tint, 0.28);
       }
       material.needsUpdate = true;
     });
@@ -1781,14 +2019,164 @@ function furnitureFootprintCorners(position, item, rotationY) {
 
 function furnitureFootprintFits(position, item, rotationY) {
   if (!floorPlacementState || !pointIsInsideFinishedFloor(position)) return false;
-  const corners = furnitureFootprintCorners(position, item, rotationY);
-  return corners.every(pointIsInsideFinishedFloor);
+  // Sample the whole footprint, not just its corners: an interior wall is only
+  // a few mask pixels thick, so a long sofa straddling it can keep all four
+  // corners (and the center) on valid floor while the wall runs straight
+  // through the middle. A grid at ~2-mask-pixel spacing cannot miss it.
+  const sceneScale = floorPlacementState.furnitureSceneScale
+    ?? WALL_HEIGHT / PHYSICAL_WALL_HEIGHT;
+  const halfWidth = item.sizeMeters.width * sceneScale / 2;
+  const halfDepth = item.sizeMeters.depth * sceneScale / 2;
+  const sampleGap = floorPlacementState.scale * 2;
+  const stepsX = Math.min(48, Math.max(1, Math.ceil((halfWidth * 2) / sampleGap)));
+  const stepsZ = Math.min(48, Math.max(1, Math.ceil((halfDepth * 2) / sampleGap)));
+  const cosine = Math.cos(rotationY);
+  const sine = Math.sin(rotationY);
+  for (let i = 0; i <= stepsX; i += 1) {
+    const localX = -halfWidth + (i * (halfWidth * 2)) / stepsX;
+    for (let j = 0; j <= stepsZ; j += 1) {
+      const localZ = -halfDepth + (j * (halfDepth * 2)) / stepsZ;
+      const point = {
+        x: position.x + localX * cosine - localZ * sine,
+        y: 0,
+        z: position.z + localX * sine + localZ * cosine,
+      };
+      if (!pointIsInsideFinishedFloor(point)) return false;
+    }
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Placement capabilities: shallow items can hang on walls, small items can sit
+// on top of tables/storage, and no two pieces may occupy the same space. Two
+// pieces collide only when their 2D footprints AND vertical spans overlap, so
+// a mirror on a table or a TV above a sofa is fine while sofa-through-sofa is
+// not.
+// ---------------------------------------------------------------------------
+const WALL_MOUNT_MAX_DEPTH_MM = 150;
+const STACKABLE_MAX_FOOTPRINT_MM = 650;
+const STACKABLE_MAX_HEIGHT_MM = 800;
+const FURNITURE_SURFACE_CATEGORIES = new Set(["테이블·책상", "수납"]);
+
+const furnitureSceneScaleNow = () => floorPlacementState?.furnitureSceneScale
+  ?? WALL_HEIGHT / PHYSICAL_WALL_HEIGHT;
+const itemIsWallMountable = item => {
+  const depth = Number(item.sizeMm?.depth);
+  return depth > 0 && depth <= WALL_MOUNT_MAX_DEPTH_MM;
+};
+const itemIsStackable = item => (
+  Math.max(Number(item.sizeMm?.width) || Infinity, Number(item.sizeMm?.depth) || Infinity)
+    <= STACKABLE_MAX_FOOTPRINT_MM
+  && (Number(item.sizeMm?.height) || Infinity) <= STACKABLE_MAX_HEIGHT_MM
+);
+const entryIsSurface = entry => FURNITURE_SURFACE_CATEGORIES.has(entry.item.category);
+
+function footprintRect(position, item, rotationY) {
+  const sceneScale = furnitureSceneScaleNow();
+  return {
+    x: position.x,
+    z: position.z,
+    halfWidth: item.sizeMeters.width * sceneScale / 2,
+    halfDepth: item.sizeMeters.depth * sceneScale / 2,
+    rotationY,
+  };
+}
+
+function rectCorners(rect) {
+  const cosine = Math.cos(rect.rotationY);
+  const sine = Math.sin(rect.rotationY);
+  return [
+    [-rect.halfWidth, -rect.halfDepth],
+    [rect.halfWidth, -rect.halfDepth],
+    [rect.halfWidth, rect.halfDepth],
+    [-rect.halfWidth, rect.halfDepth],
+  ].map(([x, z]) => ({
+    x: rect.x + x * cosine - z * sine,
+    z: rect.z + x * sine + z * cosine,
+  }));
+}
+
+// Separating-axis test for two rotated rectangles on the floor plane.
+function footprintRectsOverlap(a, b) {
+  const cornersA = rectCorners(a);
+  const cornersB = rectCorners(b);
+  for (const rect of [a, b]) {
+    const axes = [
+      { x: Math.cos(rect.rotationY), z: Math.sin(rect.rotationY) },
+      { x: -Math.sin(rect.rotationY), z: Math.cos(rect.rotationY) },
+    ];
+    for (const axis of axes) {
+      const project = corners => {
+        let min = Infinity;
+        let max = -Infinity;
+        for (const corner of corners) {
+          const value = corner.x * axis.x + corner.z * axis.z;
+          if (value < min) min = value;
+          if (value > max) max = value;
+        }
+        return { min, max };
+      };
+      const spanA = project(cornersA);
+      const spanB = project(cornersB);
+      if (spanA.max <= spanB.min || spanB.max <= spanA.min) return false;
+    }
+  }
+  return true;
+}
+
+function furnitureCollides(position, item, rotationY, baseY, excludePlacementId) {
+  const sceneScale = furnitureSceneScaleNow();
+  const candidateRect = footprintRect(position, item, rotationY);
+  const candidateTop = baseY + item.sizeMeters.height * sceneScale;
+  const epsilon = 0.01;
+  for (const entry of placedFurnitures) {
+    if (entry.placement.id === excludePlacementId) continue;
+    const entryBase = entry.placement.position[1] ?? 0;
+    const entryTop = entryBase + entry.item.sizeMeters.height * sceneScale;
+    if (candidateTop <= entryBase + epsilon || entryTop <= baseY + epsilon) continue;
+    const entryRect = footprintRect(
+      { x: entry.placement.position[0], z: entry.placement.position[2] },
+      entry.item,
+      entry.placement.rotationY,
+    );
+    if (footprintRectsOverlap(candidateRect, entryRect)) return true;
+  }
+  return false;
+}
+
+// A stacked item must sit entirely on the support's top face.
+function footprintWithinSupport(position, item, rotationY, supportEntry) {
+  const sceneScale = furnitureSceneScaleNow();
+  const supportRect = footprintRect(
+    { x: supportEntry.placement.position[0], z: supportEntry.placement.position[2] },
+    supportEntry.item,
+    supportEntry.placement.rotationY,
+  );
+  const cosine = Math.cos(supportRect.rotationY);
+  const sine = Math.sin(supportRect.rotationY);
+  return rectCorners(footprintRect(position, item, rotationY)).every(corner => {
+    const dx = corner.x - supportRect.x;
+    const dz = corner.z - supportRect.z;
+    const localX = dx * cosine + dz * sine;
+    const localZ = -dx * sine + dz * cosine;
+    return Math.abs(localX) <= supportRect.halfWidth + 0.001
+      && Math.abs(localZ) <= supportRect.halfDepth + 0.001;
+  });
 }
 
 function updateFurnitureInteractionUi() {
   if (currentView === "furnishing") {
-    controls.enabled = !pendingFurniture;
-    controls.enableRotate = !pendingFurniture;
+    // While placing, the left button is reserved for dropping the furniture, so
+    // camera rotate moves to the right button; wheel zoom stays available the
+    // whole time. Outside placement the usual left-rotate / right-pan returns.
+    const placing = Boolean(pendingFurniture);
+    controls.enabled = !cameraPresetTransitionActive;
+    controls.enableRotate = true;
+    controls.enableZoom = true;
+    controls.enablePan = !placing;
+    controls.mouseButtons.LEFT = placing ? null : THREE.MOUSE.ROTATE;
+    controls.mouseButtons.RIGHT = placing ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
   }
   const toolbarMode = resolveFurnitureToolbarMode({
     currentView,
@@ -1801,7 +2189,43 @@ function updateFurnitureInteractionUi() {
   furnitureConfirmButton.disabled = !pendingFurniture?.valid;
   if (toolbarMode === "hidden") furnitureToolbar.style.visibility = "hidden";
   furnitureResetButton.disabled = !pendingFurniture && placedFurnitures.length === 0;
+  syncFurnitureHighlight();
   updateEditorControls();
+}
+
+// Subtle emissive lift on the selected furniture so the toolbar is not the
+// only cue for what is selected. Original emissive values are remembered per
+// material and restored on deselect; materials without emissive are skipped.
+let highlightedFurniture = null;
+
+function setFurnitureHighlight(object, active) {
+  object.traverse(node => {
+    furnitureMaterials(node).forEach(material => {
+      if (!material.emissive) return;
+      if (active) {
+        if (!material.userData.selectionEmissive) {
+          material.userData.selectionEmissive = material.emissive.clone();
+          material.userData.selectionEmissiveIntensity = material.emissiveIntensity;
+        }
+        material.emissive.setHex(0x2f55ff);
+        material.emissiveIntensity = 0.16;
+      } else if (material.userData.selectionEmissive) {
+        material.emissive.copy(material.userData.selectionEmissive);
+        material.emissiveIntensity = material.userData.selectionEmissiveIntensity ?? 1;
+        delete material.userData.selectionEmissive;
+        delete material.userData.selectionEmissiveIntensity;
+      }
+      material.needsUpdate = true;
+    });
+  });
+}
+
+function syncFurnitureHighlight() {
+  const target = pendingFurniture ? null : selectedFurniture;
+  if (highlightedFurniture === target) return;
+  if (highlightedFurniture) setFurnitureHighlight(highlightedFurniture, false);
+  highlightedFurniture = target;
+  if (highlightedFurniture) setFurnitureHighlight(highlightedFurniture, true);
 }
 
 function activeFurnitureToolbarObject() {
@@ -1889,7 +2313,7 @@ async function beginFurniturePlacement(item) {
     trackingPointer: true,
   };
   updateFurnitureInteractionUi();
-  setStatus(`${furnitureDisplayName(item.fileName)} 모델을 불러오는 중입니다…`);
+  setStatus(`${furnitureDisplayName(item)} 모델을 불러오는 중입니다…`);
 
   let source = null;
   let object = null;
@@ -1903,7 +2327,8 @@ async function beginFurniturePlacement(item) {
     setPreviewAppearance(object, false);
     placementPreviewGroup.add(object);
     pendingFurniture.object = object;
-    setStatus(`${furnitureDisplayName(item.fileName)}을 놓을 위치를 클릭해 고정한 뒤 ✓를 누르세요.`);
+    invalidate(90);
+    setStatus(`${furnitureDisplayName(item)}을 놓을 위치를 클릭해 고정한 뒤 ✓를 누르세요.`);
   } catch (error) {
     if (object) disposeFurnitureMaterials(object);
     else if (source) disposeFurnitureMaterials(source);
@@ -1930,23 +2355,96 @@ function updateFurniturePreview(event, { force = false } = {}) {
     force,
   })) return false;
   updateRayFromPointer(event);
-  const point = furnitureRaycaster.ray.intersectPlane(furniturePlacementPlane, new THREE.Vector3());
-  if (!point) return false;
-  pendingFurniture.object.position.set(point.x, 0.006, point.z);
+  const item = pendingFurniture.item;
+  const sceneScale = furnitureSceneScaleNow();
+  const itemHeight = item.sizeMeters.height * sceneScale;
+  const excludeId = pendingFurniture.existingEntry?.placement.id;
+  let mode = "floor";
+  let supportEntry = null;
+  let target = null;
+  let baseY = 0.006;
+  let rotationY = pendingFurniture.object.rotation.y;
+
+  // Shallow items snap onto the wall face under the cursor; the cursor height
+  // picks the mounting height (clamped inside the wall band).
+  if (itemIsWallMountable(item)) {
+    const wallMeshes = planGroup.children.filter(mesh => mesh.userData.structureKind === "wall");
+    const hit = furnitureRaycaster.intersectObjects(wallMeshes, false)[0];
+    if (hit?.face) {
+      const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+      normal.y = 0;
+      if (normal.lengthSq() > 0.001) {
+        normal.normalize();
+        const offset = item.sizeMeters.depth * sceneScale / 2 + 0.004;
+        target = new THREE.Vector3(hit.point.x + normal.x * offset, 0, hit.point.z + normal.z * offset);
+        rotationY = Math.atan2(normal.x, normal.z);
+        const wallTop = floorPlacementState.hasPhysicalScale ? PHYSICAL_WALL_HEIGHT : WALL_HEIGHT;
+        baseY = Math.min(
+          Math.max(hit.point.y - itemHeight / 2, 0.02),
+          Math.max(0.02, wallTop - itemHeight - 0.02),
+        );
+        mode = "wall";
+      }
+    }
+  }
+  // Small items land on top of a table/storage piece when the cursor is over one.
+  if (!target && itemIsStackable(item)) {
+    const surfaceEntries = placedFurnitures.filter(
+      entry => entryIsSurface(entry) && entry.placement.id !== excludeId,
+    );
+    const hit = furnitureRaycaster.intersectObjects(surfaceEntries.map(entry => entry.object), true)[0];
+    if (hit) {
+      const root = placedRootFromObject(hit.object);
+      supportEntry = surfaceEntries.find(entry => entry.object === root) ?? null;
+      if (supportEntry) {
+        target = new THREE.Vector3(hit.point.x, 0, hit.point.z);
+        // Rest on the support's actual rendered top, not its catalog height:
+        // the model's true bounding-box top avoids the few-cm error and works
+        // even if the cursor grazes a side face.
+        furnitureSupportBounds.setFromObject(supportEntry.object);
+        baseY = (furnitureSupportBounds.isEmpty()
+          ? (supportEntry.placement.position[1] ?? 0) + supportEntry.item.sizeMeters.height * sceneScale
+          : furnitureSupportBounds.max.y) + 0.004;
+        mode = "surface";
+      }
+    }
+  }
+  if (!target) {
+    target = furnitureRaycaster.ray.intersectPlane(furniturePlacementPlane, new THREE.Vector3());
+    if (!target) return false;
+  }
+
+  pendingFurniture.object.position.set(target.x, baseY, target.z);
+  if (mode === "wall") pendingFurniture.object.rotation.y = rotationY;
+  pendingFurniture.mode = mode;
+  pendingFurniture.supportEntry = supportEntry;
   const wasValid = pendingFurniture.valid;
-  pendingFurniture.valid = furnitureFootprintFits(
-    pendingFurniture.object.position,
-    pendingFurniture.item,
-    pendingFurniture.object.rotation.y,
-  );
+  pendingFurniture.valid = pendingPlacementValidity();
   setPreviewAppearance(pendingFurniture.object, pendingFurniture.valid);
   if (wasValid !== pendingFurniture.valid) updateFurnitureInteractionUi();
   return true;
 }
 
+function pendingPlacementValidity() {
+  const { item, object, mode, supportEntry, existingEntry } = pendingFurniture;
+  const excludeId = existingEntry?.placement.id;
+  const position = object.position;
+  const rotationY = object.rotation.y;
+  if (mode === "wall") {
+    return !furnitureCollides(position, item, rotationY, position.y, excludeId);
+  }
+  if (mode === "surface") {
+    return Boolean(supportEntry)
+      && footprintWithinSupport(position, item, rotationY, supportEntry)
+      && !furnitureCollides(position, item, rotationY, position.y, excludeId);
+  }
+  return furnitureFootprintFits(position, item, rotationY)
+    && !furnitureCollides(position, item, rotationY, 0, excludeId);
+}
+
 function confirmFurniturePlacement() {
   if (!pendingFurniture?.object || !pendingFurniture.valid) {
-    setStatus("가구 전체가 실내 바닥 안에 들어오는 위치를 선택하세요.", "warning");
+    setStatus("이 위치에는 배치할 수 없습니다. 미리보기가 초록색일 때 ✓를 누르세요.", "warning");
     return;
   }
   const { item, object, existingEntry } = pendingFurniture;
@@ -1965,7 +2463,7 @@ function confirmFurniturePlacement() {
   selectedFurniture = object;
   pendingFurniture = null;
   updateFurnitureInteractionUi();
-  setStatus(`${furnitureDisplayName(item.fileName)} 배치를 완료했습니다.`);
+  setStatus(`${furnitureDisplayName(item)} 배치를 완료했습니다.`);
 }
 
 function placedRootFromObject(object) {
@@ -1998,7 +2496,9 @@ function beginMoveSelectedFurniture() {
   pendingFurniture = {
     item: entry.item,
     object: entry.object,
-    valid: furnitureFootprintFits(entry.object.position, entry.item, entry.object.rotation.y),
+    // The piece was standing at a legal spot, so it starts valid; the first
+    // pointer move re-evaluates with the full wall/surface/floor logic.
+    valid: true,
     existingEntry: entry,
     originalTransform,
     trackingPointer: true,
@@ -2006,6 +2506,15 @@ function beginMoveSelectedFurniture() {
   selectedFurniture = null;
   updateFurnitureInteractionUi();
   setStatus("가구를 옮길 위치를 클릭해 고정한 뒤 ✓를 누르세요. 취소하면 원래 위치로 돌아갑니다.");
+}
+
+function rotatePendingFurniture(direction) {
+  if (!pendingFurniture?.object) return;
+  const rotationDelta = direction * Math.PI / 2;
+  pendingFurniture.object.rotation.y += rotationDelta;
+  pendingFurniture.valid = pendingPlacementValidity();
+  setPreviewAppearance(pendingFurniture.object, pendingFurniture.valid);
+  updateFurnitureInteractionUi();
 }
 
 function rotateSelectedFurniture(direction) {
@@ -2115,6 +2624,16 @@ function updateScaleControls() {
   }
 }
 
+function updateCameraPresetControls() {
+  const showingThreeDimensional = ["3d", "furnishing"].includes(currentView);
+  const hasRenderedPlan = Boolean(currentFraming && currentComposedPlan);
+  cameraViewControls.hidden = !hasRenderedPlan || !showingThreeDimensional;
+  cameraViewButtons.forEach(button => {
+    button.disabled = !hasRenderedPlan || !showingThreeDimensional || inFlight;
+  });
+  updateCameraPresetButtons();
+}
+
 function updateEditorControls() {
   const reviewDocument = reviewEditor?.document;
   const hasDocument = Boolean(reviewDocument);
@@ -2149,6 +2668,7 @@ function updateEditorControls() {
   viewButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   document.body.classList.toggle("is-busy", inFlight);
   reviewCanvas.setAttribute("aria-busy", String(inFlight));
+  updateCameraPresetControls();
   updateScaleControls();
 }
 
@@ -2240,6 +2760,11 @@ function leaveFurnishingStage() {
 
 furnishButton.addEventListener("click", enterFurnishingStage);
 structureButton.addEventListener("click", leaveFurnishingStage);
+cameraViewButtons.forEach(button => button.addEventListener("click", () => {
+  const view = button.dataset.cameraView;
+  if (view === "auto") toggleAutoOrbit();
+  else void applyCameraPreset(view);
+}));
 furnitureSearch.addEventListener("input", () => {
   catalogOffset = 0;
   renderFurnitureCatalog();
@@ -2272,8 +2797,14 @@ furnitureRotateLeftButton.addEventListener("click", () => rotateSelectedFurnitur
 furnitureRotateRightButton.addEventListener("click", () => rotateSelectedFurniture(1));
 furnitureDeleteButton.addEventListener("click", deleteSelectedFurniture);
 furnitureCancelButton.addEventListener("click", () => cancelFurnitureInteraction());
+furniturePendingRotateLeftButton.addEventListener("click", () => rotatePendingFurniture(-1));
+furniturePendingRotateRightButton.addEventListener("click", () => rotatePendingFurniture(1));
 furnitureConfirmButton.addEventListener("click", confirmFurniturePlacement);
-furnitureResetButton.addEventListener("click", () => resetFurniturePlacements());
+furnitureResetButton.addEventListener("click", () => {
+  if (placedFurnitures.length > 0
+    && !window.confirm(`배치한 가구 ${placedFurnitures.length}개를 모두 삭제할까요?`)) return;
+  resetFurniturePlacements();
+});
 
 controls.addEventListener("start", () => {
   orbitGestureActive = true;
@@ -2294,9 +2825,14 @@ sceneCanvas.addEventListener("pointermove", event => {
       event.clientX - furniturePointerStart.x,
       event.clientY - furniturePointerStart.y,
     );
+    if (distance > 5 && controls.autoRotate) stopAutoOrbit();
     if (distance > 5) {
       furniturePointerMoved = true;
       if (orbitGestureActive) orbitGestureMoved = true;
+      if (activeCameraView && activeCameraView !== "auto") {
+        activeCameraView = null;
+        updateCameraPresetButtons();
+      }
     }
   }
   updateFurniturePreview(event);
@@ -2320,22 +2856,41 @@ sceneCanvas.addEventListener("click", event => {
     return;
   }
   if (pendingFurniture) {
-    if (updateFurniturePreview(event, { force: true })) {
-      pendingFurniture.trackingPointer = false;
-      setStatus(
-        pendingFurniture.valid
-          ? "가구 위치를 고정했습니다. ✓를 누르면 배치가 완료됩니다."
-          : "이 위치에는 배치할 수 없습니다. 다른 실내 위치를 클릭하세요.",
-        pendingFurniture.valid ? "" : "warning",
-      );
+    if (pendingFurniture.trackingPointer) {
+      // 따라오는 중 → 클릭한 위치에 고정
+      if (updateFurniturePreview(event, { force: true })) {
+        pendingFurniture.trackingPointer = false;
+        setStatus(
+          pendingFurniture.valid
+            ? "가구 위치를 고정했습니다. ✓로 완료하거나 다시 클릭하면 이동합니다."
+            : "이 위치에는 배치할 수 없습니다. 다른 실내 위치를 클릭하세요.",
+          pendingFurniture.valid ? "" : "warning",
+        );
+      }
+    } else {
+      // 고정 상태 → 다시 집어서 커서를 따라오게
+      pendingFurniture.trackingPointer = true;
+      updateFurniturePreview(event, { force: true });
+      setStatus("가구를 다시 이동합니다. 원하는 위치에서 클릭해 고정하세요.");
     }
   } else {
     selectFurnitureAt(event);
   }
 });
 window.addEventListener("keydown", event => {
-  if (event.key === "Escape" && currentView === "furnishing") {
+  if (currentView !== "furnishing") return;
+  // Keys must not fire while typing in the catalog search (or any form field).
+  if (event.target instanceof Element && event.target.closest("input, textarea, select")) return;
+  if (event.key === "Escape") {
     cancelFurnitureInteraction();
+  } else if (event.key === "Enter" && pendingFurniture) {
+    confirmFurniturePlacement();
+  } else if ((event.key === "Delete" || event.key === "Backspace") && selectedFurniture && !pendingFurniture) {
+    deleteSelectedFurniture();
+  } else if (event.key === "r" || event.key === "R") {
+    const direction = event.shiftKey ? -1 : 1;
+    if (pendingFurniture) rotatePendingFurniture(direction);
+    else if (selectedFurniture) rotateSelectedFurniture(direction);
   }
 });
 
@@ -2413,6 +2968,10 @@ function setView(view) {
 
   const showingReview = view === "original";
   const viewChanged = currentView !== view;
+  if (showingReview) {
+    cameraPresetTransitionActive = false;
+    stopAutoOrbit();
+  }
   currentView = view;
   editorTools.hidden = !reviewEditor?.document;
   setCanvasViewState(view);
@@ -2425,6 +2984,8 @@ function setView(view) {
     setPlanGeometryVisible(true);
     if (currentFraming) {
       const { center, radius } = currentFraming;
+      activeCameraView = "perspective";
+      updateCameraPresetButtons();
       moveCameraImmediately(overheadPosition(center, radius), center);
       if (reducedMotion) {
         moveCameraImmediately(perspectivePosition(center, radius), center);
@@ -2447,6 +3008,9 @@ function setView(view) {
 
 async function showOriginalView() {
   if (currentView === "original" || inFlight || !reviewEditor?.document) return;
+  cameraPresetTransitionId += 1;
+  cameraPresetTransitionActive = false;
+  stopAutoOrbit();
   if (!currentFraming) {
     await transitionCanvasView("original");
     return;
@@ -2557,6 +3121,7 @@ async function showThreeDimensionalView() {
       const calibratedComposed = {
         ...composed,
         input_image_b64: currentExtraction?.input_image_b64,
+        analysis_image_b64: currentExtraction?.analysis_image_b64,
         calibration: reviewEditor.getCalibration(),
       };
       const rendered = await loadPlan(calibratedComposed);

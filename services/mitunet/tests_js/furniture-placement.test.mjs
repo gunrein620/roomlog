@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  FURNITURE_MANIFEST_URL,
   cloneFurniturePlacements,
   createFurniturePlacement,
   filterFurnitureCatalog,
@@ -12,9 +13,27 @@ import {
 } from "../viewer/furniture-placement.mjs";
 
 const manifest = { items: [
-  { category: "chair", fileName: "oak-chair.glb", relativePath: "chair/oak-chair.glb", sizeMm: { width: 500, height: 800, depth: 520 } },
-  { category: "bed", fileName: "white-bed.glb", relativePath: "bed/white-bed.glb", sizeMm: { width: 1600, height: 900, depth: 2100 } },
+  { category: "chair", fileName: "oak-chair.glb", relativePath: "chair/oak-chair.glb", sizeMm: { width: 500, height: 800, depth: 520 }, thumbnailUrl: "https://images.example.com/oak-chair.jpg" },
+  { category: "bed", fileName: "white-bed.glb", relativePath: "bed/white-bed.glb", sizeMm: { width: 1600, height: 900, depth: 2100 }, thumbnailUrl: "https://images.example.com/white-bed.jpg" },
 ] };
+
+test("uses the enriched catalog and preserves Korean display metadata", () => {
+  const [item] = normalizeFurnitureCatalog({ items: [{
+    category: "sofa",
+    catalogCategoryLabel: "소파·의자",
+    displayNameKo: "SÖDERHAMN 쇠데르함 긴 의자, 프리두나 다크그레이",
+    fileName: "ikea-soederhamn-chaise-longue-fridtuna-dark-grey-12345678.glb",
+    relativePath: "sofa/ikea-soederhamn-chaise-longue-fridtuna-dark-grey-12345678.glb",
+    sizeMm: { width: 964, height: 852, depth: 1544 },
+    thumbnailUrl: "https://images.example.com/soederhamn.jpg",
+  }] });
+
+  assert.equal(FURNITURE_MANIFEST_URL, "/floor-plan-3d/furniture-assets/catalog.json");
+  assert.equal(item.category, "소파·의자");
+  assert.equal(item.displayName, "SÖDERHAMN 쇠데르함 긴 의자, 프리두나 다크그레이");
+  assert.equal(item.thumbnailUrl, "https://images.example.com/soederhamn.jpg");
+  assert.deepEqual(filterFurnitureCatalog([item], "쇠데르함").map((candidate) => candidate.displayName), [item.displayName]);
+});
 
 const paginatedItems = normalizeFurnitureCatalog({ items: Array.from({ length: 125 }, (_, index) => ([
   {
@@ -22,12 +41,14 @@ const paginatedItems = normalizeFurnitureCatalog({ items: Array.from({ length: 1
     fileName: `chair-${String(index).padStart(3, "0")}.glb`,
     relativePath: `chair/chair-${String(index).padStart(3, "0")}.glb`,
     sizeMm: { width: 500, height: 800, depth: 520 },
+    thumbnailUrl: "https://images.example.com/chair.jpg",
   },
   {
     category: "bed",
     fileName: `bed-${String(index).padStart(3, "0")}.glb`,
     relativePath: `bed/bed-${String(index).padStart(3, "0")}.glb`,
     sizeMm: { width: 1600, height: 900, depth: 2100 },
+    thumbnailUrl: "https://images.example.com/bed.jpg",
   },
 ])).flat() });
 
@@ -48,11 +69,22 @@ test("filters out manifest items missing catalog identity fields", () => {
   assert.deepEqual(items.map(item => item.fileName), ["oak-chair.glb"]);
 });
 
+test("excludes catalog items without a product thumbnail", () => {
+  const { thumbnailUrl: _thumbnailUrl, ...itemWithoutThumbnail } = manifest.items[1];
+  const items = normalizeFurnitureCatalog({ items: [
+    { ...manifest.items[0], thumbnailUrl: "https://images.example.com/oak-chair.jpg" },
+    itemWithoutThumbnail,
+  ] });
+
+  assert.deepEqual(items.map(item => item.fileName), ["oak-chair.glb"]);
+});
+
 test("cleans leading slashes from normalized asset paths", () => {
   const [item] = normalizeFurnitureCatalog({ items: [{
     category: "chair",
     fileName: "oak-chair.glb",
     relativePath: "///chair/oak-chair.glb",
+    thumbnailUrl: "https://images.example.com/oak-chair.jpg",
   }] });
   assert.equal(item.relativePath, "chair/oak-chair.glb");
   assert.equal(item.modelUrl, "/floor-plan-3d/furniture-assets/chair/oak-chair.glb");
@@ -63,6 +95,7 @@ test("defaults missing dimensions to one meter", () => {
     category: "chair",
     fileName: "oak-chair.glb",
     relativePath: "chair/oak-chair.glb",
+    thumbnailUrl: "https://images.example.com/oak-chair.jpg",
   }] });
   assert.deepEqual(item.sizeMm, { width: 1000, height: 1000, depth: 1000 });
   assert.deepEqual(item.sizeMeters, { width: 1, height: 1, depth: 1 });

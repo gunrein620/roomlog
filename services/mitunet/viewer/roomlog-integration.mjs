@@ -2,6 +2,8 @@ export const ROOMLOG_MESSAGE_TYPE = "roomlog.floor-plan.completed";
 export const ROOMLOG_MESSAGE_SCHEMA = "roomlog-mitunet-floor-plan";
 export const ROOMLOG_MESSAGE_VERSION = 1;
 
+import { decodeRoomFloorLabels } from "./room-floor-zones.mjs";
+
 const FURNITURE_ASSET_BASE_URL = "/floor-plan-3d/furniture-assets/";
 const UNCALIBRATED_FURNITURE_SCALE = 0.55 / 2.7;
 const FURNITURE_PASTELS = [
@@ -30,6 +32,15 @@ function clonePolygons(polygons) {
     door: Array.isArray(polygons?.door) ? polygons.door : [],
     window: Array.isArray(polygons?.window) ? polygons.window : [],
   }));
+}
+
+function cloneFloorMaterials(value) {
+  if (value == null) return undefined;
+  if (!Array.isArray(value.zones) || value.zones.length > 255) {
+    throw new Error("Invalid room floor material map");
+  }
+  decodeRoomFloorLabels(value);
+  return JSON.parse(JSON.stringify(value));
 }
 
 function copyTuple(value, length, fallback) {
@@ -149,6 +160,7 @@ export function buildRoomLogCompletion(context, plan, sourceName = "", furniture
 
   const millimetersPerPixel = Number(plan?.calibration?.millimetersPerPixel);
   const hasPhysicalScale = Number.isFinite(millimetersPerPixel) && millimetersPerPixel > 0;
+  const floorMaterials = cloneFloorMaterials(plan.floor_materials);
   return {
     type: ROOMLOG_MESSAGE_TYPE,
     schema: ROOMLOG_MESSAGE_SCHEMA,
@@ -161,6 +173,7 @@ export function buildRoomLogCompletion(context, plan, sourceName = "", furniture
       millimetersPerPixel: hasPhysicalScale ? millimetersPerPixel : null,
       polygons: clonePolygons(plan.polygons),
       furnitures: mapFurniturePlacements(furnitures, hasPhysicalScale),
+      ...(floorMaterials ? { floorMaterials } : {}),
     },
   };
 }

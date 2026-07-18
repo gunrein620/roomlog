@@ -2,7 +2,10 @@ import { buildEntranceFloorOverride } from "./entrance-floor-zone.mjs";
 
 const MAX_DIMENSION = 4096;
 const MAX_ROOMS = 64;
-const MIN_CONFIDENCE = 0.45;
+// Lowered from 0.45: the weaker vision model reads small Korean room labels with
+// modest confidence, so a stricter floor dropped correctly-read rooms back to
+// the wood fallback. 0.3 keeps obvious noise out while recovering real rooms.
+const MIN_CONFIDENCE = 0.3;
 const DARK_THRESHOLD = 96;
 
 function normalizedRoomLabel(label) {
@@ -17,6 +20,23 @@ export function materialForRoomLabel(label) {
   if (/주방|식당|부엌|kitchen|dining/.test(value)) return "KITCHEN_FLOOR";
   if (/현관|entrance|foyer/.test(value)) return "STONE_TILE";
   return "WOOD";
+}
+
+export function materialForRoom(room) {
+  const materialByRoomType = {
+    BALCONY: "BALCONY_TILE",
+    BATHROOM: "TILE",
+    BEDROOM: "WOOD",
+    DRESS_ROOM: "WOOD",
+    ENTRY: "STONE_TILE",
+    HALLWAY: "WOOD",
+    KITCHEN_DINING: "KITCHEN_FLOOR",
+    LAUNDRY_UTILITY: "TILE",
+    LIVING_ROOM: "WOOD",
+    UNKNOWN: "WOOD",
+  };
+  const roomType = String(room?.roomType ?? "").trim();
+  return materialByRoomType[roomType] ?? materialForRoomLabel(room?.label);
 }
 
 export function encodeRoomFloorLabels(labels, width, height) {
@@ -338,17 +358,19 @@ function buildLabelFreeFloorMap({
     roomType: "unknown",
     seed: seedIndex < 0 ? [0, 0] : [seedIndex % width, Math.floor(seedIndex / width)],
   }];
-  addEntranceFloorOverride({
-    height,
-    interiorMask,
-    labels,
-    millimetersPerPixel,
-    openings,
-    permanentSolid,
-    rooms,
-    width,
-    zones,
-  });
+  if (rooms.length) {
+    addEntranceFloorOverride({
+      height,
+      interiorMask,
+      labels,
+      millimetersPerPixel,
+      openings,
+      permanentSolid,
+      rooms,
+      width,
+      zones,
+    });
+  }
   return { ...encodeRoomFloorLabels(labels, width, height), zones };
 }
 
@@ -428,23 +450,24 @@ export function buildRoomFloorMaterialMap({
   let head = 0;
   let tail = 0;
   const zones = [];
-  const roomByComponent = new Map();
+  const roomBySeed = new Map();
   for (const { area, room, centroid } of validRooms) {
-    if (materialForRoomLabel(room.label) === "STONE_TILE") continue;
+    const material = materialForRoom(room);
+    if (material === "STONE_TILE") continue;
     const seed = findStableSeed(centroid, interiorMask, barrier, components, width, height, minimumSize);
     if (!seed) continue;
-    const componentId = components.ids[seed.y * width + seed.x];
-    const candidate = { area, room, seed };
-    const current = roomByComponent.get(componentId);
+    const candidate = { area, material, room, seed };
+    const key = seed.y * width + seed.x;
+    const current = roomBySeed.get(key);
     if (
       !current
       || area > current.area
       || (area === current.area && Number(room.confidence) > Number(current.room.confidence))
     ) {
-      roomByComponent.set(componentId, candidate);
+      roomBySeed.set(key, candidate);
     }
   }
-  for (const { room, seed } of roomByComponent.values()) {
+  for (const { material, room, seed } of roomBySeed.values()) {
     const label = zones.length + 1;
     if (label > 255) break;
     const index = seed.y * width + seed.x;
@@ -454,8 +477,8 @@ export function buildRoomFloorMaterialMap({
       confidence: Number(room.confidence),
       id: `room-${label}`,
       label: String(room.label ?? `Room ${label}`).slice(0, 80),
-      material: materialForRoomLabel(room.label),
-      roomType: normalizedRoomLabel(room.label).slice(0, 80) || "unknown",
+      material,
+      roomType: String(room.roomType ?? normalizedRoomLabel(room.label) ?? "unknown").slice(0, 80),
       seed: [seed.x, seed.y],
     });
   }

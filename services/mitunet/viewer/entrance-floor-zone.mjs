@@ -6,6 +6,10 @@ const MAX_COMPONENT_RATIO = 0.15;
 const MIN_AREA_MM2 = 800_000;
 const MAX_AREA_MM2 = 6_000_000;
 
+function roomHasType(room, type) {
+  return String(room?.roomType ?? "").trim() === type;
+}
+
 function maskValue(mask, width, height, x, y) {
   const px = Math.round(x);
   const py = Math.round(y);
@@ -90,8 +94,8 @@ function pixelsInRing(ring, labels, baseLabel, interiorMask, permanentSolid, wid
   return pixels;
 }
 
-function nearestLabel(labels, point, width, height) {
-  for (let radius = 0; radius <= 8; radius += 1) {
+function nearestLabel(labels, point, width, height, maxRadius = 8) {
+  for (let radius = 0; radius <= maxRadius; radius += 1) {
     for (let y = Math.max(0, point.y - radius); y <= Math.min(height - 1, point.y + radius); y += 1) {
       for (let x = Math.max(0, point.x - radius); x <= Math.min(width - 1, point.x + radius); x += 1) {
         const value = labels[y * width + x];
@@ -150,6 +154,14 @@ function connectedPixelsContainingSeed(pixels, seed, width, height) {
     }
   }
   return connected;
+}
+
+function ringSeedPoint(ring, width, height) {
+  if (!ring || !ring.length) return null;
+  const x = Math.round(ring.reduce((sum, [px]) => sum + px, 0) / ring.length);
+  const y = Math.round(ring.reduce((sum, [, py]) => sum + py, 0) / ring.length);
+  if (x < 0 || y < 0 || x >= width || y >= height) return null;
+  return { x, y };
 }
 
 function ringArea(ring) {
@@ -219,10 +231,16 @@ function rectangleRing(candidate, millimetersPerPixel) {
   ];
 }
 
-function effectiveMillimetersPerPixel(millimetersPerPixel, candidate) {
+function effectiveMillimetersPerPixel(millimetersPerPixel, candidate, openings) {
   const calibrated = Number(millimetersPerPixel);
   if (Number.isFinite(calibrated) && calibrated > 0) return calibrated;
-  return Number.isFinite(candidate?.spanPixels) && candidate.spanPixels > 0 ? 900 / candidate.spanPixels : null;
+  if (Number.isFinite(candidate?.spanPixels) && candidate.spanPixels > 0) return 900 / candidate.spanPixels;
+  const spans = (Array.isArray(openings) ? openings : [])
+    .filter((opening) => opening?.kind === "door" && opening?.valid !== false)
+    .map((opening) => (opening?.axis === "horizontal" ? Number(opening?.width) : Number(opening?.height)))
+    .filter((span) => Number.isFinite(span) && span >= 2)
+    .sort((left, right) => left - right);
+  return spans.length ? 900 / spans[Math.floor(spans.length / 2)] : null;
 }
 
 export function findExteriorDoorCandidates({ height, interiorMask, openings = [], width }) {
@@ -275,11 +293,13 @@ export function buildEntranceFloorOverride({
     : new Uint8Array(width * height);
   const candidates = findExteriorDoorCandidates({ height, interiorMask, openings, width });
   const balconyRings = rooms
-    .filter((room) => BALCONY_LABEL.test(String(room?.label ?? "")))
+    .filter((room) => roomHasType(room, "BALCONY") || BALCONY_LABEL.test(String(room?.label ?? "")))
     .map((room) => normalizedRing(room.polygon, width, height))
     .filter(Boolean);
   const entranceRooms = rooms
-    .filter((room) => ENTRANCE_LABEL.test(String(room?.label ?? "")) && Number(room?.confidence) >= MIN_CONFIDENCE)
+    .filter((room) => (
+      roomHasType(room, "ENTRY") || ENTRANCE_LABEL.test(String(room?.label ?? ""))
+    ) && Number(room?.confidence) >= MIN_CONFIDENCE)
     .sort((left, right) => Number(right.confidence) - Number(left.confidence));
 
   const safeCandidates = candidates.filter((candidate) => {
@@ -287,7 +307,6 @@ export function buildEntranceFloorOverride({
     return !balconyRings.some((ring) => pointInRing(candidate.inwardPoint.x, candidate.inwardPoint.y, ring)
       || ringsOverlap(fallbackRing, ring));
   });
-  if (!safeCandidates.length) return null;
 
   let selected = null;
   let selectedRoom = null;
@@ -308,21 +327,41 @@ export function buildEntranceFloorOverride({
     }
   }
   if (!selectedRoom) {
+    // The door detector regularly misses the main entrance door entirely, so a
+    // confident semantic entrance polygon stands on its own — still subject to
+    // the balcony guard and the same area caps as the anchored path.
+    for (const room of entranceRooms) {
+      const ring = normalizedRing(room.polygon, width, height);
+      if (!ring) continue;
+      if (balconyRings.some((balcony) => ringsOverlap(ring, balcony))) continue;
+      selectedRoom = room;
+      break;
+    }
+  }
+  if (!selectedRoom && !selected) {
     if (safeCandidates.length !== 1) return null;
     selected = safeCandidates[0];
   }
 
-  const baseLabel = nearestLabel(labels, selected.inwardPoint, width, height);
-  if (!baseLabel) return null;
-  const componentSize = connectedLabelComponentPixelCount(labels, baseLabel, selected.inwardPoint, width, height);
-  const areaScale = effectiveMillimetersPerPixel(millimetersPerPixel, selected);
   const semanticRing = selectedRoom ? normalizedRing(selectedRoom.polygon, width, height) : null;
+  const seedPoint = selected ? selected.inwardPoint : ringSeedPoint(semanticRing, width, height);
+  if (!seedPoint) return null;
+
+  const areaScale = effectiveMillimetersPerPixel(millimetersPerPixel, selected, openings);
+  // The AI often traces the vestibule right at (or beyond) the front door, so
+  // the polygon can sit mostly outside the labeled floor. A door-depth reach
+  // both finds the adjacent base label and bounds the widened band below.
+  const doorDepth = areaScale ? Math.round(1350 / areaScale) : Math.round(Math.max(width, height) * 0.06);
+  const baseLabel = nearestLabel(labels, seedPoint, width, height, selected ? 8 : Math.max(8, doorDepth));
+  if (!baseLabel) return null;
+  const componentSize = connectedLabelComponentPixelCount(labels, baseLabel, seedPoint, width, height);
   let pixels = semanticRing
     ? pixelsInRing(semanticRing, labels, baseLabel, interiorMask, solidMask, width, height)
     : [];
-  pixels = connectedPixelsContainingSeed(pixels, selected.inwardPoint, width, height);
+  pixels = connectedPixelsContainingSeed(pixels, seedPoint, width, height);
 
   if (!validArea(pixels, componentSize, areaScale)) {
+    if (!selected) return null;
     const fallbackRing = rectangleRing(selected, millimetersPerPixel);
     pixels = connectedPixelsContainingSeed(pixelsInRing(
       fallbackRing,
@@ -332,16 +371,16 @@ export function buildEntranceFloorOverride({
       solidMask,
       width,
       height,
-    ), selected.inwardPoint, width, height);
+    ), seedPoint, width, height);
     if (pixels.length < ringArea(fallbackRing) * 0.5) return null;
+    if (!validArea(pixels, componentSize, areaScale)) return null;
   }
-  if (!validArea(pixels, componentSize, areaScale)) return null;
 
   return {
     baseLabel,
     confidence: selectedRoom ? Number(selectedRoom.confidence) : 0.5,
     label: "현관",
     pixels,
-    seed: [selected.inwardPoint.x, selected.inwardPoint.y],
+    seed: [seedPoint.x, seedPoint.y],
   };
 }

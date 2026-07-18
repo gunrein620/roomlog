@@ -1,4 +1,11 @@
 const COLLAPSED_SCALE = 0.001;
+const WAVE_DURATION_MS = 800;
+
+export function waveDelayMs(index, total, duration = WAVE_DURATION_MS) {
+  if (!Number.isFinite(index) || !Number.isFinite(total) || total <= 1) return 0;
+  const progress = Math.min(1, Math.max(0, index / (total - 1)));
+  return Math.round(progress * duration);
+}
 
 function finalBottomFor(animation) {
   if (!Number.isFinite(animation.finalBottom)) {

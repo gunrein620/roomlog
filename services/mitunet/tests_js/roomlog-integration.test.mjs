@@ -140,6 +140,30 @@ test("legacy completion calls keep an empty RoomLog furniture array", () => {
   assert.deepEqual(message.payload.furnitures, []);
 });
 
+test("completion message preserves optional room floor materials without sharing state", () => {
+  const context = readRoomLogContext(locationLike, ["http://localhost:3000"]);
+  const floorMaterials = {
+    encoding: "rle-u8",
+    height: 2,
+    labels: "2:1,2:2",
+    version: 1,
+    width: 2,
+    zones: [
+      { confidence: 0.98, id: "room-1", label: "침실", material: "WOOD", roomType: "침실", seed: [0, 0] },
+      { confidence: 0.97, id: "room-2", label: "욕실", material: "TILE", roomType: "욕실", seed: [1, 1] },
+    ],
+  };
+  const message = buildRoomLogCompletion(
+    context,
+    { ...plan, floor_materials: floorMaterials },
+    "home.png",
+  );
+
+  assert.deepEqual(message.payload.floorMaterials, floorMaterials);
+  assert.notEqual(message.payload.floorMaterials, floorMaterials);
+  assert.notEqual(message.payload.floorMaterials.zones, floorMaterials.zones);
+});
+
 test("rejects unsafe or non-GLB furniture paths", () => {
   const context = readRoomLogContext(locationLike, ["http://localhost:3000"]);
   const base = {

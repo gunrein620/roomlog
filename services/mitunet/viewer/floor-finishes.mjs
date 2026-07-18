@@ -72,6 +72,74 @@ function closeRasterGaps(mask, width, height, radius) {
   return closed;
 }
 
+// Chessboard distance to the nearest set pixel, computed with the classic
+// two-pass chamfer sweep so large closing radii stay O(width * height).
+function chessboardDistance(mask, width, height) {
+  const INF = 1 << 29;
+  const distance = new Int32Array(mask.length).fill(INF);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if (mask[index]) { distance[index] = 0; continue; }
+      let best = INF;
+      if (x > 0) best = Math.min(best, distance[index - 1] + 1);
+      if (y > 0) {
+        best = Math.min(best, distance[index - width] + 1);
+        if (x > 0) best = Math.min(best, distance[index - width - 1] + 1);
+        if (x + 1 < width) best = Math.min(best, distance[index - width + 1] + 1);
+      }
+      distance[index] = best;
+    }
+  }
+  for (let y = height - 1; y >= 0; y -= 1) {
+    for (let x = width - 1; x >= 0; x -= 1) {
+      const index = y * width + x;
+      let best = distance[index];
+      if (x + 1 < width) best = Math.min(best, distance[index + 1] + 1);
+      if (y + 1 < height) {
+        best = Math.min(best, distance[index + width] + 1);
+        if (x + 1 < width) best = Math.min(best, distance[index + width + 1] + 1);
+        if (x > 0) best = Math.min(best, distance[index + width - 1] + 1);
+      }
+      distance[index] = best;
+    }
+  }
+  return distance;
+}
+
+// Morphological closing of the flood barrier: a doorway the detector missed is
+// still a hole the outside flood pours through, misclassifying whole open
+// living areas as exterior. Closing with a door-sized radius bridges such
+// gaps without changing the rendered wall pixels at all.
+function sealWideGaps(barrier, width, height, radius) {
+  if (radius < 1) return barrier;
+  const toBarrier = chessboardDistance(barrier, width, height);
+  const dilated = new Uint8Array(barrier.length);
+  for (let index = 0; index < barrier.length; index += 1) {
+    dilated[index] = toBarrier[index] <= radius ? 0 : 1; // complement of dilation
+  }
+  const toOpen = chessboardDistance(dilated, width, height);
+  const sealed = new Uint8Array(barrier.length);
+  for (let index = 0; index < barrier.length; index += 1) {
+    sealed[index] = barrier[index] || toOpen[index] > radius ? 1 : 0;
+  }
+  return sealed;
+}
+
+// The sealing radius comes from the doors the detector did find: a doorway is
+// about 900mm, so half the widest plausible entrance (~1300mm) in pixels seals
+// missed door gaps while staying far too small to bridge real open frontage.
+function doorGapSealRadius(openings) {
+  const spans = (Array.isArray(openings) ? openings : [])
+    .filter(opening => opening?.kind === "door" && opening?.valid !== false)
+    .map(opening => (opening?.axis === "horizontal" ? Number(opening?.width) : Number(opening?.height)))
+    .filter(span => Number.isFinite(span) && span >= 2)
+    .sort((left, right) => left - right);
+  if (!spans.length) return 0;
+  const median = spans[Math.floor(spans.length / 2)];
+  return Math.max(4, Math.min(64, Math.round(median * 0.72)));
+}
+
 // A doorway is a gap in the wall mask whether or not opening alignment accepted
 // the detection, so a rejected door still leaks the flood fill into the rooms
 // behind it. Sealing those gaps needs the detection footprint alone, not a
@@ -113,7 +181,12 @@ export function buildInteriorMask(polygons = {}, width, height, openings = []) {
   // Corrected polygon fragments can share vector endpoints while leaving a
   // narrow seam after pixel-center rasterization. Close only this temporary
   // flood barrier; the rendered geometry and final solid pixels stay exact.
-  const floodBarrier = closeRasterGaps(floodBlocked, width, height, 2);
+  const floodBarrier = sealWideGaps(
+    closeRasterGaps(floodBlocked, width, height, 2),
+    width,
+    height,
+    doorGapSealRadius(openings),
+  );
 
   const outside = new Uint8Array(width * height);
   const queue = [];
@@ -150,7 +223,7 @@ export function maskContains(mask, width, height, x, y) {
 export function worldToMaskPixel(point, { scale, cx, cy }) {
   return {
     x: Math.round(point.x / scale + cx),
-    y: Math.round(-point.z / scale + cy),
+    y: Math.round(point.z / scale + cy),
   };
 }
 
@@ -173,24 +246,28 @@ function woodColor(x, y) {
 }
 
 function materialColor(material, x, y) {
+  if (material === "KITCHEN_FLOOR") return woodColor(x, y);
   if (material === "TILE") {
     const grid = x % 28 <= 1 || y % 28 <= 1;
-    return grid ? [102, 133, 148] : [221, 235, 242];
+    if (grid) return [188, 196, 202];
+    // Faint per-tile tone shift so the white porcelain does not read as one flat sheet.
+    const hash = Math.sin(Math.floor(x / 28) * 127.1 + Math.floor(y / 28) * 311.7) * 43758.5453;
+    const tone = Math.round(7 * ((hash - Math.floor(hash)) - 0.5));
+    return [238 + tone, 240 + tone, 242 + tone];
   }
   if (material === "BALCONY_TILE") {
     const grid = x % 22 <= 1 || y % 22 <= 1;
     return grid ? [105, 112, 120] : [215, 219, 224];
   }
-  if (material === "KITCHEN_FLOOR") {
-    const grid = x % 32 <= 1 || y % 32 <= 1;
-    if (grid) return [139, 132, 120];
-    return (Math.floor(x / 32) + Math.floor(y / 32)) % 2 === 0
-      ? [232, 226, 212]
-      : [207, 199, 184];
-  }
   if (material === "STONE_TILE") {
-    const grid = x % 54 <= 1 || y % 34 <= 1;
-    return grid ? [112, 104, 94] : [217, 210, 196];
+    const grid = x % 60 <= 1 || y % 38 <= 1;
+    if (grid) return [128, 130, 133];
+    // Per-slab tone plus a soft diagonal vein for a natural cool-grey stone read.
+    const hash = Math.sin(Math.floor(x / 60) * 71.3 + Math.floor(y / 38) * 191.7) * 43758.5453;
+    const tone = Math.round(8 * ((hash - Math.floor(hash)) - 0.5));
+    const vein = Math.round(6 * Math.sin((x + y) * 0.18 + Math.floor(x / 60) * 2.1) + 3 * Math.sin((x - y) * 0.37));
+    const shade = tone + vein;
+    return [212 + shade, 214 + shade, 216 + shade];
   }
   return woodColor(x, y);
 }
