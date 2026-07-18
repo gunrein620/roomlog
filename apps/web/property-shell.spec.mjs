@@ -1192,7 +1192,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
 test("shows a landlord my page with property registration fields and media actions", () => {
   for (const label of [
     "집주인 마이페이지",
-    "내 집 등록",
+    "매물등록",
     "매물명",
     "주소",
     "주소 검색",
@@ -1206,11 +1206,11 @@ test("shows a landlord my page with property registration fields and media actio
     "관리비",
     "전용면적",
     "층수",
-    "사진과 3D방 자료",
+    "사진·3D 자료",
     "사진 업로드",
     "3D 도면 만들기",
     "도면 JSON 업로드",
-    "영상/스플랫 접수",
+    "3D 투어용 영상·캡처 파일을 끌어다 놓거나 눌러서 올려요",
     "등록 요약",
     "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
     "매물 등록하기"
@@ -1218,7 +1218,7 @@ test("shows a landlord my page with property registration fields and media actio
     assert.match(pageSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /owner-submit-summary/);
+  assert.match(pageSource, /owner-lane-attach/);
   assert.match(pageSource, /detailAddress/);
   assert.match(pageSource, /세부주소 없음/);
   assert.match(pageSource, /ownerForm/);

@@ -29,7 +29,9 @@ export const demoListings = [
     updated: "1일전",
     broker: "내방역 푸른공인중개사",
     verification: "오늘 현장확인",
-    response: "평균 응답 8분"
+    response: "평균 응답 8분",
+    // 피드 스티커·지도(mapListings)와 같은 값 — 세 항목 모두에 넣어 리터럴 타입 분열을 막는다.
+    has3DTour: true
   },
   {
     listingNo: "57804323",
@@ -57,7 +59,8 @@ export const demoListings = [
     updated: "방금확인",
     broker: "성수온도공인중개사",
     verification: "중개사 확인",
-    response: "즉시 문의 가능"
+    response: "즉시 문의 가능",
+    has3DTour: true
   },
   {
     listingNo: "57804324",
@@ -85,7 +88,8 @@ export const demoListings = [
     updated: "오늘확인",
     broker: "강남역 스카이부동산",
     verification: "서류 확인",
-    response: "보상 정책 참여"
+    response: "보상 정책 참여",
+    has3DTour: false
   }
 ];
 
@@ -387,6 +391,11 @@ const demoListingFloorPlan: ListingFloorPlan3D = {
     { id: "demo-fp-fridge", furniture_id: "demo-fridge", name: "냉장고", color: "#9e94c9", length: [700, 1650, 720], position: [0.55, 0.825, 1.35], rotation: [0, 0, 0], scale: 1 }
   ]
 };
+
+/** 피드 카드 스티커용 — 이 매물이 3D 가구 배치(도면)를 제공하는지.
+ *  상세(findDemoListing)가 방배 데모에 도면을 합성하는 것과 같은 규칙 — 피드와 상세의 표식이 어긋나지 않게. */
+export const listingHas3DPlacement = (listing: Listing) =>
+  Boolean(listing.floorPlan3D) || listing.listingNo === DEMO_FLOOR_PLAN_LISTING_NO;
 
 /** listingNo로 데모 매물을 찾는다 — 상세 라우트가 서버 매물이 아닐 때 사용. */
 export function findDemoListing(listingNo: string): Listing | undefined {

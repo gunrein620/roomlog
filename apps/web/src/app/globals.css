@@ -2117,6 +2117,50 @@ p {
   object-fit: cover;
 }
 
+/* ── 썸네일 스티커(시안: 워킹뷰 스티커) — 골드 버스트=1인칭 워킹뷰, 흰 pill=3D 가구 배치.
+   실제 기능 있는 매물에만 부착. 시안(340px 카드, 90px 버스트)을 썸네일 실높이에 비례 축소. ── */
+.thumb-sticker-walk {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  clip-path: polygon(50% 0%, 55.3% 6.32%, 61.97% 1.45%, 65.6% 8.86%, 73.24% 5.73%, 74.99% 13.79%, 83.16% 12.57%, 82.93% 20.82%, 91.15% 21.6%, 88.96% 29.55%, 96.75% 32.27%, 92.72% 39.47%, 99.64% 43.97%, 94% 50%, 99.64% 56.03%, 92.72% 60.53%, 96.75% 67.73%, 88.96% 70.45%, 91.15% 78.4%, 82.93% 79.18%, 83.16% 87.43%, 74.99% 86.21%, 73.24% 94.27%, 65.6% 91.14%, 61.97% 98.55%, 55.3% 93.68%, 50% 100%, 44.7% 93.68%, 38.03% 98.55%, 34.4% 91.14%, 26.76% 94.27%, 25.01% 86.21%, 16.84% 87.43%, 17.07% 79.18%, 8.85% 78.4%, 11.04% 70.45%, 3.25% 67.73%, 7.28% 60.53%, 0.36% 56.03%, 6% 50%, 0.36% 43.97%, 7.28% 39.47%, 3.25% 32.27%, 11.04% 29.55%, 8.85% 21.6%, 17.07% 20.82%, 16.84% 12.57%, 25.01% 13.79%, 26.76% 5.73%, 34.4% 8.86%, 38.03% 1.45%, 44.7% 6.32%);
+  background: linear-gradient(150deg, #fbd877, #f0bc46);
+  color: #2e2258;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  filter: drop-shadow(0 4px 8px rgba(23, 19, 58, 0.32));
+  pointer-events: none;
+}
+
+.thumb-sticker-3d {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 2;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #c25370;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: 0 2px 8px rgba(23, 19, 58, 0.22);
+  pointer-events: none;
+}
+
 .badge-row {
   position: absolute;
   top: 12px;
@@ -5926,6 +5970,27 @@ p {
   margin-top: 14px;
 }
 
+/* 두 레인 구조 — 왼쪽 2/3 폼 레인 · 오른쪽 1/3 첨부(사진·3D·영상) 레인. 900px 이하는 세로 스택. */
+/* 폼 레인 콘텐츠는 owner-step1-fields 캡(600px) + owner-card 좌우 패딩(16px×2)으로 632px에서
+   더 안 늘어난다 — 2fr을 주면 그만큼 빈 여백이 되므로 고정폭으로 잡고, 첨부 레인이 나머지를 전부 가져간다. */
+.owner-lanes {
+  display: grid;
+  grid-template-columns: 632px minmax(260px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.owner-lane-form,
+.owner-lane-attach {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .owner-lanes {
+    grid-template-columns: 1fr;
+  }
+}
+
 .owner-status-board {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6521,14 +6586,49 @@ p {
   gap: 12px;
 }
 
+/* display:block 명시 — 카드 태그가 <figure>/<div>였을 땐 기본값으로 충분했지만, 영상 패널은
+   전체가 <label>(인라인 기본)이라 명시하지 않으면 aspect-ratio·height가 먹지 않는다. */
 .summary-media-card {
   position: relative;
+  display: block;
   margin: 0;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #efecfa;
+}
+
+/* 빈 상태 — 내용이 없을 때는 정사각 비율 대신 낮은 고정 높이로(라이트 페이지 한가운데 큰 빈 패널 방지).
+   점선 보더는 "드롭 가능" 신호 — 드롭을 지원하는 사진·영상 패널의 기본값이다(3D는 아래에서 solid로 되돌림). */
+.summary-media-card.is-empty {
+  aspect-ratio: auto;
+  height: 220px;
+  max-height: 300px;
+  border: 1.5px dashed color-mix(in srgb, var(--blue) 22%, var(--line));
+  background: var(--canvas);
+}
+
+/* 드래그오버 중 시각 피드백 — 드롭 가능한 패널(사진·영상)에만 JSX에서 조건부로 붙는다 */
+.summary-media-card.is-dragover {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+/* 첨부 레인이 나머지 폭을 전부 가져가면서 예전보다 넓어졌다 — 190px를 기본값으로 두고,
+   사진(최중요·최빈 행동)은 더 크게, 드롭 불가인 3D는 더 컴팩트하게 아래에서 각각 되돌린다. */
+.owner-lane-attach .summary-media-card.is-empty {
+  height: 190px;
+}
+
+.owner-lane-attach .summary-media-photos.is-empty {
+  height: 240px;
+}
+
+.owner-lane-attach .summary-media-3d.is-empty {
+  height: 140px;
+  /* 3D는 드롭을 지원하지 않는다 — 점선(드롭 가능 신호)을 solid로 되돌려 거짓 신호를 없앤다 */
+  border-style: solid;
 }
 
 .summary-media-photos img {
@@ -6588,6 +6688,7 @@ p {
   font-weight: 800;
 }
 
+/* label(사진 드롭 트리거)·a(3D 빈 상태 링크)로도 쓰인다 — 링크/라벨 기본 스타일(밑줄·포인터 아닌 커서)을 지운다 */
 .summary-media-empty,
 .summary-media-loading {
   display: grid;
@@ -6600,6 +6701,8 @@ p {
   font-size: 0.8rem;
   font-weight: 700;
   text-align: center;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .summary-media-loading {
@@ -6615,10 +6718,11 @@ p {
 
 .summary-media-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 
+/* 사진 업로드 / 3D 도면 만들기 — 최종 CTA(핑크 필)보다 낮은 위계라 아웃라인으로 */
 .owner-form .summary-media-btn {
   display: inline-flex;
   min-height: 44px;
@@ -6626,10 +6730,10 @@ p {
   justify-content: center;
   gap: 6px;
   padding: 0 12px;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--blue);
-  color: #ffffff;
+  background: #ffffff;
+  color: var(--blue);
   font-size: 0.8rem;
   font-weight: 900;
   text-align: center;
@@ -6639,7 +6743,7 @@ p {
 }
 
 .owner-form .summary-media-btn:hover {
-  filter: brightness(0.96);
+  background: var(--blue-soft);
 }
 
 .owner-form .summary-media-btn--ghost {
@@ -6649,6 +6753,69 @@ p {
 }
 
 .summary-media-btn input[type="file"] {
+  display: none;
+}
+
+/* 카드 패널 자체가 액션존일 때(사진 빈 상태 label, 영상 카드) 안에 숨은 파일 인풋 */
+.summary-media-card input[type="file"] {
+  display: none;
+}
+
+/* 영상/스플랫 패널 — 파일 선택 후 상태(아이콘+파일명·크기+변경) 한 줄 레이아웃 */
+.summary-media-tour-selected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+  color: var(--ink);
+}
+
+.summary-media-tour-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-media-tour-cta {
+  flex: none;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+/* 영상 패널 빈 상태의 보조 카피(zip 권장·소요시간 등) — 주 카피보다 한 단 작게 */
+.summary-media-hint {
+  color: var(--subtle);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+/* 도면 JSON 업로드 — 개발자용 기능이라 버튼 줄에서 빼고 작은 텍스트 링크로 강등 */
+.owner-form .summary-media-json-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.owner-form .summary-media-json-link:hover {
+  color: var(--blue);
+}
+
+.summary-media-json-link input[type="file"] {
   display: none;
 }
 
@@ -6713,6 +6880,16 @@ p {
   font-size: 1.05rem;
 }
 
+/* 폼 레인 제목 — 공개 표면의 세리프 페이지 타이틀 문법(listing 상세 오버레이 h1,
+   splat-tour/register 페이지 타이틀: Gowun Batang·굵게)을 따라 카드 헤딩을 페이지 제목급으로 승격.
+   오른쪽 "사진·3D 자료"(.form-heading h3, 1.05rem)보다 뚜렷하게 크게 잡아 위계를 드러낸다. */
+.owner-form-title {
+  font-family: "Gowun Batang", serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--blue);
+}
+
 .form-heading > strong {
   display: inline-flex;
   min-height: 28px;
@@ -6744,9 +6921,10 @@ p {
   padding: 0 12px;
 }
 
+/* 인풋 → 버튼 순(JSX 순서와 일치) — 검색 버튼이 인풋 오른쪽에 온다 */
 .owner-address-row {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 8px;
   align-items: stretch;
 }
@@ -6880,41 +7058,81 @@ p {
   gap: 10px;
 }
 
-/* STEP 01 필드 묶음 — 기본 2열(모바일), 데스크톱에서 3열로 넓혀 세로 높이를 줄인다 */
+/* 폼 레인 필드 — 1열이 기본. 짝을 이루는 필드(전용면적|층수, 보증금|월세)만 owner-step1-pair로
+   묶고, 나머지는 전부 한 줄에 하나씩 세로로 흘려서 두 레인 구조에서 폭이 과하게 넓어지지 않게 한다. */
 .owner-step1-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
-}
-
-.owner-step1-fields > .owner-step1-wide,
-.owner-step1-fields > .owner-step1-addr-row {
-  grid-column: 1 / -1;
-}
-
-/* 주소·세부주소 한 행 — 모바일은 세로 스택, 데스크톱은 반반(1:1) */
-.owner-step1-addr-row {
-  display: grid;
   grid-template-columns: 1fr;
-  gap: 12px 16px;
+  gap: 10px;
 }
 
-/* 옵션 선택 — 상세 "옵션 정보" 칩과 같은 언어의 토글 버튼. 선택 시 파란 채움 */
-.owner-option-field {
+/* 인풋 폭 3단계 티어 — 내용 길이에 맞춘다. 기본(풀폭 600px, 매물명·주소) → owner-w-md(360px,
+   건물명·세부주소·매물유형·거래유형) → owner-w-sm(240px, 관리비·전세금·매매가·입주가능일). */
+.owner-step1-fields > label {
+  max-width: 600px;
+}
+
+.owner-step1-fields > label.owner-w-md {
+  max-width: 360px;
+}
+
+.owner-step1-fields > label.owner-w-sm {
+  max-width: 240px;
+}
+
+/* 짝 행(전용면적|층수, 보증금|월세) — 풀폭보다 좁게, 칸당 약 230px */
+.owner-step1-pair {
   display: grid;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  max-width: 480px;
 }
 
-.owner-option-label {
-  font-size: 0.8rem;
+/* 필드 묶음 캡션 — 그룹 사이 여백으로 의미 단위를 나눈다 */
+/* 소제목급으로 승격 — 헤어라인(border-top)으로 그룹 사이를 끊는다. 첫 캡션은 카드 헤딩
+   바로 아래라 구분선·여백 없이 시작한다. */
+.owner-group-caption {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
   font-weight: 800;
-  color: #373f4e;
+  letter-spacing: 0.01em;
+  color: var(--blue);
 }
 
+.owner-group-caption:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* 돈·면적 필드의 인풋 안 단위 표기(만원/m²) — 포커스는 인풋 그대로, 표기는 겹쳐서 얹는다 */
+.owner-input-suffix {
+  position: relative;
+}
+
+.owner-input-suffix input {
+  padding-right: 44px;
+}
+
+.owner-input-suffix span {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+/* 3열 고정(6개 칩 = 3×2) + 인풋 컬럼(600px)과 같은 상한 — 옵션 칩만 레인 풀폭으로 퍼지지 않게 */
 .owner-option-chip-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+  max-width: 600px;
 }
 
 .owner-option-chip-grid button {
@@ -6935,12 +7153,6 @@ p {
   border-color: var(--blue);
   background: var(--blue);
   color: #ffffff;
-}
-
-@media (min-width: 960px) {
-  .owner-option-chip-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
 }
 
 /* 업로드 타일 — 사진/3D도면/JSON/영상을 하나의 통일된 카드 언어로 묶는다.
@@ -7153,11 +7365,20 @@ p {
 
 .submit-listing {
   min-height: 58px;
-  border-radius: 16px;
-  background: var(--blue);
-  color: #ffffff;
+  border-radius: 12px;
+  background: var(--pink);
+  color: #0b0b12;
   font-weight: 900;
-  box-shadow: 0 14px 28px rgba(32, 24, 74, 0.24);
+  box-shadow: 0 8px 22px rgba(242, 137, 157, 0.35);
+}
+
+/* 등록 행동에 대한 안내라 CTA 바로 위, 작은 중앙 텍스트로 — 첨부 레인 바닥이 아니라 여기가 제자리 */
+.owner-submit-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .section-title.no-margin {
@@ -7619,6 +7840,10 @@ p {
 .tenant-contract-card button:disabled {
   cursor: not-allowed;
   opacity: 0.72;
+}
+
+.submit-listing:disabled {
+  opacity: 0.45;
 }
 
 .btn-spinner {
@@ -12245,6 +12470,22 @@ p {
     height: 190px;
   }
 
+  /* 큰 썸네일에선 스티커도 시안 비례로 키운다 */
+  .thumb-sticker-walk {
+    top: 10px;
+    left: 10px;
+    width: 66px;
+    height: 66px;
+    font-size: 0.7rem;
+  }
+
+  .thumb-sticker-3d {
+    bottom: 10px;
+    left: 10px;
+    padding: 6px 12px;
+    font-size: 0.74rem;
+  }
+
   /* 홈 외 화면은 중앙 정렬 */
   .map-screen,
   .saved-screen,
@@ -12645,15 +12886,6 @@ p {
     grid-template-columns: 1fr;
     gap: 20px;
     align-items: start;
-  }
-
-  .owner-step1-fields {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  /* 데스크톱: 주소·세부주소를 반반(1:1)으로 */
-  .owner-step1-addr-row {
-    grid-template-columns: 1fr 1fr;
   }
 
   /* 문의센터: 채팅 허브가 전체 폭 — 데스크톱 2패널(목록+대화)은 TradeChatCenter variant="hub"가 그린다 */

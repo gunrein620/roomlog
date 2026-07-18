@@ -11,11 +11,13 @@ import {
   BriefcaseBusiness,
   Building,
   Building2,
+  Box,
   CalendarClock,
   ChevronDown,
   ChevronRight,
   Copy,
   DoorOpen,
+  Footprints,
   Star,
   HomeIcon,
   House,
@@ -86,6 +88,7 @@ import {
   isRemotePhoto,
   LISTING_PHOTO_PLACEHOLDER,
   listingDetailAddressLabel,
+  listingHas3DPlacement,
   listingRegisteredAgoLabel,
   mapListings,
   monthlyDealLabel,
@@ -223,6 +226,9 @@ const listingMatchesCategory = (label: string, listing: Listing): boolean => {
 
 /* 거래유형(월세·전세)은 검색카드 탭이 단독 점유 — 여기엔 부가 조건만 남긴다 (중복 스택 제거) */
 const quickFilters = ["관리비 포함", "반려동물", "주차", "풀옵션"];
+
+// 홈 추천 피드 렌더 상한 — 3열 그리드 × 7줄. 초과분은 지도 탭 "전체보기"가 담당.
+const HOME_FEED_MAX_ITEMS = 21;
 
 // 검색바 거래유형 탭 — 택일. 필터 체인의 거래유형 OR 매칭(dealTypeFilters)과 같은 어휘를 쓴다.
 const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
@@ -1752,6 +1758,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches && priceMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
+  // 홈 피드는 최대 21개(3열 × 7줄)만 — 나머지는 "전체보기 →"(지도 탭)로. 카운트 표기는 전체 기준 유지.
+  const homeFeedListings = visibleHomeListings.slice(0, HOME_FEED_MAX_ITEMS);
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
   const mapFilterOptions = ["시세", "원룸·투룸", "보증금", "안전", "3D 가능", "찜한 매물"];
   // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
@@ -2670,14 +2678,27 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </div>
 
           <div className="listing-feed">
-            {visibleHomeListings.length > 0 ? (
+            {homeFeedListings.length > 0 ? (
               <>
-                {visibleHomeListings.map((listing) => (
+                {homeFeedListings.map((listing) => (
                   <article className="listing-card" key={listing.listingNo}>
                     <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
                       <div className="listing-photo">
                         <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />
-                        {/* 신뢰 배지(확인매물·3D투어 등)는 홈 피드에서 제거 — 사진이 주인공, 배지는 상세에서 */}
+                        {/* 워킹뷰 스티커(시안) — 실제 기능이 있는 매물에만: 골드 버스트=1인칭 투어, pill=3D 가구 배치.
+                            텍스트 신뢰 배지(확인매물 등)는 계속 상세 전용 — 여기 스티커는 3D 차별점 표식만. */}
+                        {listing.has3DTour ? (
+                          <span className="thumb-sticker-walk" aria-label="1인칭 워킹뷰 가능">
+                            <Footprints size={17} strokeWidth={2.2} aria-hidden="true" />
+                            워킹뷰
+                          </span>
+                        ) : null}
+                        {listingHas3DPlacement(listing) ? (
+                          <span className="thumb-sticker-3d" aria-label="3D 가구 배치 가능">
+                            <Box size={13} strokeWidth={2} aria-hidden="true" />
+                            3D 배치
+                          </span>
+                        ) : null}
                       </div>
                       {/* 카드 본문은 가격·제목·핵심 스펙만 — 신뢰 배지는 사진 위, 나머지는 상세에서. */}
                       <div className="listing-body">
