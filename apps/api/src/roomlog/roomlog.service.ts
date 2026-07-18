@@ -446,7 +446,6 @@ const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
               "BALCONY",
               "ENTRY",
               "HALLWAY",
-              "COMMON_AREA",
               "UNKNOWN"
             ],
             type: "string"
@@ -8626,7 +8625,6 @@ export class RoomlogService implements OnModuleDestroy {
       || value === "BALCONY"
       || value === "ENTRY"
       || value === "HALLWAY"
-      || value === "COMMON_AREA"
       || value === "UNKNOWN"
       ? value
       : "UNKNOWN";

@@ -36,10 +36,3 @@ test("classification sample requests non-overlapping room polygons", () => {
   assert.match(source, /polygon끼리 겹치지 마세요/);
   assert.match(source, /중복 반환하지 마세요/);
 });
-
-test("classification sample keeps common circulation outside the private entry", () => {
-  assert.match(source, /"COMMON_AREA"/);
-  assert.match(source, /공용 복도.*계단실.*엘리베이터 홀/);
-  assert.match(source, /세대 내부.*현관.*ENTRY/);
-  assert.match(source, /COMMON_AREA polygon은 현관문 바깥쪽/);
-});

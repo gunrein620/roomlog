@@ -19,7 +19,6 @@ export const FLOOR_MATERIAL_KINDS = [
   "BALCONY_TILE",
   "KITCHEN_FLOOR",
   "STONE_TILE",
-  "CONCRETE",
 ] as const;
 export type FloorMaterialKind = typeof FLOOR_MATERIAL_KINDS[number];
 export type MitunetFloorMaterialZone = {

@@ -111,38 +111,6 @@ describe("MitUNet surfaces", () => {
     );
   });
 
-  it("renders saved common-area concrete deterministically", () => {
-    const mask = new Uint8Array(8).fill(1);
-    const zone = {
-      confidence: 0.94,
-      id: "room-1",
-      label: "common corridor",
-      material: "CONCRETE" as const,
-      roomType: "COMMON_AREA",
-      seed: [0, 0] as [number, number],
-    };
-    const concreteMap = {
-      encoding: "rle-u8" as const,
-      height: 2,
-      labels: "8:1",
-      version: 1 as const,
-      width: 4,
-      zones: [zone],
-    };
-    const stoneMap = {
-      ...concreteMap,
-      zones: [{ ...zone, material: "STONE_TILE" as const }],
-    };
-    const first = buildFloorMaterialRgba(mask, 4, 2, concreteMap);
-    const second = buildFloorMaterialRgba(mask, 4, 2, concreteMap);
-    const stone = buildFloorMaterialRgba(mask, 4, 2, stoneMap);
-
-    assert.deepEqual(first, second);
-    assert.equal(first[3], 255);
-    assert.notDeepEqual(first, stone);
-    assert.notDeepEqual(first, buildWoodRgba(mask, 4, 2));
-  });
-
   it("recovers interior floor when the saved payload omits a rejected doorway barrier", () => {
     const polygons = {
       wall: [

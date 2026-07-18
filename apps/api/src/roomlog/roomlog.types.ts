@@ -1512,7 +1512,6 @@ export type FloorPlanAiRoomType =
   | "BALCONY"
   | "ENTRY"
   | "HALLWAY"
-  | "COMMON_AREA"
   | "UNKNOWN";
 
 export type FloorPlanAiRoomPolygonPoint = {

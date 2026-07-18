@@ -1369,7 +1369,7 @@ describe("RoomlogService", () => {
       return new Response(
         JSON.stringify({
           output_text:
-            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"공간 1","roomType":"BATHROOM","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]},{"label":"공용 복도","roomType":"COMMON_AREA","confidence":0.91,"polygon":[{"x":610,"y":100},{"x":900,"y":100},{"x":900,"y":460},{"x":610,"y":460}]}]}'
+            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"공간 1","roomType":"BATHROOM","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]}]}'
         }),
         { headers: { "Content-Type": "application/json" }, status: 200 }
       );
@@ -1392,7 +1392,6 @@ describe("RoomlogService", () => {
       assert.equal((capturedBody?.text as any)?.format?.strict, true);
       assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.planStyle?.type, "string");
       assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.rooms?.items?.properties?.roomType?.type, "string");
-      assert.ok((capturedBody?.text as any)?.format?.schema?.properties?.rooms?.items?.properties?.roomType?.enum.includes("COMMON_AREA"));
       assert.match(JSON.stringify(capturedBody), /"detail":"high"/);
       assert.match(JSON.stringify(capturedBody?.input), /연결된 열린 영역의 15% 이내/);
       assert.match(JSON.stringify(capturedBody?.input), /6m² 이내/);
@@ -1403,7 +1402,6 @@ describe("RoomlogService", () => {
       assert.equal(result.rooms?.[0].label, "공간 1");
       assert.equal((result.rooms?.[0] as { roomType?: string } | undefined)?.roomType, "BATHROOM");
       assert.equal(result.rooms?.[0].polygon[2].x, 560);
-      assert.equal((result.rooms?.[1] as { roomType?: string } | undefined)?.roomType, "COMMON_AREA");
     } finally {
       globalThis.fetch = originalFetch;
       if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;

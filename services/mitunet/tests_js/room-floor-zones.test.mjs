@@ -5,7 +5,6 @@ import {
   buildRoomFloorMaterialMap,
   decodeRoomFloorLabels,
   encodeRoomFloorLabels,
-  materialForRoom,
   materialForRoomLabel,
 } from "../viewer/room-floor-zones.mjs";
 
@@ -55,77 +54,6 @@ test("uses the structured room type when the label is generic", () => {
   });
 
   assert.equal(map.zones[0].material, "TILE");
-});
-
-test("maps structured common areas to concrete", () => {
-  assert.equal(materialForRoom({ label: "공용 복도", roomType: "COMMON_AREA" }), "CONCRETE");
-});
-
-test("keeps common-area concrete outside a door-sealed private unit", () => {
-  const width = 48;
-  const height = 24;
-  const polygons = {
-    wall: [rectangle(23, 0, 25, 8), rectangle(23, 16, 25, 24)],
-    door: [rectangle(23, 8, 25, 16)],
-    window: [],
-  };
-  const before = structuredClone(polygons);
-  const map = buildRoomFloorMaterialMap({
-    height,
-    interiorMask: new Uint8Array(width * height).fill(1),
-    polygons,
-    rooms: [
-      { confidence: 0.96, label: "공용 복도", polygon: normalizedBox(3, 3, 20, 21, width, height), roomType: "COMMON_AREA" },
-      { confidence: 0.98, label: "거실", polygon: normalizedBox(28, 3, 45, 21, width, height), roomType: "LIVING_ROOM" },
-    ],
-    sourceRgba: new Uint8ClampedArray(width * height * 4).fill(255),
-    width,
-  });
-  const labels = decodeRoomFloorLabels(map);
-  const concrete = map.zones.findIndex((zone) => zone.material === "CONCRETE") + 1;
-  const wood = map.zones.findIndex((zone) => zone.material === "WOOD") + 1;
-
-  assert.ok(concrete > 0);
-  assert.ok(wood > 0);
-  assert.equal(labels[12 * width + 10], concrete);
-  assert.equal(labels[12 * width + 36], wood);
-  assert.deepEqual(polygons, before);
-});
-
-test("skips common-area concrete when it shares a component with private rooms", () => {
-  const width = 48;
-  const height = 24;
-  const map = buildRoomFloorMaterialMap({
-    height,
-    interiorMask: new Uint8Array(width * height).fill(1),
-    polygons: { door: [], wall: [], window: [] },
-    rooms: [
-      { confidence: 0.96, label: "공용 복도", polygon: normalizedBox(3, 3, 20, 21, width, height), roomType: "COMMON_AREA" },
-      { confidence: 0.98, label: "거실", polygon: normalizedBox(28, 3, 45, 21, width, height), roomType: "LIVING_ROOM" },
-    ],
-    sourceRgba: new Uint8ClampedArray(width * height * 4).fill(255),
-    width,
-  });
-
-  assert.equal(map.zones.some((zone) => zone.material === "CONCRETE"), false);
-  assert.deepEqual(map.zones.map((zone) => zone.material), ["WOOD"]);
-});
-
-test("does not trust a common-area-only response without a private seed", () => {
-  const width = 48;
-  const height = 24;
-  const map = buildRoomFloorMaterialMap({
-    height,
-    interiorMask: new Uint8Array(width * height).fill(1),
-    polygons: { door: [], wall: [], window: [] },
-    rooms: [
-      { confidence: 0.96, label: "공용 복도", polygon: normalizedBox(3, 3, 45, 21, width, height), roomType: "COMMON_AREA" },
-    ],
-    sourceRgba: new Uint8ClampedArray(width * height * 4).fill(255),
-    width,
-  });
-
-  assert.deepEqual(map.zones.map((zone) => zone.material), ["WOOD"]);
 });
 
 test("round-trips compact room label maps", () => {

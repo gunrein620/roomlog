@@ -120,31 +120,6 @@ test("imports room floor materials from a saved MitUNet project", () => {
   assert.notEqual(parsed?.floorMaterials, floorMaterials);
 });
 
-test("preserves concrete common-area materials in saved plans", () => {
-  const parsed = normalizeMitunetPayload({
-    canvasSize: [2, 2],
-    contentRect: [0, 0, 2, 2],
-    floorMaterials: {
-      encoding: "rle-u8",
-      height: 2,
-      labels: "4:1",
-      version: 1,
-      width: 2,
-      zones: [{
-        confidence: 0.94,
-        id: "room-1",
-        label: "공용 복도",
-        material: "CONCRETE",
-        roomType: "COMMON_AREA",
-        seed: [0, 0],
-      }],
-    },
-    polygons: smallPolygons,
-  });
-
-  assert.equal(parsed?.floorMaterials?.zones[0].material, "CONCRETE");
-});
-
 test("drops invalid optional room floor materials without rejecting the wall plan", () => {
   const parsed = normalizeMitunetPayload({
     canvasSize: [2, 2],

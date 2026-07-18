@@ -245,16 +245,7 @@ function woodColor(x, y) {
     : [196 + tone + grain, 158 + tone + grain, 112 + Math.round((tone + grain) * 0.6)];
 }
 
-function concreteColor(x, y) {
-  const hash = Math.sin((x + 1) * 12.9898 + (y + 1) * 78.233) * 43758.5453;
-  const speckle = Math.round(10 * ((hash - Math.floor(hash)) - 0.5));
-  const cloud = Math.round(3 * Math.sin(x * 0.07 + y * 0.11));
-  const shade = speckle + cloud;
-  return [136 + shade, 139 + shade, 144 + shade];
-}
-
 function materialColor(material, x, y) {
-  if (material === "CONCRETE") return concreteColor(x, y);
   if (material === "KITCHEN_FLOOR") return woodColor(x, y);
   if (material === "TILE") {
     const grid = x % 28 <= 1 || y % 28 <= 1;
