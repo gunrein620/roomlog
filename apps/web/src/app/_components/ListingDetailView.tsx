@@ -57,9 +57,11 @@ export function ListingDetailView({
   // 무대 레이아웃 통합으로 갤러리 탭 상태는 사라짐 — 대표 사진은 첫 장, 나머지는 라이트박스가 담당.
   // 사진 라이트박스 — 3D 히어로에선 필름스트립 클릭, 사진 히어로에선 대표 사진 클릭으로 연다.
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // 사진 히어로(도면 없음)의 큰 사진 인덱스 — 필름스트립·양옆 화살표가 이 자리에서 사진을 넘긴다(라이트박스 아님).
+  const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
   // 3D 도면이 있으면 3D가 히어로(사진은 필름스트립), 없으면 기존 사진 갤러리가 히어로.
   const has3DHero = Boolean(listing.floorPlan3D);
-  const activePhoto = listing.gallery[0];
+  const activePhoto = listing.gallery[heroPhotoIndex] ?? listing.gallery[0];
   const listingBuildingRows = getListingBuildingRows(listing);
   const mapAddress = listingMapAddress(listing);
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
@@ -112,8 +114,8 @@ export function ListingDetailView({
 
   return (
     /* has-3d 클래스는 이제 "무대 레이아웃" 스위치 — 도면 유무와 무관하게 항상 적용(레이아웃 통합).
-       도면이 없으면 스테이지에 3D 대신 대표 사진이 뜬다. */
-    <section className="listing-detail-screen has-3d" aria-labelledby="clicked-detail-title">
+       도면이 없으면 스테이지에 3D 대신 대표 사진이 뜬다. photo-hero는 라이트 무대(밤하늘 배경 제거 + 다크 헤더) 변형. */
+    <section className={`listing-detail-screen has-3d${has3DHero ? "" : " photo-hero"}`} aria-labelledby="clicked-detail-title">
       <header className="detail-top-title">
         <button className="detail-back-button" type="button" onClick={onBack} aria-label="목록으로 돌아가기">
           <ArrowLeft size={24} strokeWidth={2.5} />
@@ -212,23 +214,50 @@ export function ListingDetailView({
           </div>
         </div>
       ) : (
-        /* 도면 없는 매물 — 같은 무대에 3D 대신 대표 사진. 필름스트립·라이트박스 동작은 동일. */
+        /* 도면 없는 매물 — 라이트 무대에 라운드 프레임 사진. 필름스트립·양옆 화살표는 큰 사진을 그 자리에서
+           넘기고(슬라이드), 라이트박스는 큰 사진 클릭으로만 연다. */
         <div className="detail-3d-hero photo-stage" id="detail-3d-hero" aria-label={`${listing.title} 사진 모음`}>
-          <button
-            className="photo-stage-main"
-            type="button"
-            aria-label={`${listing.title} 사진 크게 보기`}
-            onClick={() => setLightboxIndex(0)}
-          >
-            <Image src={activePhoto} alt={`${listing.title} 대표 사진`} width={1200} height={800} priority unoptimized={isRemotePhoto(activePhoto)} />
-          </button>
+          <div className="photo-stage-frame">
+            <button
+              className="photo-stage-main"
+              type="button"
+              aria-label={`${listing.title} 사진 크게 보기`}
+              onClick={() => setLightboxIndex(heroPhotoIndex)}
+            >
+              <Image src={activePhoto} alt={`${listing.title} 대표 사진`} width={1200} height={800} priority unoptimized={isRemotePhoto(activePhoto)} />
+            </button>
+            {listing.gallery.length > 1 ? (
+              <>
+                <button
+                  className="photo-stage-nav prev"
+                  type="button"
+                  aria-label="이전 사진"
+                  onClick={() =>
+                    setHeroPhotoIndex((index) => (index - 1 + listing.gallery.length) % listing.gallery.length)
+                  }
+                >
+                  <ChevronLeft size={24} strokeWidth={2.6} />
+                </button>
+                <button
+                  className="photo-stage-nav next"
+                  type="button"
+                  aria-label="다음 사진"
+                  onClick={() => setHeroPhotoIndex((index) => (index + 1) % listing.gallery.length)}
+                >
+                  <ChevronRight size={24} strokeWidth={2.6} />
+                </button>
+              </>
+            ) : null}
+          </div>
           <div className="hero-filmstrip" aria-label={`${listing.title} 사진 모음`}>
             {listing.gallery.slice(0, 4).map((image, index) => (
               <button
                 type="button"
                 key={image}
-                aria-label={`${listing.title} 사진 ${index + 1} 크게 보기`}
-                onClick={() => setLightboxIndex(index)}
+                className={index === heroPhotoIndex ? "is-active" : undefined}
+                aria-label={`${listing.title} 사진 ${index + 1} 보기`}
+                aria-current={index === heroPhotoIndex}
+                onClick={() => setHeroPhotoIndex(index)}
               >
                 <span className="gallery-image" style={{ backgroundImage: `url(${image})` }} />
               </button>

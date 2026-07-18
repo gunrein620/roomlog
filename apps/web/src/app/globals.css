@@ -3634,14 +3634,27 @@ p {
   font-weight: 850;
 }
 
-/* 사진 무대(도면 없는 매물) — 같은 스테이지, 캔버스 자리에 대표 사진. 클릭 = 크게 보기 */
+/* ── 사진 무대(도면 없는 매물) — 밤하늘 대신 라이트 배경(하단 섹션과 같은 면), 사진은 라운드 프레임 ── */
+.detail-3d-hero.photo-stage {
+  background: var(--canvas);
+}
+
+/* 헤더(위)와 필름스트립(아래)을 비켜 앉는 사진 프레임 — 화살표의 공통 좌표계 */
+.photo-stage .photo-stage-frame {
+  position: absolute;
+  inset: 68px 20px 122px;
+}
+
 .photo-stage .photo-stage-main {
   position: absolute;
-  inset: 0 0 118px;
+  inset: 0;
   overflow: hidden;
+  width: 100%;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
   background: none;
+  box-shadow: 0 14px 34px rgba(23, 19, 58, 0.1);
   cursor: zoom-in;
 }
 
@@ -3651,16 +3664,76 @@ p {
   object-fit: cover;
 }
 
-/* 밝은 사진 위 헤더 가독성 — 시안 overlay-legible 계열 상단 스크림(밝은 실내 사진 대비 강화) */
-.photo-stage .photo-stage-main::after {
-  content: "";
+/* 큰 사진 양옆 이동 버튼 — 사진을 그 자리에서 넘긴다(라이트박스 아님) */
+.photo-stage-nav {
   position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 150px;
-  background: linear-gradient(180deg, rgba(11, 8, 30, 0.78), rgba(11, 8, 30, 0.35) 55%, transparent);
-  pointer-events: none;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--blue);
+  transform: translateY(-50%);
+  box-shadow: 0 6px 18px rgba(23, 19, 58, 0.16);
+}
+
+.photo-stage-nav.prev {
+  left: 14px;
+}
+
+.photo-stage-nav.next {
+  right: 14px;
+}
+
+.photo-stage-nav:hover {
+  background: #ffffff;
+}
+
+/* ── 사진 히어로는 라이트 무대 — 오버레이 헤더·필름스트립을 다크 텍스트 문법으로 전환 ──
+   (.has-3d 다크 오버레이 규칙보다 클래스 하나 높은 특이성으로 이긴다) */
+.listing-detail-screen.has-3d.photo-hero .detail-top-title h1 {
+  color: #17133a;
+}
+
+.listing-detail-screen.has-3d.photo-hero .detail-title-caption {
+  color: var(--muted);
+}
+
+.listing-detail-screen.has-3d.photo-hero .detail-back-button,
+.listing-detail-screen.has-3d.photo-hero .detail-header-actions button {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--blue);
+}
+
+.listing-detail-screen.has-3d.photo-hero .detail-header-actions button.active {
+  border-color: #ffd2dc;
+  background: #fff0f4;
+  color: #e32952;
+}
+
+.photo-hero .hero-filmstrip button {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+.photo-hero .hero-filmstrip button:hover {
+  outline-color: rgba(32, 24, 74, 0.45);
+}
+
+/* 현재 큰 사진과 연동된 썸네일 표시 */
+.photo-hero .hero-filmstrip button.is-active {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.photo-hero .hero-filmstrip .hero-filmstrip-more {
+  border-color: var(--line);
+  color: var(--muted);
 }
 
 /* ── 등록 주체(집주인) 카드 — 시안 스펙: surface-muted 배경 + 세리프 아바타 글자 ── */
@@ -12635,9 +12708,9 @@ p {
     background: #ffffff;
   }
 
-  /* 캡션은 좌측, 공유·찜은 우측 코너 — 같은 줄을 나눠 쓰므로 공백 최소화 */
+  /* 캡션 시작을 두 줄가량 내려 헤더 코너(공유·찜)와 시각적 간섭을 줄인다 */
   .listing-detail-screen.has-3d .detail-side-panel {
-    padding-top: 20px;
+    padding-top: 64px;
   }
 
   /* 패널 하단(집주인 카드+CTA)은 바닥 정렬 — 시안의 margin-top:auto */
