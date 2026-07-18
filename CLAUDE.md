@@ -67,7 +67,7 @@ bash scripts/verify.sh               # 원커맨드 스모크(types/ui typecheck
 
 ### 3D 투어 파이프라인 (부수 시스템)
 - `apps/capture-ios/`: iOS 캡처 앱(Xcode 프로젝트). Xcode는 ASIF 볼륨에서 실행(개인 셋업).
-- **자동 경로**: web 업로드 → api `splat-asset`(큐잉) → `reconstruction` 모듈이 GPU 인스턴스 기동·`remote/gpu-job.sh` 실행 → `.spz` 산출 (ZIP 기반, PR #84).
+- **자동 경로**: web 업로드 → (S3 활성 시 presigned PUT으로 브라우저→S3 직행, 로컬은 기존 멀티파트 폴백 — `docs/splat-direct-upload.md`) → api `splat-asset`(큐잉) → `reconstruction` 모듈이 GPU 인스턴스 기동·`remote/gpu-job.sh` 실행 → `.spz` 산출 (ZIP 기반, PR #84).
 - **수동 런북**: `scripts/reconstruct/` (GPU 박스, nerfstudio Docker: COLMAP SfM → gsplat splatfacto → `.ply` → `.spz`). GPU는 AWS g6e.2xlarge(L40S). 뷰어는 `apps/web/public/samples/room.spz`를 로드.
 - web `splat-tour`·`floor-plan-3d` 뷰어. 타입은 `packages/types/src/splat-pipeline.ts`.
 
