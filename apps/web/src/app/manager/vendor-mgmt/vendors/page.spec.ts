@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -10,12 +10,45 @@ const apiControllerSource = readFileSync(
   join(process.cwd(), "../api/src/roomlog/roomlog.controller.ts"),
   "utf8",
 );
+const dialogPath = join(
+  process.cwd(),
+  "src/app/manager/vendor-mgmt/vendors/ManagerVendorRegistrationDialog.tsx",
+);
+const dialogSource = existsSync(dialogPath) ? readFileSync(dialogPath, "utf8") : "";
+const dialogStylesPath = join(
+  process.cwd(),
+  "src/app/manager/vendor-mgmt/vendors/ManagerVendorRegistrationDialog.module.css",
+);
+const dialogStylesSource = existsSync(dialogStylesPath)
+  ? readFileSync(dialogStylesPath, "utf8")
+  : "";
 
-test("manager vendor list labels its search action as 업체 등록", () => {
-  assert.match(
+test("manager vendor list opens registration in a modal instead of navigating", () => {
+  assert.match(pageSource, /import \{ ManagerVendorRegistrationDialog \}/);
+  assert.match(pageSource, /actions=\{<ManagerVendorRegistrationDialog disabled=\{result\.source === "DEMO"\} \/>\}/);
+  assert.doesNotMatch(
     pageSource,
     /<LinkButton href=\{MANAGER_VENDOR_MGMT_PATHS\.search\}>업체 등록<\/LinkButton>/,
   );
+});
+
+test("registration dialog is accessible and submits all private vendor fields", () => {
+  assert.equal(existsSync(dialogPath), true);
+  assert.match(dialogSource, /dialogRef\.current\?\.showModal\(\)/);
+  assert.match(dialogSource, /aria-labelledby=\{titleId\}/);
+  assert.match(dialogSource, /aria-describedby=\{descriptionId\}/);
+  assert.match(dialogSource, /event\.currentTarget === event\.target/);
+  for (const field of ["businessName", "phone", "accountNumber"]) {
+    assert.match(dialogSource, new RegExp(`name="${field}"`));
+  }
+  assert.match(dialogSource, /action=\{formAction\}/);
+  assert.match(dialogSource, /role="alert"/);
+  assert.match(dialogSource, /pending \? "등록 중…" : "등록"/);
+  assert.match(dialogSource, /formRef\.current\?\.reset\(\)/);
+  assert.match(dialogSource, /dialogRef\.current\?\.close\(\)/);
+  assert.match(dialogSource, /router\.refresh\(\)/);
+  assert.equal(existsSync(dialogStylesPath), true);
+  assert.doesNotMatch(dialogStylesSource, /#[\da-f]{3,8}|rgba?\(/i);
 });
 
 test("manual vendor creation uses the authenticated API and refreshes the manager list", () => {
