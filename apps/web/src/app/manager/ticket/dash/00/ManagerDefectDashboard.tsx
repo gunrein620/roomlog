@@ -8,7 +8,7 @@ import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
 import { ManagerProxyIntakeDialog } from "./ManagerProxyIntakeDialog";
 import styles from "./proxy-intake.module.css";
 import { TicketActionMenu } from "./TicketActionMenu";
-import { TicketDetailDialog } from "./TicketDetailDialog";
+import { TicketChatPanel } from "./TicketChatPanel";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
@@ -58,11 +58,24 @@ const displayStatusLabel: Record<DefectDisplayStatus, string> = {
   cancelled: "취소",
 };
 
-function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (row: DefectDashboardRow) => void }) {
+function DashboardRow({
+  row,
+  isSelected,
+  onSelect,
+}: {
+  row: DefectDashboardRow;
+  isSelected: boolean;
+  onSelect: (row: DefectDashboardRow) => void;
+}) {
   const displayStatus = defectDisplayStatus(row);
 
   return (
-    <tr data-unread={row.isManagerUnread ? "true" : undefined}>
+    <tr
+      data-unread={row.isManagerUnread ? "true" : undefined}
+      data-selected={isSelected ? "true" : undefined}
+      className="manager-defect-dashboard__row"
+      onClick={() => onSelect(row)}
+    >
       <td>
         <span
           className="manager-defect-dashboard__type-badge"
@@ -72,12 +85,8 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
         </span>
       </td>
       <td>
-        {/* 작업명 클릭 → 페이지 이동 대신 상세 모달(빠른 확인) — 깊은 작업은 모달 안 링크로 */}
-        <button
-          type="button"
-          className="manager-defect-dashboard__job-link"
-          onClick={() => onSelect(row)}
-        >
+        {/* 행 전체가 대화 패널을 연다 — 작업명은 그 안에서 눌러도 같은 동작이라 버튼만 유지 */}
+        <button type="button" className="manager-defect-dashboard__job-link">
           {row.isManagerUnread ? (
             <span className="manager-defect-dashboard__unread-label">
               <span
@@ -114,7 +123,7 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
           <SelfRepairBadge ticket={row.ticket} />
         </div>
       </td>
-      <td>
+      <td onClick={(event) => event.stopPropagation()}>
         <div className="manager-defect-dashboard__action">
           <TicketActionMenu
             ticketId={row.ticket.id}
@@ -204,7 +213,7 @@ export function ManagerDefectDashboard({
         });
       })
       .catch(() => {
-        // 모달 확인은 유지하고 배지는 서버 저장이 성공할 때만 갱신한다.
+        // 패널은 그대로 열어두고 배지는 서버 저장이 성공할 때만 갱신한다.
       });
   }
 
@@ -313,7 +322,12 @@ export function ManagerDefectDashboard({
           </thead>
           <tbody>
             {pageResult.rows.map((row) => (
-              <DashboardRow key={row.ticket.id} row={row} onSelect={selectRow} />
+              <DashboardRow
+                key={row.ticket.id}
+                row={row}
+                isSelected={selectedRow?.ticket.id === row.ticket.id}
+                onSelect={selectRow}
+              />
             ))}
             {pageResult.rows.length === 0 ? (
               <tr>
@@ -370,7 +384,7 @@ export function ManagerDefectDashboard({
         />
       ) : null}
 
-      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <TicketChatPanel row={selectedRow} onClose={() => setSelectedRow(null)} />
     </section>
   );
 }

@@ -21,7 +21,7 @@ import {
   latestComplaintMonth,
   serializeComplaintDashboardCsv,
 } from "./complaint-dashboard-model";
-import { TicketDetailDialog } from "./TicketDetailDialog";
+import { TicketChatPanel } from "./TicketChatPanel";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
 
@@ -300,7 +300,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
         </div>
       </article>
 
-      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <TicketChatPanel row={selectedRow} onClose={() => setSelectedRow(null)} />
     </section>
   );
 }

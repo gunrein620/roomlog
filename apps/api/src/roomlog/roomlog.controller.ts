@@ -804,7 +804,11 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.addTenantComplaintMessage(user.id, complaintId, body);
+    const result = this.roomlogService.addTenantComplaintMessage(user.id, complaintId, body);
+    // 관리인 대화 패널이 세입자 메시지를 즉시 받아본다.
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Post("tenant/complaints/:complaintId/ai-feedback")
@@ -2205,7 +2209,11 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.sendManagerTicketReply(user.id, ticketId, body);
+    const result = this.roomlogService.sendManagerTicketReply(user.id, ticketId, body);
+    // 세입자 상세 시트·관리인 대화 패널이 같은 신호로 스레드를 다시 읽는다.
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Post("manager/tickets/:ticketId/ai-feedback/:feedbackId/review")
