@@ -86,7 +86,7 @@ export type TradeListing = Omit<TradeListingInput, "images" | "options"> & {
  * 계약 — 채팅 스레드에서 집주인이 제안하고 문의자(예비 세입자)가 수락하는 2단계 handshake.
  * 수락 시점의 조건(거래유형/보증금/월세)을 스냅샷으로 고정한다. 실제 계약서/서명/입금은 스코프 밖.
  */
-export type TradeContractStatus = "proposed" | "accepted" | "declined" | "cancelled";
+export type TradeContractStatus = "proposed" | "accepted" | "declined" | "cancelled" | "terminated";
 
 export type TradeContract = {
   id: string;
@@ -105,6 +105,7 @@ export type TradeContract = {
   roomNo?: string;
   proposedAt: string;
   respondedAt?: string;
+  terminatedAt?: string;
 };
 
 export type TradeMessage = {
@@ -954,6 +955,43 @@ export class TradeService implements OnModuleDestroy {
     this.pushMessage(thread, owner, "계약 제안을 취소했어요.");
     this.persist();
     return { contract, thread };
+  }
+
+  /**
+   * 계약 해지 — 집주인 전용, 체결(accepted)된 계약만. 매물은 다시 노출 상태로 돌아간다.
+   * 이미 해지된 계약이면 매물 노출 상태만 보정하고 그대로 반환(재시도 안전).
+   */
+  terminateContract(
+    owner: { id: string; name: string },
+    listingId: string
+  ): { contract: TradeContract; thread: TradeThread; listing: TradeListing } {
+    const listing = this.ownedListing(owner.id, listingId);
+    const contract = this.store.contracts
+      .filter(
+        (item) =>
+          item.listingId === listing.id &&
+          (item.status === "accepted" || item.status === "terminated")
+      )
+      .sort((a, b) => b.proposedAt.localeCompare(a.proposedAt))[0];
+    if (!contract) throw new BadRequestException("해지할 체결 계약이 없습니다.");
+    const thread = this.getThread(owner.id, contract.threadId);
+
+    if (contract.status === "terminated") {
+      if (listing.status !== "노출중") {
+        listing.status = "노출중";
+        this.persist();
+        this.projectListings();
+      }
+      return { contract, thread, listing };
+    }
+
+    contract.status = "terminated";
+    contract.terminatedAt = new Date().toISOString();
+    listing.status = "노출중";
+    this.pushMessage(thread, owner, "계약이 해지되었어요 — 매물이 다시 노출 상태로 전환됩니다.");
+    this.persist();
+    this.projectListings();
+    return { contract, thread, listing };
   }
 
   /** 내가 당사자인 계약 전부 — 집주인의 계약중인 집 탭, 세입자의 내 계약 조회 공용. */

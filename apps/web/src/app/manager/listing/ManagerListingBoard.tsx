@@ -7,6 +7,7 @@ import { Badge, Card } from "@roomlog/ui";
 import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import {
   removeManagerListing,
+  terminateManagerListingContract,
   updateManagerListing,
   uploadManagerListingPhotos,
   type ManagerListingUpdateInput,
@@ -21,7 +22,7 @@ import {
 import { groupListingsByBuilding, toManagerListingRow, type ManagerListingRow } from "./manager-listing-model";
 import styles from "./ManagerListingBoard.module.css";
 
-type DialogMode = "view" | "edit" | "remove";
+type DialogMode = "view" | "edit" | "remove" | "terminate";
 type ListingStatusTab = "contracted" | "available";
 type ListingViewMode = "all" | "building";
 
@@ -240,6 +241,22 @@ export function ManagerListingBoard({
     }
   }
 
+  async function confirmTermination() {
+    if (!selected || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const updatedRow = toManagerListingRow(await terminateManagerListingContract(selected.id));
+      setListings((current) => current.map((item) => (item.id === updatedRow.id ? updatedRow : item)));
+      setMode("view");
+      setMediaMessage("계약이 해지되었습니다. 매물이 다시 노출 상태로 전환되고 세입자 연결이 해제됐어요.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "계약 해지에 실패했습니다.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function confirmRemoval() {
     if (!selected || pending) return;
     setPending(true);
@@ -330,7 +347,13 @@ export function ManagerListingBoard({
           <>
             <header className={styles.dialogHeader}>
               <h2 id="manager-listing-dialog-title">
-                {mode === "edit" ? "매물 정보 수정" : mode === "remove" ? "매물 내리기 확인" : "매물 상세정보"}
+                {mode === "edit"
+                  ? "매물 정보 수정"
+                  : mode === "remove"
+                    ? "매물 내리기 확인"
+                    : mode === "terminate"
+                      ? "계약 해지 확인"
+                      : "매물 상세정보"}
               </h2>
               <button
                 type="button"
@@ -367,7 +390,18 @@ export function ManagerListingBoard({
                     <DetailItem label="가격" value={selected.priceLabel} />
                   </dl>
                   <p>{selected.description || "등록된 설명이 없습니다."}</p>
+                  {mediaMessage ? <p className={styles.mediaNotice} role="status">{mediaMessage}</p> : null}
+                  {error ? <p className={styles.error} role="alert">{error}</p> : null}
                   <div className={styles.actions}>
+                    {selected.statusLabel === "계약완료" ? (
+                      <button
+                        type="button"
+                        className={styles.dangerButton}
+                        onClick={() => { setMode("terminate"); setError(null); setMediaMessage(null); }}
+                      >
+                        계약해지
+                      </button>
+                    ) : null}
                     <button type="button" className={styles.dangerButton} onClick={() => { setMode("remove"); setError(null); }}>
                       매물 내리기
                     </button>
@@ -499,6 +533,21 @@ export function ManagerListingBoard({
                     </button>
                   </div>
                 </form>
+              ) : mode === "terminate" ? (
+                <div className={styles.removeConfirm}>
+                  <strong>{selected.title} 계약을 해지할까요?</strong>
+                  <p>세입자와 이 매물의 연결이 해제되고, 매물이 다시 노출 상태로 전환됩니다.</p>
+                  <p>문의 대화에 해지 안내 메시지가 남습니다. 계약·청구 이력은 삭제되지 않습니다.</p>
+                  {error ? <p className={styles.error} role="alert">{error}</p> : null}
+                  <div className={styles.actions}>
+                    <button type="button" className={styles.actionButton} onClick={() => { setMode("view"); setError(null); }} disabled={pending}>
+                      취소
+                    </button>
+                    <button type="button" className={styles.dangerButton} onClick={confirmTermination} disabled={pending}>
+                      {pending ? "해지하는 중…" : "정말 계약 해지"}
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className={styles.removeConfirm}>
                   <strong>{selected.title} 매물을 내릴까요?</strong>

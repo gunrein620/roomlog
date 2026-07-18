@@ -4133,6 +4133,10 @@ export class RoomlogService implements OnModuleDestroy {
     return this.contract.preflightAcceptedTradeContract(input);
   }
 
+  disconnectAcceptedTradeContract(input: { tradeContractId: string; tenantId: string }) {
+    return this.contract.disconnectAcceptedTradeContract(input);
+  }
+
   getManagerContractDashboard(managerId: string) {
     return this.contract.getManagerContractDashboard(managerId);
   }
