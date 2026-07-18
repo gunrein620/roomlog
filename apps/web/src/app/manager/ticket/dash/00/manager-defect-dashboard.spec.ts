@@ -122,7 +122,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
   assert.match(
     pageSource,
-    /dashboardView === "dashboard"[\s\S]*<TicketDashboardAutoRefresh intervalMs=\{3000\} \/>[\s\S]*<ComplaintDashboard rows=\{rows\} \/>/,
+    /dashboardView === "dashboard"[\s\S]*<TicketDashboardAutoRefresh \/>[\s\S]*<ComplaintDashboard rows=\{rows\} \/>/,
   );
   const managerDashboardRender = pageSource.match(
     /<ManagerDefectDashboard[\s\S]*?\/>/,
@@ -134,9 +134,13 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(autoRefreshSource, /getRealtimeSocket/);
   assert.match(autoRefreshSource, /shouldRefreshTicketDashboard/);
   assert.match(autoRefreshSource, /router\.refresh\(\)/);
-  assert.match(autoRefreshSource, /window\.setInterval/);
-  assert.match(autoRefreshSource, /30000/);
-  assert.match(autoRefreshSource, /visibilitychange/);
+  assert.match(autoRefreshSource, /socket\.on\("roomlog:activity", onActivity\)/);
+  assert.match(autoRefreshSource, /socket\.off\("roomlog:activity", onActivity\)/);
+  assert.doesNotMatch(autoRefreshSource, /window\.setInterval/);
+  assert.doesNotMatch(autoRefreshSource, /addEventListener\("focus"/);
+  assert.doesNotMatch(autoRefreshSource, /visibilitychange/);
+  assert.doesNotMatch(autoRefreshSource, /socket\.on\("connect"/);
+  assert.doesNotMatch(autoRefreshSource, /socket\.on\("disconnect"/);
   assert.match(
     pageSource,
     /dashboardView === "management"[\s\S]*<TicketDashboardAutoRefresh/,
