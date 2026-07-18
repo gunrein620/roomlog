@@ -2,10 +2,12 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { ManagerVendorView } from "@roomlog/types";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
 import { TicketActionMenu } from "./TicketActionMenu";
 import { TicketDetailDialog } from "./TicketDetailDialog";
+import { VendorAssignmentDialog } from "./VendorAssignmentDialog";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
@@ -54,7 +56,17 @@ const displayStatusLabel: Record<DefectDisplayStatus, string> = {
   cancelled: "취소",
 };
 
-function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (row: DefectDashboardRow) => void }) {
+function DashboardRow({
+  row,
+  onSelect,
+  vendors,
+  vendorSelectionDisabled,
+}: {
+  row: DefectDashboardRow;
+  onSelect: (row: DefectDashboardRow) => void;
+  vendors: readonly ManagerVendorView[];
+  vendorSelectionDisabled: boolean;
+}) {
   const displayStatus = defectDisplayStatus(row);
 
   return (
@@ -94,7 +106,12 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
         {row.repair?.vendorName ?? "미배정"}
       </td>
       <td className="manager-defect-dashboard__muted-cell">
-        {row.repair?.vendorName ?? "미선정"}
+        <VendorAssignmentDialog
+          ticketId={row.ticket.id}
+          currentVendorName={row.repair?.vendorName}
+          vendors={vendors}
+          disabled={vendorSelectionDisabled}
+        />
       </td>
       <td className="manager-defect-dashboard__amount">
         {formatDefectMoney(row.repair?.quoteAmount)}
@@ -124,9 +141,13 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
 
 export function ManagerDefectDashboard({
   rows,
+  vendors,
+  vendorSelectionDisabled = false,
   initialTemplate = "all",
 }: {
   rows: readonly DefectDashboardRow[];
+  vendors: readonly ManagerVendorView[];
+  vendorSelectionDisabled?: boolean;
   initialTemplate?: DefectDashboardFilters["template"];
 }) {
   const [filters, setFilters] = useState<DefectDashboardFilters>({
@@ -290,7 +311,13 @@ export function ManagerDefectDashboard({
           </thead>
           <tbody>
             {pageResult.rows.map((row) => (
-              <DashboardRow key={row.ticket.id} row={row} onSelect={selectRow} />
+              <DashboardRow
+                key={row.ticket.id}
+                row={row}
+                onSelect={selectRow}
+                vendors={vendors}
+                vendorSelectionDisabled={vendorSelectionDisabled}
+              />
             ))}
             {pageResult.rows.length === 0 ? (
               <tr>

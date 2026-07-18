@@ -26,6 +26,11 @@ const ticketDetailDialogPath = join(
   root,
   "src/app/manager/ticket/dash/00/TicketDetailDialog.tsx",
 );
+const vendorAssignmentDialogPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/VendorAssignmentDialog.tsx",
+);
+const dashboardActionsPath = join(root, "src/app/manager/ticket/dash/00/vendor-assignment-actions.ts");
 const layoutPath = join(root, "src/app/manager/ticket/dash/layout.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
@@ -37,6 +42,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.equal(existsSync(componentPath), true, componentPath);
   assert.equal(existsSync(actionMenuPath), true, actionMenuPath);
   assert.equal(existsSync(complaintDashboardPath), true, complaintDashboardPath);
+  assert.equal(existsSync(vendorAssignmentDialogPath), true, vendorAssignmentDialogPath);
 
   const componentSource = readFileSync(componentPath, "utf8");
   const actionMenuSource = readFileSync(actionMenuPath, "utf8");
@@ -45,6 +51,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.equal(existsSync(autoRefreshPath), true, autoRefreshPath);
   const autoRefreshSource = readFileSync(autoRefreshPath, "utf8");
   const ticketDetailDialogSource = readFileSync(ticketDetailDialogPath, "utf8");
+  const vendorAssignmentDialogSource = readFileSync(vendorAssignmentDialogPath, "utf8");
+  const dashboardActionsSource = readFileSync(dashboardActionsPath, "utf8");
   const layoutSource = readFileSync(layoutPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
@@ -85,7 +93,16 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
     assert.match(componentSource, new RegExp(column));
   }
   assert.doesNotMatch(componentSource, /"예정일시"/);
-  assert.match(componentSource, /row\.repair\?\.vendorName \?\? "미선정"/);
+  assert.match(componentSource, /<VendorAssignmentDialog/);
+  assert.match(componentSource, /vendors=\{vendors\}/);
+  assert.match(componentSource, /ticketId=\{row\.ticket\.id\}/);
+  assert.match(vendorAssignmentDialogSource, /등록된 업체 검색/);
+  assert.match(vendorAssignmentDialogSource, /showModal\(\)/);
+  assert.match(vendorAssignmentDialogSource, /vendors\.filter/);
+  assert.match(vendorAssignmentDialogSource, /assignVendorFromDashboardAction/);
+  assert.match(vendorAssignmentDialogSource, /router\.refresh\(\)/);
+  assert.match(dashboardActionsSource, /assignManagerVendor/);
+  assert.match(dashboardActionsSource, /revalidatePath\("\/manager\/ticket\/dash\/00"\)/);
 
   assert.match(componentSource, /aria-pressed/);
   assert.match(componentSource, /defectDisplayStatus/);
@@ -146,6 +163,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   // 과거 추적 데모 상수는 사용하지 않고, Git 비추적 로컬 파일만 서버 로더로 추가한다.
   assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(pageSource, /listManagerTicketRows/);
+  assert.match(pageSource, /listManagerVendors/);
+  assert.match(managerDashboardRender, /vendors=\{vendorResult\.data\}/);
   assert.match(componentSource, /initialTemplate/);
   assert.match(componentSource, /markManagerTicketRead/);
   assert.match(componentSource, /void markManagerTicketRead\(row\.ticket\.id\)/);

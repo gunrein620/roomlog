@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { listManagerTicketRows } from "@/lib/ticket-manager-api";
+import { listManagerVendors } from "@/lib/vendor-mgmt-api";
 import { ComplaintDashboard } from "./ComplaintDashboard";
 import { appendLocalTicketDemoRows } from "./local-ticket-demo";
 import { ManagerDefectDashboard } from "./ManagerDefectDashboard";
@@ -12,7 +13,10 @@ type SearchParams = Promise<{ type?: string; view?: string }>;
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const dashboardView = resolveTicketDashboardView(await searchParams);
   const requestHeaders = await headers();
-  const realRows = await listManagerTicketRows();
+  const [realRows, vendorResult] = await Promise.all([
+    listManagerTicketRows(),
+    listManagerVendors(),
+  ]);
   const rows = await appendLocalTicketDemoRows(realRows, requestHeaders.get("host"));
 
   if (dashboardView === "dashboard") {
@@ -32,6 +36,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       ) : null}
       <ManagerDefectDashboard
         rows={rows}
+        vendors={vendorResult.data}
+        vendorSelectionDisabled={vendorResult.source === "DEMO"}
         initialTemplate={initialTemplate}
         key={initialTemplate}
       />
