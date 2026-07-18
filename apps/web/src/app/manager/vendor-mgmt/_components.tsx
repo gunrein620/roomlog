@@ -154,10 +154,8 @@ export function TagList({ values }: { values: string[] }) {
 
 export function ManagerVendorTable({
   vendors,
-  renderManagement,
 }: {
   vendors: ManagerVendorView[];
-  renderManagement?: (vendor: ManagerVendorView) => ReactNode;
 }) {
   return (
     <div className={styles.tableWrap}>
@@ -166,7 +164,6 @@ export function ManagerVendorTable({
           <tr>
             <th>업체</th>
             <th>전문 분야</th>
-            <th>계정·검증</th>
             <th>진행 현황</th>
             <th>관리 상태</th>
             <th>관리</th>
@@ -183,12 +180,6 @@ export function ManagerVendorTable({
               <td><TagList values={vendor.catalog.trades} /></td>
               <td>
                 <span className={styles.statusStack}>
-                  <span>{accountStatusLabel[vendor.accountStatus]}</span>
-                  <span>{verificationLabel[vendor.catalog.verificationStatus]}</span>
-                </span>
-              </td>
-              <td>
-                <span className={styles.statusStack}>
                   <span>진행 {vendor.activeJobCount}건</span>
                   <span>결제 대기 {vendor.waitingPaymentCount}건</span>
                 </span>
@@ -199,7 +190,6 @@ export function ManagerVendorTable({
                   <Link className={styles.detailButton} href={MANAGER_VENDOR_MGMT_PATHS.vendor(vendor.vendorId)}>
                     상세 보기
                   </Link>
-                  {renderManagement?.(vendor)}
                 </div>
               </td>
             </tr>

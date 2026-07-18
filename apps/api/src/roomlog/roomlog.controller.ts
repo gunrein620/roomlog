@@ -22,6 +22,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import type {
   ConfirmTenantVendorConnectionInput,
+  CreateManagerVendorInput,
   DecideRepairCompletionInput,
   PrepareTenantVendorConnectionInput,
   RequestTenantDirectPaymentInput,
@@ -84,6 +85,7 @@ import {
   UpdateAnnouncementDraftInput,
   UpdateMoveoutChecklistInput,
   ManagerTicketReplyInput,
+  SetManagerTicketLaneInput,
   MatchDepositInput,
   RealtimeClientSecretInput,
   RecordRealtimeTurnInput,
@@ -804,7 +806,11 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.addTenantComplaintMessage(user.id, complaintId, body);
+    const result = this.roomlogService.addTenantComplaintMessage(user.id, complaintId, body);
+    // 관리인 대화 패널이 세입자 메시지를 즉시 받아본다.
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
   }
 
   @Post("tenant/complaints/:complaintId/ai-feedback")
@@ -2205,7 +2211,31 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.sendManagerTicketReply(user.id, ticketId, body);
+    const result = this.roomlogService.sendManagerTicketReply(user.id, ticketId, body);
+    // 세입자 상세 시트·관리인 대화 패널이 같은 신호로 스레드를 다시 읽는다.
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
+  @Post("manager/tickets/:ticketId/lane")
+  setManagerTicketLane(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: SetManagerTicketLaneInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    const result = this.roomlogService.setManagerTicketLane(user.id, ticketId, body);
+    const clientRequestId = body.clientRequestId?.trim().slice(0, 100);
+    this.realtime.broadcast("roomlog:activity", {
+      kind: "ticket",
+      action: "lane_changed",
+      ticketId,
+      ...(clientRequestId ? { clientRequestId } : {}),
+    });
+
+    return result;
   }
 
   @Post("manager/tickets/:ticketId/ai-feedback/:feedbackId/review")
@@ -2280,29 +2310,14 @@ export class RoomlogController {
     return detail.performance;
   }
 
-  @Get("manager/vendor-mgmt/search")
-  searchManagerVendorCatalog(
+  @Post("manager/vendor-mgmt/vendors/manual")
+  createManualManagerVendor(
     @Headers("authorization") authorization: string | undefined,
-    @Query("query") query?: string,
-    @Query("trade") trade?: string,
-    @Query("serviceArea") serviceArea?: string,
-    @Query("verificationStatus") verificationStatus?: string,
-    @Query("isActive") isActive?: string
+    @Body() body: CreateManagerVendorInput
   ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId"]);
     const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().searchCatalog(
-      user.id,
-      catalogFilters(query, trade, serviceArea, verificationStatus, isActive)
-    );
-  }
-
-  @Put("manager/vendor-mgmt/vendors/:vendorId/registration")
-  registerManagerVendor(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("vendorId") vendorId: string
-  ) {
-    const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().register(user.id, vendorId);
+    return this.requireManagerVendorDomain().createManual(user.id, body);
   }
 
   @Delete("manager/vendor-mgmt/vendors/:vendorId/registration")

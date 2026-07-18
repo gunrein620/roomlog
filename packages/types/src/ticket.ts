@@ -141,6 +141,18 @@ export interface ManagerTicketReplyInput {
   messageText?: string;
 }
 
+/**
+ * 관리인이 대화 패널에서 직접 넘기는 진행 레인 — 접수 | 진행 | 완료.
+ * 세부 상태(검토·추가정보·업체배정…)를 관리인 눈높이의 3단계로 접은 축이며,
+ * **수리(RepairStage)·결제 축은 건드리지 않는다**(티켓 상태 ≠ 수리 상태).
+ */
+export type ManagerTicketLane = "received" | "processing" | "resolved";
+
+export interface SetManagerTicketLaneInput {
+  lane: ManagerTicketLane;
+  clientRequestId?: string;
+}
+
 export interface DecideTicketResponsibilityInput {
   responsibility: ResponsibilityDecisionValue;
   note: string;

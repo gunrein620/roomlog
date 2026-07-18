@@ -21,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   if (dashboardView === "dashboard") {
     return (
       <>
-        <TicketDashboardAutoRefresh intervalMs={3000} />
+        <TicketDashboardAutoRefresh />
         <ComplaintDashboard rows={rows} />
       </>
     );
@@ -32,7 +32,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   return (
     <>
       {dashboardView === "management" ? (
-        <TicketDashboardAutoRefresh intervalMs={3000} />
+        <TicketDashboardAutoRefresh />
       ) : null}
       <ManagerDefectDashboard
         rows={rows}

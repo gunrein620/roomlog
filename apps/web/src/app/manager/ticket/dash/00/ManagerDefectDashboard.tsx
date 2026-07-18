@@ -1,27 +1,31 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import type { ManagerProxyIntakeRoom } from "@/lib/ticket-manager-api";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
 import { ManagerProxyIntakeDialog } from "./ManagerProxyIntakeDialog";
 import styles from "./proxy-intake.module.css";
 import { TicketActionMenu } from "./TicketActionMenu";
-import { TicketDetailDialog } from "./TicketDetailDialog";
+import { TicketChatPanel } from "./TicketChatPanel";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
-  defectDisplayStatus,
   filterDefectRows,
   formatDefectDate,
-  formatDefectMoney,
   paginateDefectRows,
   type DefectDashboardFilters,
   type DefectDashboardRow,
-  type DefectDisplayStatus,
   type DefectStatusFilter,
 } from "./ticket-dashboard-model";
+import { ticketLaneOf, type TicketLane } from "./ticket-lane";
+import {
+  applyTicketLaneOverrides,
+  reconcileTicketLaneOverrides,
+  ticketStatusForLane,
+  type TicketLaneOverride,
+} from "./ticket-lane-local-state";
 
 const PAGE_SIZE = 10;
 const TABLE_COLUMNS = [
@@ -31,7 +35,6 @@ const TABLE_COLUMNS = [
   "호실",
   "작업자",
   "예정일시",
-  "청구 금액",
   "상태",
   "작업",
 ] as const;
@@ -51,18 +54,31 @@ const ticketTypeLabel = {
   complaint: "일반 민원",
 } as const;
 
-const displayStatusLabel: Record<DefectDisplayStatus, string> = {
-  completed: "완료",
-  vendor_selected: "업체 선정",
-  incomplete: "미완료",
+const displayStatusLabel: Record<TicketLane | "cancelled", string> = {
+  received: "접수",
+  processing: "진행",
+  resolved: "완료",
   cancelled: "취소",
 };
 
-function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (row: DefectDashboardRow) => void }) {
-  const displayStatus = defectDisplayStatus(row);
+function DashboardRow({
+  row,
+  isSelected,
+  onSelect,
+}: {
+  row: DefectDashboardRow;
+  isSelected: boolean;
+  onSelect: (row: DefectDashboardRow) => void;
+}) {
+  const displayStatus = ticketLaneOf(row.ticket.status) ?? "cancelled";
 
   return (
-    <tr data-unread={row.isManagerUnread ? "true" : undefined}>
+    <tr
+      data-unread={row.isManagerUnread ? "true" : undefined}
+      data-selected={isSelected ? "true" : undefined}
+      className="manager-defect-dashboard__row"
+      onClick={() => onSelect(row)}
+    >
       <td>
         <span
           className="manager-defect-dashboard__type-badge"
@@ -72,12 +88,8 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
         </span>
       </td>
       <td>
-        {/* 작업명 클릭 → 페이지 이동 대신 상세 모달(빠른 확인) — 깊은 작업은 모달 안 링크로 */}
-        <button
-          type="button"
-          className="manager-defect-dashboard__job-link"
-          onClick={() => onSelect(row)}
-        >
+        {/* 행 전체가 대화 패널을 연다 — 작업명은 그 안에서 눌러도 같은 동작이라 버튼만 유지 */}
+        <button type="button" className="manager-defect-dashboard__job-link">
           {row.isManagerUnread ? (
             <span className="manager-defect-dashboard__unread-label">
               <span
@@ -100,9 +112,6 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
       <td className="manager-defect-dashboard__muted-cell">
         {formatDefectDate(row.repair?.scheduledAt)}
       </td>
-      <td className="manager-defect-dashboard__amount">
-        {formatDefectMoney(row.repair?.quoteAmount)}
-      </td>
       <td>
         <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
           <span
@@ -114,7 +123,7 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
           <SelfRepairBadge ticket={row.ticket} />
         </div>
       </td>
-      <td>
+      <td onClick={(event) => event.stopPropagation()}>
         <div className="manager-defect-dashboard__action">
           <TicketActionMenu
             ticketId={row.ticket.id}
@@ -147,15 +156,20 @@ export function ManagerDefectDashboard({
     () => new Set(),
   );
   const [proxyIntakeOpen, setProxyIntakeOpen] = useState(false);
+  const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
+
+  useEffect(() => {
+    setTicketLaneOverrides((current) => reconcileTicketLaneOverrides(current, rows));
+  }, [rows]);
 
   const effectiveRows = useMemo(
     () =>
-      rows.map((row) =>
+      applyTicketLaneOverrides(rows, ticketLaneOverrides).map((row) =>
         locallyReadTicketIds.has(row.ticket.id)
           ? { ...row, isManagerUnread: false }
           : row,
       ),
-    [locallyReadTicketIds, rows],
+    [locallyReadTicketIds, rows, ticketLaneOverrides],
   );
   const counts = useMemo(() => countDefectStatuses(effectiveRows), [effectiveRows]);
   const workers = useMemo(
@@ -204,8 +218,17 @@ export function ManagerDefectDashboard({
         });
       })
       .catch(() => {
-        // 모달 확인은 유지하고 배지는 서버 저장이 성공할 때만 갱신한다.
+        // 패널은 그대로 열어두고 배지는 서버 저장이 성공할 때만 갱신한다.
       });
+  }
+
+  function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
+    setTicketLaneOverrides((current) => ({ ...current, [ticketId]: { lane, updatedAt } }));
+    setSelectedRow((current) =>
+      current?.ticket.id === ticketId
+        ? { ...current, ticket: { ...current.ticket, status: ticketStatusForLane(lane) } }
+        : current,
+    );
   }
 
   return (
@@ -313,11 +336,16 @@ export function ManagerDefectDashboard({
           </thead>
           <tbody>
             {pageResult.rows.map((row) => (
-              <DashboardRow key={row.ticket.id} row={row} onSelect={selectRow} />
+              <DashboardRow
+                key={row.ticket.id}
+                row={row}
+                isSelected={selectedRow?.ticket.id === row.ticket.id}
+                onSelect={selectRow}
+              />
             ))}
             {pageResult.rows.length === 0 ? (
               <tr>
-                <td className="manager-defect-dashboard__empty" colSpan={9}>
+                <td className="manager-defect-dashboard__empty" colSpan={8}>
                   조건에 맞는 하자·민원 티켓이 없습니다.
                 </td>
               </tr>
@@ -370,7 +398,11 @@ export function ManagerDefectDashboard({
         />
       ) : null}
 
-      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <TicketChatPanel
+        row={selectedRow}
+        onClose={() => setSelectedRow(null)}
+        onTicketLaneChanged={applyConfirmedTicketLane}
+      />
     </section>
   );
 }

@@ -12,6 +12,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import {
   buildComplaintDashboard,
   complaintCategory,
@@ -21,9 +22,16 @@ import {
   latestComplaintMonth,
   serializeComplaintDashboardCsv,
 } from "./complaint-dashboard-model";
-import { TicketDetailDialog } from "./TicketDetailDialog";
+import { TicketChatPanel } from "./TicketChatPanel";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
+import type { TicketLane } from "./ticket-lane";
+import {
+  applyTicketLaneOverrides,
+  reconcileTicketLaneOverrides,
+  ticketStatusForLane,
+  type TicketLaneOverride,
+} from "./ticket-lane-local-state";
 
 const METRICS = [
   { id: "total", label: "전체 접수", icon: ListChecks },
@@ -73,8 +81,21 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
   const [pickerYear, setPickerYear] = useState(() => monthParts(latestComplaintMonth(rows)).year);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
+  const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
   const calendarRef = useRef<HTMLDivElement>(null);
-  const dashboard = useMemo(() => buildComplaintDashboard(rows, month), [rows, month]);
+  const effectiveRows = useMemo(
+    () =>
+      applyTicketLaneOverrides(rows, ticketLaneOverrides).map((row) =>
+        locallyReadTicketIds.has(row.ticket.id)
+          ? { ...row, isManagerUnread: false }
+          : row,
+      ),
+    [locallyReadTicketIds, rows, ticketLaneOverrides],
+  );
+  const dashboard = useMemo(() => buildComplaintDashboard(effectiveRows, month), [effectiveRows, month]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
   const donutSegments = dashboard.categories.reduce<string[]>((segments, category, index) => {
     const start = dashboard.categories.slice(0, index).reduce((total, item) => total + item.percent, 0);
@@ -102,11 +123,39 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     };
   }, [calendarOpen]);
 
+  useEffect(() => {
+    setTicketLaneOverrides((current) => reconcileTicketLaneOverrides(current, rows));
+  }, [rows]);
+
   function changeMonth(amount: number) {
     const nextMonth = moveMonth(month, amount);
     setMonth(nextMonth);
     setPickerYear(monthParts(nextMonth).year);
     setCalendarOpen(false);
+  }
+
+  function selectRow(row: DefectDashboardRow) {
+    setSelectedRow(row);
+    void markManagerTicketRead(row.ticket.id)
+      .then(() => {
+        setLocallyReadTicketIds((current) => {
+          const next = new Set(current);
+          next.add(row.ticket.id);
+          return next;
+        });
+      })
+      .catch(() => {
+        // 패널은 그대로 열어두고 읽음 표시는 서버 저장이 성공할 때만 갱신한다.
+      });
+  }
+
+  function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
+    setTicketLaneOverrides((current) => ({ ...current, [ticketId]: { lane, updatedAt } }));
+    setSelectedRow((current) =>
+      current?.ticket.id === ticketId
+        ? { ...current, ticket: { ...current.ticket, status: ticketStatusForLane(lane) } }
+        : current,
+    );
   }
 
   return (
@@ -187,7 +236,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
           <button
             type="button"
             className="manager-complaint-dashboard__download"
-            onClick={() => downloadCsv(rows, month, dashboard.monthLabel)}
+            onClick={() => downloadCsv(effectiveRows, month, dashboard.monthLabel)}
           >
             <Download aria-hidden="true" />
             보고서 다운로드
@@ -272,18 +321,22 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
             </thead>
             <tbody>
               {dashboard.recent.map((row) => (
-                <tr key={row.ticket.id}>
+                <tr
+                  key={row.ticket.id}
+                  className="manager-complaint-dashboard__row"
+                  data-selected={selectedRow?.ticket.id === row.ticket.id ? "true" : undefined}
+                  tabIndex={0}
+                  aria-label={`${row.ticket.title} 상세 대화 열기`}
+                  onClick={() => selectRow(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      selectRow(row);
+                    }
+                  }}
+                >
                   <td><span className="manager-complaint-dashboard__category" data-category={complaintCategory(row.ticket)}>{dashboardTicketTypeLabel(row.ticket)}</span></td>
-                  <td>
-                    {/* 접수 내용 클릭 → 상세 모달(페이지 이동 없이 바로 확인) */}
-                    <button
-                      type="button"
-                      className="manager-complaint-dashboard__row-link"
-                      onClick={() => setSelectedRow(row)}
-                    >
-                      {row.ticket.title}
-                    </button>
-                  </td>
+                  <td><span className="manager-complaint-dashboard__row-title">{row.ticket.title}</span></td>
                   <td>{row.buildingName ?? "—"} / {row.ticket.unitId || "—"}</td>
                   <td>{formatComplaintDate(row.ticket.createdAt)}</td>
                   <td>
@@ -300,7 +353,11 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
         </div>
       </article>
 
-      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <TicketChatPanel
+        row={selectedRow}
+        onClose={() => setSelectedRow(null)}
+        onTicketLaneChanged={applyConfirmedTicketLane}
+      />
     </section>
   );
 }

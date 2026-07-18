@@ -12,6 +12,11 @@ import {
 } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import type {
+  SplatIntakeCompleteRequest,
+  SplatIntakePresignRequest,
+  SplatIntakePresignResponse
+} from "@roomlog/types";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
 import { TradeService } from "../trade/trade.service";
 import {
@@ -25,7 +30,13 @@ export const SPLAT_ASSET_DATABASE_URL = "SPLAT_ASSET_DATABASE_URL";
 
 export type UploadedSplatAssetFile = { buffer: Buffer; originalname: string; mimetype: string };
 
+// 멀티파트(서버 경유) 한도 — multer가 파일 전체를 힙에 버퍼링하는 경로라 보수적으로 유지한다.
 const MAX_UPLOAD_BYTES = 800 * 1024 * 1024;
+const MAX_UPLOAD_MESSAGE = "영상, 캡처 zip 또는 스플랫 파일은 800MB 이하만 접수할 수 있습니다.";
+// S3 직접 업로드(presigned PUT) 한도 — 서버는 바이트를 안 만지므로 힙과 무관.
+// 상한 근거는 sizeBytes 컬럼(int4, 최대 ~2.147GB)이다. 더 키우려면 BigInt 마이그레이션 필요.
+const MAX_DIRECT_UPLOAD_BYTES = 2000 * 1024 * 1024;
+const MAX_DIRECT_UPLOAD_MESSAGE = "영상, 캡처 zip 또는 스플랫 파일은 2GB 이하만 접수할 수 있습니다.";
 const SPLAT_EXTENSIONS = [".spz", ".sog", ".ply", ".splat"];
 const VIDEO_EXTENSIONS = [".mp4", ".mov", ".m4v", ".webm"];
 
@@ -34,8 +45,8 @@ type IntakeFileClassification =
   | { kind: "video"; extension: string; fileKind: "video" }
   | { kind: "capture"; extension: ".zip"; fileKind: "record3d-zip" };
 
-function classifyIntakeFile(file: UploadedSplatAssetFile): IntakeFileClassification {
-  const extension = extname(file.originalname).toLowerCase();
+function classifyIntakeFile(fileName: string, mimeType?: string | null): IntakeFileClassification {
+  const extension = extname(fileName).toLowerCase();
   if (SPLAT_EXTENSIONS.includes(extension)) {
     return { kind: "splat", extension, fileKind: extension.slice(1) };
   }
@@ -44,14 +55,18 @@ function classifyIntakeFile(file: UploadedSplatAssetFile): IntakeFileClassificat
     return { kind: "capture", extension: ".zip", fileKind: "record3d-zip" };
   }
 
-  if (VIDEO_EXTENSIONS.includes(extension) || file.mimetype?.startsWith("video/")) {
+  if (VIDEO_EXTENSIONS.includes(extension) || mimeType?.startsWith("video/")) {
     const fallbackByMime: Record<string, string> = {
       "video/mp4": ".mp4",
       "video/quicktime": ".mov",
       "video/webm": ".webm",
       "video/x-m4v": ".m4v"
     };
-    return { kind: "video", extension: VIDEO_EXTENSIONS.includes(extension) ? extension : fallbackByMime[file.mimetype] ?? ".video", fileKind: "video" };
+    return {
+      kind: "video",
+      extension: VIDEO_EXTENSIONS.includes(extension) ? extension : fallbackByMime[mimeType ?? ""] ?? ".video",
+      fileKind: "video"
+    };
   }
 
   throw new BadRequestException("영상, 캡처 zip 또는 스플랫 파일만 접수할 수 있습니다.");
@@ -212,15 +227,110 @@ export class SplatAssetService {
     if (!file) throw new BadRequestException("접수할 파일이 필요합니다.");
     if (!file.buffer?.length) throw new BadRequestException("업로드할 파일이 비어 있습니다.");
     if (file.buffer.length > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException("영상, 캡처 zip 또는 스플랫 파일은 800MB 이하만 접수할 수 있습니다.");
+      throw new BadRequestException(MAX_UPLOAD_MESSAGE);
     }
 
-    const classification = classifyIntakeFile(file);
+    const classification = classifyIntakeFile(file.originalname, file.mimetype);
     const stored = await this.storageAdapter.save({
       buffer: file.buffer,
       fileName: safeUploadedFileName(`splat-${classification.kind}`, file.originalname, classification.extension),
       mimeType: file.mimetype
     });
+    return this.createIntakeAsset(input, classification, stored.fileUrl, file.buffer.length);
+  }
+
+  /** 브라우저가 원본 바이트를 S3로 직접 PUT할 수 있도록 1시간짜리 서명을 발급한다. */
+  async presignIntake(input: SplatIntakePresignRequest): Promise<SplatIntakePresignResponse> {
+    const classification = classifyIntakeFile(input.fileName, input.mimeType);
+    if (input.sizeBytes === 0) {
+      throw new BadRequestException("업로드할 파일이 비어 있습니다.");
+    }
+    if (!this.storageAdapter.presignUpload) {
+      // 멀티파트 폴백으로 보낼 파일은 폴백 경로의 한도(800MB)를 여기서 미리 걸러,
+      // 어차피 거부될 대용량 업로드를 클라이언트가 시작조차 하지 않게 한다.
+      if (input.sizeBytes > MAX_UPLOAD_BYTES) {
+        throw new BadRequestException(MAX_UPLOAD_MESSAGE);
+      }
+      return { mode: "multipart" };
+    }
+    if (input.sizeBytes > MAX_DIRECT_UPLOAD_BYTES) {
+      throw new BadRequestException(MAX_DIRECT_UPLOAD_MESSAGE);
+    }
+
+    const key = `splat-intake/${input.listingId}/${safeUploadedFileName(
+      `splat-${classification.kind}`,
+      input.fileName,
+      classification.extension
+    )}`;
+    const presigned = await this.storageAdapter.presignUpload({
+      key,
+      mimeType: input.mimeType?.trim() || "application/octet-stream",
+      expiresInSeconds: 3600
+    });
+
+    return {
+      mode: "direct",
+      uploadUrl: presigned.uploadUrl,
+      key: presigned.key,
+      headers: presigned.headers,
+      expiresAt: presigned.expiresAt.toISOString()
+    };
+  }
+
+  /** S3 직접 업로드를 HEAD로 검증한 뒤 기존 multipart intake와 동일한 자산을 만든다. */
+  async completeIntake(input: SplatIntakeCompleteRequest) {
+    const expectedPrefix = `splat-intake/${input.listingId}/`;
+    if (!input.key.startsWith(expectedPrefix)) {
+      throw new ForbiddenException("이 매물에 발급된 업로드 키가 아닙니다.");
+    }
+
+    const head = await this.storageAdapter.headObject?.(input.key);
+    if (!head || !Number.isFinite(head.sizeBytes) || head.sizeBytes < 0) {
+      throw new BadRequestException("업로드가 완료되지 않았습니다.");
+    }
+    if (head.sizeBytes === 0) {
+      throw new BadRequestException("업로드할 파일이 비어 있습니다.");
+    }
+    if (head.sizeBytes > MAX_DIRECT_UPLOAD_BYTES) {
+      throw new BadRequestException(MAX_DIRECT_UPLOAD_MESSAGE);
+    }
+
+    const classification = classifyIntakeFile(input.key, head.mimeType);
+    let publicUrl = this.storageAdapter.publicUrl?.(input.key);
+    // 구형/custom 어댑터가 publicUrl resolver를 아직 제공하지 않으면 presign 결과의 결정적 URL을 쓴다.
+    if (!publicUrl && this.storageAdapter.presignUpload) {
+      const resolved = await this.storageAdapter.presignUpload({
+        key: input.key,
+        mimeType: head.mimeType?.trim() || "application/octet-stream",
+        expiresInSeconds: 3600
+      });
+      publicUrl = resolved.publicUrl;
+    }
+    if (!publicUrl) {
+      throw new BadRequestException("직접 업로드를 지원하지 않는 저장소입니다.");
+    }
+
+    // 멱등 처리 — complete는 가벼운 JSON POST라 네트워크 재시도·중복 클릭으로 쉽게 반복된다.
+    // 같은 객체로 자산을 중복 생성하면 오케스트레이터가 GPU 잡을 그만큼 중복 투하하므로
+    // (인스턴스 비용), 이미 이 key로 만든 자산이 있으면 그대로 반환한다.
+    const existing = await this.getPrisma().splatAsset.findFirst({
+      where: {
+        listingId: input.listingId,
+        OR: [{ videoUrl: publicUrl }, { fileUrl: publicUrl }]
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    if (existing) return existing;
+
+    return this.createIntakeAsset(input, classification, publicUrl, head.sizeBytes);
+  }
+
+  private async createIntakeAsset(
+    input: IntakeSplatAssetInput,
+    classification: IntakeFileClassification,
+    storedUrl: string,
+    sizeBytes: number
+  ) {
     const roomId = `trade-${input.listingId}`;
     const roomTitle = input.title?.trim() || "직접등록 매물";
     const roomAddress = input.address?.trim() || "주소 미입력";
@@ -245,10 +355,10 @@ export class SplatAssetService {
         id: `splat_${randomUUID()}`,
         roomId,
         listingId: input.listingId,
-        fileUrl: classification.kind === "splat" ? stored.fileUrl : "",
+        fileUrl: classification.kind === "splat" ? storedUrl : "",
         fileKind: classification.fileKind,
-        sizeBytes: file.buffer.length,
-        videoUrl: classification.kind === "splat" ? null : stored.fileUrl,
+        sizeBytes,
+        videoUrl: classification.kind === "splat" ? null : storedUrl,
         status: classification.kind === "splat" ? "UPLOADED" : "PROCESSING",
         jobState: classification.kind === "splat" ? null : "QUEUED"
       }
@@ -339,7 +449,7 @@ export class SplatAssetService {
         throw new BadRequestException("영상 또는 캡처 zip은 800MB 이하만 접수할 수 있습니다.");
       }
 
-      const classification = classifyIntakeFile(file);
+      const classification = classifyIntakeFile(file.originalname, file.mimetype);
       if (classification.kind === "splat") {
         throw new BadRequestException("재구성 재시도에는 영상 또는 캡처 zip 파일만 사용할 수 있습니다.");
       }

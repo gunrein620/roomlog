@@ -4,6 +4,7 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
 import type { TradeStoreProjector } from "./trade-store.projector";
+import { normalizeMitunetFloorPlan, type MitunetFloorPlan } from "./mitunet-floor-plan";
 
 /**
  * 거래(매물 직접등록 + 구매 문의 채팅) 도메인.
@@ -39,6 +40,7 @@ export type ListingFloorPlan = {
   walls3D: ListingFloorPlanWall[];
   furnitures: ListingFloorPlanFurniture[];
   name?: string;
+  mitunet?: MitunetFloorPlan;
 };
 
 export type TradeTradeType = "월세" | "반전세" | "전세" | "매매";
@@ -274,7 +276,8 @@ function normalizeFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan |
     });
   }
 
-  if (walls.length === 0) return undefined;
+  const mitunet = normalizeMitunetFloorPlan(input.mitunet);
+  if (walls.length === 0 && !mitunet) return undefined;
 
   const furnitures: ListingFloorPlanFurniture[] = [];
   for (const raw of Array.isArray(input.furnitures) ? input.furnitures : []) {
@@ -304,7 +307,14 @@ function normalizeFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan |
   }
 
   const name = typeof input.name === "string" ? input.name.slice(0, 120) : undefined;
-  return { walls3D: walls, furnitures, ...(name ? { name } : {}) };
+  return { walls3D: walls, furnitures, ...(name ? { name } : {}), ...(mitunet ? { mitunet } : {}) };
+}
+
+function normalizeSubmittedFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan | undefined {
+  if (input?.mitunet !== undefined && !normalizeMitunetFloorPlan(input.mitunet)) {
+    throw new BadRequestException("MitUNet 도면 형식이 올바르지 않습니다.");
+  }
+  return normalizeFloorPlan(input);
 }
 
 function extensionForUpload(mimeType: string, originalName: string): string {
@@ -589,6 +599,7 @@ export class TradeService implements OnModuleDestroy {
     const monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
     assertListingEssentials(input.title, tradeType, depositManwon, monthlyRentManwon);
     const detailAddress = normalizeDetailAddress(input.detailAddress);
+    const floorPlan = normalizeSubmittedFloorPlan(input.floorPlan);
     const buildingName = normalizeBuildingName(input.buildingName);
     const exclusiveAreaM2 = normalizePositiveNumber(input.exclusiveAreaM2, 10000);
     const floorInfo = normalizeFloorInfo(input.floorInfo);
@@ -613,7 +624,7 @@ export class TradeService implements OnModuleDestroy {
       options: normalizeOptions(input.options),
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
-      ...(normalizeFloorPlan(input.floorPlan) ? { floorPlan: normalizeFloorPlan(input.floorPlan) } : {}),
+      ...(floorPlan ? { floorPlan } : {}),
       status: "노출중",
       createdAt: new Date().toISOString()
     };
@@ -702,7 +713,7 @@ export class TradeService implements OnModuleDestroy {
       listing.lng = coords.lng;
     }
     // floorPlan 키가 오면 교체(null이면 연결 해제). 키 자체가 없으면 기존 도면 유지.
-    if (input.floorPlan !== undefined) listing.floorPlan = normalizeFloorPlan(input.floorPlan);
+    if (input.floorPlan !== undefined) listing.floorPlan = normalizeSubmittedFloorPlan(input.floorPlan);
 
     this.persist();
     this.projectListings();

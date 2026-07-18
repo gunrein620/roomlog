@@ -157,6 +157,7 @@ import {
   FloorPlanAiRoomStructure,
   FloorPlanAiRoomStructureNoiseFlags,
   FloorPlanAiRoomStructurePlanStyle,
+  FloorPlanAiRoomType,
   FloorPlanAiScaleCandidate,
   FloorPlanAiTextDetection,
   FloorPlanAiWallCandidate,
@@ -193,7 +194,9 @@ import {
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerReplyIntent,
+  ManagerTicketLane,
   ManagerTicketReplyInput,
+  SetManagerTicketLaneInput,
   MaintenanceFee,
   MatchDepositInput,
   MoveInChecklistItem,
@@ -315,6 +318,22 @@ export type GoogleSocialLoginInput = {
 
 export type KakaoSocialLoginInput = GoogleSocialLoginInput;
 
+/**
+ * 관리인 진행 레인(3단계) → 티켓 상태. 세부 상태를 접은 대표값 하나씩만 쓴다.
+ * 되돌리기(완료→접수)도 허용한다 — 실무에서 잘못 누른 것을 되돌릴 길이 없으면 안 된다.
+ */
+const MANAGER_TICKET_LANE_STATUS: Record<ManagerTicketLane, TicketStatus> = {
+  received: "RECEIVED",
+  processing: "REPAIR_IN_PROGRESS",
+  resolved: "COMPLETED"
+};
+
+const MANAGER_TICKET_LANE_LABEL: Record<ManagerTicketLane, string> = {
+  received: "접수",
+  processing: "진행",
+  resolved: "완료"
+};
+
 const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
   {
     id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
@@ -416,6 +435,21 @@ const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
         properties: {
           confidence: { maximum: 1, minimum: 0, type: "number" },
           label: { type: "string" },
+          roomType: {
+            enum: [
+              "LIVING_ROOM",
+              "BEDROOM",
+              "DRESS_ROOM",
+              "KITCHEN_DINING",
+              "BATHROOM",
+              "LAUNDRY_UTILITY",
+              "BALCONY",
+              "ENTRY",
+              "HALLWAY",
+              "UNKNOWN"
+            ],
+            type: "string"
+          },
           polygon: {
             items: FLOOR_PLAN_ROOM_POINT_SCHEMA,
             maxItems: 12,
@@ -423,7 +457,7 @@ const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
             type: "array"
           }
         },
-        required: ["label", "polygon", "confidence"],
+        required: ["label", "roomType", "polygon", "confidence"],
         type: "object"
       },
       maxItems: 40,
@@ -6903,6 +6937,41 @@ export class RoomlogService implements OnModuleDestroy {
     };
   }
 
+  /**
+   * 관리인이 대화 패널에서 진행 레인(접수·진행·완료)을 직접 넘긴다.
+   * 티켓 상태 축만 움직이며 수리(RepairRequest)·결제는 건드리지 않는다 — 둘은 별개 축이고,
+   * 결제 게이트는 수리 완료를 근거로 하지 실무자가 접은 이 레인을 근거로 하지 않는다.
+   * 취소된 티켓은 토글로 되살리지 않는다(되살리기는 재요청 경로가 따로 있다).
+   */
+  setManagerTicketLane(managerId: string, ticketId: string, input: SetManagerTicketLaneInput) {
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+
+    const toStatus = MANAGER_TICKET_LANE_STATUS[input?.lane];
+
+    if (!toStatus) {
+      throw new BadRequestException("진행 상태는 접수·진행·완료 중 하나여야 합니다.");
+    }
+
+    if (ticket.status === "CANCELLED") {
+      throw new BadRequestException("취소된 건의 진행 상태는 변경할 수 없습니다.");
+    }
+
+    if (ticket.status === toStatus) {
+      return { ticket: this.presentTicket(ticket) };
+    }
+
+    const transitioned = this.transitionTicket(
+      ticketId,
+      toStatus,
+      managerId,
+      `관리인이 진행 상태를 ${MANAGER_TICKET_LANE_LABEL[input.lane]}(으)로 변경`
+    );
+    this.persistStore();
+
+    return { ticket: this.presentTicket(transitioned) };
+  }
+
   assignVendor(managerId: string, ticketId: string, input: AssignVendorInput): RepairRequest {
     this.assertManagerCanAccessTicket(managerId, this.findTicket(ticketId));
     const vendor = this.store.vendors.find((item) => item.id === input.vendorId);
@@ -8207,7 +8276,10 @@ export class RoomlogService implements OnModuleDestroy {
     imageDataUrl: string,
     prompt?: string
   ): Promise<FloorPlanAiAnalysisResult> {
-    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    // Ten representative Naver plans averaged 4.99s with Terra/no reasoning,
+    // versus 17.85s with gpt-5.5/low while returning the same or more room types.
+    // Deployment can still override either setting with the floor-plan env vars.
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.6-terra";
     const instructions = [
       "당신은 Roomlog의 도면 방 구조 분석기입니다.",
       "도면 스타일을 solid-filled, double-line-hollow, hatched, gray-fill 중 하나로 분류합니다.",
@@ -8228,6 +8300,7 @@ export class RoomlogService implements OnModuleDestroy {
         body: JSON.stringify({
           model: openAiModel,
           instructions,
+          reasoning: { effort: process.env.OPENAI_FLOOR_PLAN_EFFORT || "none" },
           input: [
             {
               role: "user",
@@ -8535,10 +8608,26 @@ export class RoomlogService implements OnModuleDestroy {
         {
           confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
           label,
-          polygon
+          polygon,
+          roomType: this.validAiRoomType(item?.roomType)
         }
       ];
     });
+  }
+
+  private validAiRoomType(value: unknown): FloorPlanAiRoomType {
+    return value === "LIVING_ROOM"
+      || value === "BEDROOM"
+      || value === "DRESS_ROOM"
+      || value === "KITCHEN_DINING"
+      || value === "BATHROOM"
+      || value === "LAUNDRY_UTILITY"
+      || value === "BALCONY"
+      || value === "ENTRY"
+      || value === "HALLWAY"
+      || value === "UNKNOWN"
+      ? value
+      : "UNKNOWN";
   }
 
   private validAiRoomPolygon(value: unknown) {
@@ -8821,8 +8910,10 @@ export class RoomlogService implements OnModuleDestroy {
       linkedRoomIds.add(currentRoomId);
     }
 
+    // 해지된 집은 목록에서 뺀다. 현재 연결(tenantRooms)은 위에서 이미 넣었으므로,
+    // 거주 중 기간 만료(expired지만 연결 유지)는 그대로 남고 해지된 방만 사라진다.
     this.store.contracts
-      .filter((contract) => contract.tenantId === tenantId)
+      .filter((contract) => contract.tenantId === tenantId && contract.lifecycle !== "expired")
       .forEach((contract) => linkedRoomIds.add(contract.roomId));
 
     return [...linkedRoomIds]
@@ -9160,10 +9251,27 @@ export class RoomlogService implements OnModuleDestroy {
     }
 
     const room = this.findRoom(roomId);
+    // 청구는 호실 기준이라 재계약 시 전 세입자 청구(미납·연체 포함)가 새 세입자에게 넘어간다.
+    // 내 입주 시점 이전에 발행된 청구는 내 것이 아니다 — 남의 연체를 새 세입자에게 보이지 않는다.
+    // 입주 시점을 알 수 없으면(계약 미연결) 기존대로 전부 반환 — 정상 청구를 숨기지 않는다.
+    const occupancyStart = this.tenantOccupancyStart(tenantId, room.id);
 
     return this.store.bills
       .filter((bill) => this.roomForBill(bill)?.id === room.id)
+      .filter(
+        (bill) => occupancyStart === undefined || this.timeOf(bill.createdAt) >= occupancyStart
+      )
       .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  /** 해당 호실에서 내 계약이 시작된 시각(거래 수락 시각 우선). 계약이 없으면 undefined. */
+  private tenantOccupancyStart(tenantId: string, roomId: string): number | undefined {
+    const starts = this.store.contracts
+      .filter((contract) => contract.tenantId === tenantId && contract.roomId === roomId)
+      .map((contract) => this.timeOf(contract.tradeAcceptedAt ?? contract.createdAt))
+      .filter((time) => Number.isFinite(time) && time > 0);
+
+    return starts.length > 0 ? Math.min(...starts) : undefined;
   }
 
   private billIsVisibleToTenant(bill: Bill, at: Date) {

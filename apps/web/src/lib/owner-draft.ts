@@ -86,6 +86,15 @@ export function serializeOwnerDraft(
   return JSON.stringify({ version: OWNER_DRAFT_VERSION, savedAt, ...state } satisfies OwnerListingDraft);
 }
 
+export function saveOwnerDraft(
+  storage: Pick<Storage, "setItem">,
+  state: Omit<OwnerListingDraft, "version" | "savedAt">,
+  savedAt = new Date().toISOString()
+): string {
+  storage.setItem(OWNER_DRAFT_STORAGE_KEY, serializeOwnerDraft(state, savedAt));
+  return savedAt;
+}
+
 /** 버전 불일치·깨진 JSON·형태 불일치는 전부 null — 초기값으로 폴백한다(fail-safe). */
 export function parseOwnerDraft(raw: string | null): OwnerListingDraft | null {
   if (!raw) return null;

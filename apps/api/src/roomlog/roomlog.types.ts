@@ -1287,6 +1287,14 @@ export type ManagerTicketReplyInput = {
   messageText?: string;
 };
 
+/** 관리인 대화 패널의 진행 레인 — 접수 | 진행 | 완료. 수리·결제 축과 분리된 티켓 상태 축이다. */
+export type ManagerTicketLane = "received" | "processing" | "resolved";
+
+export type SetManagerTicketLaneInput = {
+  lane: ManagerTicketLane;
+  clientRequestId?: string;
+};
+
 export type ManagerReplyDraftResult = {
   ticketId: string;
   complaintId: string;
@@ -1503,6 +1511,18 @@ export type FloorPlanAiMissingWallHint = {
 
 export type FloorPlanAiRoomStructurePlanStyle = "solid-filled" | "double-line-hollow" | "hatched" | "gray-fill";
 
+export type FloorPlanAiRoomType =
+  | "LIVING_ROOM"
+  | "BEDROOM"
+  | "DRESS_ROOM"
+  | "KITCHEN_DINING"
+  | "BATHROOM"
+  | "LAUNDRY_UTILITY"
+  | "BALCONY"
+  | "ENTRY"
+  | "HALLWAY"
+  | "UNKNOWN";
+
 export type FloorPlanAiRoomPolygonPoint = {
   x: number;
   y: number;
@@ -1512,6 +1532,7 @@ export type FloorPlanAiRoomStructure = {
   confidence: number;
   label: string;
   polygon: FloorPlanAiRoomPolygonPoint[];
+  roomType: FloorPlanAiRoomType;
 };
 
 export type FloorPlanAiRoomStructureNoiseFlags = {

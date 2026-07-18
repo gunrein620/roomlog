@@ -1,4 +1,5 @@
 import type {
+  CreateManagerVendorInput,
   ManagerVendorDetail,
   ManagerVendorJobLookup,
   ManagerVendorView,
@@ -11,7 +12,8 @@ export const MANAGER_VENDOR_REPOSITORY = Symbol("MANAGER_VENDOR_REPOSITORY");
 export type ManagerVendorRepositoryErrorCode =
   | "INVALID_MANAGER"
   | "VENDOR_NOT_FOUND"
-  | "RELATION_NOT_FOUND";
+  | "RELATION_NOT_FOUND"
+  | "DUPLICATE_VENDOR";
 
 export class ManagerVendorRepositoryError extends Error {
   constructor(
@@ -45,6 +47,10 @@ export interface ManagerVendorRepository {
     managerId: string,
     ticketId: string
   ): Promise<ManagerVendorJobLookup | null>;
+  createManual(
+    managerId: string,
+    input: CreateManagerVendorInput
+  ): Promise<ManagerVendorView>;
   register(managerId: string, vendorId: string): Promise<ManagerVendorView>;
   updateNote(
     managerId: string,
