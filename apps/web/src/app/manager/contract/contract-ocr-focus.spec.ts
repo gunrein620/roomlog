@@ -10,12 +10,24 @@ describe("contract OCR important-field scope", () => {
       "utf8",
     );
 
-    // 월세는 관리인이 이 화면에서 직접 넣을 수 있어야 한다. 나머지 DB 보유 필드는 02/03에서만 수정한다.
-    for (const fieldName of ["maintenanceFee", "paymentDay", "landlordAccount", "startDate", "endDate"]) {
+    // 청구·확정에 필요한 월세·관리비·납부일·계약기간은 이 화면에서 직접 넣을 수 있어야 한다.
+    // 임대인 계좌는 계속 02/03에서만 수정한다.
+    for (const fieldName of ["landlordAccount"]) {
       assert.doesNotMatch(pageSource, new RegExp(`name="${fieldName}"`));
     }
 
-    for (const fieldName of ["deposit", "monthlyRent", "specialTerms", "autoRenewal", "restorationDuty", "repairDuty"]) {
+    for (const fieldName of [
+      "deposit",
+      "monthlyRent",
+      "maintenanceFee",
+      "paymentDay",
+      "startDate",
+      "endDate",
+      "specialTerms",
+      "autoRenewal",
+      "restorationDuty",
+      "repairDuty",
+    ]) {
       assert.match(pageSource, new RegExp(`name="${fieldName}"`));
     }
 

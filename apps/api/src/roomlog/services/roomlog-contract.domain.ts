@@ -1877,7 +1877,9 @@ export class RoomlogContractDomain {
     return this.contractDateKey(value, field);
   }
 
-  private contractDateKey(value: string, field: string) {
+  private contractDateKey(rawValue: string, field: string) {
+    // 저장된 계약 날짜가 ISO 전체 문자열(2026-03-01T00:00:00+09:00)인 경우가 있어 날짜부만 본다.
+    const value = rawValue.trim().slice(0, 10);
     if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u.test(value)) {
       throw new BadRequestException(`${field}은 YYYY-MM-DD 형식이어야 합니다.`);
     }
