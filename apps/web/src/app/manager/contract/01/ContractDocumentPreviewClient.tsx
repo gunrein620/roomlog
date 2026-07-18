@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 type PreviewKind = "image" | "pdf";
 
@@ -91,44 +91,46 @@ export function ContractDocumentPreviewClient({
     hideReadValues();
   };
 
+  const readValuesButton = (
+    <button
+      type="button"
+      data-contract-highlight-button="read-values"
+      data-highlight-count={highlightBoxes.length}
+      data-preview-kind={previewKind}
+      disabled={!hasHighlightBoxes}
+      aria-pressed={showOcrOverlay}
+      title={hasHighlightBoxes ? "읽어온 값 위치를 누르는 동안만 표시합니다." : "저장된 OCR 위치 좌표가 없습니다. OCR을 다시 실행해야 표시됩니다."}
+      onPointerDown={showReadValues}
+      onPointerUp={hideReadValues}
+      onPointerCancel={hideReadValues}
+      onPointerLeave={hideReadValues}
+      onMouseUp={hideReadValues}
+      onTouchEnd={hideReadValues}
+      onClick={hideReadValues}
+      onKeyDown={handleReadValuesKeyDown}
+      onKeyUp={handleReadValuesKeyUp}
+      onBlur={hideReadValues}
+      style={!hasHighlightBoxes ? readValuesButtonDisabledStyle : showOcrOverlay ? readValuesButtonActiveStyle : readValuesButtonStyle}
+    >
+      읽어온 값
+    </button>
+  );
+
   return (
     <div style={documentPreviewClientStyle}>
       <div style={documentFrameStyle}>
-        <div style={documentPreviewNavStyle}>
-          <button
-            type="button"
-            data-contract-highlight-button="read-values"
-            data-highlight-count={highlightBoxes.length}
-            data-preview-kind={previewKind}
-            disabled={!hasHighlightBoxes}
-            aria-pressed={showOcrOverlay}
-            title={hasHighlightBoxes ? "읽어온 값 위치를 누르는 동안만 표시합니다." : "저장된 OCR 위치 좌표가 없습니다. OCR을 다시 실행해야 표시됩니다."}
-            onPointerDown={showReadValues}
-            onPointerUp={hideReadValues}
-            onPointerCancel={hideReadValues}
-            onPointerLeave={hideReadValues}
-            onMouseUp={hideReadValues}
-            onTouchEnd={hideReadValues}
-            onClick={hideReadValues}
-            onKeyDown={handleReadValuesKeyDown}
-            onKeyUp={handleReadValuesKeyUp}
-            onBlur={hideReadValues}
-            style={!hasHighlightBoxes ? readValuesButtonDisabledStyle : showOcrOverlay ? readValuesButtonActiveStyle : readValuesButtonStyle}
-          >
-            읽어온 값
-          </button>
-        </div>
         {previewUrl ? (
           previewKind === "image" ? (
             <div style={documentPreviewSurfaceStyle}>
+              <div style={documentPreviewFloatingNavStyle}>{readValuesButton}</div>
               <img src={previewUrl} alt="계약서 원문 미리보기" style={documentImageStyle} />
               {showHighlights ? <HighlightOverlay boxes={highlightBoxes} previewKind="image" /> : null}
             </div>
           ) : (
-            <PdfDocumentFrame previewUrl={previewUrl} showHighlights={showHighlights} boxes={highlightBoxes} />
+            <PdfDocumentFrame previewUrl={previewUrl} showHighlights={showHighlights} boxes={highlightBoxes} readValuesButton={readValuesButton} />
           )
         ) : (
-          <ContractDocumentFallback tenantName={tenantName} showHighlights={showHighlights} boxes={highlightBoxes} />
+          <ContractDocumentFallback tenantName={tenantName} showHighlights={showHighlights} boxes={highlightBoxes} readValuesButton={readValuesButton} />
         )}
       </div>
     </div>
@@ -139,10 +141,12 @@ function PdfDocumentFrame({
   previewUrl,
   showHighlights,
   boxes,
+  readValuesButton,
 }: {
   previewUrl: string;
   showHighlights: boolean;
   boxes: HighlightBox[];
+  readValuesButton: ReactNode;
 }) {
   const [pdfDocument, setPdfDocument] = useState<PdfDocumentProxy | null>(null);
   const [pageNumbers, setPageNumbers] = useState<number[]>([]);
@@ -187,6 +191,7 @@ function PdfDocumentFrame({
 
   return (
     <div style={pdfDocumentSurfaceStyle}>
+      <div style={documentPreviewStickyNavStyle}>{readValuesButton}</div>
       {loadError ? (
         <iframe
           title="계약서 PDF 원문 미리보기"
@@ -377,13 +382,16 @@ function ContractDocumentFallback({
   tenantName,
   showHighlights,
   boxes,
+  readValuesButton,
 }: {
   tenantName: string;
   showHighlights: boolean;
   boxes: HighlightBox[];
+  readValuesButton: ReactNode;
 }) {
   return (
     <div style={fallbackFrameStyle}>
+      <div style={documentPreviewFloatingNavStyle}>{readValuesButton}</div>
       <StaticContractSheet tenantName={tenantName} />
       {showHighlights ? <HighlightOverlay boxes={boxes} previewKind="image" /> : null}
     </div>
@@ -631,7 +639,7 @@ const documentFrameStyle = {
   minWidth: 0,
 } as const;
 
-const documentPreviewNavStyle = {
+const documentPreviewFloatingNavStyle = {
   position: "absolute",
   top: "var(--space-sm)",
   right: "var(--space-sm)",
@@ -639,6 +647,16 @@ const documentPreviewNavStyle = {
   display: "flex",
   justifyContent: "flex-end",
   pointerEvents: "none",
+} as const;
+
+const documentPreviewStickyNavStyle = {
+  position: "sticky",
+  top: "var(--space-sm)",
+  zIndex: 20,
+  display: "flex",
+  justifyContent: "flex-end",
+  pointerEvents: "none",
+  marginBottom: -36,
 } as const;
 
 const documentPreviewSurfaceStyle = {
