@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
-import { buildRoomlogInteriorMask, buildWoodRgba, MITUNET_RENDER_STYLE } from "./mitunet-surfaces";
+import {
+  buildFloorMaterialRgba,
+  buildRoomlogInteriorMask,
+  MITUNET_RENDER_STYLE
+} from "./mitunet-surfaces";
 
 export function createConcreteTexture(worldWidth: number, worldDepth: number) {
   const canvas = document.createElement("canvas");
@@ -36,10 +40,10 @@ export function createConcreteTexture(worldWidth: number, worldDepth: number) {
   return texture;
 }
 
-export function createWoodTexture(plan: MitunetFloorPlan) {
+export function createFloorTexture(plan: MitunetFloorPlan) {
   const [width, height] = plan.canvasSize;
   const mask = buildRoomlogInteriorMask(plan.polygons, width, height);
-  const pixels = buildWoodRgba(mask, width, height);
+  const pixels = buildFloorMaterialRgba(mask, width, height, plan.floorMaterials);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -52,7 +56,7 @@ export function createWoodTexture(plan: MitunetFloorPlan) {
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.flipY = false;
+  texture.flipY = true;
   texture.needsUpdate = true;
   return texture;
 }

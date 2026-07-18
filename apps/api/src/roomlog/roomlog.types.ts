@@ -1502,6 +1502,18 @@ export type FloorPlanAiMissingWallHint = {
 
 export type FloorPlanAiRoomStructurePlanStyle = "solid-filled" | "double-line-hollow" | "hatched" | "gray-fill";
 
+export type FloorPlanAiRoomType =
+  | "LIVING_ROOM"
+  | "BEDROOM"
+  | "DRESS_ROOM"
+  | "KITCHEN_DINING"
+  | "BATHROOM"
+  | "LAUNDRY_UTILITY"
+  | "BALCONY"
+  | "ENTRY"
+  | "HALLWAY"
+  | "UNKNOWN";
+
 export type FloorPlanAiRoomPolygonPoint = {
   x: number;
   y: number;
@@ -1511,6 +1523,7 @@ export type FloorPlanAiRoomStructure = {
   confidence: number;
   label: string;
   polygon: FloorPlanAiRoomPolygonPoint[];
+  roomType: FloorPlanAiRoomType;
 };
 
 export type FloorPlanAiRoomStructureNoiseFlags = {

@@ -28,9 +28,9 @@ describe("createMitunetSceneLayout", () => {
     assert.equal(layout.hasPhysicalScale, false);
     assert.equal(layout.bounds.width, 8);
     assert.equal(layout.bounds.depth, 4.8);
-    assert.deepEqual(layout.wall[0].outer[0], [-4, 2.4]);
-    assert.deepEqual(layout.wall[0].outer[2].map(round), [4, 1.6]);
-    assert.deepEqual(layout.window[0].outer[2].map(round), [2, -2.4]);
+    assert.deepEqual(layout.wall[0].outer[0], [-4, -2.4]);
+    assert.deepEqual(layout.wall[0].outer[2].map(round), [4, -1.6]);
+    assert.deepEqual(layout.window[0].outer[2].map(round), [2, 2.4]);
   });
 
   it("uses millimetres-per-pixel calibration when available", () => {
@@ -39,7 +39,7 @@ describe("createMitunetSceneLayout", () => {
     assert.equal(layout.hasPhysicalScale, true);
     assert.equal(layout.bounds.width, 2);
     assert.equal(layout.bounds.depth, 1.2);
-    assert.deepEqual(layout.door[0].outer[0].map(round), [-0.25, 0.6]);
+    assert.deepEqual(layout.door[0].outer[0].map(round), [-0.25, -0.6]);
   });
 
   it("keeps MitUNet at scene scale one and normalizes legacy tour coordinates", () => {

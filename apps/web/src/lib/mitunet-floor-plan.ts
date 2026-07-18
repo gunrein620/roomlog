@@ -13,6 +13,31 @@ export type MitunetPolygonGroups = {
   window: MitunetPolygon[];
 };
 
+export const FLOOR_MATERIAL_KINDS = [
+  "WOOD",
+  "TILE",
+  "BALCONY_TILE",
+  "KITCHEN_FLOOR",
+  "STONE_TILE",
+] as const;
+export type FloorMaterialKind = typeof FLOOR_MATERIAL_KINDS[number];
+export type MitunetFloorMaterialZone = {
+  confidence: number;
+  id: string;
+  label: string;
+  material: FloorMaterialKind;
+  roomType: string;
+  seed: [number, number];
+};
+export type MitunetFloorMaterialMap = {
+  encoding: "rle-u8";
+  height: number;
+  labels: string;
+  version: 1;
+  width: number;
+  zones: MitunetFloorMaterialZone[];
+};
+
 export type MitunetFloorPlan = {
   schema: typeof MITUNET_SCHEMA;
   version: typeof MITUNET_VERSION;
@@ -21,6 +46,7 @@ export type MitunetFloorPlan = {
   contentRect: [number, number, number, number];
   millimetersPerPixel: number | null;
   polygons: MitunetPolygonGroups;
+  floorMaterials?: MitunetFloorMaterialMap;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -80,6 +106,94 @@ function normalizePolygonGroup(value: unknown, maximumCoordinate: number): Mitun
   return polygons;
 }
 
+function normalizeFloorMaterials(
+  value: unknown,
+  canvasSize: [number, number],
+): MitunetFloorMaterialMap | undefined {
+  if (!isRecord(value) || value.version !== 1 || value.encoding !== "rle-u8") return undefined;
+
+  const width = Number(value.width);
+  const height = Number(value.height);
+  if (
+    !Number.isInteger(width)
+    || !Number.isInteger(height)
+    || width < 1
+    || height < 1
+    || width > 4_096
+    || height > 4_096
+    || width !== canvasSize[0]
+    || height !== canvasSize[1]
+    || !Array.isArray(value.zones)
+    || value.zones.length < 1
+    || value.zones.length > 255
+  ) {
+    return undefined;
+  }
+
+  const allowedMaterials = new Set<string>(FLOOR_MATERIAL_KINDS);
+  const zones: MitunetFloorMaterialZone[] = [];
+  for (const rawZone of value.zones) {
+    if (!isRecord(rawZone)) return undefined;
+    const confidence = Number(rawZone.confidence);
+    const seed = finiteTuple(rawZone.seed, 2);
+    const id = typeof rawZone.id === "string" ? rawZone.id.trim().slice(0, 80) : "";
+    const label = typeof rawZone.label === "string" ? rawZone.label.trim().slice(0, 80) : "";
+    const roomType = typeof rawZone.roomType === "string"
+      ? rawZone.roomType.trim().slice(0, 80)
+      : "";
+    const material = typeof rawZone.material === "string" ? rawZone.material : "";
+    if (
+      !Number.isFinite(confidence)
+      || confidence < 0
+      || confidence > 1
+      || !seed
+      || seed.some((coordinate) => !Number.isInteger(coordinate))
+      || seed[0] < 0
+      || seed[1] < 0
+      || seed[0] >= width
+      || seed[1] >= height
+      || !id
+      || !label
+      || !roomType
+      || !allowedMaterials.has(material)
+    ) {
+      return undefined;
+    }
+    zones.push({
+      confidence,
+      id,
+      label,
+      material: material as FloorMaterialKind,
+      roomType,
+      seed,
+    });
+  }
+
+  if (typeof value.labels !== "string" || value.labels.length === 0) return undefined;
+  let decodedLength = 0;
+  for (const run of value.labels.split(",")) {
+    const match = /^(\d+):(\d+)$/.exec(run);
+    if (!match) return undefined;
+    const count = Number(match[1]);
+    const label = Number(match[2]);
+    if (!Number.isSafeInteger(count) || count < 1 || label < 0 || label > zones.length) {
+      return undefined;
+    }
+    decodedLength += count;
+    if (!Number.isSafeInteger(decodedLength) || decodedLength > width * height) return undefined;
+  }
+  if (decodedLength !== width * height) return undefined;
+
+  return {
+    encoding: "rle-u8",
+    height,
+    labels: value.labels,
+    version: 1,
+    width,
+    zones,
+  };
+}
+
 export function buildRoomlogMitunetEditorPath(roomlogOrigin: string, requestId: string): string {
   const url = new URL("/floor-plan-3d/mitunet", roomlogOrigin);
   url.searchParams.set("integration", "roomlog");
@@ -105,6 +219,7 @@ export function normalizeMitunetPayload(value: unknown): MitunetFloorPlan | null
 
   const rawScale = Number(value.millimetersPerPixel);
   const millimetersPerPixel = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : null;
+  const floorMaterials = normalizeFloorMaterials(value.floorMaterials, canvasSize);
 
   return {
     schema: MITUNET_SCHEMA,
@@ -116,6 +231,7 @@ export function normalizeMitunetPayload(value: unknown): MitunetFloorPlan | null
     contentRect,
     millimetersPerPixel,
     polygons: { wall, door, window },
+    ...(floorMaterials ? { floorMaterials } : {}),
   };
 }
 
@@ -142,5 +258,6 @@ export function parseMitunetProjectJson(value: unknown): MitunetFloorPlan | null
     contentRect: plan.content_rect,
     millimetersPerPixel: calibration?.millimetersPerPixel,
     polygons: plan.polygons,
+    floorMaterials: plan.floor_materials,
   });
 }

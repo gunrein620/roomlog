@@ -50,6 +50,7 @@ import {
   furnitureImageUrl,
   isFurnitureCatalogItem,
   isLandlordOptionFurniture,
+  loadGlbDatasetCatalog,
   moveFurnitureDraftToPoint,
   normalizeCatalogItem,
   reopenFurnitureDraft,
@@ -130,8 +131,48 @@ function candidateTypeLabel(type: string) {
 const MAX_VISIBLE_PRINTED_DIMENSIONS = 24;
 const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
-const FURNITURE_KIND_FILTERS = ["전체", "침대", "식탁", "의자", "소파", "책상", "서랍", "옷장", "기타"] as const;
-type FurnitureKindFilter = (typeof FURNITURE_KIND_FILTERS)[number];
+const FURNITURE_CATEGORY_ORDER = [
+  "소파·의자",
+  "침실",
+  "테이블·책상",
+  "수납",
+  "주방·다이닝",
+  "욕실·세탁",
+  "조명",
+  "데코",
+  "야외",
+  "가전·전자"
+] as const;
+type FurnitureKindFilter = string;
+
+function furnitureCategoryLabel(item: FurnitureCatalogItem) {
+  return item.category?.trim() || catalogKind(item);
+}
+
+function distributeFurnitureCategories(items: FurnitureCatalogItem[]) {
+  const buckets = new Map<string, FurnitureCatalogItem[]>();
+  for (const item of items) {
+    const category = furnitureCategoryLabel(item);
+    const bucket = buckets.get(category) ?? [];
+    bucket.push(item);
+    buckets.set(category, bucket);
+  }
+
+  const categoryOrder = [
+    ...FURNITURE_CATEGORY_ORDER.filter((category) => buckets.has(category)),
+    ...[...buckets.keys()].filter((category) => !FURNITURE_CATEGORY_ORDER.includes(category as (typeof FURNITURE_CATEGORY_ORDER)[number])).sort((left, right) => left.localeCompare(right, "ko"))
+  ];
+  const distributed: FurnitureCatalogItem[] = [];
+
+  for (let index = 0; distributed.length < items.length; index += 1) {
+    for (const category of categoryOrder) {
+      const item = buckets.get(category)?.[index];
+      if (item) distributed.push(item);
+    }
+  }
+
+  return distributed;
+}
 
 type RoboflowBoundingBox = { x: number; y: number; width: number; height: number; confidence?: number };
 
@@ -1385,24 +1426,35 @@ export default function RoomlogFloorPlanEditor() {
   const furnitureKindCounts = useMemo(
     () =>
       furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
-        const kind = catalogKind(item);
+        const kind = furnitureCategoryLabel(item);
         counts[kind] = (counts[kind] ?? 0) + 1;
 
         return counts;
       }, {}),
     [furnitureCatalog]
   );
+  const furnitureKindFilters = useMemo(() => {
+    const available = new Set(Object.keys(furnitureKindCounts));
+    const ordered = FURNITURE_CATEGORY_ORDER.filter((category) => available.has(category));
+    const remaining = [...available]
+      .filter((category) => !FURNITURE_CATEGORY_ORDER.includes(category as (typeof FURNITURE_CATEGORY_ORDER)[number]))
+      .sort((left, right) => left.localeCompare(right, "ko"));
+
+    return ["전체", ...ordered, ...remaining];
+  }, [furnitureKindCounts]);
   const filteredFurnitureCatalog = useMemo(() => {
     const query = furnitureSearchQuery.trim().toLowerCase();
 
-    return furnitureCatalog.filter((item) => {
-      const kind = catalogKind(item);
+    const matchingItems = furnitureCatalog.filter((item) => {
+      const kind = furnitureCategoryLabel(item);
       const matchesKind = furnitureKindFilter === "전체" || kind === furnitureKindFilter;
       const searchableText = `${item.name} ${item.brand} ${item.category ?? ""} ${item.source ?? ""}`.toLowerCase();
       const matchesQuery = !query || searchableText.includes(query);
 
       return matchesKind && matchesQuery;
     });
+
+    return furnitureKindFilter === "전체" ? distributeFurnitureCategories(matchingItems) : matchingItems;
   }, [furnitureCatalog, furnitureKindFilter, furnitureSearchQuery]);
 
   useEffect(() => {
@@ -1410,6 +1462,14 @@ export default function RoomlogFloorPlanEditor() {
 
     async function loadFurnitureCatalog() {
       try {
+        const datasetItems = await loadGlbDatasetCatalog();
+        if (datasetItems.length) {
+          if (!isActive) return;
+          setFurnitureCatalog(datasetItems);
+          setFurnitureCatalogStatus("가구 에셋 카탈로그");
+          return;
+        }
+
         const response = await fetch(apiUrl("/furniture-catalog"));
         if (!response.ok) throw new Error(`Furniture catalog fetch failed: ${response.status}`);
 
@@ -4581,7 +4641,7 @@ export default function RoomlogFloorPlanEditor() {
                 />
               </div>
               <div className="floor-plan-furniture-kind-tabs" role="tablist" aria-label="도면 캔버스">
-                {FURNITURE_KIND_FILTERS.map((kind) => (
+                {furnitureKindFilters.map((kind) => (
                   <button
                     aria-selected={furnitureKindFilter === kind}
                     className={furnitureKindFilter === kind ? "active" : ""}
@@ -4626,7 +4686,7 @@ export default function RoomlogFloorPlanEditor() {
                       </span>
                       <strong>{item.name}</strong>
                       <small>
-                        {catalogKind(item)} · {item.brand}
+                        {furnitureCategoryLabel(item)} · {item.brand}
                       </small>
                       <em>{item.length.join("x")}mm</em>
                       {fit.verdict !== "unknown" ? (

@@ -1,4 +1,9 @@
-import type { MitunetFloorPlan, MitunetPolygon, MitunetPolygonGroups } from "@/lib/mitunet-floor-plan";
+import type {
+  MitunetFloorMaterialMap,
+  MitunetFloorPlan,
+  MitunetPolygon,
+  MitunetPolygonGroups
+} from "@/lib/mitunet-floor-plan";
 import type { MitunetSceneLayout } from "./mitunet-geometry";
 
 export const MITUNET_RENDER_STYLE = {
@@ -56,7 +61,7 @@ export function calculateMitunetTexturePlane(plan: MitunetFloorPlan, layout: Mit
 
   return {
     centerX: layout.bounds.centerX + (plan.canvasSize[0] / 2 - centerPixelX) * scale,
-    centerZ: layout.bounds.centerZ - (plan.canvasSize[1] / 2 - centerPixelY) * scale,
+    centerZ: layout.bounds.centerZ + (plan.canvasSize[1] / 2 - centerPixelY) * scale,
     width: plan.canvasSize[0] * scale,
     depth: plan.canvasSize[1] * scale
   };
@@ -360,6 +365,91 @@ export function buildWoodRgba(mask: Uint8Array, width: number, height: number) {
       rgba[offset + 2] = seam ? 78 : 112 + Math.round((tone + grain) * 0.6);
       rgba[offset + 3] = 255;
     }
+  }
+  return rgba;
+}
+
+function decodeFloorMaterialLabels(
+  floorMaterials: MitunetFloorMaterialMap,
+  width: number,
+  height: number
+) {
+  if (floorMaterials.width !== width || floorMaterials.height !== height) return null;
+  const labels = new Uint8Array(width * height);
+  let offset = 0;
+  for (const run of floorMaterials.labels.split(",")) {
+    const match = /^(\d+):(\d+)$/.exec(run);
+    if (!match) return null;
+    const count = Number(match[1]);
+    const label = Number(match[2]);
+    if (
+      !Number.isSafeInteger(count)
+      || count < 1
+      || label < 0
+      || label > floorMaterials.zones.length
+      || offset + count > labels.length
+    ) {
+      return null;
+    }
+    labels.fill(label, offset, offset + count);
+    offset += count;
+  }
+  return offset === labels.length ? labels : null;
+}
+
+function nonWoodMaterialColor(material: string, x: number, y: number) {
+  if (material === "TILE") {
+    const grid = x % 28 <= 1 || y % 28 <= 1;
+    if (grid) return [188, 196, 202];
+    // Faint per-tile tone shift so the white porcelain does not read as one flat sheet.
+    const hash = Math.sin(Math.floor(x / 28) * 127.1 + Math.floor(y / 28) * 311.7) * 43758.5453;
+    const tone = Math.round(7 * ((hash - Math.floor(hash)) - 0.5));
+    return [238 + tone, 240 + tone, 242 + tone];
+  }
+  if (material === "BALCONY_TILE") {
+    const grid = x % 22 <= 1 || y % 22 <= 1;
+    return grid ? [105, 112, 120] : [215, 219, 224];
+  }
+  const grid = x % 60 <= 1 || y % 38 <= 1;
+  if (grid) return [128, 130, 133];
+  // Per-slab tone plus a soft diagonal vein for a natural cool-grey stone read.
+  const hash = Math.sin(Math.floor(x / 60) * 71.3 + Math.floor(y / 38) * 191.7) * 43758.5453;
+  const tone = Math.round(8 * ((hash - Math.floor(hash)) - 0.5));
+  const vein = Math.round(6 * Math.sin((x + y) * 0.18 + Math.floor(x / 60) * 2.1) + 3 * Math.sin((x - y) * 0.37));
+  const shade = tone + vein;
+  return [212 + shade, 214 + shade, 216 + shade];
+}
+
+export function buildFloorMaterialRgba(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  floorMaterials?: MitunetFloorMaterialMap
+) {
+  const wood = buildWoodRgba(mask, width, height);
+  if (!floorMaterials) return wood;
+
+  const labels = decodeFloorMaterialLabels(floorMaterials, width, height);
+  if (!labels) return wood;
+
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index]) continue;
+    const label = labels[index];
+    if (label === 0) continue;
+    const material = floorMaterials.zones[label - 1]?.material;
+    const offset = index * 4;
+    if (!material || material === "WOOD" || material === "KITCHEN_FLOOR") {
+      rgba.set(wood.subarray(offset, offset + 4), offset);
+      continue;
+    }
+    const x = index % width;
+    const y = Math.floor(index / width);
+    const [red, green, blue] = nonWoodMaterialColor(material, x, y);
+    rgba[offset] = red;
+    rgba[offset + 1] = green;
+    rgba[offset + 2] = blue;
+    rgba[offset + 3] = 255;
   }
   return rgba;
 }

@@ -9,8 +9,20 @@ type RoomMaterialAnalysis = {
     confidence: number;
     label: string;
     polygon: Array<{ x: number; y: number }>;
+    roomType?: string;
   }>;
 };
+
+const ROOM_MATERIAL_ANALYSIS_PROMPT =
+  "도면에 표시된 모든 실내 공간의 이름과 닫힌 polygon을 반환하세요. " +
+  "침실, 거실, 주방/식당, 화장실, 다용도실, 현관, 발코니나 베란다를 망라하세요. " +
+  "공간명이 없어도 외벽에 연결된 주 출입문 위치, 현관문과 주방 싱크대 바닥 패턴을 근거로 공간 용도를 추정하세요. " +
+  "특히 주 출입문 근처의 현관 polygon을 반환하되 불확실하면 confidence를 낮추세요. " +
+  "세대 외부의 공용 복도, 계단실, 엘리베이터 홀은 현관 또는 실내 공간으로 반환하지 마세요. 현관은 주 출입문을 통과한 뒤 세대 내부에 있는 바닥 영역만 반환하세요. " +
+  "거실과 식당이 열린 하나의 공간이면 거실과 식당 사이에 경계를 임의로 만들지 마세요. " +
+  "현관 polygon이 열린 거실 영역으로 확장되지 않도록 하고, 연결된 열린 영역의 15% 이내로 제안하세요. " +
+  "도면 치수를 확인할 수 있으면 현관 polygon을 6m² 이내로 제안하세요. " +
+  "가구와 치수선은 polygon에서 제외하고 실제 바닥 영역만 포함하세요.";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { imageDataUrl?: unknown } | null;
@@ -27,15 +39,7 @@ export async function POST(request: Request) {
         analysisMode: "room-structure",
         imageDataUrl,
         model: "openai/floor-plan-vision",
-        prompt:
-          "도면에 표시된 모든 실내 공간의 이름과 닫힌 polygon을 반환하세요. " +
-          "침실, 거실, 주방/식당, 화장실, 다용도실, 현관, 발코니나 베란다를 망라하세요. " +
-          "공간명이 없어도 외벽에 연결된 주 출입문 위치, 현관문과 주방 싱크대 바닥 패턴을 근거로 공간 용도를 추정하세요. " +
-          "특히 주 출입문 근처의 현관 polygon을 반환하되 불확실하면 confidence를 낮추세요. " +
-          "거실과 식당이 열린 하나의 공간이면 거실과 식당 사이에 경계를 임의로 만들지 마세요. " +
-          "현관 polygon이 열린 거실 영역으로 확장되지 않도록 하고, 연결된 열린 영역의 15% 이내로 제안하세요. " +
-          "도면 치수를 확인할 수 있으면 현관 polygon을 6m² 이내로 제안하세요. " +
-          "가구와 치수선은 polygon에서 제외하고 실제 바닥 영역만 포함하세요.",
+        prompt: ROOM_MATERIAL_ANALYSIS_PROMPT,
       }),
       method: "POST",
     });

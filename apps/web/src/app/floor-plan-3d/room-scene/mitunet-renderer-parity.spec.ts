@@ -10,6 +10,10 @@ const source = readFileSync(
   join(process.cwd(), "src/app/floor-plan-3d/room-scene/RoomlogThreeFloorPlanView.tsx"),
   "utf8"
 );
+const textureSource = readFileSync(
+  join(process.cwd(), "src/app/floor-plan-3d/room-scene/mitunet-textures.ts"),
+  "utf8"
+);
 
 describe("MitUNet renderer parity with the viewer", () => {
   it("keeps door openings fully open with no header wall", () => {
@@ -39,5 +43,11 @@ describe("MitUNet renderer parity with the viewer", () => {
   it("restores wall below the sill and above the lintel around glass", () => {
     const windowLayers = source.match(/polygons=\{layout\.window\}/g) ?? [];
     assert.equal(windowLayers.length, 3);
+  });
+
+  it("does not mirror only the floor texture away from the wall geometry", () => {
+    assert.doesNotMatch(textureSource, /texture\.repeat\.x = -1/);
+    assert.doesNotMatch(textureSource, /texture\.offset\.x = 1/);
+    assert.match(textureSource, /texture\.flipY = true/);
   });
 });

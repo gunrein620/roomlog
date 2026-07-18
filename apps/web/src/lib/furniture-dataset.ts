@@ -7,6 +7,7 @@ const DEFAULT_FURNITURE_DATASET_ROOT = "runtime-assets/furniture-glb-dataset";
 const CONTENT_TYPES: Record<string, string> = {
   ".glb": "model/gltf-binary",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
 };
 
 export function resolveFurnitureDatasetRoot() {
@@ -23,7 +24,7 @@ export function resolveFurnitureAssetFile(...segments: string[]) {
   }
   const extension = path.extname(filePath).toLowerCase();
   if (!(extension in CONTENT_TYPES)) {
-    throw new Error("Only .glb models and .json manifests are served from the furniture dataset.");
+    throw new Error("Only .glb models, .png previews, and .json manifests are served from the furniture dataset.");
   }
   return filePath;
 }

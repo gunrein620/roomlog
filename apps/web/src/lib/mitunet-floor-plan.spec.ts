@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildRoomlogMitunetEditorPath,
+  normalizeMitunetPayload,
   parseMitunetProjectJson,
 } from "./mitunet-floor-plan";
 
@@ -10,6 +11,23 @@ const polygons = {
   wall: [{ outer: [[0, 0], [10, 0], [10, 5]], holes: [] }],
   door: [],
   window: [],
+};
+const smallPolygons = {
+  wall: [{ outer: [[0, 0], [1, 0], [1, 1]], holes: [] }],
+  door: [],
+  window: [],
+};
+
+const floorMaterials = {
+  encoding: "rle-u8",
+  height: 2,
+  labels: "2:1,2:2",
+  version: 1,
+  width: 2,
+  zones: [
+    { confidence: 0.98, id: "room-1", label: "침실", material: "WOOD", roomType: "침실", seed: [0, 0] },
+    { confidence: 0.97, id: "room-2", label: "욕실", material: "TILE", roomType: "욕실", seed: [1, 1] },
+  ],
 };
 
 test("builds the RoomLog-internal MitUNet editor path", () => {
@@ -83,4 +101,33 @@ test("normalizes missing calibration to null", () => {
   });
 
   assert.equal(parsed?.millimetersPerPixel, null);
+});
+
+test("imports room floor materials from a saved MitUNet project", () => {
+  const parsed = parseMitunetProjectJson({
+    schema: "mitunet-floorplan-3d-project",
+    version: 1,
+    source_name: "home.png",
+    plan: {
+      canvas_size: [2, 2],
+      content_rect: [0, 0, 2, 2],
+      floor_materials: floorMaterials,
+      polygons: smallPolygons,
+    },
+  });
+
+  assert.deepEqual(parsed?.floorMaterials, floorMaterials);
+  assert.notEqual(parsed?.floorMaterials, floorMaterials);
+});
+
+test("drops invalid optional room floor materials without rejecting the wall plan", () => {
+  const parsed = normalizeMitunetPayload({
+    canvasSize: [2, 2],
+    contentRect: [0, 0, 2, 2],
+    floorMaterials: { ...floorMaterials, labels: "3:1" },
+    polygons: smallPolygons,
+  });
+
+  assert.ok(parsed);
+  assert.equal(parsed.floorMaterials, undefined);
 });

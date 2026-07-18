@@ -92,3 +92,11 @@ test("keeps label-free floor generation available when room analysis fails", () 
   assert.match(viewerSource, /catch \(error\) \{[\s\S]*?Room analysis unavailable/);
   assert.match(viewerSource, /rooms:\s*analysisRooms/);
 });
+
+test("uses the original upload for room classification while retaining the 1024px render image", () => {
+  assert.match(
+    viewerSource,
+    /currentComposedPlan\.analysis_image_b64 \?\? currentComposedPlan\.input_image_b64/,
+  );
+  assert.match(viewerSource, /analysis_image_b64:\s*currentExtraction\?\.analysis_image_b64/);
+});

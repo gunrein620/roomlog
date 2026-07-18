@@ -19,7 +19,8 @@ import {
   calculateMitunetTexturePlane,
   MITUNET_RENDER_STYLE
 } from "./mitunet-surfaces";
-import { createConcreteTexture, createWoodTexture } from "./mitunet-textures";
+import { MitunetGtaoEffects } from "./mitunet-postprocessing";
+import { createConcreteTexture, createFloorTexture } from "./mitunet-textures";
 
 Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
   (modelUrl) => useGLTF.preload(modelUrl)
@@ -257,6 +258,8 @@ function MitunetSceneLook({ active }: { active: boolean }) {
         intensity={1.6}
         position={[6, 12, 5]}
         shadow-bias={-0.0005}
+        shadow-normalBias={0.02}
+        shadow-radius={4}
         shadow-camera-bottom={-8}
         shadow-camera-far={40}
         shadow-camera-left={-8}
@@ -287,7 +290,7 @@ function MitunetDecorativeFloor({
   );
   const woodTexture = useMemo(() => {
     try {
-      return createWoodTexture(plan);
+      return createFloorTexture(plan);
     } catch {
       return null;
     }
@@ -443,7 +446,9 @@ function FurnitureGlbMesh({
   return (
     <group
       onPointerDown={(event) => onPointerDown(furniture, event)}
-      position={[furniture.position[0], 0, furniture.position[2]]}
+      // y = 저장된 장착/적층 높이(씬 단위). 바닥 가구는 ≈0이고, 벽걸이·탁자 위 소품은
+      // 뷰어에서 계산한 높이가 그대로 들어와 매물 3D에서도 같은 위치에 뜬다.
+      position={[furniture.position[0], furniture.position[1], furniture.position[2]]}
       rotation={furniture.rotation}
     >
       <primitive object={scene} position={[0, modelOffsetY, 0]} scale={scale} />
@@ -628,14 +633,19 @@ export function RoomlogThreeFloorPlanView({
   }, []);
 
   return (
-    <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
+    <div
+      className="floor-plan-3d-preview"
+      data-renderer="wheretoput 3D room renderer"
+      // MitUNet 룩의 하늘 그라데이션은 CSS로 깐다 — scene.background에 텍스처를 넣으면
+      // GTAOPass의 depth/normal 패스를 오염시켜 검은 사각형 아티팩트가 생긴다(뷰어와 동일 처리).
+      style={hasMitunetStyle ? { background: "linear-gradient(#a8cbe8, #cfe2f1 60%, #eef2f0)" } : undefined}
+    >
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} shadows>
         <RoomCameraAutoFit bounds={wallBounds} />
-        <color
-          attach="background"
-          args={[hasMitunetStyle ? MITUNET_RENDER_STYLE.background : "#626260"]}
-        />
+        {/* mitunet 룩은 캔버스를 투명하게 두고 위의 CSS 그라데이션이 하늘 역할을 한다. */}
+        {hasMitunetStyle ? null : <color attach="background" args={["#626260"]} />}
         <MitunetSceneLook active={hasMitunetStyle} />
+        <MitunetGtaoEffects active={hasMitunetStyle} />
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
           {mitunetLayout && mitunetPlan ? (
             <MitunetDecorativeFloor layout={mitunetLayout} plan={mitunetPlan} />

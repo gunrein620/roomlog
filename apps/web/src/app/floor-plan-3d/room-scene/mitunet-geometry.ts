@@ -52,7 +52,7 @@ export function createMitunetSceneLayout(plan: MitunetFloorPlan): MitunetSceneLa
 
   const point = ([x, y]: [number, number]): [number, number] => [
     (x - centerPixelX) * metresPerPixel,
-    -(y - centerPixelY) * metresPerPixel
+    (y - centerPixelY) * metresPerPixel
   ];
   const polygon = (source: MitunetPolygon): MitunetScenePolygon => ({
     outer: source.outer.map(point),
