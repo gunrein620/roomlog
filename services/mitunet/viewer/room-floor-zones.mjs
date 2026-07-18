@@ -1,3 +1,5 @@
+import { buildEntranceFloorOverride } from "./entrance-floor-zone.mjs";
+
 const MAX_DIMENSION = 4096;
 const MAX_ROOMS = 64;
 const MIN_CONFIDENCE = 0.45;
@@ -169,36 +171,6 @@ function polygonArea(polygon) {
   return Math.abs(doubleArea) / 2;
 }
 
-function roomPolygonPixels(polygon, labels, baseLabel, interiorMask, permanentSolid, width, height) {
-  if (!Array.isArray(polygon) || polygon.length < 3 || polygon.length > 16) return [];
-  const ring = polygon.map((point) => [
-    Number(point?.x) / 1000 * width,
-    Number(point?.y) / 1000 * height,
-  ]);
-  if (ring.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) return [];
-  const xs = ring.map(([x]) => x);
-  const ys = ring.map(([, y]) => y);
-  const left = Math.max(0, Math.floor(Math.min(...xs)));
-  const right = Math.min(width - 1, Math.ceil(Math.max(...xs)));
-  const top = Math.max(0, Math.floor(Math.min(...ys)));
-  const bottom = Math.min(height - 1, Math.ceil(Math.max(...ys)));
-  const pixels = [];
-  for (let y = top; y <= bottom; y += 1) {
-    for (let x = left; x <= right; x += 1) {
-      const index = y * width + x;
-      if (
-        labels[index] === baseLabel
-        && interiorMask[index]
-        && !permanentSolid[index]
-        && pointInRing(x + 0.5, y + 0.5, ring)
-      ) {
-        pixels.push(index);
-      }
-    }
-  }
-  return pixels;
-}
-
 function labelComponents(interiorMask, barrier, width, height) {
   const ids = new Int32Array(interiorMask.length);
   ids.fill(-1);
@@ -304,6 +276,8 @@ function fillTemporaryBarriers(labels, interiorMask, permanentSolid, width, heig
 export function buildRoomFloorMaterialMap({
   height,
   interiorMask,
+  millimetersPerPixel = null,
+  openings = [],
   polygons = {},
   rooms,
   sourceRgba,
@@ -353,15 +327,11 @@ export function buildRoomFloorMaterialMap({
   let tail = 0;
   const zones = [];
   const roomByComponent = new Map();
-  const roomCandidatesByComponent = new Map();
   for (const { area, room, centroid } of validRooms) {
     const seed = findStableSeed(centroid, interiorMask, barrier, components, width, height, minimumSize);
     if (!seed) continue;
     const componentId = components.ids[seed.y * width + seed.x];
     const candidate = { area, room, seed };
-    const candidates = roomCandidatesByComponent.get(componentId) ?? [];
-    candidates.push(candidate);
-    roomCandidatesByComponent.set(componentId, candidates);
     const current = roomByComponent.get(componentId);
     if (
       !current
@@ -371,8 +341,7 @@ export function buildRoomFloorMaterialMap({
       roomByComponent.set(componentId, candidate);
     }
   }
-  const baseLabelByComponent = new Map();
-  for (const [componentId, { room, seed }] of roomByComponent) {
+  for (const { room, seed } of roomByComponent.values()) {
     const label = zones.length + 1;
     if (label > 255) break;
     const index = seed.y * width + seed.x;
@@ -386,7 +355,6 @@ export function buildRoomFloorMaterialMap({
       roomType: normalizedRoomLabel(room.label).slice(0, 80) || "unknown",
       seed: [seed.x, seed.y],
     });
-    baseLabelByComponent.set(componentId, label);
   }
   if (!zones.length) throw new Error("Room floor analysis produced no stable room seeds");
 
@@ -409,33 +377,31 @@ export function buildRoomFloorMaterialMap({
   }
 
   fillTemporaryBarriers(labels, interiorMask, permanentSolid, width, height);
-  for (const [componentId, candidates] of roomCandidatesByComponent) {
-    const representative = roomByComponent.get(componentId);
-    const baseLabel = baseLabelByComponent.get(componentId);
-    if (!representative || !baseLabel) continue;
-    for (const candidate of candidates) {
-      if (candidate === representative || materialForRoomLabel(candidate.room.label) !== "STONE_TILE") continue;
-      const pixels = roomPolygonPixels(
-        candidate.room.polygon,
-        labels,
-        baseLabel,
-        interiorMask,
-        permanentSolid,
-        width,
-        height,
-      );
-      if (pixels.length < minimumSize || zones.length >= 255) continue;
-      const label = zones.length + 1;
-      for (const index of pixels) labels[index] = label;
-      zones.push({
-        confidence: Number(candidate.room.confidence),
-        id: `room-${label}`,
-        label: String(candidate.room.label ?? `Room ${label}`).slice(0, 80),
-        material: "STONE_TILE",
-        roomType: normalizedRoomLabel(candidate.room.label).slice(0, 80) || "unknown",
-        seed: [candidate.seed.x, candidate.seed.y],
-      });
-    }
+  const entrance = buildEntranceFloorOverride({
+    height,
+    interiorMask,
+    labels,
+    millimetersPerPixel,
+    openings,
+    permanentSolid,
+    rooms,
+    width,
+  });
+  if (
+    entrance
+    && zones[entrance.baseLabel - 1]?.material !== "STONE_TILE"
+    && zones.length < 255
+  ) {
+    const label = zones.length + 1;
+    for (const index of entrance.pixels) labels[index] = label;
+    zones.push({
+      confidence: entrance.confidence,
+      id: `room-${label}`,
+      label: entrance.label,
+      material: "STONE_TILE",
+      roomType: "현관",
+      seed: entrance.seed,
+    });
   }
   const encoded = encodeRoomFloorLabels(labels, width, height);
   return { ...encoded, zones };

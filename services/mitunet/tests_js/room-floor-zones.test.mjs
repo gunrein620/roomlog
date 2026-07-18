@@ -103,11 +103,18 @@ test("uses one material across one open structural component", () => {
 test("keeps an entrance polygon separate inside an open kitchen component", () => {
   const width = 40;
   const height = 24;
-  const interiorMask = new Uint8Array(width * height).fill(1);
+  const interiorMask = new Uint8Array(width * height);
+  for (let y = 2; y < 22; y += 1) {
+    for (let x = 2; x < 38; x += 1) interiorMask[y * width + x] = 1;
+  }
   const sourceRgba = new Uint8ClampedArray(width * height * 4).fill(255);
+  const openings = [
+    { id: "front", kind: "door", valid: true, axis: "vertical", center_x: 2, center_y: 12, width: 2, height: 8 },
+  ];
   const map = buildRoomFloorMaterialMap({
     height,
     interiorMask,
+    openings,
     polygons: { door: [], wall: [], window: [] },
     rooms: [
       { confidence: 0.96, label: "주방/식당", polygon: normalizedBox(2, 2, 38, 22, width, height) },
@@ -127,6 +134,36 @@ test("keeps an entrance polygon separate inside an open kitchen component", () =
   for (let y = 8; y < 16; y += 1) {
     for (let x = 2; x < 10; x += 1) assert.equal(decoded[y * width + x], entrance);
   }
+});
+
+test("adds one door-anchored entrance tile without mutating structural inputs", () => {
+  const width = 60;
+  const height = 40;
+  const interiorMask = new Uint8Array(width * height);
+  for (let y = 4; y < 36; y += 1) {
+    for (let x = 4; x < 56; x += 1) interiorMask[y * width + x] = 1;
+  }
+  const sourceRgba = new Uint8ClampedArray(width * height * 4).fill(255);
+  const openings = [
+    { id: "front", kind: "door", valid: true, axis: "horizontal", center_x: 30, center_y: 36, width: 10, height: 2 },
+  ];
+  const polygons = { door: [], wall: [], window: [] };
+  const before = structuredClone({ openings, polygons });
+
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask,
+    millimetersPerPixel: 100,
+    openings,
+    polygons,
+    rooms: [{ confidence: 0.94, label: "거실/식당", polygon: normalizedBox(4, 4, 56, 36, width, height) }],
+    sourceRgba,
+    width,
+  });
+
+  assert.equal(map.zones.filter((zone) => zone.material === "STONE_TILE").length, 1);
+  assert.equal(map.zones.filter((zone) => zone.material !== "STONE_TILE").length, 1);
+  assert.deepEqual({ openings, polygons }, before);
 });
 
 test("moves a semantic seed out of a small dark fixture enclosure", () => {
