@@ -48,6 +48,14 @@ test("room material route seeds the model with common Korean room-name examples"
   assert.match(source, /confidence를 0\.7 이상/);
 });
 
+test("room material route separates shared circulation from the private entry", () => {
+  assert.match(source, /COMMON_AREA/);
+  assert.match(source, /공용 복도.*계단실.*엘리베이터 홀/);
+  assert.match(source, /세대 내부.*현관.*ENTRY/);
+  assert.match(source, /COMMON_AREA polygon은 현관문 바깥쪽/);
+  assert.match(source, /구분할 수 없으면.*반환하지 마세요/);
+});
+
 test("room material route preserves upstream authentication errors", () => {
   assert.match(source, /ApiError/);
   assert.match(source, /error instanceof ApiError/);

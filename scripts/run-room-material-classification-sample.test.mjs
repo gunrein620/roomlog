@@ -29,10 +29,17 @@ test("classification sample uses the deployed room and entry constraints", () =>
   assert.match(source, /연결된 열린 영역의 15% 이내/);
   assert.match(source, /현관 polygon을 6m² 이내/);
   assert.match(source, /공용 복도, 계단실, 엘리베이터 홀/);
-  assert.match(source, /세대 내부에 있는 바닥 영역만/);
+  assert.match(source, /세대 내부.*현관 바닥.*ENTRY/);
 });
 
 test("classification sample requests non-overlapping room polygons", () => {
   assert.match(source, /polygon끼리 겹치지 마세요/);
   assert.match(source, /중복 반환하지 마세요/);
+});
+
+test("classification sample keeps common circulation outside the private entry", () => {
+  assert.match(source, /"COMMON_AREA"/);
+  assert.match(source, /공용 복도.*계단실.*엘리베이터 홀/);
+  assert.match(source, /세대 내부.*현관.*ENTRY/);
+  assert.match(source, /COMMON_AREA polygon은 현관문 바깥쪽/);
 });
