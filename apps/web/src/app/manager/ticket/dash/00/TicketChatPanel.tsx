@@ -5,6 +5,7 @@
 // (GET manager/tickets/:id → messages)를 그대로 읽고 쓰므로 세입자탭 진행 메시지와 같은 소스다.
 // 갱신은 소켓 broadcast(roomlog:activity kind=ticket)로 즉시, 실패 시 폴링으로 폴백한다.
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TicketThreadMessage } from "@roomlog/types";
@@ -24,6 +25,11 @@ import {
   ticketLaneOf,
   type TicketLane,
 } from "./ticket-lane";
+import {
+  abandonLocalTicketLaneMutation,
+  beginLocalTicketLaneMutation,
+  completeLocalTicketLaneMutation,
+} from "./ticket-lane-mutation-activity";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -117,6 +123,7 @@ export function TicketChatPanel({
   row: DefectDashboardRow | null;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const ticketId = row?.ticket.id;
   const [messages, setMessages] = useState<TicketThreadMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -233,6 +240,8 @@ export function TicketChatPanel({
     if (!ticketId || isSwitchingLane || nextLane === lane) return;
 
     const previousLane = lane;
+    const clientRequestId = crypto.randomUUID();
+    beginLocalTicketLaneMutation(clientRequestId);
     setLane(nextLane); // 낙관적 반영 — 실패하면 되돌린다.
     setIsSwitchingLane(true);
     setError("");
@@ -241,7 +250,7 @@ export function TicketChatPanel({
       const response = await fetch(`/api/manager/tickets/${encodeURIComponent(ticketId)}/lane`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lane: nextLane }),
+        body: JSON.stringify({ lane: nextLane, clientRequestId }),
       });
 
       if (!response.ok) {
@@ -250,7 +259,11 @@ export function TicketChatPanel({
           | undefined;
         throw new Error(data?.message || "진행 상태를 바꾸지 못했습니다.");
       }
+
+      completeLocalTicketLaneMutation(clientRequestId);
+      router.refresh();
     } catch (laneError) {
+      abandonLocalTicketLaneMutation(clientRequestId);
       setLane(previousLane);
       setError(laneError instanceof Error ? laneError.message : "진행 상태를 바꾸지 못했습니다.");
     } finally {

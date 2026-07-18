@@ -125,6 +125,29 @@ describe("roomlog complaint realtime activity", () => {
     ]);
   });
 
+  it("identifies the ticket after a manager changes its lane", () => {
+    const { controller, broadcasts, header, ticket } = setupManagerController();
+    const clientRequestId = "lane-request-1";
+    broadcasts.length = 0;
+
+    controller.setManagerTicketLane(header, ticket.id, {
+      lane: "processing",
+      clientRequestId,
+    });
+
+    assert.deepEqual(broadcasts, [
+      {
+        event: "roomlog:activity",
+        payload: {
+          kind: "ticket",
+          action: "lane_changed",
+          ticketId: ticket.id,
+          clientRequestId,
+        },
+      },
+    ]);
+  });
+
   it("broadcasts exactly once for a durable manager proxy intake and not for its idempotent retry", async () => {
     const { controller, broadcasts, header } = setupManagerController();
     const input = {

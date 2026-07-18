@@ -12,15 +12,14 @@ import { TicketChatPanel } from "./TicketChatPanel";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
-  defectDisplayStatus,
   filterDefectRows,
   formatDefectDate,
   paginateDefectRows,
   type DefectDashboardFilters,
   type DefectDashboardRow,
-  type DefectDisplayStatus,
   type DefectStatusFilter,
 } from "./ticket-dashboard-model";
+import { ticketLaneOf, type TicketLane } from "./ticket-lane";
 
 const PAGE_SIZE = 10;
 const TABLE_COLUMNS = [
@@ -49,10 +48,10 @@ const ticketTypeLabel = {
   complaint: "일반 민원",
 } as const;
 
-const displayStatusLabel: Record<DefectDisplayStatus, string> = {
-  completed: "완료",
-  vendor_selected: "업체 선정",
-  incomplete: "미완료",
+const displayStatusLabel: Record<TicketLane | "cancelled", string> = {
+  received: "접수",
+  processing: "진행",
+  resolved: "완료",
   cancelled: "취소",
 };
 
@@ -65,7 +64,7 @@ function DashboardRow({
   isSelected: boolean;
   onSelect: (row: DefectDashboardRow) => void;
 }) {
-  const displayStatus = defectDisplayStatus(row);
+  const displayStatus = ticketLaneOf(row.ticket.status) ?? "cancelled";
 
   return (
     <tr

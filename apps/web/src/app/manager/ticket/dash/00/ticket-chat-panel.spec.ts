@@ -88,3 +88,23 @@ test("레인 전환은 낙관적으로 반영하고 실패하면 되돌린다", 
   assert.match(panelSource, /setLane\(nextLane\)/);
   assert.match(panelSource, /setLane\(previousLane\)/);
 });
+
+test("레인 전환 성공은 소켓 왕복을 기다리지 않고 대시보드를 즉시 갱신한다", () => {
+  const panelSource = readFileSync(panelPath, "utf8");
+  const switchLaneSource = panelSource.match(
+    /async function switchLane[\s\S]*?\n  }\n\n  if \(!row/,
+  )?.[0];
+
+  assert.match(panelSource, /useRouter/);
+  assert.match(panelSource, /const router = useRouter\(\)/);
+  assert.ok(switchLaneSource);
+  assert.match(switchLaneSource, /const clientRequestId = crypto\.randomUUID\(\)/);
+  assert.match(switchLaneSource, /beginLocalTicketLaneMutation\(clientRequestId\)/);
+  assert.match(switchLaneSource, /body: JSON\.stringify\(\{ lane: nextLane, clientRequestId \}\)/);
+  assert.match(switchLaneSource, /completeLocalTicketLaneMutation\(clientRequestId\)/);
+  assert.match(switchLaneSource, /abandonLocalTicketLaneMutation\(clientRequestId\)/);
+  assert.match(
+    switchLaneSource,
+    /if \(!response\.ok\)[\s\S]*throw new Error[\s\S]*router\.refresh\(\)/,
+  );
+});
