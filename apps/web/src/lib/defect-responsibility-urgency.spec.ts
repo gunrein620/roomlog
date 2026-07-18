@@ -68,4 +68,11 @@ describe("tenant defect responsibility and urgency wiring (living tab)", () => {
     assert.match(globalCssSource, /\.tenant-request-detail-panel[\s\S]*width:\s*min\(50vw, 720px\)/);
     assert.match(globalCssSource, /@media \(max-width: 768px\)[\s\S]*\.tenant-request-detail-panel[\s\S]*width:\s*100%/);
   });
+
+  it("keeps the message composer attached to the visible bottom edge on mobile", () => {
+    assert.doesNotMatch(tenantMyPageSource, /window\.visualViewport/);
+    assert.match(globalCssSource, /@media \(max-width: 768px\)[\s\S]*\.tenant-request-detail-form \{[^}]*flex:\s*1/);
+    assert.match(globalCssSource, /@media \(max-width: 768px\)[\s\S]*\.tenant-defect-chat-input \{[^}]*margin-top:\s*auto/);
+    assert.match(globalCssSource, /@media \(max-width: 768px\)[\s\S]*\.tenant-defect-chat-input \{[^}]*safe-area-inset-bottom/);
+  });
 });
