@@ -59,4 +59,13 @@ describe("tenant defect responsibility and urgency wiring (living tab)", () => {
     assert.match(globalCssSource, /\.tenant-defect-messages ul[\s\S]*height:\s*292px/);
     assert.match(globalCssSource, /\.tenant-defect-messages ul[\s\S]*overflow-y:\s*auto/);
   });
+
+  it("opens history detail as a right sidebar and expands it to full screen on mobile", () => {
+    assert.match(historyDetailSource, /tenant-request-detail-backdrop/);
+    assert.match(historyDetailSource, /tenant-request-detail-panel/);
+    assert.match(historyDetailSource, /aria-label="접수 내용 닫기"/);
+    assert.match(globalCssSource, /\.tenant-request-detail-backdrop[\s\S]*justify-content:\s*flex-end/);
+    assert.match(globalCssSource, /\.tenant-request-detail-panel[\s\S]*width:\s*min\(50vw, 720px\)/);
+    assert.match(globalCssSource, /@media \(max-width: 768px\)[\s\S]*\.tenant-request-detail-panel[\s\S]*width:\s*100%/);
+  });
 });

@@ -2025,9 +2025,9 @@ export default function TenantMyPage({
       ) : null}
 
       {selectedRepairRequest ? (
-        <div className="notification-sheet-backdrop" role="presentation" onClick={closeRepairDetailSheet}>
+        <div className="notification-sheet-backdrop tenant-request-detail-backdrop" role="presentation" onClick={closeRepairDetailSheet}>
           <section
-            className="notification-sheet tenant-request-sheet tenant-request-detail-sheet"
+            className="notification-sheet tenant-request-sheet tenant-request-detail-sheet tenant-request-detail-panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby="tenant-request-detail-title"

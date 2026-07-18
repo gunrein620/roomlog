@@ -14684,3 +14684,30 @@ p {
     width: 100%;
   }
 }
+
+/* 세입자 민원/하자 이력 상세: 데스크톱은 오른쪽 사이드 패널, 모바일은 전체 화면 */
+.notification-sheet-backdrop.tenant-request-detail-backdrop {
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.notification-sheet.tenant-request-detail-panel {
+  width: min(50vw, 720px);
+  max-height: none;
+  height: 100dvh;
+  padding: 18px 24px 24px;
+  border-radius: 24px 0 0 24px;
+}
+
+.tenant-request-detail-panel .sheet-handle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .notification-sheet.tenant-request-detail-panel {
+    width: 100%;
+    height: 100dvh;
+    padding: 18px 18px 24px;
+    border-radius: 0;
+  }
+}
