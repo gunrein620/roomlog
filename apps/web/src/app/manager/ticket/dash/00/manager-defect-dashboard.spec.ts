@@ -105,6 +105,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(actionMenuSource, /addEventListener\("resize"/);
   assert.doesNotMatch(componentSource, /manager-defect-dashboard__primary-action/);
   assert.doesNotMatch(componentSource, />\s*정보입력\s*</);
+  assert.doesNotMatch(componentSource, />\s*대리\s*접수\s*</);
+  assert.doesNotMatch(componentSource, /ManagerProxyIntakeDialog/);
   assert.match(actionMenuSource, /상세·정보입력/);
   assert.match(actionMenuSource, /업체 선정·견적/);
   assert.match(actionMenuSource, /결제·비용 승인/);
@@ -127,7 +129,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.ok(managerDashboardRender);
   assert.match(managerDashboardRender, /rows=\{rows\}/);
   assert.match(managerDashboardRender, /initialTemplate=\{initialTemplate\}/);
-  assert.match(managerDashboardRender, /proxyIntakeRooms=\{proxyIntakeRooms\}/);
+  assert.doesNotMatch(managerDashboardRender, /proxyIntakeRooms=/);
+  assert.doesNotMatch(pageSource, /listManagerProxyIntakeRooms/);
   assert.match(autoRefreshSource, /getRealtimeSocket/);
   assert.match(autoRefreshSource, /shouldRefreshTicketDashboard/);
   assert.match(autoRefreshSource, /router\.refresh\(\)/);

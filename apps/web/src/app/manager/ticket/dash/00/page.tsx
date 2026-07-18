@@ -1,8 +1,5 @@
 import { headers } from "next/headers";
-import {
-  listManagerProxyIntakeRooms,
-  listManagerTicketRows,
-} from "@/lib/ticket-manager-api";
+import { listManagerTicketRows } from "@/lib/ticket-manager-api";
 import { ComplaintDashboard } from "./ComplaintDashboard";
 import { appendLocalTicketDemoRows } from "./local-ticket-demo";
 import { ManagerDefectDashboard } from "./ManagerDefectDashboard";
@@ -28,7 +25,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   }
 
   const initialTemplate = dashboardView === "management" ? "all" : dashboardView;
-  const proxyIntakeRooms = await listManagerProxyIntakeRooms();
   return (
     <>
       {dashboardView === "management" ? (
@@ -36,7 +32,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       ) : null}
       <ManagerDefectDashboard
         rows={rows}
-        proxyIntakeRooms={proxyIntakeRooms}
         initialTemplate={initialTemplate}
         key={initialTemplate}
       />

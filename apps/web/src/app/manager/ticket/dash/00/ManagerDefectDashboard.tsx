@@ -3,10 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
-import type { ManagerProxyIntakeRoom } from "@/lib/ticket-manager-api";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
-import { ManagerProxyIntakeDialog } from "./ManagerProxyIntakeDialog";
-import styles from "./proxy-intake.module.css";
 import { TicketActionMenu } from "./TicketActionMenu";
 import { TicketDetailDialog } from "./TicketDetailDialog";
 import {
@@ -128,11 +125,9 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
 
 export function ManagerDefectDashboard({
   rows,
-  proxyIntakeRooms,
   initialTemplate = "all",
 }: {
   rows: readonly DefectDashboardRow[];
-  proxyIntakeRooms: readonly ManagerProxyIntakeRoom[];
   initialTemplate?: DefectDashboardFilters["template"];
 }) {
   const [filters, setFilters] = useState<DefectDashboardFilters>({
@@ -146,7 +141,6 @@ export function ManagerDefectDashboard({
   const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [proxyIntakeOpen, setProxyIntakeOpen] = useState(false);
 
   const effectiveRows = useMemo(
     () =>
@@ -210,25 +204,9 @@ export function ManagerDefectDashboard({
 
   return (
     <section className="manager-defect-dashboard" aria-labelledby="manager-defect-title">
-      <div className={styles.header}>
-        <h2 id="manager-defect-title">
-          {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원/하자 관리"}
-        </h2>
-        <div className={styles.headerAction}>
-          <button
-            type="button"
-            className={styles.openButton}
-            disabled={proxyIntakeRooms.length === 0}
-            aria-describedby={proxyIntakeRooms.length === 0 ? "proxy-intake-empty-hint" : undefined}
-            onClick={() => setProxyIntakeOpen(true)}
-          >대리 접수</button>
-          {proxyIntakeRooms.length === 0 ? (
-            <span id="proxy-intake-empty-hint" className={styles.emptyHint}>
-              대리 접수 가능한 호실이 없습니다.
-            </span>
-          ) : null}
-        </div>
-      </div>
+      <h2 id="manager-defect-title">
+        {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원/하자 관리"}
+      </h2>
 
       <div
         className="manager-defect-dashboard__status-filters"
@@ -362,13 +340,6 @@ export function ManagerDefectDashboard({
           </button>
         </nav>
       </footer>
-
-      {proxyIntakeOpen ? (
-        <ManagerProxyIntakeDialog
-          rooms={proxyIntakeRooms}
-          onClose={() => setProxyIntakeOpen(false)}
-        />
-      ) : null}
 
       <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
     </section>
