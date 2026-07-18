@@ -8,7 +8,6 @@
 //  - 상대가 보낸 메시지: 소켓 roomlog:ticket-message 페이로드를 그대로 붙인다.
 // 쓰기 직후 재조회는 Postgres 투영이 따라오기 전이라 "한 박자 밀린" 스레드를 돌려줬다.
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { TicketThreadMessage } from "@roomlog/types";
@@ -117,11 +116,12 @@ function MessageBubble({ message }: { message: TicketThreadMessage }) {
 export function TicketChatPanel({
   row,
   onClose,
+  onLaneChange,
 }: {
   row: DefectDashboardRow | null;
   onClose: () => void;
+  onLaneChange?: (ticketId: string, lane: TicketLane) => void;
 }) {
-  const router = useRouter();
   const ticketId = row?.ticket.id;
   const [messages, setMessages] = useState<TicketThreadMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -254,9 +254,11 @@ export function TicketChatPanel({
         throw new Error(data?.message || "진행 상태를 바꾸지 못했습니다.");
       }
 
-      setLane(ticketLaneFromServerStatus(data?.ticket?.status) ?? nextLane);
-      // 목록 배지도 따라오게 한다. 읽기 저장소가 밀린 쓰기를 기다리므로 옛 상태로 되돌아오지 않는다.
-      router.refresh();
+      const confirmed = ticketLaneFromServerStatus(data?.ticket?.status) ?? nextLane;
+      setLane(confirmed);
+      // 목록 배지만 그 자리에서 바꾼다. 라우터 새로고침으로 서버 트리를 다시 그리면
+      // 패널이 닫히는데, 상태는 목록 맨 왼쪽 열에 보이므로 새로고침할 이유가 없다.
+      onLaneChange?.(ticketId, confirmed);
     } catch (laneError) {
       setLane(previousLane);
       setError(laneError instanceof Error ? laneError.message : "진행 상태를 바꾸지 못했습니다.");

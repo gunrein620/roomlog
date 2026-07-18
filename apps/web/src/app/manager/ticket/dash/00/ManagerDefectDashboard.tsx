@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import type { ManagerProxyIntakeRoom } from "@/lib/ticket-manager-api";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
@@ -23,13 +23,13 @@ import { ticketLaneOf, type TicketLane } from "./ticket-lane";
 
 const PAGE_SIZE = 10;
 const TABLE_COLUMNS = [
-  "유형",
+  "상태",
   "작업명",
   "건물",
   "호실",
   "작업자",
   "예정일시",
-  "상태",
+  "유형",
   "작업",
 ] as const;
 
@@ -74,12 +74,15 @@ function DashboardRow({
       onClick={() => onSelect(row)}
     >
       <td>
-        <span
-          className="manager-defect-dashboard__type-badge"
-          data-ticket-type={row.ticket.type}
-        >
-          {ticketTypeLabel[row.ticket.type]}
-        </span>
+        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
+          <span
+            className="manager-defect-dashboard__status-badge"
+            data-status={displayStatus}
+          >
+            {displayStatusLabel[displayStatus]}
+          </span>
+          <SelfRepairBadge ticket={row.ticket} />
+        </div>
       </td>
       <td>
         {/* 행 전체가 대화 패널을 연다 — 작업명은 그 안에서 눌러도 같은 동작이라 버튼만 유지 */}
@@ -107,15 +110,12 @@ function DashboardRow({
         {formatDefectDate(row.repair?.scheduledAt)}
       </td>
       <td>
-        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
-          <span
-            className="manager-defect-dashboard__status-badge"
-            data-status={displayStatus}
-          >
-            {displayStatusLabel[displayStatus]}
-          </span>
-          <SelfRepairBadge ticket={row.ticket} />
-        </div>
+        <span
+          className="manager-defect-dashboard__type-badge"
+          data-ticket-type={row.ticket.type}
+        >
+          {ticketTypeLabel[row.ticket.type]}
+        </span>
       </td>
       <td onClick={(event) => event.stopPropagation()}>
         <div className="manager-defect-dashboard__action">
@@ -150,15 +150,23 @@ export function ManagerDefectDashboard({
     () => new Set(),
   );
   const [proxyIntakeOpen, setProxyIntakeOpen] = useState(false);
+  // 패널에서 바꾼 레인을 목록에 바로 반영한다(서버 트리를 다시 그리면 패널이 닫히므로).
+  const [laneById, setLaneById] = useState<Record<string, TicketLane>>({});
+
+  // 서버 목록이 새로 오면 그게 최신이다 — 들고 있던 낙관적 값은 버린다.
+  useEffect(() => setLaneById({}), [rows]);
 
   const effectiveRows = useMemo(
     () =>
-      rows.map((row) =>
-        locallyReadTicketIds.has(row.ticket.id)
-          ? { ...row, isManagerUnread: false }
-          : row,
-      ),
-    [locallyReadTicketIds, rows],
+      rows.map((row) => {
+        const lane = laneById[row.ticket.id];
+        const patched = lane ? { ...row, ticket: { ...row.ticket, status: lane } } : row;
+
+        return locallyReadTicketIds.has(patched.ticket.id)
+          ? { ...patched, isManagerUnread: false }
+          : patched;
+      }),
+    [laneById, locallyReadTicketIds, rows],
   );
   // 열린 패널이 가리키는 행은 항상 최신 rows에서 되찾는다 — 새로고침돼도 선택이 살아 있다.
   const selectedRow =
@@ -384,6 +392,9 @@ export function ManagerDefectDashboard({
       <TicketChatPanel
         row={selectedRow}
         onClose={() => setSelectedTicketId(null)}
+        onLaneChange={(ticketId, lane) =>
+          setLaneById((current) => ({ ...current, [ticketId]: lane }))
+        }
       />
     </section>
   );

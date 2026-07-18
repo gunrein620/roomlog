@@ -71,18 +71,22 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
       componentSource.indexOf('htmlFor="manager-defect-worker"'),
   );
 
-  for (const column of [
-    "유형",
+  // 상태가 맨 왼쪽 — 레인 토글 결과를 패널을 닫지 않고 바로 확인할 수 있어야 한다.
+  const tableColumns = componentSource
+    .match(/const TABLE_COLUMNS = \[([\s\S]*?)\] as const;/)?.[1]
+    ?.match(/"([^"]+)"/g)
+    ?.map((column) => column.replaceAll('"', ""));
+
+  assert.deepEqual(tableColumns, [
+    "상태",
     "작업명",
     "건물",
     "호실",
     "작업자",
     "예정일시",
-    "상태",
+    "유형",
     "작업",
-  ]) {
-    assert.match(componentSource, new RegExp(column));
-  }
+  ]);
 
   // 청구 금액은 목록에서 뺐다 — 금액은 결제·비용 승인 화면에서만 다룬다.
   assert.doesNotMatch(componentSource, /청구 금액/);
