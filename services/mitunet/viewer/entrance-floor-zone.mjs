@@ -1,4 +1,10 @@
 const SAMPLE_OFFSETS = [-0.25, 0, 0.25];
+const ENTRANCE_LABEL = /현관|entrance|foyer/i;
+const BALCONY_LABEL = /발코니|베란다|balcony|veranda/i;
+const MIN_CONFIDENCE = 0.60;
+const MAX_COMPONENT_RATIO = 0.15;
+const MIN_AREA_MM2 = 800_000;
+const MAX_AREA_MM2 = 6_000_000;
 
 function maskValue(mask, width, height, x, y) {
   const px = Math.round(x);
@@ -51,6 +57,125 @@ function clearanceScore(geometry, inward, interiorMask, width, height) {
   return score;
 }
 
+function normalizedRing(polygon, width, height) {
+  if (!Array.isArray(polygon) || polygon.length < 3 || polygon.length > 16) return null;
+  const ring = polygon.map((point) => [Number(point?.x) / 1000 * width, Number(point?.y) / 1000 * height]);
+  return ring.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)) ? ring : null;
+}
+
+function pointInRing(x, y, ring) {
+  let inside = false;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
+    const [currentX, currentY] = ring[index];
+    const [previousX, previousY] = ring[previous];
+    const crosses = (currentY > y) !== (previousY > y)
+      && x < ((previousX - currentX) * (y - currentY)) / ((previousY - currentY) || Number.EPSILON) + currentX;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function pixelsInRing(ring, labels, baseLabel, interiorMask, permanentSolid, width, height) {
+  const xs = ring.map(([x]) => x);
+  const ys = ring.map(([, y]) => y);
+  const pixels = [];
+  for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(height - 1, Math.ceil(Math.max(...ys))); y += 1) {
+    for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(width - 1, Math.ceil(Math.max(...xs))); x += 1) {
+      const index = y * width + x;
+      if (labels[index] === baseLabel && interiorMask[index] && !permanentSolid[index] && pointInRing(x + 0.5, y + 0.5, ring)) {
+        pixels.push(index);
+      }
+    }
+  }
+  return pixels;
+}
+
+function nearestLabel(labels, point, width, height) {
+  for (let radius = 0; radius <= 8; radius += 1) {
+    for (let y = Math.max(0, point.y - radius); y <= Math.min(height - 1, point.y + radius); y += 1) {
+      for (let x = Math.max(0, point.x - radius); x <= Math.min(width - 1, point.x + radius); x += 1) {
+        const value = labels[y * width + x];
+        if (value) return value;
+      }
+    }
+  }
+  return 0;
+}
+
+function componentPixelCount(labels, baseLabel) {
+  return labels.reduce((sum, value) => sum + Number(value === baseLabel), 0);
+}
+
+function validArea(pixels, componentSize, millimetersPerPixel) {
+  if (!pixels.length || pixels.length > componentSize * MAX_COMPONENT_RATIO) return false;
+  const scale = Number(millimetersPerPixel);
+  if (!Number.isFinite(scale) || scale <= 0) return true;
+  const areaMm2 = pixels.length * scale * scale;
+  return areaMm2 >= MIN_AREA_MM2 && areaMm2 <= MAX_AREA_MM2;
+}
+
+function connectedPixelsContainingSeed(pixels, seed, width, height) {
+  if (!pixels.length) return [];
+  const allowed = new Uint8Array(width * height);
+  for (const index of pixels) allowed[index] = 1;
+  let start = pixels[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const index of pixels) {
+    const x = index % width;
+    const y = Math.floor(index / width);
+    const distance = Math.hypot(x - seed.x, y - seed.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      start = index;
+    }
+  }
+  const visited = new Uint8Array(width * height);
+  const queue = [start];
+  const connected = [];
+  visited[start] = 1;
+  for (let head = 0; head < queue.length; head += 1) {
+    const index = queue[head];
+    connected.push(index);
+    const x = index % width;
+    const y = Math.floor(index / width);
+    for (const next of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, y > 0 ? index - width : -1, y + 1 < height ? index + width : -1]) {
+      if (next >= 0 && allowed[next] && !visited[next]) {
+        visited[next] = 1;
+        queue.push(next);
+      }
+    }
+  }
+  return connected;
+}
+
+function ringArea(ring) {
+  let doubleArea = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const [x1, y1] = ring[index];
+    const [x2, y2] = ring[(index + 1) % ring.length];
+    doubleArea += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(doubleArea) / 2;
+}
+
+function rectangleRing(candidate, millimetersPerPixel) {
+  const scale = Number(millimetersPerPixel);
+  const physical = Number.isFinite(scale) && scale > 0;
+  const depth = physical ? 1350 / scale : candidate.spanPixels * 1.5;
+  const width = physical
+    ? Math.min(2400 / scale, Math.max(1200 / scale, candidate.spanPixels + 600 / scale))
+    : candidate.spanPixels * 1.67;
+  const start = candidate.inwardPoint;
+  const end = { x: start.x + candidate.inward.x * depth, y: start.y + candidate.inward.y * depth };
+  const half = width / 2;
+  return [
+    [start.x - candidate.tangent.x * half, start.y - candidate.tangent.y * half],
+    [start.x + candidate.tangent.x * half, start.y + candidate.tangent.y * half],
+    [end.x + candidate.tangent.x * half, end.y + candidate.tangent.y * half],
+    [end.x - candidate.tangent.x * half, end.y - candidate.tangent.y * half],
+  ];
+}
+
 export function findExteriorDoorCandidates({ height, interiorMask, openings = [], width }) {
   if (!(interiorMask instanceof Uint8Array) || interiorMask.length !== width * height) return [];
   return openings
@@ -82,4 +207,83 @@ export function findExteriorDoorCandidates({ height, interiorMask, openings = []
     })
     .filter(Boolean)
     .sort((left, right) => right.clearance - left.clearance || right.spanPixels - left.spanPixels);
+}
+
+export function buildEntranceFloorOverride({
+  height,
+  interiorMask,
+  labels,
+  millimetersPerPixel = null,
+  openings = [],
+  permanentSolid,
+  rooms = [],
+  width,
+}) {
+  if (!(labels instanceof Uint8Array) || labels.length !== width * height
+    || !(interiorMask instanceof Uint8Array) || interiorMask.length !== width * height) return null;
+  const solidMask = permanentSolid instanceof Uint8Array && permanentSolid.length === width * height
+    ? permanentSolid
+    : new Uint8Array(width * height);
+  const candidates = findExteriorDoorCandidates({ height, interiorMask, openings, width });
+  const balconyRooms = rooms.filter((room) => BALCONY_LABEL.test(String(room?.label ?? "")));
+  const entranceRooms = rooms
+    .filter((room) => ENTRANCE_LABEL.test(String(room?.label ?? "")) && Number(room?.confidence) >= MIN_CONFIDENCE)
+    .sort((left, right) => Number(right.confidence) - Number(left.confidence));
+
+  const notInsideBalcony = candidates.filter((candidate) => !balconyRooms.some((room) => {
+    const ring = normalizedRing(room.polygon, width, height);
+    return ring && pointInRing(candidate.inwardPoint.x, candidate.inwardPoint.y, ring);
+  }));
+  if (!notInsideBalcony.length) return null;
+
+  let selected = notInsideBalcony[0];
+  let selectedRoom = null;
+  for (const room of entranceRooms) {
+    const ring = normalizedRing(room.polygon, width, height);
+    if (!ring) continue;
+    const matchingDoor = notInsideBalcony.find((candidate) => {
+      const threshold = Number.isFinite(Number(millimetersPerPixel)) && Number(millimetersPerPixel) > 0
+        ? 750 / Number(millimetersPerPixel)
+        : candidate.spanPixels;
+      return ring.some(([x, y]) => Math.hypot(x - candidate.inwardPoint.x, y - candidate.inwardPoint.y) <= threshold)
+        || pointInRing(candidate.inwardPoint.x, candidate.inwardPoint.y, ring);
+    });
+    if (matchingDoor) {
+      selected = matchingDoor;
+      selectedRoom = room;
+      break;
+    }
+  }
+
+  const baseLabel = nearestLabel(labels, selected.inwardPoint, width, height);
+  if (!baseLabel) return null;
+  const componentSize = componentPixelCount(labels, baseLabel);
+  const semanticRing = selectedRoom ? normalizedRing(selectedRoom.polygon, width, height) : null;
+  let pixels = semanticRing
+    ? pixelsInRing(semanticRing, labels, baseLabel, interiorMask, solidMask, width, height)
+    : [];
+  pixels = connectedPixelsContainingSeed(pixels, selected.inwardPoint, width, height);
+
+  if (!validArea(pixels, componentSize, millimetersPerPixel)) {
+    const fallbackRing = rectangleRing(selected, millimetersPerPixel);
+    pixels = connectedPixelsContainingSeed(pixelsInRing(
+      fallbackRing,
+      labels,
+      baseLabel,
+      interiorMask,
+      solidMask,
+      width,
+      height,
+    ), selected.inwardPoint, width, height);
+    if (pixels.length < ringArea(fallbackRing) * 0.5) return null;
+  }
+  if (!validArea(pixels, componentSize, millimetersPerPixel)) return null;
+
+  return {
+    baseLabel,
+    confidence: selectedRoom ? Number(selectedRoom.confidence) : 0.5,
+    label: "현관",
+    pixels,
+    seed: [selected.inwardPoint.x, selected.inwardPoint.y],
+  };
 }
