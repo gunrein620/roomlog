@@ -297,18 +297,22 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
             </thead>
             <tbody>
               {dashboard.recent.map((row) => (
-                <tr key={row.ticket.id}>
+                <tr
+                  key={row.ticket.id}
+                  className="manager-complaint-dashboard__row"
+                  data-selected={selectedRow?.ticket.id === row.ticket.id ? "true" : undefined}
+                  tabIndex={0}
+                  aria-label={`${row.ticket.title} 상세 대화 열기`}
+                  onClick={() => setSelectedRow(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedRow(row);
+                    }
+                  }}
+                >
                   <td><span className="manager-complaint-dashboard__category" data-category={complaintCategory(row.ticket)}>{dashboardTicketTypeLabel(row.ticket)}</span></td>
-                  <td>
-                    {/* 접수 내용 클릭 → 상세 모달(페이지 이동 없이 바로 확인) */}
-                    <button
-                      type="button"
-                      className="manager-complaint-dashboard__row-link"
-                      onClick={() => setSelectedRow(row)}
-                    >
-                      {row.ticket.title}
-                    </button>
-                  </td>
+                  <td><span className="manager-complaint-dashboard__row-title">{row.ticket.title}</span></td>
                   <td>{row.buildingName ?? "—"} / {row.ticket.unitId || "—"}</td>
                   <td>{formatComplaintDate(row.ticket.createdAt)}</td>
                   <td>

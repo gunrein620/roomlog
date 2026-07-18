@@ -30,6 +30,17 @@ test("행 클릭은 모달이 아니라 대화 사이드 패널을 연다", () =
   assert.match(dashboardSource, /onClick=\{\(event\) => event\.stopPropagation\(\)\}/);
 });
 
+test("대시보드 최근 접수 행의 어느 셀을 눌러도 대화 사이드 패널을 연다", () => {
+  const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
+
+  assert.match(complaintDashboardSource, /className="manager-complaint-dashboard__row"/);
+  assert.match(complaintDashboardSource, /onClick=\{\(\) => setSelectedRow\(row\)\}/);
+  assert.match(complaintDashboardSource, /onKeyDown=\{\(event\) => \{/);
+  assert.match(complaintDashboardSource, /event\.key === "Enter" \|\| event\.key === " "/);
+  assert.match(complaintDashboardSource, /tabIndex=\{0\}/);
+  assert.doesNotMatch(complaintDashboardSource, /<button[\s\S]*manager-complaint-dashboard__row-link/);
+});
+
 test("패널은 티켓 스레드를 세입자와 같은 소스로 읽고 쓴다", () => {
   const panelSource = readFileSync(panelPath, "utf8");
 
