@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import {
   getListingBuildingRows,
-  getListingPriceRows,
   isRemotePhoto,
   listingMapAddress,
   optionItems,
@@ -64,7 +63,6 @@ export function ListingDetailView({
   // 3D 도면이 있으면 3D가 히어로(사진은 필름스트립), 없으면 기존 사진 갤러리가 히어로.
   const has3DHero = Boolean(listing.floorPlan3D);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
-  const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const mapAddress = listingMapAddress(listing);
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
@@ -345,38 +343,22 @@ export function ListingDetailView({
       </aside>
       </div>
 
-      {/* 옵션 정보 섹션은 우측 패널 칩(detail-panel-options)으로 승격 — 가격·건물 정보를 나란히 둔다. */}
-      <div className="detail-info-pair">
-        <section className="detail-info-section" aria-label="가격 정보">
-          <div className="detail-section-heading">
-            <h2>가격 정보</h2>
-            <span>방문 전 필수 확인</span>
-          </div>
-          <dl className="detail-info-table">
-            {listingPriceRows.map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        <section className="detail-info-section" aria-label="건물 정보">
-          <div className="detail-section-heading">
-            <h2>건물 정보</h2>
-            <span>등기·현장 기준</span>
-          </div>
-          <dl className="detail-info-table">
-            {listingBuildingRows.map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      </div>
+      {/* 가격 정보 카드 제거 — 전 행이 패널(가격·캡션·스펙표) 중복이거나 더미(계약기간)였다.
+          옵션 정보도 패널 칩으로 승격됨. 건물 정보만 남긴다. */}
+      <section className="detail-info-section detail-building-section" aria-label="건물 정보">
+        <div className="detail-section-heading">
+          <h2>건물 정보</h2>
+          <span>등기·현장 기준</span>
+        </div>
+        <dl className="detail-info-table">
+          {listingBuildingRows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       {/* 하단 2단(시안) — 좌: 상세 설명+위치, 우: 비슷한 매물. 모바일은 자연 스택. */}
       <div className="detail-lower-duo">
@@ -392,7 +374,6 @@ export function ListingDetailView({
       <section className="detail-map-section" aria-label="상세 위치">
         <div>
           <h2>위치</h2>
-          <p>정확한 위치와 주변 생활권을 지도에서 확인하세요.</p>
         </div>
         <NaverMapPreview
           className="detail-naver-map"

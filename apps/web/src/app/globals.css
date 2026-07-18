@@ -12730,6 +12730,11 @@ p {
     color: #e32952;
   }
 
+  /* 건물 정보 단독 카드 — 풀폭이면 라벨/값이 너무 벌어져 반폭으로 제한 */
+  .detail-building-section {
+    max-width: 720px;
+  }
+
   /* 하단 섹션(시안) — 카드 상자 없이 세리프 헤딩 + 본문이 배경 위에 직접 */
   .detail-lower-duo .detail-info-section,
   .detail-lower-duo .detail-similar-section {
