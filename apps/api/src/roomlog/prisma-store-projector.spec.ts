@@ -46,6 +46,8 @@ describe("PrismaStoreProjector", () => {
       const messageId = `msg_project_${suffix}`;
       const complaintId = `cmp_project_${suffix}`;
       const ticketId = `tkt_project_${suffix}`;
+      const ticketMessageId = `tmsg_project_${suffix}`;
+      const historyId = `hst_project_${suffix}`;
       const projector = new PrismaStoreProjector(databaseUrl!);
       const now = new Date().toISOString();
       const store: Store = {
@@ -225,6 +227,9 @@ describe("PrismaStoreProjector", () => {
             priority: 2,
             status: "RECEIVED",
             responsibilityHint: "판단 어려움",
+            responsibilityDecidedById: "manager-projection",
+            responsibilityDecidedAt: now,
+            responsibilityDecisionNote: "프로젝션 책임 확정 사유",
             aiSummary: "싱크대 하부 누수 확인 필요",
             createdAt: now,
             updatedAt: now
@@ -234,7 +239,18 @@ describe("PrismaStoreProjector", () => {
         costs: [],
         receipts: [],
         receiptOcrs: [],
-        messages: [],
+        messages: [
+          {
+            id: ticketMessageId,
+            ticketId,
+            complaintId,
+            senderUserId: tenantId,
+            senderRole: "TENANT",
+            messageText: "싱크대 아래에서 물이 떨어집니다.",
+            attachmentUrls: [],
+            createdAt: now
+          }
+        ],
         messagingThreads: [],
         messagingMessages: [],
         messagingAnnouncementDrafts: [],
@@ -251,7 +267,17 @@ describe("PrismaStoreProjector", () => {
         moveoutDeductions: [],
         moveoutDisputes: [],
         moveoutReportAudits: [],
-        history: []
+        history: [
+          {
+            id: historyId,
+            ticketId,
+            fromStatus: undefined,
+            toStatus: "RECEIVED",
+            changedByUserId: tenantId,
+            note: "임차인 신고 접수",
+            createdAt: now
+          }
+        ]
       };
 
       try {
@@ -278,8 +304,33 @@ describe("PrismaStoreProjector", () => {
         assert.equal(complaint?.clientRequestId, `draft-${suffix}`);
         assert.equal(complaint?.requestFingerprint, `fingerprint-${suffix}`);
         assert.equal(ticket?.complaintId, complaintId);
+        assert.equal(ticket?.responsibilityDecidedById, "manager-projection");
+        assert.equal(ticket?.responsibilityDecidedAt?.toISOString(), now);
+        assert.equal(ticket?.responsibilityDecisionNote, "프로젝션 책임 확정 사유");
         assert.equal(analysis?.summary, "싱크대 하부 누수 확인 필요");
+
+        await projector.removeComplaintAggregate({
+          complaintId,
+          ticketId,
+          historyIds: [historyId],
+          messageIds: [ticketMessageId]
+        });
+        const [removedMessage, removedHistory, removedAnalysis, removedTicket, removedComplaint] =
+          await Promise.all([
+            prisma.ticketMessage.findUnique({ where: { id: ticketMessageId } }),
+            prisma.statusHistory.findUnique({ where: { id: historyId } }),
+            prisma.aiAnalysis.findUnique({ where: { ticketId } }),
+            prisma.ticket.findUnique({ where: { id: ticketId } }),
+            prisma.complaint.findUnique({ where: { id: complaintId } })
+          ]);
+        assert.equal(removedMessage, null);
+        assert.equal(removedHistory, null);
+        assert.equal(removedAnalysis, null);
+        assert.equal(removedTicket, null);
+        assert.equal(removedComplaint, null);
       } finally {
+        await prisma.ticketMessage.deleteMany({ where: { id: ticketMessageId } });
+        await prisma.statusHistory.deleteMany({ where: { id: historyId } });
         await prisma.intakeMessage.deleteMany({ where: { sessionId } });
         await prisma.intakeSession.deleteMany({ where: { id: sessionId } });
         await prisma.aiAnalysis.deleteMany({ where: { ticketId } });
@@ -456,6 +507,9 @@ describe("PrismaStoreProjector", () => {
             priority: 1,
             status: "ADDITIONAL_INFO_REQUESTED",
             responsibilityHint: "판단 어려움",
+            responsibilityDecidedById: "manager-load",
+            responsibilityDecidedAt: now,
+            responsibilityDecisionNote: "로드 책임 확정 사유",
             aiSummary: "콜봇 천장 누수 접수",
             createdAt: now,
             updatedAt: now
@@ -513,6 +567,18 @@ describe("PrismaStoreProjector", () => {
         assert.equal(
           loaded.tickets.find((ticket) => ticket.id === ticketId)?.status,
           "ADDITIONAL_INFO_REQUESTED"
+        );
+        assert.equal(
+          loaded.tickets.find((ticket) => ticket.id === ticketId)?.responsibilityDecidedById,
+          "manager-load"
+        );
+        assert.equal(
+          loaded.tickets.find((ticket) => ticket.id === ticketId)?.responsibilityDecidedAt,
+          now
+        );
+        assert.equal(
+          loaded.tickets.find((ticket) => ticket.id === ticketId)?.responsibilityDecisionNote,
+          "로드 책임 확정 사유"
         );
         assert.equal(loaded.analyses[ticketId]?.photoAnalysis?.comparisonStatus, "추가 사진 필요");
       } finally {
@@ -702,7 +768,7 @@ describe("PrismaStoreProjector", () => {
             tenantId,
             roomId,
             ticketId,
-            sourceChannel: "DIRECT_FORM",
+            sourceChannel: "MANAGER_PROXY",
             title: "싱크대 누수",
             description: "싱크대 하부 누수가 있습니다.",
             location: "주방",
@@ -730,11 +796,13 @@ describe("PrismaStoreProjector", () => {
             tenantId,
             roomId,
             assignedVendorId: vendorId,
-            sourceChannel: "DIRECT_FORM",
+            sourceChannel: "MANAGER_PROXY",
             category: "하자",
             priority: 2,
             status: "VENDOR_ASSIGNED",
             responsibilityHint: "판단 어려움",
+            directHandlingStartedAt: now,
+            directHandlingNote: "프로젝터 직접 처리 시작",
             aiSummary: "싱크대 하부 누수",
             createdAt: now,
             updatedAt: now
@@ -753,6 +821,7 @@ describe("PrismaStoreProjector", () => {
             ticketId,
             vendorId,
             status: "REQUESTED",
+            tenantInitiated: false,
             title: "하자 처리 요청",
             description: "싱크대 하부 점검 요청",
             completionPhotoUrls: [],
@@ -807,6 +876,25 @@ describe("PrismaStoreProjector", () => {
       try {
         await projector.persist(store);
 
+        const [createdComplaint, createdTicket, createdRepair] = await Promise.all([
+          prisma.complaint.findUnique({ where: { id: complaintId } }),
+          prisma.ticket.findUnique({ where: { id: ticketId } }),
+          prisma.repairRequest.findUnique({ where: { id: repairId } })
+        ]);
+        assert.equal(createdComplaint?.sourceChannel, "MANAGER_PROXY");
+        assert.equal(createdTicket?.sourceChannel, "MANAGER_PROXY");
+        assert.equal(createdTicket?.directHandlingStartedAt?.toISOString(), now);
+        assert.equal(createdTicket?.directHandlingCompletedAt, null);
+        assert.equal(createdTicket?.directHandlingNote, "프로젝터 직접 처리 시작");
+        assert.equal(createdRepair?.tenantInitiated, false);
+
+        const storeTicket = store.tickets.find((ticket) => ticket.id === ticketId)!;
+        const storeRepair = store.repairs.find((repair) => repair.id === repairId)!;
+        storeTicket.directHandlingCompletedAt = now;
+        storeTicket.directHandlingNote = "프로젝터 직접 처리 기록";
+        storeRepair.tenantInitiated = true;
+        await projector.persist(store);
+
         const [
           vendorInvite,
           tenantInvite,
@@ -837,16 +925,52 @@ describe("PrismaStoreProjector", () => {
         assert.equal(checklist?.itemName, "싱크대 하부");
         assert.equal(feedback?.target, "RESPONSIBILITY");
         assert.equal(repair?.vendorId, vendorId);
+        assert.equal(repair?.tenantInitiated, true);
         assert.equal(message?.messageText, "업체를 배정했습니다.");
         assert.equal(history?.actorRole, "LANDLORD");
         assert.equal(managerTicketRead?.managerId, managerId);
 
         const loaded = await projector.load();
+        const loadedComplaint = loaded?.complaints.find(
+          (complaint) => complaint.id === complaintId
+        );
+        const loadedTicket = loaded?.tickets.find((ticket) => ticket.id === ticketId);
+        const loadedRepair = loaded?.repairs.find((repair) => repair.id === repairId);
+        assert.equal(loadedComplaint?.sourceChannel, "MANAGER_PROXY");
+        assert.equal(loadedTicket?.sourceChannel, "MANAGER_PROXY");
+        assert.equal(loadedTicket?.directHandlingStartedAt, now);
+        assert.equal(loadedTicket?.directHandlingCompletedAt, now);
+        assert.equal(loadedTicket?.directHandlingNote, "프로젝터 직접 처리 기록");
+        assert.equal(loadedRepair?.tenantInitiated, true);
         assert.equal(
           loaded?.managerTicketReads?.find(
             (read) => read.managerId === managerId && read.ticketId === ticketId
           )?.readAt,
           now
+        );
+
+        storeTicket.directHandlingStartedAt = undefined;
+        storeTicket.directHandlingCompletedAt = undefined;
+        storeTicket.directHandlingNote = undefined;
+        storeRepair.tenantInitiated = false;
+        await projector.persist(store);
+
+        const [clearedTicket, clearedRepair] = await Promise.all([
+          prisma.ticket.findUnique({ where: { id: ticketId } }),
+          prisma.repairRequest.findUnique({ where: { id: repairId } })
+        ]);
+        assert.equal(clearedTicket?.directHandlingStartedAt, null);
+        assert.equal(clearedTicket?.directHandlingCompletedAt, null);
+        assert.equal(clearedTicket?.directHandlingNote, null);
+        assert.equal(clearedRepair?.tenantInitiated, false);
+        const cleared = await projector.load();
+        assert.equal(
+          cleared?.tickets.find((ticket) => ticket.id === ticketId)?.directHandlingStartedAt,
+          undefined
+        );
+        assert.equal(
+          cleared?.repairs.find((repair) => repair.id === repairId)?.tenantInitiated,
+          false
         );
       } finally {
         await prisma.managerTicketRead.deleteMany({ where: { ticketId } });

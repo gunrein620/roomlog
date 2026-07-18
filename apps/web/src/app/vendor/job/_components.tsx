@@ -5,10 +5,15 @@ import { Badge, Card } from "@roomlog/ui";
 import type { VendorRoute } from "@/lib/vendor-nav";
 import { resolveAssetFileUrl } from "@/lib/splat-asset-api";
 import {
+  canVendorSendJobMessage,
+  vendorJobMessageSenderLabel,
+} from "@/lib/vendor-job-chat";
+import {
   estimateStatusLabel,
   paymentStatusLabel,
   vendorJobStatusLabel,
 } from "@/lib/vendor-workflow-presenter";
+import { sendVendorRepairMessageAction } from "./actions";
 
 export const primaryLinkStyle = {
   height: "var(--touch-target)",
@@ -263,6 +268,144 @@ export function WorkflowJobSummary({ job }: { job: VendorJobSummary | VendorJobD
         <p style={{ ...mutedStyle, margin: 0 }}>{job.description}</p>
       ) : null}
       <InfoRow label="최근 업데이트" value={formatDateTime(job.updatedAt)} />
+    </Card>
+  );
+}
+
+export function TenantAvailableTimes({ value }: { value?: string }) {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <div style={labelStyle}>세입자 방문 가능 시간</div>
+      <p style={{ margin: 0, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{normalized}</p>
+    </Card>
+  );
+}
+
+export function VendorJobChat({
+  job,
+  readOnly = false,
+}: {
+  job: VendorJobDetail;
+  readOnly?: boolean;
+}) {
+  const active = canVendorSendJobMessage(job.status);
+  const canSend = !readOnly && active;
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+      <div>
+        <div style={{ fontWeight: 800 }}>진행 메시지</div>
+        <p style={{ ...mutedStyle, margin: "var(--space-xs) 0 0" }}>
+          방문 시간과 현장 준비사항을 세입자·관리자와 조율할 수 있습니다.
+        </p>
+      </div>
+      {job.messages.length === 0 ? (
+        <p style={{ ...mutedStyle, margin: 0 }}>아직 진행 메시지가 없습니다.</p>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            // column-reverse + 역순 렌더: 스크롤이 항상 최신(하단)에 붙고, 쌓여도 카드가 안 길어진다.
+            flexDirection: "column-reverse",
+            gap: "var(--space-sm)",
+            maxHeight: 360,
+            overflowY: "auto",
+            paddingRight: "var(--space-xs)",
+          }}
+        >
+          {[...job.messages].reverse().map((message, index) => {
+            const mine = message.senderRole === "VENDOR";
+            return (
+              <div
+                key={`${message.createdAt}-${index}`}
+                style={{
+                  alignSelf: mine ? "flex-end" : "stretch",
+                  width: mine ? "88%" : "100%",
+                  padding: "var(--space-sm)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                  background: mine ? "var(--primary-container)" : "var(--surface-container)",
+                  color: mine ? "var(--on-primary-container)" : "var(--on-surface)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "var(--space-sm)",
+                    fontSize: "var(--fs-caption)",
+                    fontWeight: 700,
+                  }}
+                >
+                  <span>{vendorJobMessageSenderLabel(message.senderRole)}</span>
+                  <span>{formatDateTime(message.createdAt)}</span>
+                </div>
+                <p style={{ margin: "var(--space-xs) 0 0", whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+                  {message.messageText}
+                </p>
+                {message.attachmentUrls.length > 0 ? (
+                  <div style={{ marginTop: "var(--space-sm)" }}>
+                    <AttachmentGallery urls={message.attachmentUrls} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {canSend ? (
+        <form
+          action={sendVendorRepairMessageAction}
+          style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}
+        >
+          <input type="hidden" name="repairId" value={job.repairId} />
+          <label htmlFor="vendor-job-message" style={labelStyle}>
+            새 메시지
+          </label>
+          <textarea
+            id="vendor-job-message"
+            name="messageText"
+            required
+            maxLength={1000}
+            rows={3}
+            placeholder="예: 화요일 오후 3시에 방문해도 될까요?"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              resize: "vertical",
+              padding: "var(--space-sm)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--surface)",
+              color: "var(--on-surface)",
+              font: "inherit",
+              lineHeight: 1.55,
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              minHeight: "var(--touch-target)",
+              border: 0,
+              borderRadius: "var(--radius-btn)",
+              background: "var(--primary)",
+              color: "var(--on-primary)",
+              fontWeight: 700,
+            }}
+          >
+            보내기
+          </button>
+        </form>
+      ) : (
+        <InlineNotice>
+          {active
+            ? "API에 연결되면 진행 메시지를 보낼 수 있습니다."
+            : "완료되거나 취소된 작업은 메시지를 읽기만 할 수 있습니다."}
+        </InlineNotice>
+      )}
     </Card>
   );
 }

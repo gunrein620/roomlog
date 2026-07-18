@@ -17,12 +17,14 @@ import type {
   VendorEstimateReviewInput,
   VendorJobDetail,
   VendorJobEstimateView,
+  VendorJobMessageView,
   VendorJobPaymentView,
   VendorJobSummary,
   VendorPaymentRequest as SharedVendorPaymentRequest,
   VendorSettlementRow,
   VendorVisitScheduleInput
 } from "@roomlog/types";
+import type { AddVendorRepairMessageInput } from "./roomlog.types";
 import type { DomainEventRepository } from "../domain-events/domain-event.repository";
 import { mapRepairPaymentOrder } from "../credit/prisma-repair-payment-order.repository";
 import { publicRepairPaymentOrder } from "../credit/repair-payment-order-public";
@@ -41,10 +43,18 @@ import {
   type DecisionCommit,
   type SaveVendorCompletionAttachmentCommand,
   type VendorCompletionAttachmentAccess,
+  type VendorRepairMessageResult,
   type VendorWorkflowRepository
 } from "./vendor-workflow.repository";
 
 const CLOSED_REPAIR_STATUSES = ["COMPLETED", "CANCELLED"] as const;
+const NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES = [
+  "RECEIVED",
+  "REVIEWING",
+  "ADDITIONAL_INFO_REQUESTED",
+  "VENDOR_ASSIGNMENT_PENDING",
+  "REOPENED"
+] as const;
 const PRESERVED_REPAIR_LIFECYCLE_STATUSES = ["SCHEDULED", "IN_PROGRESS"] as const;
 const PENDING_ESTIMATE_STATUSES = [
   "DRAFT",
@@ -78,7 +88,16 @@ type DirectPaymentProjection = Prisma.VendorPaymentRequestGetPayload<{
 }>;
 type DecisionProjection = Prisma.RepairCompletionDecisionGetPayload<Record<string, never>>;
 const JOB_INCLUDE = {
-  ticket: { include: { room: true, analysis: true } },
+  messages: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }]
+  },
+  ticket: {
+    include: {
+      room: true,
+      complaint: { select: { availableTimes: true } },
+      analysis: true
+    }
+  },
   vendor: true,
   estimates: {
     include: { lineItems: true },
@@ -483,6 +502,27 @@ function mapJobPayment(row: PaymentProjection): VendorJobPaymentView {
   };
 }
 
+function mapJobMessage(
+  row: Prisma.TicketMessageGetPayload<Record<string, never>>
+): VendorJobMessageView {
+  if (![
+    "TENANT",
+    "LANDLORD",
+    "VENDOR"
+  ].includes(row.senderRole)) {
+    throw workflowError(
+      "INVALID_STATE",
+      "업체 작업 메시지의 발신자 역할을 확인할 수 없습니다."
+    );
+  }
+  return {
+    senderRole: row.senderRole as VendorJobMessageView["senderRole"],
+    messageText: row.messageText,
+    attachmentUrls: [...row.attachmentUrls],
+    createdAt: row.createdAt.toISOString()
+  };
+}
+
 export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository {
   private readonly prisma: PrismaClient;
 
@@ -533,7 +573,12 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         if (ticket.room.landlordId !== command.managerId) {
           throw workflowError("TICKET_ACCESS_DENIED", "이 하자 접수 건에 업체를 배정할 권한이 없습니다.");
         }
-
+        if (ticket.directHandlingStartedAt && !ticket.directHandlingCompletedAt) {
+          throw workflowError(
+            "INVALID_STATE",
+            "관리자 직접 처리가 진행 중인 티켓에는 업체를 배정할 수 없습니다."
+          );
+        }
         const candidate = await tx.vendorProfile.findFirst({
           where: {
             id: command.vendorId,
@@ -581,6 +626,15 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
             where: { id: current.id },
             data: { status: "CANCELLED" }
           });
+        } else if (
+          !NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES.includes(
+            ticket.status as (typeof NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES)[number]
+          )
+        ) {
+          throw workflowError(
+            "INVALID_STATE",
+            "현재 티켓 상태에서는 새 업체를 배정할 수 없습니다."
+          );
         }
 
         const repair = await tx.repairRequest.create({
@@ -652,6 +706,95 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       include: this.jobInclude()
     });
     return row ? this.projectJobRow(row) : null;
+  }
+
+  async addRepairMessage(
+    vendorId: string,
+    vendorUserId: string,
+    repairId: string,
+    input: AddVendorRepairMessageInput
+  ): Promise<VendorRepairMessageResult> {
+    const normalizedVendorId = requiredText(vendorId, "업체 정보를 확인해 주세요.");
+    const normalizedVendorUserId = requiredText(
+      vendorUserId,
+      "업체 계정 정보를 확인해 주세요."
+    );
+    const normalizedRepairId = requiredText(repairId, "수리 작업 정보를 확인해 주세요.");
+    const messageText = typeof input?.messageText === "string"
+      ? input.messageText.trim()
+      : "";
+    if (input?.attachmentUrls !== undefined && !Array.isArray(input.attachmentUrls)) {
+      throw workflowError("INVALID_REQUEST", "첨부 사진 목록을 확인해 주세요.");
+    }
+    const attachmentUrls = [...new Set((input?.attachmentUrls ?? []).map((value) => {
+      if (typeof value !== "string" || !value.trim()) {
+        throw workflowError("INVALID_REQUEST", "첨부 사진 정보를 확인해 주세요.");
+      }
+      return value.trim();
+    }))];
+    if (!messageText && attachmentUrls.length === 0) {
+      throw workflowError("INVALID_REQUEST", "메시지 또는 사진을 입력해 주세요.");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id" FROM "RepairRequest" WHERE "id" = ${normalizedRepairId} FOR UPDATE
+      `);
+      if (locked.length === 0) {
+        throw workflowError("REPAIR_NOT_FOUND", "수리 작업을 찾을 수 없습니다.");
+      }
+      const repair = await tx.repairRequest.findUnique({
+        where: { id: normalizedRepairId },
+        select: {
+          id: true,
+          ticketId: true,
+          vendorId: true,
+          status: true,
+          ticket: { select: { complaintId: true } }
+        }
+      });
+      if (!repair) {
+        throw workflowError("REPAIR_NOT_FOUND", "수리 작업을 찾을 수 없습니다.");
+      }
+      if (repair.vendorId !== normalizedVendorId) {
+        throw workflowError("REPAIR_ACCESS_DENIED", "배정된 업체만 메시지를 보낼 수 있습니다.");
+      }
+      if (
+        CLOSED_REPAIR_STATUSES.includes(
+          repair.status as (typeof CLOSED_REPAIR_STATUSES)[number]
+        )
+      ) {
+        throw workflowError("INVALID_STATE", "완료되거나 취소된 작업에는 메시지를 보낼 수 없습니다.");
+      }
+
+      const message = await tx.ticketMessage.create({
+        data: {
+          id: this.nextId("message"),
+          ticketId: repair.ticketId,
+          complaintId: repair.ticket.complaintId,
+          repairId: repair.id,
+          senderUserId: normalizedVendorUserId,
+          senderRole: "VENDOR",
+          messageText: messageText || "사진을 공유했습니다.",
+          attachmentUrls,
+          createdAt: this.clock()
+        }
+      });
+      return {
+        view: mapJobMessage(message),
+        record: {
+          id: message.id,
+          ticketId: message.ticketId,
+          complaintId: repair.ticket.complaintId,
+          repairId: repair.id,
+          senderRole: "VENDOR" as const,
+          senderUserId: normalizedVendorUserId,
+          messageText: message.messageText,
+          attachmentUrls: [...message.attachmentUrls],
+          createdAt: message.createdAt.toISOString()
+        }
+      };
+    });
   }
 
   async getTenantWorkflow(
@@ -759,11 +902,37 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         ? "APPROVED"
         : "REVISION_REQUESTED";
       if (estimate.status === targetStatus) {
-        if (
+        const sameReview =
           estimate.reviewedByTenantId === normalizedTenantId &&
           estimate.reviewedByManagerId === null &&
-          (estimate.reviewNote ?? null) === note
-        ) {
+          (estimate.reviewNote ?? null) === note;
+        if (sameReview) {
+          if (
+            input.action === "REQUEST_REVISION" &&
+            input.tenantAvailableTimes !== undefined
+          ) {
+            const complaint = await tx.complaint.findUniqueOrThrow({
+              where: { id: repair.ticket.complaintId },
+              select: { availableTimes: true }
+            });
+            if (complaint.availableTimes !== input.tenantAvailableTimes) {
+              throw workflowError(
+                "REVIEW_CONFLICT",
+                "이미 다른 내용으로 처리된 견적입니다."
+              );
+            }
+          }
+          if (input.action === "REQUEST_REVISION") {
+            await this.ensureEstimateRevisionMessage(
+              tx,
+              repair,
+              estimate.id,
+              normalizedTenantId,
+              "TENANT",
+              note!,
+              estimate.reviewedAt ?? this.clock()
+            );
+          }
           return this.projectTenantWorkflowByRepair(
             tx,
             normalizedTenantId,
@@ -799,11 +968,30 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
           reviewNote: note
         }
       });
+      if (
+        input.action === "REQUEST_REVISION" &&
+        input.tenantAvailableTimes !== undefined
+      ) {
+        await tx.complaint.update({
+          where: { id: repair.ticket.complaintId },
+          data: { availableTimes: input.tenantAvailableTimes }
+        });
+      }
       if (input.action === "APPROVE") {
         await tx.repairRequest.update({
           where: { id: normalizedRepairId },
           data: { status: "ESTIMATE_APPROVED", costBearer: "TENANT" }
         });
+      } else {
+        await this.ensureEstimateRevisionMessage(
+          tx,
+          repair,
+          estimate.id,
+          normalizedTenantId,
+          "TENANT",
+          note!,
+          reviewedAt
+        );
       }
 
       const eventType = input.action === "APPROVE"
@@ -849,6 +1037,12 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       if (!estimate || estimate.repairId !== normalizedRepairId) {
         throw workflowError("ESTIMATE_NOT_FOUND", "견적을 찾을 수 없습니다.");
       }
+      await this.assertCurrentVisitProposal(
+        tx,
+        normalizedRepairId,
+        estimate,
+        scheduledAt
+      );
       if (estimate.status === "VISIT_SCHEDULED") {
         if (
           estimate.reviewedByTenantId !== normalizedTenantId ||
@@ -856,6 +1050,14 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         ) {
           throw workflowError("REVIEW_CONFLICT", "이미 다른 방문 일정으로 확정되었습니다.");
         }
+        await this.ensureVisitConfirmationMessage(
+          tx,
+          repair,
+          estimate.id,
+          normalizedTenantId,
+          "TENANT",
+          scheduledAt
+        );
         return this.projectTenantWorkflowByRepair(tx, normalizedTenantId, normalizedRepairId);
       }
       if (estimate.status !== "SUBMITTED" || estimate.responseType !== "VISIT_REQUIRED") {
@@ -883,6 +1085,15 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         where: { id: repair.ticket.complaintId },
         data: { status: "REPAIR_IN_PROGRESS" }
       });
+      await this.ensureVisitConfirmationMessage(
+        tx,
+        repair,
+        estimate.id,
+        normalizedTenantId,
+        "TENANT",
+        scheduledAt,
+        reviewedAt
+      );
       return this.projectTenantWorkflowByRepair(tx, normalizedTenantId, normalizedRepairId);
     });
   }
@@ -930,7 +1141,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
 
       if (
         latest &&
-        ["VISIT_SCHEDULED", "REVISION_REQUESTED", "REJECTED"].includes(latest.status)
+        ["VISIT_SCHEDULED", "REJECTED"].includes(latest.status)
       ) {
         await tx.vendorEstimate.update({
           where: { id: latest.id },
@@ -1009,8 +1220,20 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         data: { status, submittedAt },
         include: { lineItems: true }
       });
+      await tx.vendorEstimate.updateMany({
+        where: {
+          repairId,
+          version: { lt: estimate.version },
+          status: "REVISION_REQUESTED"
+        },
+        data: { status: "SUPERSEDED" }
+      });
 
       if (status === "DECLINED") {
+        const declineReason = requiredText(
+          estimate.declineReason,
+          "작업 거절 사유를 확인할 수 없습니다."
+        );
         await tx.vendorEstimate.updateMany({
           where: { repairId, status: "APPROVED" },
           data: { status: "SUPERSEDED" }
@@ -1026,6 +1249,24 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         await tx.complaint.update({
           where: { id: repair.ticket.complaintId },
           data: { status: "REVIEWING" }
+        });
+        const tenantMessage = {
+          ticketId: repair.ticketId,
+          complaintId: repair.ticket.complaintId,
+          repairId: repair.id,
+          senderUserId: vendorId,
+          senderRole: "VENDOR" as const,
+          messageText: `업체가 요청을 진행하기 어렵다고 답변했습니다 — ${declineReason}`,
+          attachmentUrls: [],
+          createdAt: submittedAt
+        };
+        await tx.ticketMessage.upsert({
+          where: { id: `vendor-decline-${estimate.id}` },
+          create: {
+            id: `vendor-decline-${estimate.id}`,
+            ...tenantMessage
+          },
+          update: tenantMessage
         });
       } else if (!preserveLifecycle) {
         await tx.repairRequest.update({ where: { id: repairId }, data: { status: "ESTIMATE_SUBMITTED" } });
@@ -1127,7 +1368,20 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         const sameNote = (estimate.reviewNote ?? null) === note;
         const sameManager = estimate.reviewedByManagerId === managerId;
         const sameBearer = input.action !== "APPROVE" || repair.costBearer === input.costBearer;
-        if (sameNote && sameManager && sameBearer) return mapEstimate(estimate);
+        if (sameNote && sameManager && sameBearer) {
+          if (input.action === "REQUEST_REVISION" && note) {
+            await this.ensureEstimateRevisionMessage(
+              tx,
+              repair,
+              estimate.id,
+              managerId,
+              "LANDLORD",
+              note,
+              estimate.reviewedAt ?? this.clock()
+            );
+          }
+          return mapEstimate(estimate);
+        }
         throw workflowError("REVIEW_CONFLICT", "이미 다른 내용으로 처리된 견적입니다.");
       }
       if (estimate.status !== "SUBMITTED") {
@@ -1180,6 +1434,16 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         }
       } else if (input.action === "REJECT") {
         await this.restoreAfterEstimateExit(tx, repair, estimate.id);
+      } else {
+        await this.ensureEstimateRevisionMessage(
+          tx,
+          repair,
+          estimate.id,
+          managerId,
+          "LANDLORD",
+          note!,
+          reviewedAt
+        );
       }
 
       const targetUserIds = await this.activeVendorUsers(tx, repair.vendorId);
@@ -1224,10 +1488,19 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       if (estimate.repairId !== repairId) {
         throw workflowError("REPAIR_ACCESS_DENIED", "다른 작업의 방문 일정을 확정할 수 없습니다.");
       }
+      await this.assertCurrentVisitProposal(tx, repairId, estimate, scheduledAt);
       if (estimate.status === "VISIT_SCHEDULED") {
         if (repair.scheduledAt?.getTime() !== scheduledAt.getTime()) {
           throw workflowError("REVIEW_CONFLICT", "이미 다른 방문 일정으로 확정되었습니다.");
         }
+        await this.ensureVisitConfirmationMessage(
+          tx,
+          repair,
+          estimate.id,
+          managerId,
+          "LANDLORD",
+          scheduledAt
+        );
         return await this.projectJob(tx, repairId);
       }
       if (estimate.status !== "SUBMITTED" || estimate.responseType !== "VISIT_REQUIRED") {
@@ -1247,6 +1520,15 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         where: { id: repair.ticket.complaintId },
         data: { status: "REPAIR_IN_PROGRESS" }
       });
+      await this.ensureVisitConfirmationMessage(
+        tx,
+        repair,
+        estimate.id,
+        managerId,
+        "LANDLORD",
+        scheduledAt,
+        reviewedAt
+      );
       return await this.projectJob(tx, repairId);
     });
   }
@@ -2338,7 +2620,13 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
     const repair = await db.repairRequest.findUniqueOrThrow({
       where: { id: repairId },
       include: {
-        ticket: { include: { room: true, messages: true, analysis: true } },
+        ticket: {
+          include: {
+            room: true,
+            complaint: { select: { availableTimes: true } },
+            analysis: true
+          }
+        },
         vendor: true
       }
     });
@@ -2364,11 +2652,16 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         }
       }
     });
+    const messages = await db.ticketMessage.findMany({
+      where: { repairId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
     return this.projectJobRow({
       ...repair,
       estimates,
       completionReports,
-      paymentRequest
+      paymentRequest,
+      messages
     });
   }
 
@@ -2401,14 +2694,17 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
   }
 
   private projectJobRow(row: JobProjection): VendorJobDetail {
+    const tenantAvailableTimes = row.ticket.complaint.availableTimes?.trim();
     return {
       ...this.projectSummary(row),
       description: row.description,
       attachmentIds: [],
       attachmentUrls: publicTicketAttachmentUrls(row.ticket),
+      ...(tenantAvailableTimes ? { tenantAvailableTimes } : {}),
       ...(row.scheduledAt ? { scheduledAt: row.scheduledAt.toISOString() } : {}),
       estimates: row.estimates.map(mapJobEstimate),
-      completionReports: row.completionReports.map(mapCompletion)
+      completionReports: row.completionReports.map(mapCompletion),
+      messages: row.messages.map(mapJobMessage)
     };
   }
 
@@ -2679,6 +2975,99 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       },
       include: { lineItems: true }
     });
+  }
+
+  private async ensureVisitConfirmationMessage(
+    tx: Prisma.TransactionClient,
+    repair: LockedRepair,
+    estimateId: string,
+    senderUserId: string,
+    senderRole: "TENANT" | "LANDLORD",
+    scheduledAt: Date,
+    createdAt: Date = this.clock()
+  ) {
+    await tx.ticketMessage.upsert({
+      where: { id: `visit-confirmation-${estimateId}` },
+      create: {
+        id: `visit-confirmation-${estimateId}`,
+        ticketId: repair.ticketId,
+        complaintId: repair.ticket.complaintId,
+        repairId: repair.id,
+        senderUserId,
+        senderRole,
+        messageText: `방문 일정이 확정되었습니다 — ${scheduledAt.toISOString()}`,
+        attachmentUrls: [],
+        createdAt
+      },
+      update: {}
+    });
+  }
+
+  private async ensureEstimateRevisionMessage(
+    tx: Prisma.TransactionClient,
+    repair: LockedRepair,
+    estimateId: string,
+    senderUserId: string,
+    senderRole: "TENANT" | "LANDLORD",
+    note: string,
+    createdAt: Date
+  ) {
+    const message = {
+      ticketId: repair.ticketId,
+      complaintId: repair.ticket.complaintId,
+      repairId: repair.id,
+      senderUserId,
+      senderRole,
+      messageText: `견적 수정이 요청되었습니다 — ${note}`,
+      attachmentUrls: [],
+      createdAt
+    };
+    await tx.ticketMessage.upsert({
+      where: { id: `estimate-revision-${estimateId}` },
+      create: {
+        id: `estimate-revision-${estimateId}`,
+        ...message
+      },
+      update: message
+    });
+  }
+
+  private async assertCurrentVisitProposal(
+    tx: Prisma.TransactionClient,
+    repairId: string,
+    estimate: {
+      id: string;
+      responseType: string;
+      visitAvailableAt: Date | null;
+    },
+    scheduledAt: Date
+  ) {
+    const latest = await tx.vendorEstimate.findFirst({
+      where: { repairId },
+      orderBy: [{ version: "desc" }, { id: "desc" }],
+      select: { id: true }
+    });
+    if (latest?.id !== estimate.id) {
+      throw workflowError(
+        "REVIEW_CONFLICT",
+        "최신 방문 제안만 확정할 수 있습니다."
+      );
+    }
+    if (
+      estimate.responseType !== "VISIT_REQUIRED" ||
+      !estimate.visitAvailableAt
+    ) {
+      throw workflowError(
+        "INVALID_STATE",
+        "제출된 방문 견적만 일정을 확정할 수 있습니다."
+      );
+    }
+    if (estimate.visitAvailableAt.getTime() !== scheduledAt.getTime()) {
+      throw workflowError(
+        "REVIEW_CONFLICT",
+        "업체가 제안한 방문 일정과 일치하지 않습니다."
+      );
+    }
   }
 
   private async activeVendorUsers(tx: Prisma.TransactionClient, vendorId: string) {

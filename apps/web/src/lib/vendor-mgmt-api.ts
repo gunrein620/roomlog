@@ -170,7 +170,7 @@ export function findDemoManagerVendorJobByTicket(
   const candidates = DEMO_MANAGER_VENDOR_DETAILS.flatMap((detail) =>
     detail.jobs
       .filter((job) => job.ticketId === ticketId && job.status !== "CANCELLED")
-      .map((job) => ({ vendor: detail.vendor, job })),
+      .map((job) => ({ partnership: "REGISTERED" as const, vendor: detail.vendor, job })),
   );
   return candidates.find(({ job }) => job.status !== "COMPLETED")
     ?? candidates.find(({ job }) => job.status === "COMPLETED")

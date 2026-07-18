@@ -17,7 +17,12 @@ export type CopilotChatResponse = import("@roomlog/types").ManagerCopilotChatRes
 
 export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
 export type MessageSenderRole = Exclude<UserRole, "SEEKER"> | "AI_ASSISTANT" | "SYSTEM";
-export type ComplaintSourceChannel = "DIRECT_FORM" | "REALTIME_CHAT" | "VOICE_CHAT" | "CALLBOT";
+export type ComplaintSourceChannel =
+  | "DIRECT_FORM"
+  | "REALTIME_CHAT"
+  | "VOICE_CHAT"
+  | "CALLBOT"
+  | "MANAGER_PROXY";
 
 export type ComplaintStatus =
   | "SUBMITTED"
@@ -1144,6 +1149,12 @@ export type Ticket = {
   priority: number;
   status: TicketStatus;
   responsibilityHint: string;
+  responsibilityDecidedById?: string;
+  responsibilityDecidedAt?: string;
+  responsibilityDecisionNote?: string;
+  directHandlingStartedAt?: string;
+  directHandlingCompletedAt?: string;
+  directHandlingNote?: string;
   aiSummary: string;
   dueAt?: string;
   createdAt: string;
@@ -1155,6 +1166,7 @@ export type RepairRequest = {
   ticketId: string;
   vendorId: string;
   status: RepairStatus;
+  tenantInitiated?: boolean;
   title: string;
   description: string;
   estimateAmount?: number;
@@ -1166,6 +1178,11 @@ export type RepairRequest = {
   completedAt?: string;
   completionNote?: string;
   completionPhotoUrls: string[];
+  latestEstimate?: {
+    status: string;
+    declineReason?: string;
+    submittedAt?: string;
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -1174,6 +1191,7 @@ export type TicketMessage = {
   id: string;
   ticketId: string;
   complaintId?: string;
+  repairId?: string;
   senderUserId: string;
   senderRole: MessageSenderRole;
   messageText: string;
@@ -2197,6 +2215,42 @@ export type CreateComplaintInput = {
   attachmentUrls?: string[];
   occurredAt?: string;
   availableTimes?: string;
+  urgency?: 1 | 2 | 3 | 4;
+};
+
+export type ManagerProxyIntakeInput = {
+  roomId: string;
+  tenantId?: string;
+  clientRequestId?: string;
+  title: string;
+  description: string;
+  location: string;
+  occurredAt?: string;
+  availableTimes?: string;
+  urgency?: 1 | 2 | 3 | 4;
+  reportedVia?: "phone" | "text" | "in_person" | "other";
+  attachmentUrls?: string[];
+};
+
+export type DecideTicketResponsibilityInput = {
+  responsibility: "TENANT" | "LANDLORD";
+  note: string;
+};
+
+export type StartDirectHandlingInput = {
+  note?: string;
+};
+
+export type CompleteDirectHandlingInput = {
+  note: string;
+  cost?: {
+    amount: number;
+    item?: string;
+  };
+};
+
+export type CancelDirectHandlingInput = {
+  reason: string;
 };
 
 export type CreateIntakeSessionInput = {

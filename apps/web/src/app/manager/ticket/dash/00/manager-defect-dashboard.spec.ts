@@ -121,7 +121,13 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
     pageSource,
     /dashboardView === "dashboard"[\s\S]*<TicketDashboardAutoRefresh intervalMs=\{3000\} \/>[\s\S]*<ComplaintDashboard rows=\{rows\} \/>/,
   );
-  assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
+  const managerDashboardRender = pageSource.match(
+    /<ManagerDefectDashboard[\s\S]*?\/>/,
+  )?.[0];
+  assert.ok(managerDashboardRender);
+  assert.match(managerDashboardRender, /rows=\{rows\}/);
+  assert.match(managerDashboardRender, /initialTemplate=\{initialTemplate\}/);
+  assert.match(managerDashboardRender, /proxyIntakeRooms=\{proxyIntakeRooms\}/);
   assert.match(autoRefreshSource, /getRealtimeSocket/);
   assert.match(autoRefreshSource, /shouldRefreshTicketDashboard/);
   assert.match(autoRefreshSource, /router\.refresh\(\)/);

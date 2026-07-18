@@ -5,6 +5,7 @@ import type {
   VendorEstimate,
   VendorEstimateDraftInput,
   VendorJobDetail,
+  VendorJobMessageView,
   VendorJobPaymentView,
   VendorJobSummary,
   VendorSettlementRow,
@@ -74,6 +75,20 @@ export const DEMO_VENDOR_JOB_DETAIL: VendorJobDetail = {
   latestEstimate: DEMO_ESTIMATE,
   estimates: [DEMO_ESTIMATE],
   completionReports: [],
+  messages: [
+    {
+      senderRole: "TENANT",
+      messageText: "화요일 오후 3시 이후 방문 가능합니다.",
+      attachmentUrls: [],
+      createdAt: "2026-07-15T04:30:00.000Z",
+    },
+    {
+      senderRole: "VENDOR",
+      messageText: "화요일 오후 3시에 방문하겠습니다.",
+      attachmentUrls: [],
+      createdAt: "2026-07-15T05:10:00.000Z",
+    },
+  ],
   updatedAt: "2026-07-15T05:10:00.000Z",
 };
 
@@ -134,6 +149,16 @@ export function getVendorWorkflowJob(
     return serverFetch<VendorJobDetail>(`/vendor/jobs/${encodeURIComponent(first.repairId)}`);
   };
   return readVendorWorkflowJobData(read, DEMO_VENDOR_JOB_DETAIL);
+}
+
+export function sendVendorRepairMessage(
+  repairId: string,
+  input: { messageText?: string; attachmentUrls?: string[] },
+) {
+  return serverFetch<VendorJobMessageView>(
+    `/vendor/jobs/${encodeURIComponent(repairId)}/messages`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
 
 export function listVendorSettlements() {

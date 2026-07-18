@@ -6692,6 +6692,18 @@ p {
   font-weight: 500;
 }
 
+.tenant-vendor-workflow-note-form input[type="text"] {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: var(--fs-caption);
+}
+
 .tenant-vendor-note textarea,
 .tenant-vendor-workflow-note-form textarea {
   width: 100%;
@@ -6948,6 +6960,20 @@ p {
   font-weight: 800;
 }
 
+.tenant-manager-proxy-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-full);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
 @media (max-width: 640px) {
   .tenant-vendor-card {
     margin-left: 0;
@@ -6990,6 +7016,9 @@ p {
 .tenant-announcement-link {
   position: relative;
   z-index: 1;
+  /* ready 상태에선 링크가 카드의 유일한 그리드 자식 — 두 컬럼을 다 차지해야
+     아이콘·본문이 안쪽 그리드로 배치된다(안 그러면 auto 컬럼에 갇혀 세로 흐름). */
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -7430,6 +7459,216 @@ p {
 
 .tenant-request-detail-form .tenant-request-body-field textarea {
   min-height: 320px;
+}
+
+/* 민원/하자 상세 — 처리 상태·책임 판단·이의제기·진행 메시지 (세입자탭 본선 상세) */
+.tenant-request-urgency {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tenant-request-urgency > span {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.tenant-request-urgency .tenant-request-type-toggle {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tenant-request-urgency .tenant-request-type-toggle button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.92rem;
+}
+
+.tenant-defect-progress,
+.tenant-defect-appeal,
+.tenant-defect-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, var(--muted));
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.tenant-defect-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tenant-defect-progress-head strong {
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.tenant-defect-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--blue);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.tenant-defect-ai-hint {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tenant-defect-ai-hint em {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.tenant-defect-decision {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--blue) 32%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--blue-soft) 55%, var(--paper));
+}
+
+.tenant-defect-decision strong {
+  font-size: 0.94rem;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.tenant-defect-decision p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.tenant-defect-confirm {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.tenant-defect-appeal > strong,
+.tenant-defect-messages > strong {
+  font-size: 0.94rem;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.tenant-defect-appeal p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.tenant-defect-appeal-open {
+  font-weight: 800;
+  color: var(--blue);
+}
+
+.tenant-defect-appeal button {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1.5px solid var(--blue);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--blue);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.tenant-defect-appeal button:disabled {
+  opacity: 0.5;
+}
+
+.tenant-defect-messages ul {
+  /* column-reverse + 역순 렌더로 스크롤이 항상 최신(하단)에 붙는다 — 쌓여도 카드가 안 길어짐 */
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  margin: 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.tenant-defect-messages li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, var(--muted));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--line) 24%, var(--paper));
+}
+
+.tenant-defect-messages li[data-sender="TENANT"] {
+  border-color: color-mix(in srgb, var(--blue) 30%, var(--line));
+  background: color-mix(in srgb, var(--blue-soft) 45%, var(--paper));
+}
+
+.tenant-defect-messages li span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.tenant-defect-messages li p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.tenant-defect-chat-input {
+  display: flex;
+  gap: 8px;
+}
+
+.tenant-defect-chat-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tenant-defect-chat-input button {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.tenant-defect-chat-input button:disabled {
+  opacity: 0.5;
 }
 
 .tenant-request-image-strip {
