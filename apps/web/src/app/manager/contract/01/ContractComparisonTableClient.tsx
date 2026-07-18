@@ -104,13 +104,13 @@ function ContractComparisonRow({ row }: { row: ContractValueRow }) {
               접기
             </button>
           </div>
-          <div style={expandedDetailTextStyle}>{selectedValue}</div>
+          <div style={expandedDetailTextStyle}>{formatClauseBreaks(selectedValue)}</div>
           {selectedDetails.length ? (
             <dl style={expandedDetailListStyle}>
               {selectedDetails.map((detail) => (
                 <div key={`${detail.label}-${detail.value}`} style={expandedDetailItemStyle}>
                   <dt>{detail.label}</dt>
-                  <dd>{detail.value}</dd>
+                  <dd style={expandedDetailValueStyle}>{formatClauseBreaks(detail.value)}</dd>
                 </div>
               ))}
             </dl>
@@ -118,7 +118,7 @@ function ContractComparisonRow({ row }: { row: ContractValueRow }) {
           {openDetail.source === "ocr" && row.evidence?.trim() ? (
             <div style={expandedEvidenceStyle}>
               <span>근거 문장</span>
-              <p>{row.evidence}</p>
+              <p>{formatClauseBreaks(row.evidence)}</p>
             </div>
           ) : null}
           {row.validationMessages.length ? (
@@ -175,6 +175,10 @@ function detailsForSource(row: ContractValueRow, source: DetailSource) {
   if (source === "ocr") return row.ocrDetails;
   if (source === "db") return row.dbDetails;
   return [];
+}
+
+function formatClauseBreaks(value?: string) {
+  return value?.trim().replace(/\s+(?=\d+\.\s)/g, "\n") ?? "";
 }
 
 function compactValue(value: string) {
@@ -401,6 +405,12 @@ const expandedDetailItemStyle = {
   color: "var(--on-surface-variant)",
   fontSize: "var(--fs-caption)",
   fontWeight: 800,
+} as const;
+
+const expandedDetailValueStyle = {
+  margin: 0,
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
 } as const;
 
 const expandedEvidenceStyle = {

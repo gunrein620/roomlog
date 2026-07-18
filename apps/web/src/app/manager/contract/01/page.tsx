@@ -372,13 +372,14 @@ function ManualCorrectionForm({
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
         <div style={correctionGroupGridStyle}>
-          <CorrectionGroup title="보증금" note="기본 보증금, 전환보증금, 최종 보증금처럼 계약서에 적힌 보증금 구조를 그대로 남깁니다.">
+          <CorrectionGroup title="보증금·월 임대료·계약 기간" note="계약서에 적힌 보증금 구조와 월 단위 임대료, 계약 시작·종료일만 원문 기준으로 정리합니다.">
             <CorrectionField fieldId="contract-field-deposit" label="보증금">
               <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
             </CorrectionField>
-          </CorrectionGroup>
-
-          <CorrectionGroup title="월 임대료·계약 기간" note="월 임대료, 월 임차료, 차임처럼 계약서의 월 단위 임대료와 계약 시작·종료일만 원문 기준으로 정리합니다.">
+            <div style={correctionSubsectionStyle}>
+              <strong>월 임대료·계약 기간</strong>
+              <span>월 임대료, 월 임차료, 차임처럼 계약서의 월 단위 임대료와 계약 시작·종료일만 확인합니다.</span>
+            </div>
             <CorrectionField fieldId="contract-field-monthlyRent" label="월 임대료">
               <input id="contract-field-monthlyRent" name="monthlyRent" type="text" inputMode="numeric" defaultValue={values.monthlyRent} placeholder="예: 650,000" style={correctionInputStyle} />
             </CorrectionField>
@@ -1158,7 +1159,7 @@ const manualHeaderStyle = {
 
 const correctionGroupGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 460px), 1fr))",
   gap: "var(--space-md)",
   alignItems: "stretch",
 } as const;
@@ -1189,6 +1190,16 @@ const correctionGroupBodyStyle = {
   display: "grid",
   gap: "var(--space-md)",
   alignContent: "start",
+} as const;
+
+const correctionSubsectionStyle = {
+  display: "grid",
+  gap: 4,
+  paddingTop: "var(--space-sm)",
+  borderTop: "1px solid var(--border)",
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-body)",
+  lineHeight: "var(--lh-body)",
 } as const;
 
 const twoColumnFieldStyle = {

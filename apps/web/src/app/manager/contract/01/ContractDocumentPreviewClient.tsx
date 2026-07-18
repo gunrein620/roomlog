@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, useMemo, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type PreviewKind = "image" | "pdf";
 
@@ -29,6 +29,28 @@ type HighlightBox = {
   height: string;
   tone: "deposit" | "rent" | "period" | "special" | "autoRenewal" | "restoration" | "repair" | "clause";
   needsCheck: boolean;
+};
+
+type PdfViewport = {
+  width: number;
+  height: number;
+};
+
+type PdfRenderTask = {
+  promise: Promise<unknown>;
+  cancel: () => void;
+};
+
+type PdfPageProxy = {
+  getViewport: (options: { scale: number }) => PdfViewport;
+  render: (options: { canvasContext: CanvasRenderingContext2D; viewport: PdfViewport }) => PdfRenderTask;
+  cleanup?: () => void;
+};
+
+type PdfDocumentProxy = {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PdfPageProxy>;
+  destroy?: () => Promise<void>;
 };
 
 type ContractDocumentPreviewClientProps = {
@@ -123,14 +145,152 @@ function PdfDocumentFrame({
   showHighlights: boolean;
   boxes: HighlightBox[];
 }) {
+  const [pdfDocument, setPdfDocument] = useState<PdfDocumentProxy | null>(null);
+  const [pageNumbers, setPageNumbers] = useState<number[]>([]);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadedDocument: PdfDocumentProxy | null = null;
+    let loadingTask: { promise: Promise<PdfDocumentProxy>; destroy: () => Promise<void> } | null = null;
+
+    setPdfDocument(null);
+    setPageNumbers([]);
+    setLoadError(false);
+
+    async function loadPdf() {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+        loadingTask = pdfjs.getDocument({ url: previewUrl }) as unknown as {
+          promise: Promise<PdfDocumentProxy>;
+          destroy: () => Promise<void>;
+        };
+        const documentProxy = await loadingTask.promise;
+        loadedDocument = documentProxy;
+        if (cancelled) return;
+
+        setPdfDocument(documentProxy);
+        setPageNumbers(Array.from({ length: documentProxy.numPages }, (_, index) => index + 1));
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    }
+
+    void loadPdf();
+
+    return () => {
+      cancelled = true;
+      void loadingTask?.destroy();
+      void loadedDocument?.destroy?.();
+    };
+  }, [previewUrl]);
+
   return (
     <div style={pdfDocumentSurfaceStyle}>
-      <iframe
-        title="계약서 PDF 원문 미리보기"
-        src={pdfPreviewSrc(previewUrl)}
-        style={documentIframeStyle}
-      />
-      {showHighlights ? <HighlightOverlay boxes={boxes} previewKind="pdf" /> : null}
+      {loadError ? (
+        <iframe
+          title="계약서 PDF 원문 미리보기"
+          src={pdfPreviewSrc(previewUrl)}
+          style={documentIframeStyle}
+        />
+      ) : pdfDocument ? (
+        <div style={pdfCanvasPageStackStyle}>
+          {pageNumbers.map((pageNumber) => (
+            <PdfCanvasPage
+              key={pageNumber}
+              pdfDocument={pdfDocument}
+              pageNumber={pageNumber}
+              showHighlights={showHighlights}
+              boxes={boxes.filter((box) => (box.page ?? 1) === pageNumber)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div style={pdfLoadingStyle}>PDF 미리보기를 불러오는 중입니다.</div>
+      )}
+    </div>
+  );
+}
+
+function PdfCanvasPage({
+  pdfDocument,
+  pageNumber,
+  showHighlights,
+  boxes,
+}: {
+  pdfDocument: PdfDocumentProxy;
+  pageNumber: number;
+  showHighlights: boolean;
+  boxes: HighlightBox[];
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [pageRatio, setPageRatio] = useState("210 / 297");
+
+  useEffect(() => {
+    let cancelled = false;
+    let renderTask: PdfRenderTask | null = null;
+    let pageProxy: PdfPageProxy | null = null;
+
+    async function renderPage() {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      pageProxy = await pdfDocument.getPage(pageNumber);
+      if (cancelled) return;
+
+      const viewport = pageProxy.getViewport({ scale: 1.7 });
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(viewport.width * devicePixelRatio);
+      canvas.height = Math.floor(viewport.height * devicePixelRatio);
+      context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      setPageRatio(`${viewport.width} / ${viewport.height}`);
+
+      renderTask = pageProxy.render({ canvasContext: context, viewport });
+      await renderTask.promise.catch(() => undefined);
+    }
+
+    void renderPage();
+
+    return () => {
+      cancelled = true;
+      renderTask?.cancel();
+      pageProxy?.cleanup?.();
+    };
+  }, [pageNumber, pdfDocument]);
+
+  return (
+    <div data-pdf-page={pageNumber} style={{ ...pdfCanvasPageStyle, aspectRatio: pageRatio }}>
+      <canvas ref={canvasRef} style={pdfCanvasStyle} />
+      {showHighlights && boxes.length ? (
+        <div
+          data-contract-highlight-overlay="pdf-page"
+          data-highlight-count={boxes.length}
+          style={highlightOverlayStyle}
+          aria-hidden="true"
+        >
+          {boxes.map((box) => (
+            <div
+              key={box.key}
+              data-contract-highlight={box.label}
+              data-highlight-page={pageNumber}
+              style={{
+                ...highlightBoxStyle,
+                ...highlightToneStyle(box.tone, box.needsCheck),
+                top: box.top,
+                left: box.left,
+                width: box.width,
+                height: box.height,
+              }}
+            >
+              <span style={highlightLabelStyle}>{box.label}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -496,10 +656,14 @@ const pdfDocumentSurfaceStyle = {
   position: "relative",
   display: "grid",
   minHeight: 760,
-  overflow: "hidden",
+  maxHeight: 980,
+  overflowX: "hidden",
+  overflowY: "auto",
   border: "1px solid var(--border)",
   borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container-lowest)",
+  padding: "var(--space-sm)",
+  background: "#2f2f2f",
+  alignContent: "start",
 } as const;
 
 const documentIframeStyle = {
@@ -508,6 +672,38 @@ const documentIframeStyle = {
   height: 980,
   border: 0,
   background: "var(--surface-container-lowest)",
+} as const;
+
+const pdfCanvasPageStackStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
+  alignContent: "start",
+  minWidth: 0,
+} as const;
+
+const pdfCanvasPageStyle = {
+  position: "relative",
+  width: "min(100%, 860px)",
+  margin: "0 auto",
+  overflow: "hidden",
+  background: "white",
+  boxShadow: "0 1px 0 rgba(255, 255, 255, 0.12)",
+} as const;
+
+const pdfCanvasStyle = {
+  position: "absolute",
+  inset: 0,
+  width: "100%",
+  height: "100%",
+  display: "block",
+} as const;
+
+const pdfLoadingStyle = {
+  minHeight: 560,
+  display: "grid",
+  placeItems: "center",
+  color: "white",
+  fontWeight: 800,
 } as const;
 
 const documentImageStyle = {
