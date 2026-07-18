@@ -45,12 +45,8 @@ function positiveIntegerField(formData: FormData, key: string, label: string) {
   return positiveInteger(required(formData, key), label);
 }
 
-function repeatedStrings(formData: FormData, key: string) {
-  return formData.getAll(key).map((value) => {
-    if (typeof value !== "string") throw new Error("견적 항목 형식을 확인해 주세요.");
-    return value.trim();
-  });
-}
+/** 업체 견적은 금액 한 칸으로 받으므로 저장 시 단일 일괄 항목으로 정규화한다. */
+const ESTIMATE_LUMP_SUM_DESCRIPTION = "수리 견적 일괄";
 
 function errorMessage(error: unknown) {
   return error instanceof Error && error.message.trim()
@@ -101,54 +97,18 @@ function estimateInput(formData: FormData): VendorEstimateDraftInput {
   }
   if (responseType !== "FIXED_ESTIMATE") throw new Error("회신 유형을 확인해 주세요.");
 
-  const categories = repeatedStrings(formData, "lineCategory");
-  const descriptions = repeatedStrings(formData, "lineDescription");
-  const quantities = repeatedStrings(formData, "lineQuantity");
-  const unitAmounts = repeatedStrings(formData, "lineUnitAmount");
-  const itemCount = categories.length;
-  if (
-    itemCount === 0 ||
-    descriptions.length !== itemCount ||
-    quantities.length !== itemCount ||
-    unitAmounts.length !== itemCount
-  ) {
-    throw new Error("견적 항목 형식을 확인해 주세요.");
-  }
-
-  const allowedCategories = ["VISIT", "LABOR", "MATERIAL"] as const;
-  const lineItems: Extract<VendorEstimateDraftInput, { responseType: "FIXED_ESTIMATE" }>["lineItems"] =
-    categories.map((category, index) => {
-      if (!allowedCategories.includes(category as (typeof allowedCategories)[number])) {
-        throw new Error(`견적 항목 ${index + 1}의 카테고리를 확인해 주세요.`);
-      }
-      const description = descriptions[index];
-      if (!description) throw new Error(`견적 항목 ${index + 1}의 항목명을 입력해 주세요.`);
-      const quantity = positiveInteger(quantities[index], `견적 항목 ${index + 1}의 수량`);
-      const unitAmount = positiveInteger(unitAmounts[index], `견적 항목 ${index + 1}의 단가`);
-      const lineAmount = quantity * unitAmount;
-      if (!Number.isSafeInteger(lineAmount) || lineAmount > MAX_DATABASE_INT) {
-        throw new Error(`견적 항목 ${index + 1}의 금액이 허용 범위를 초과했습니다.`);
-      }
-      return {
-        category: category as (typeof allowedCategories)[number],
-        description,
-        quantity,
-        unitAmount,
-      };
-    });
-  const totalAmount = lineItems.reduce(
-    (sum, lineItem) => sum + lineItem.quantity * lineItem.unitAmount,
-    0,
-  );
-  if (!Number.isSafeInteger(totalAmount) || totalAmount > MAX_DATABASE_INT) {
-    throw new Error("총 견적 금액이 허용 범위를 초과했습니다.");
-  }
-  return {
-    responseType,
-    workDescription: required(formData, "workDescription"),
-    estimatedDurationMinutes: positiveIntegerField(formData, "estimatedDurationMinutes", "예상 작업 시간"),
-    lineItems,
-  };
+  // 업체는 금액 한 칸 + 내용 한 칸만 입력한다. 저장은 일괄 단일 항목으로 보낸다.
+  const totalAmount = positiveIntegerField(formData, "totalAmount", "견적 금액");
+  const workDescription = required(formData, "workDescription");
+  const lineItems: Extract<VendorEstimateDraftInput, { responseType: "FIXED_ESTIMATE" }>["lineItems"] = [
+    {
+      category: "LABOR",
+      description: ESTIMATE_LUMP_SUM_DESCRIPTION,
+      quantity: 1,
+      unitAmount: totalAmount,
+    },
+  ];
+  return { responseType, workDescription, lineItems };
 }
 
 export async function saveEstimateAction(formData: FormData) {
