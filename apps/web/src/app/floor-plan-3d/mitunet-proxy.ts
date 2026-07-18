@@ -66,6 +66,10 @@ export function transformMitunetViewerHtml(html: string) {
   return html
     .replaceAll('"/viewer-assets/', '"/floor-plan-3d/mitunet-assets/')
     .replaceAll("'/viewer-assets/", "'/floor-plan-3d/mitunet-assets/")
+    // 뷰어는 ./demos/…를 쓰지만 이 페이지는 /floor-plan-3d/mitunet(디렉토리 아님)에서
+    // 서빙되므로 상대경로가 /floor-plan-3d/demos/…로 풀려 404가 난다.
+    .replaceAll('"./demos/', '"/floor-plan-3d/mitunet-assets/demos/')
+    .replaceAll("`./demos/", "`/floor-plan-3d/mitunet-assets/demos/")
     .replaceAll('fetch("/extract-image"', 'fetch("/floor-plan-3d/mitunet-api/extract-image"')
     .replaceAll('fetch("/compose-edits"', 'fetch("/floor-plan-3d/mitunet-api/compose-edits"')
     .replaceAll('fetch("/room-materials"', 'fetch("/floor-plan-3d/room-materials"')

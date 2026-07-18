@@ -20,6 +20,20 @@ test("uses a save-and-return action instead of the RoomLog connection copy", () 
   assert.match(transformed, /saveJsonButton\.hidden = !canSave \|\| Boolean\(roomLogContext\);/);
 });
 
+test("rewrites relative demo sample paths to the mitunet-assets route", () => {
+  const transformed = transformMitunetViewerHtml(`
+    <script>
+      const response = await fetch("./demos/manifest.json", { cache: "no-store" });
+      fetchAndLoad(\`./demos/\${encodeURIComponent(demoSelect.value)}.json\`);
+    </script>
+  `);
+
+  assert.match(transformed, /fetch\("\/floor-plan-3d\/mitunet-assets\/demos\/manifest\.json"/);
+  assert.match(transformed, /`\/floor-plan-3d\/mitunet-assets\/demos\/\$\{encodeURIComponent\(demoSelect\.value\)\}\.json`/);
+  assert.doesNotMatch(transformed, /"\.\/demos\//);
+  assert.doesNotMatch(transformed, /`\.\/demos\//);
+});
+
 test("keeps the viewer completion signature and stores mapped furniture records", () => {
   const transformed = transformRoomLogIntegrationModule(`
 export function sendRoomLogCompletion(context, plan, sourceName, opener, furnitures = []) {
