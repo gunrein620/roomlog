@@ -1369,7 +1369,7 @@ describe("RoomlogService", () => {
       return new Response(
         JSON.stringify({
           output_text:
-            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"거실","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]}]}'
+            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"공간 1","roomType":"BATHROOM","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]}]}'
         }),
         { headers: { "Content-Type": "application/json" }, status: 200 }
       );
@@ -1379,20 +1379,28 @@ describe("RoomlogService", () => {
       const result = await service.analyzeFloorPlanWithAi({
         analysisMode: "room-structure",
         imageDataUrl: "data:image/png;base64,Zm9v",
-        model: "openai/floor-plan-vision"
+        model: "openai/floor-plan-vision",
+        prompt:
+          "도면에 표시된 모든 실내 공간의 이름과 닫힌 polygon을 반환하세요. 현관 polygon이 열린 거실 영역으로 확장되지 않도록 하고, 연결된 열린 영역의 15% 이내로 제안하세요. 도면 치수를 확인할 수 있으면 현관 polygon을 6m² 이내로 제안하세요."
       });
 
-      assert.match(String(capturedBody?.instructions), /방 구조 분석기/);
+      assert.match(String(capturedBody?.instructions), /Roomlog의 도면 방 구조 분석기/);
+      assert.match(String(capturedBody?.instructions), /solid-filled, double-line-hollow, hatched, gray-fill/);
+      assert.match(String(capturedBody?.instructions), /noiseFlags/);
       assert.match(String(capturedBody?.instructions), /0~1000 정규화 좌표/);
       assert.equal((capturedBody?.text as any)?.format?.type, "json_schema");
       assert.equal((capturedBody?.text as any)?.format?.strict, true);
       assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.planStyle?.type, "string");
+      assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.rooms?.items?.properties?.roomType?.type, "string");
       assert.match(JSON.stringify(capturedBody), /"detail":"high"/);
+      assert.match(JSON.stringify(capturedBody?.input), /연결된 열린 영역의 15% 이내/);
+      assert.match(JSON.stringify(capturedBody?.input), /6m² 이내/);
       assert.equal(result.analysisMode, "room-structure");
       assert.equal(result.status, "ready");
       assert.equal(result.planStyle, "double-line-hollow");
       assert.equal(result.noiseFlags?.decorativeHatching, true);
-      assert.equal(result.rooms?.[0].label, "거실");
+      assert.equal(result.rooms?.[0].label, "공간 1");
+      assert.equal((result.rooms?.[0] as { roomType?: string } | undefined)?.roomType, "BATHROOM");
       assert.equal(result.rooms?.[0].polygon[2].x, 560);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1400,6 +1408,53 @@ describe("RoomlogService", () => {
       else delete process.env.OPENAI_API_KEY;
       if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
       else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("uses the Terra no-reasoning defaults for room structure analysis", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFloorPlanEffort = process.env.OPENAI_FLOOR_PLAN_EFFORT;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    delete process.env.OPENAI_CHAT_MODEL;
+    delete process.env.OPENAI_FLOOR_PLAN_EFFORT;
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"방 구조를 분석했습니다.","planStyle":"single-line","noiseFlags":{"decorativeHatching":false,"watermark":false},"rooms":[]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      await service.analyzeFloorPlanWithAi({
+        analysisMode: "room-structure",
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      assert.equal(capturedBody?.model, "gpt-5.6-terra");
+      assert.deepEqual(capturedBody?.reasoning, { effort: "none" });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+      if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      else delete process.env.OPENAI_CHAT_MODEL;
+      if (originalFloorPlanEffort) process.env.OPENAI_FLOOR_PLAN_EFFORT = originalFloorPlanEffort;
+      else delete process.env.OPENAI_FLOOR_PLAN_EFFORT;
     }
   });
 

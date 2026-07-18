@@ -1,36 +1,33 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ManagerVendorView } from "@roomlog/types";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
 import { TicketActionMenu } from "./TicketActionMenu";
-import { TicketDetailDialog } from "./TicketDetailDialog";
 import { VendorAssignmentDialog } from "./VendorAssignmentDialog";
+import { TicketChatPanel } from "./TicketChatPanel";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
-  defectDisplayStatus,
   filterDefectRows,
-  formatDefectMoney,
   paginateDefectRows,
   type DefectDashboardFilters,
   type DefectDashboardRow,
-  type DefectDisplayStatus,
   type DefectStatusFilter,
 } from "./ticket-dashboard-model";
+import { ticketLaneOf, type TicketLane } from "./ticket-lane";
 
 const PAGE_SIZE = 10;
 const TABLE_COLUMNS = [
-  "유형",
+  "상태",
   "작업명",
   "건물",
   "호실",
   "작업자",
   "업체 선정",
-  "청구 금액",
-  "상태",
+  "유형",
   "작업",
 ] as const;
 
@@ -49,43 +46,49 @@ const ticketTypeLabel = {
   complaint: "일반 민원",
 } as const;
 
-const displayStatusLabel: Record<DefectDisplayStatus, string> = {
-  completed: "완료",
-  vendor_selected: "업체 선정",
-  incomplete: "미완료",
+const displayStatusLabel: Record<TicketLane | "cancelled", string> = {
+  received: "접수",
+  processing: "진행",
+  resolved: "완료",
   cancelled: "취소",
 };
 
 function DashboardRow({
   row,
+  isSelected,
   onSelect,
   vendors,
   vendorSelectionDisabled,
 }: {
   row: DefectDashboardRow;
+  isSelected: boolean;
   onSelect: (row: DefectDashboardRow) => void;
   vendors: readonly ManagerVendorView[];
   vendorSelectionDisabled: boolean;
 }) {
-  const displayStatus = defectDisplayStatus(row);
+  const displayStatus = ticketLaneOf(row.ticket.status) ?? "cancelled";
 
   return (
-    <tr data-unread={row.isManagerUnread ? "true" : undefined}>
+    <tr
+      data-unread={row.isManagerUnread ? "true" : undefined}
+      data-selected={isSelected ? "true" : undefined}
+      className="manager-defect-dashboard__row"
+      onClick={() => onSelect(row)}
+    >
       <td>
-        <span
-          className="manager-defect-dashboard__type-badge"
-          data-ticket-type={row.ticket.type}
-        >
-          {ticketTypeLabel[row.ticket.type]}
-        </span>
+        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
+          <span
+            className="manager-defect-dashboard__status-badge"
+            data-status={displayStatus}
+          >
+            {displayStatusLabel[displayStatus]}
+          </span>
+          <SelfRepairBadge ticket={row.ticket} />
+        </div>
       </td>
       <td>
-        {/* 작업명 클릭 → 페이지 이동 대신 상세 모달(빠른 확인) — 깊은 작업은 모달 안 링크로 */}
-        <button
-          type="button"
-          className="manager-defect-dashboard__job-link"
-          onClick={() => onSelect(row)}
-        >
+        {/* 행 전체가 대화 패널을 연다 — 작업명은 그 안에서 눌러도 같은 동작이라 버튼만 유지 */}
+        <button type="button" className="manager-defect-dashboard__job-link">
           {row.isManagerUnread ? (
             <span className="manager-defect-dashboard__unread-label">
               <span
@@ -113,21 +116,15 @@ function DashboardRow({
           disabled={vendorSelectionDisabled}
         />
       </td>
-      <td className="manager-defect-dashboard__amount">
-        {formatDefectMoney(row.repair?.quoteAmount)}
-      </td>
       <td>
-        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
-          <span
-            className="manager-defect-dashboard__status-badge"
-            data-status={displayStatus}
-          >
-            {displayStatusLabel[displayStatus]}
-          </span>
-          <SelfRepairBadge ticket={row.ticket} />
-        </div>
+        <span
+          className="manager-defect-dashboard__type-badge"
+          data-ticket-type={row.ticket.type}
+        >
+          {ticketTypeLabel[row.ticket.type]}
+        </span>
       </td>
-      <td>
+      <td onClick={(event) => event.stopPropagation()}>
         <div className="manager-defect-dashboard__action">
           <TicketActionMenu
             ticketId={row.ticket.id}
@@ -157,20 +154,31 @@ export function ManagerDefectDashboard({
     template: initialTemplate,
   });
   const [page, setPage] = useState(1);
-  const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
     () => new Set(),
   );
+  // 패널에서 바꾼 레인을 목록에 바로 반영한다(서버 트리를 다시 그리면 패널이 닫히므로).
+  const [laneById, setLaneById] = useState<Record<string, TicketLane>>({});
+
+  // 서버 목록이 새로 오면 그게 최신이다 — 들고 있던 낙관적 값은 버린다.
+  useEffect(() => setLaneById({}), [rows]);
 
   const effectiveRows = useMemo(
     () =>
-      rows.map((row) =>
-        locallyReadTicketIds.has(row.ticket.id)
-          ? { ...row, isManagerUnread: false }
-          : row,
-      ),
-    [locallyReadTicketIds, rows],
+      rows.map((row) => {
+        const lane = laneById[row.ticket.id];
+        const patched = lane ? { ...row, ticket: { ...row.ticket, status: lane } } : row;
+
+        return locallyReadTicketIds.has(patched.ticket.id)
+          ? { ...patched, isManagerUnread: false }
+          : patched;
+      }),
+    [laneById, locallyReadTicketIds, rows],
   );
+  // 열린 패널이 가리키는 행은 항상 최신 rows에서 되찾는다 — 새로고침돼도 선택이 살아 있다.
+  const selectedRow =
+    effectiveRows.find((row) => row.ticket.id === selectedTicketId) ?? null;
   const counts = useMemo(() => countDefectStatuses(effectiveRows), [effectiveRows]);
   const workers = useMemo(
     () =>
@@ -208,7 +216,7 @@ export function ManagerDefectDashboard({
   }
 
   function selectRow(row: DefectDashboardRow) {
-    setSelectedRow(row);
+    setSelectedTicketId(row.ticket.id);
     void markManagerTicketRead(row.ticket.id)
       .then(() => {
         setLocallyReadTicketIds((current) => {
@@ -218,7 +226,7 @@ export function ManagerDefectDashboard({
         });
       })
       .catch(() => {
-        // 모달 확인은 유지하고 배지는 서버 저장이 성공할 때만 갱신한다.
+        // 패널은 그대로 열어두고 배지는 서버 저장이 성공할 때만 갱신한다.
       });
   }
 
@@ -314,6 +322,7 @@ export function ManagerDefectDashboard({
               <DashboardRow
                 key={row.ticket.id}
                 row={row}
+                isSelected={selectedRow?.ticket.id === row.ticket.id}
                 onSelect={selectRow}
                 vendors={vendors}
                 vendorSelectionDisabled={vendorSelectionDisabled}
@@ -321,7 +330,7 @@ export function ManagerDefectDashboard({
             ))}
             {pageResult.rows.length === 0 ? (
               <tr>
-                <td className="manager-defect-dashboard__empty" colSpan={9}>
+                <td className="manager-defect-dashboard__empty" colSpan={8}>
                   조건에 맞는 하자·민원 티켓이 없습니다.
                 </td>
               </tr>
@@ -367,7 +376,13 @@ export function ManagerDefectDashboard({
         </nav>
       </footer>
 
-      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <TicketChatPanel
+        row={selectedRow}
+        onClose={() => setSelectedTicketId(null)}
+        onLaneChange={(ticketId, lane) =>
+          setLaneById((current) => ({ ...current, [ticketId]: lane }))
+        }
+      />
     </section>
   );
 }

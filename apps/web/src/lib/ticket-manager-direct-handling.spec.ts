@@ -485,12 +485,14 @@ test("unregistered vendor job screens are progress-only and hide manager mutatio
   }
 });
 
-// 세입자 표시는 세입자탭(TenantMyPage) 상세 시트가 담당한다 — 모바일(/tenant/defect/**) 화면 아님.
-test("tenant direct handling names the manager and keeps completion confirmation in the living tab sheet", () => {
+// 세입자 상세는 상태와 긴급도만 요약하고, 직접 처리 후속 안내는 티켓 채팅으로 모은다.
+test("tenant history detail keeps direct handling actions out of the chat-focused sheet", () => {
   const page = source("app/my/flows/TenantMyPage.tsx");
 
-  assert.match(page, /관리자가 직접 처리 중/);
-  assert.match(page, /관리자가 처리 완료를 보고했어요/);
-  assert.match(page, /detailDirectHandling\.completedAt/);
-  assert.match(page, /수리 완료 확인/);
+  assert.match(page, /detailStatusLabel/);
+  assert.match(page, /진행 메시지/);
+  assert.doesNotMatch(page, /관리자가 직접 처리 중/);
+  assert.doesNotMatch(page, /관리자가 처리 완료를 보고했어요/);
+  assert.doesNotMatch(page, /detailDirectHandling\.completedAt/);
+  assert.doesNotMatch(page, /수리 완료 확인/);
 });

@@ -107,15 +107,6 @@ export function listManagerVendors(
   );
 }
 
-export function searchVendorCatalog(
-  filters: VendorCatalogSearchFilters = {},
-): Promise<VendorReadResult<VendorCatalogSearchResult[]>> {
-  return readVendorData(
-    () => serverFetch<VendorCatalogSearchResult[]>(`/manager/vendor-mgmt/search${queryString(filters)}`),
-    filterSearchDemo(filters),
-  );
-}
-
 export function searchAssignableVendorCandidates(
   ticketId: string,
   query?: string,
@@ -189,18 +180,11 @@ export function findManagerVendorJobByTicket(
   );
 }
 
-export function registerManagerVendor(vendorId: string): Promise<ManagerVendorView> {
-  return serverFetch<ManagerVendorView>(
-    `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}/registration`,
-    { method: "PUT", body: JSON.stringify({}) },
-  );
-}
-
 export function createManagerVendor(
   input: CreateManagerVendorInput,
 ): Promise<ManagerVendorView> {
   return serverFetch<ManagerVendorView>(
-    "/manager/vendor-mgmt/vendors/manual",
+    `/manager/vendor-mgmt/vendors/manual`,
     { method: "POST", body: JSON.stringify(input) },
   );
 }

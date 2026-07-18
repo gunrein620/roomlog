@@ -1,7 +1,6 @@
 /** 관리자 업체관리의 의미 기반 정식 경로. */
 export const MANAGER_VENDOR_MGMT_PATHS = {
   vendors: "/manager/vendor-mgmt/vendors",
-  search: "/manager/vendor-mgmt/search",
   credit: "/manager/vendor-mgmt/credit",
   vendor: (vendorId: string) =>
     `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}`,
@@ -23,7 +22,6 @@ export function legacyVendorMgmtRedirect(
   const vendorId = query.vendorId ?? query.id;
   if (screen === "01" && vendorId) return MANAGER_VENDOR_MGMT_PATHS.vendor(vendorId);
   if (screen === "02" && vendorId) return MANAGER_VENDOR_MGMT_PATHS.performance(vendorId);
-  if (screen === "03") return MANAGER_VENDOR_MGMT_PATHS.search;
   return MANAGER_VENDOR_MGMT_PATHS.vendors;
 }
 

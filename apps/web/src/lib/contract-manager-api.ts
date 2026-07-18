@@ -56,6 +56,8 @@ export interface ManagerContractDetail {
     rent: string;
     maintenanceFee: string;
     paymentDay: string;
+    startDate: string;
+    endDate: string;
     account: string;
     specialTerms?: string;
     autoRenewal?: string;

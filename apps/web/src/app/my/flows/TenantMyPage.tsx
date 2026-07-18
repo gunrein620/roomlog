@@ -30,7 +30,6 @@ import {
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
 import { TenantVendorConnectionCard } from "./TenantVendorConnectionCard";
-import { TenantVendorWorkflowPanel } from "./TenantVendorWorkflowPanel";
 import { tenantVendorConnectionEligible } from "./tenant-vendor-connection";
 import {
   createTenantComplaintDraftMutationGuard,
@@ -131,24 +130,6 @@ type TenantComplaintMessage = {
 type TenantComplaintTicketInfo = {
   status?: string;
   priority?: number;
-  responsibilityHint?: string;
-  responsibilityDecision?: {
-    responsibility: "TENANT" | "LANDLORD";
-    note: string;
-    decidedAt: string;
-  };
-  directHandling?: {
-    startedAt: string;
-    completedAt?: string;
-    note?: string;
-  };
-};
-
-type TenantComplaintAiFeedbackEntry = {
-  id: string;
-  target?: string;
-  status?: string;
-  reason?: string;
 };
 
 type TenantComplaintResponse = {
@@ -163,7 +144,6 @@ type TenantComplaintResponse = {
   displayStatus?: string;
   status?: string;
   ticket?: TenantComplaintTicketInfo;
-  aiFeedback?: TenantComplaintAiFeedbackEntry[];
   messages?: TenantComplaintMessage[];
 };
 
@@ -236,21 +216,6 @@ function repairDateLabel(iso?: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "일자 확인 중";
   return iso.slice(0, 10).replaceAll("-", ".");
-}
-
-function repairDateTimeLabel(iso?: string): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  }).format(date);
 }
 
 function dateTimeLocalValue(iso: string): string {
@@ -851,11 +816,17 @@ export default function TenantMyPage({
         void loadRepairRequests();
       }
     };
+    // 관리인 레인 변경은 목록 배지에도 반영돼야 한다.
+    const reloadRepairRequests = () => {
+      void loadRepairRequests();
+    };
     const socket = getRealtimeSocket();
     socket.on("roomlog:activity", refreshRepairRequests);
+    socket.on("roomlog:ticket-lane", reloadRepairRequests);
 
     return () => {
       socket.off("roomlog:activity", refreshRepairRequests);
+      socket.off("roomlog:ticket-lane", reloadRepairRequests);
     };
   }, [loadRepairRequests]);
   const [billingCard, setBillingCard] = useState<TenantBillingCardModel>(EMPTY_BILLING_CARD);
@@ -879,13 +850,8 @@ export default function TenantMyPage({
   const [requestError, setRequestError] = useState("");
   const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
   const returnedComplaintOpenedRef = useRef(false);
-  const [isRepairDetailLoading, setIsRepairDetailLoading] = useState(false);
   const [repairDetailError, setRepairDetailError] = useState("");
   const [selectedComplaintDetail, setSelectedComplaintDetail] = useState<TenantComplaintResponse | null>(null);
-  const [appealReason, setAppealReason] = useState("");
-  const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
-  const [isConfirmingCompletion, setIsConfirmingCompletion] = useState(false);
-  const [isOpeningManagerChat, setIsOpeningManagerChat] = useState(false);
   const [complaintChatDraft, setComplaintChatDraft] = useState("");
   const [isSendingComplaintMessage, setIsSendingComplaintMessage] = useState(false);
   const [requestUrgency, setRequestUrgency] = useState<1 | 2 | 3 | 4 | undefined>(undefined);
@@ -1210,35 +1176,12 @@ export default function TenantMyPage({
       : announcementState.status === "error"
         ? "공지사항을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요."
         : "임대인으로부터 전달된 새로운 소식이 없습니다.";
-  const selectedRepairOccurredAtLabel = selectedRepairRequest
-    ? repairDateTimeLabel(selectedRepairRequest.occurredAt ?? selectedRepairRequest.createdAt)
-    : "";
-  const selectedRepairBody = selectedRepairRequest?.description.trim() || "본문 내용이 없습니다.";
   const detailTicket = selectedComplaintDetail?.ticket;
-  const detailDecision = detailTicket?.responsibilityDecision;
-  const detailDirectHandling = detailTicket?.directHandling;
   const detailStatusLabel = selectedComplaintDetail?.displayStatus ?? selectedRepairRequest?.status ?? "";
   const detailMessages = (selectedComplaintDetail?.messages ?? []).filter(
     (message) => (message.messageText ?? "").trim().length > 0
   );
-  const hasOpenResponsibilityAppeal = (selectedComplaintDetail?.aiFeedback ?? []).some(
-    (feedback) => feedback.target === "RESPONSIBILITY" && feedback.status === "OPEN"
-  );
-  const isCompletionReported = detailTicket?.status === "COMPLETION_REPORTED";
   const isTicketClosed = detailTicket?.status === "COMPLETED" || detailTicket?.status === "CANCELLED";
-  // 임차인 책임(협상 후 관리자 확정 포함) + 업체 미배정이면 상세에서 바로 업체 연결을 시작할 수 있어야
-  // 자가수리 결제까지 이어진다 — 서버 게이트(임차인 책임 가능성 + REQUESTABLE 상태)와 같은 조건.
-  const canStartSelfRepairConnection =
-    tenantVendorConnectionEligible(
-      detailTicket?.responsibilityHint as Parameters<typeof tenantVendorConnectionEligible>[0]
-    ) &&
-    ["RECEIVED", "REVIEWING", "ADDITIONAL_INFO_REQUESTED", "VENDOR_ASSIGNMENT_PENDING", "REOPENED"].includes(
-      detailTicket?.status ?? ""
-    );
-  const selectedRepairPhotos =
-    selectedRepairRequest?.attachments.filter((attachment): attachment is TenantRepairAttachment & { url: string } =>
-      typeof attachment.url === "string" && attachment.url.trim().length > 0
-    ) ?? [];
 
   const openNewRequestSheet = () => {
     setRequestError("");
@@ -1276,9 +1219,7 @@ export default function TenantMyPage({
   const openRepairDetailSheet = async (request: TenantRepairRequest) => {
     setSelectedRepairRequest(request);
     setSelectedComplaintDetail(null);
-    setAppealReason("");
     setRepairDetailError("");
-    setIsRepairDetailLoading(true);
 
     try {
       const res = await fetch(`/api/tenant/complaints/${encodeURIComponent(request.id)}`, { cache: "no-store" });
@@ -1288,34 +1229,30 @@ export default function TenantMyPage({
       setSelectedRepairRequest(normalizeTenantRepairRequest(detail));
     } catch {
       setRepairDetailError("상세 내용을 불러오지 못했습니다. 목록에 남아있는 접수 정보만 표시합니다.");
-    } finally {
-      setIsRepairDetailLoading(false);
     }
   };
 
-  // 상세 시트가 열려 있는 동안 업체·관리자 새 메시지를 실시간 반영 (2D broadcast 수신).
+  // 상세 시트가 열려 있는 동안 업체·관리자 새 메시지를 실시간 반영.
+  // 관리자 답변은 roomlog:ticket-message로 오고, 레인 변경은 roomlog:ticket-lane으로 온다.
+  // 세입자 상세 조회는 인메모리 스토어를 읽으므로 여기서는 다시 읽어도 밀리지 않는다.
   useEffect(() => {
     const complaintId = selectedRepairRequest?.id;
     if (!complaintId) return;
-    const onActivity = (payload: unknown) => {
-      if (
-        payload &&
-        typeof payload === "object" &&
-        "kind" in payload &&
-        (payload as { kind?: string }).kind === "ticket"
-      ) {
-        void refreshComplaintDetail(complaintId);
-      }
+
+    const onTicketEvent = () => {
+      void refreshComplaintDetail(complaintId);
     };
     const socket = getRealtimeSocket();
-    socket.on("roomlog:activity", onActivity);
+    socket.on("roomlog:ticket-message", onTicketEvent);
+    socket.on("roomlog:ticket-lane", onTicketEvent);
     return () => {
-      socket.off("roomlog:activity", onActivity);
+      socket.off("roomlog:ticket-message", onTicketEvent);
+      socket.off("roomlog:ticket-lane", onTicketEvent);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepairRequest?.id]);
 
-  // 이의제기·완료확인 뒤 상세를 다시 읽어 확정/피드백/메시지 상태를 맞춘다. 실패 시 기존 표시 유지.
+  // 새 메시지와 실시간 상태를 다시 읽어 상세 시트를 최신으로 맞춘다. 실패 시 기존 표시 유지.
   const refreshComplaintDetail = async (complaintId: string) => {
     try {
       const res = await fetch(`/api/tenant/complaints/${encodeURIComponent(complaintId)}`, { cache: "no-store" });
@@ -1325,78 +1262,6 @@ export default function TenantMyPage({
       setSelectedRepairRequest(normalizeTenantRepairRequest(detail));
     } catch {
       // 새로고침 실패는 치명적이지 않다 — 다음 열람 때 다시 읽는다.
-    }
-  };
-
-  const handleSubmitAppeal = async () => {
-    if (!selectedRepairRequest || isSubmittingAppeal) return;
-    const reason = appealReason.trim();
-    if (!reason) return;
-    setIsSubmittingAppeal(true);
-    setRepairDetailError("");
-    try {
-      const res = await fetch(
-        `/api/tenant/complaints/${encodeURIComponent(selectedRepairRequest.id)}/ai-feedback`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            target: "RESPONSIBILITY",
-            reason,
-            requestedAction: "관리자가 책임 판단 근거를 다시 검토해 주세요."
-          })
-        }
-      );
-      if (!res.ok) {
-        const data = (await res.json().catch(() => undefined)) as { message?: string } | undefined;
-        throw new Error(data?.message || "이의제기를 접수하지 못했습니다.");
-      }
-      setAppealReason("");
-      showToast("이의제기가 접수되었습니다.");
-      await refreshComplaintDetail(selectedRepairRequest.id);
-    } catch (error) {
-      setRepairDetailError(error instanceof Error ? error.message : "이의제기를 접수하지 못했습니다.");
-    } finally {
-      setIsSubmittingAppeal(false);
-    }
-  };
-
-  const handleConfirmCompletion = async () => {
-    if (!selectedRepairRequest || isConfirmingCompletion) return;
-    setIsConfirmingCompletion(true);
-    setRepairDetailError("");
-    try {
-      const res = await fetch(
-        `/api/tenant/complaints/${encodeURIComponent(selectedRepairRequest.id)}/confirm-completion`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({})
-        }
-      );
-      if (!res.ok) {
-        const data = (await res.json().catch(() => undefined)) as { message?: string } | undefined;
-        throw new Error(data?.message || "완료 확인을 처리하지 못했습니다.");
-      }
-      showToast("수리 완료를 확인했습니다.");
-      await refreshComplaintDetail(selectedRepairRequest.id);
-      void loadRepairRequests();
-    } catch (error) {
-      setRepairDetailError(error instanceof Error ? error.message : "완료 확인을 처리하지 못했습니다.");
-    } finally {
-      setIsConfirmingCompletion(false);
-    }
-  };
-
-  // 이의제기 뒤 관리자 대화 — 세입자탭 안의 임대인 채팅 시트를 그대로 연다(모바일 화면 이동 없음).
-  const handleOpenManagerChat = async () => {
-    if (isOpeningManagerChat) return;
-    setIsOpeningManagerChat(true);
-    try {
-      closeRepairDetailSheet();
-      await openLandlordConversation();
-    } finally {
-      setIsOpeningManagerChat(false);
     }
   };
 
@@ -1444,10 +1309,8 @@ export default function TenantMyPage({
   const closeRepairDetailSheet = () => {
     setSelectedRepairRequest(null);
     setSelectedComplaintDetail(null);
-    setAppealReason("");
     setComplaintChatDraft("");
     setRepairDetailError("");
-    setIsRepairDetailLoading(false);
   };
 
   useEffect(() => {
@@ -2166,9 +2029,9 @@ export default function TenantMyPage({
       ) : null}
 
       {selectedRepairRequest ? (
-        <div className="notification-sheet-backdrop" role="presentation" onClick={closeRepairDetailSheet}>
+        <div className="notification-sheet-backdrop tenant-request-detail-backdrop" role="presentation" onClick={closeRepairDetailSheet}>
           <section
-            className="notification-sheet tenant-request-sheet tenant-request-detail-sheet"
+            className="notification-sheet tenant-request-sheet tenant-request-detail-sheet tenant-request-detail-panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby="tenant-request-detail-title"
@@ -2199,154 +2062,37 @@ export default function TenantMyPage({
                       <span className="tenant-defect-chip">긴급도 {detailTicket.priority}</span>
                     ) : null}
                   </div>
-                  {detailTicket.responsibilityHint ? (
-                    <p className="tenant-defect-ai-hint">
-                      {detailTicket.responsibilityHint} <em>AI 추정 · 확정 아님</em>
-                    </p>
-                  ) : null}
-                  {detailDecision ? (
-                    <div className="tenant-defect-decision">
-                      <strong>관리자 확정 · {detailDecision.responsibility === "TENANT" ? "임차인" : "임대인"} 책임</strong>
-                      <p>{detailDecision.note}</p>
-                    </div>
-                  ) : null}
-                  {detailDirectHandling ? (
-                    <div className="tenant-defect-decision">
-                      <strong>
-                        {detailDirectHandling.completedAt
-                          ? "관리자가 처리 완료를 보고했어요"
-                          : "관리자가 직접 처리 중이에요"}
-                      </strong>
-                      {detailDirectHandling.note ? <p>{detailDirectHandling.note}</p> : null}
-                    </div>
-                  ) : null}
-                  {isCompletionReported ? (
-                    <button
-                      className="primary tenant-defect-confirm"
-                      type="button"
-                      disabled={isConfirmingCompletion}
-                      onClick={() => void handleConfirmCompletion()}
-                    >
-                      {isConfirmingCompletion ? "확인 중" : "수리 완료 확인"}
-                    </button>
-                  ) : null}
-                </section>
-              ) : null}
-
-              <div className="tenant-request-detail-meta-row">
-                <div className="tenant-request-type-toggle" role="group" aria-label="요청 유형">
-                  {(["민원", "하자"] as const).map((category) => (
-                    <button
-                      key={category}
-                      className={selectedRepairRequest.category === category ? "active" : ""}
-                      type="button"
-                      disabled
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-                <label className="tenant-request-date-field">
-                  <span>발생일시</span>
-                  <input type="text" value={selectedRepairOccurredAtLabel} placeholder="연도-월-일 --:--" readOnly />
-                </label>
-              </div>
-
-              <label className="tenant-request-body-field">
-                <span>본문 내용</span>
-                <textarea value={selectedRepairBody} rows={6} readOnly />
-              </label>
-
-              {selectedRepairRequest.location ? (
-                <label className="tenant-request-title-field">
-                  <span>발생 위치</span>
-                  <input type="text" value={selectedRepairRequest.location} readOnly />
-                </label>
-              ) : null}
-
-              {selectedRepairPhotos.length > 0 ? (
-                <div className="tenant-request-image-strip" aria-label="첨부 이미지">
-                  {selectedRepairPhotos.map((attachment) => (
-                    <div className="tenant-request-image-preview tenant-request-image-file" key={attachment.url}>
-                      <img src={attachment.url} alt={`${attachment.name} 첨부 이미지`} />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              <TenantVendorWorkflowPanel complaintId={selectedRepairRequest.id} />
-
-              {canStartSelfRepairConnection ? (
-                <TenantVendorConnectionCard
-                  complaintId={selectedRepairRequest.id}
-                  onRequested={() => {
-                    void refreshComplaintDetail(selectedRepairRequest.id);
-                    void loadRepairRequests();
-                  }}
-                />
-              ) : null}
-
-              {detailTicket && !isTicketClosed ? (
-                <section className="tenant-defect-appeal" aria-label="책임 판단 이의제기">
-                  <strong>책임 판단 이의제기</strong>
-                  {hasOpenResponsibilityAppeal ? (
-                    <>
-                      <p className="tenant-defect-appeal-open">이의제기 접수됨 · 관리자 검토 대기</p>
-                      <button
-                        type="button"
-                        disabled={isOpeningManagerChat}
-                        onClick={() => void handleOpenManagerChat()}
-                      >
-                        {isOpeningManagerChat ? "여는 중" : "관리자와 대화하기"}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <p>AI 가능성 또는 관리자 확정에 이견이 있으면 근거를 남겨 다시 검토받을 수 있어요.</p>
-                      <textarea
-                        value={appealReason}
-                        onChange={(event) => setAppealReason(event.target.value)}
-                        rows={3}
-                        maxLength={500}
-                        placeholder="이의제기 사유를 입력해 주세요"
-                        aria-label="책임 판단 이의제기 사유"
-                      />
-                      <button
-                        type="button"
-                        disabled={isSubmittingAppeal || appealReason.trim().length === 0}
-                        onClick={() => void handleSubmitAppeal()}
-                      >
-                        {isSubmittingAppeal ? "접수 중" : "관리자 재검토 요청"}
-                      </button>
-                    </>
-                  )}
                 </section>
               ) : null}
 
               {detailTicket ? (
                 <section className="tenant-defect-messages" aria-label="진행 메시지">
                   <strong>진행 메시지</strong>
-                  {detailMessages.length > 0 ? (
-                    <ul>
-                      {/* CSS column-reverse와 짝: 역순 렌더로 최신이 항상 하단·스크롤 고정 */}
-                      {[...detailMessages].reverse().map((message, index) => {
-                        const senderLabel =
-                          message.senderRole === "TENANT"
-                            ? "나"
-                            : message.senderRole === "LANDLORD"
-                              ? "관리자"
-                              : message.senderRole === "VENDOR"
-                                ? "업체"
-                                : "시스템";
-                        return (
-                          <li key={`${message.createdAt ?? index}-${index}`} data-sender={message.senderRole ?? "SYSTEM"}>
-                            <span>{senderLabel}</span>
-                            <p>{message.messageText}</p>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
+                  <ul>
+                    {detailMessages.length === 0 ? (
+                      <li className="tenant-defect-message-empty">
+                        <p>아직 진행 메시지가 없습니다.</p>
+                      </li>
+                    ) : (
+                      /* CSS column-reverse와 짝: 역순 렌더로 최신이 항상 하단·스크롤 고정 */
+                      [...detailMessages].reverse().map((message, index) => {
+                          const senderLabel =
+                            message.senderRole === "TENANT"
+                              ? "나"
+                              : message.senderRole === "LANDLORD"
+                                ? "관리자"
+                                : message.senderRole === "VENDOR"
+                                  ? "업체"
+                                  : "시스템";
+                          return (
+                            <li key={`${message.createdAt ?? index}-${index}`} data-sender={message.senderRole ?? "SYSTEM"}>
+                              <span>{senderLabel}</span>
+                              <p>{message.messageText}</p>
+                            </li>
+                          );
+                        })
+                    )}
+                  </ul>
                   {!isTicketClosed ? (
                     <div className="tenant-defect-chat-input">
                       <input
@@ -2375,11 +2121,6 @@ export default function TenantMyPage({
                 </section>
               ) : null}
 
-              <div className="tenant-request-actions">
-                <button className="primary" type="button" onClick={closeRepairDetailSheet}>
-                  닫기
-                </button>
-              </div>
             </div>
           </section>
         </div>

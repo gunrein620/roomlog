@@ -343,6 +343,10 @@ enum CreditLedgerEntryType {
   REVERSAL
 }
 
+enum GaraVendorPayoutStatus {
+  CREDIT_DEBITED
+}
+
 enum CreditTopupOrderStatus {
   READY
   CONFIRMING
@@ -644,6 +648,7 @@ model UserAccount {
   managerTicketReads         ManagerTicketRead[]
   creditAccount              CreditAccount?             @relation("ManagerCreditAccount")
   autoPayPolicy              AutoPayPolicy?             @relation("ManagerAutoPayPolicy")
+  garaVendorPayoutRequests   GaraVendorPayoutRequest[]
 
   @@index([role, status])
 }
@@ -886,6 +891,7 @@ model VendorProfile {
   estimates         VendorEstimate[]
   completionReports VendorCompletionReport[]
   paymentRequests   VendorPaymentRequest[]
+  garaVendorPayoutRequests GaraVendorPayoutRequest[]
   domainEvents      DomainEventOutbox[]
   createdByManager  UserAccount?             @relation("ManagerCreatedVendorProfiles", fields: [createdByManagerId], references: [id], onDelete: Restrict)
 
@@ -934,6 +940,7 @@ model ManagerVendor {
   updatedAt    DateTime            @updatedAt
   manager      UserAccount         @relation("ManagerVendorManager", fields: [managerId], references: [id], onDelete: Restrict)
   vendor       VendorProfile       @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  garaVendorPayoutRequests GaraVendorPayoutRequest[]
 
   @@unique([managerId, vendorId])
   @@index([managerId, status])
@@ -1146,6 +1153,7 @@ model CreditAccount {
   manager       UserAccount         @relation("ManagerCreditAccount", fields: [managerId], references: [id], onDelete: Restrict)
   ledgerEntries CreditLedgerEntry[]
   topupOrders   CreditTopupOrder[]
+  garaVendorPayoutRequests GaraVendorPayoutRequest[]
 
   @@unique([id, managerId])
 }
@@ -1167,9 +1175,35 @@ model CreditLedgerEntry {
   reversedBy     CreditLedgerEntry?    @relation("CreditLedgerReversal")
   paymentRequest VendorPaymentRequest?
   paymentAttempt VendorPaymentAttempt?
+  garaVendorPayoutRequest GaraVendorPayoutRequest?
 
   @@index([creditAccountId, createdAt])
   @@index([referenceType, referenceId])
+}
+
+model GaraVendorPayoutRequest {
+  id                    String                 @id
+  managerId             String
+  managerVendorId       String
+  vendorId              String
+  creditAccountId       String
+  ledgerEntryId         String                 @unique
+  amount                BigInt
+  accountNumberSnapshot String
+  status                GaraVendorPayoutStatus @default(CREDIT_DEBITED)
+  idempotencyKey        String                 @unique
+  payloadHash           String
+  createdAt             DateTime               @default(now())
+
+  manager       UserAccount       @relation(fields: [managerId], references: [id], onDelete: Restrict)
+  managerVendor ManagerVendor     @relation(fields: [managerVendorId], references: [id], onDelete: Restrict)
+  vendor        VendorProfile     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  creditAccount CreditAccount     @relation(fields: [creditAccountId], references: [id], onDelete: Restrict)
+  ledgerEntry   CreditLedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+
+  @@index([managerId, createdAt])
+  @@index([managerVendorId, createdAt])
+  @@index([vendorId, createdAt])
 }
 
 model CreditTopupOrder {

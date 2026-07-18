@@ -61,6 +61,16 @@ export class TradeContractBillingBridge implements OnModuleInit {
     return connected;
   }
 
+  /** 계약 해지 → 세입자-호실 연결 해제(계약 레코드는 expired 전환, 삭제 없음). */
+  async release(contract: TradeContract): Promise<void> {
+    if (contract.status !== "terminated") return;
+    this.roomlogService.disconnectAcceptedTradeContract({
+      tradeContractId: contract.id,
+      tenantId: contract.tenantId
+    });
+    await this.roomlogService.ensureTradeContractDurability();
+  }
+
   private connectionInput(contract: TradeContract): ConnectAcceptedTradeContractInput {
     if (!contract.respondedAt) {
       throw new BadRequestException("거래 계약 수락 시각을 확인할 수 없습니다.");
