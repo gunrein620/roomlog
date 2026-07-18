@@ -3,49 +3,10 @@
   gap: var(--space-lg);
 }
 
-.summaryStrip {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr));
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-container-lowest);
-}
-
-.balanceCard,
-.summaryCard,
 .panel,
 .paymentCard {
   background: var(--surface-container-lowest);
 }
-
-.balanceCard,
-.summaryCard {
-  min-height: calc(var(--touch-target) + var(--touch-target));
-  padding: var(--space-md) var(--space-lg);
-  border-right: 1px solid var(--border);
-}
-
-.balanceCard {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-lg);
-  color: var(--on-primary-container);
-  background: var(--primary-container);
-}
-
-.summaryCard {
-  display: grid;
-  align-content: center;
-  gap: var(--space-xs);
-}
-
-.summaryCard:last-of-type {
-  border-right: 0;
-}
-
-.balanceCard > div,
 .requestMain,
 .requestAmount,
 .topupRow > div {
@@ -53,37 +14,12 @@
   gap: var(--space-xs);
 }
 
-.balanceCard span,
-.balanceCard small,
-.summaryCard span,
-.summaryCard small,
 .requestLabel,
 .requestMeta,
 .topupRow span,
 .topupRow small {
   color: var(--on-surface-variant);
   font-size: var(--fs-caption);
-}
-
-.balanceCard strong {
-  color: var(--on-primary-container);
-  font-size: var(--fs-title);
-}
-
-.summaryCard strong {
-  color: var(--on-surface);
-  font-size: var(--fs-subtitle);
-}
-
-.demoNotice {
-  grid-column: 1 / -1;
-  margin: 0;
-  border-top: 1px solid var(--border);
-  padding: var(--space-sm) var(--space-lg);
-  color: var(--on-warning-container);
-  background: var(--warning-container);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-body);
 }
 
 .panel {
@@ -696,22 +632,11 @@
 }
 
 @media (max-width: 900px) {
-  .summaryStrip,
   .policyOptions,
   .paymentCard,
   .requestControls,
   .paymentChoices {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .balanceCard,
-  .summaryCard {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .summaryCard:last-of-type {
-    border-bottom: 0;
   }
 
   .requestAmount {
@@ -726,7 +651,6 @@
 }
 
 @media (max-width: 620px) {
-  .balanceCard,
   .sectionHeader,
   .policyActions {
     align-items: stretch;

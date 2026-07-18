@@ -13,7 +13,6 @@ import type {
 } from "@roomlog/types";
 import {
   notifyManagerCreditBalanceChanged,
-  openManagerCreditTopup,
 } from "@/lib/vendor-credit-events";
 import { repairPaymentRecovery } from "@/lib/repair-payment-recovery";
 import {
@@ -40,11 +39,6 @@ import {
 import { CreditFeedbackSequence } from "./credit-feedback-sequence";
 
 type Feedback = { kind: "success" | "error" | "info"; title?: string; text: string };
-
-const policyModeLabel: Record<AutoPayPolicyMode, string> = {
-  ALWAYS_REQUIRE_APPROVAL: "항상 승인 후 결제",
-  AUTO_DEBIT_UNDER_LIMIT: "한도 이하 자동 차감",
-};
 
 const paymentStatusLabel: Record<VendorPaymentRequestStatus, string> = {
   WAITING_COMPLETION: "완료 검토 대기",
@@ -343,15 +337,6 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     })();
   }, [feedbackSequence, refreshWorkspace]);
 
-  const pendingRequests = useMemo(
-    () => workspace.paymentRequests.filter((request) =>
-      request.status === "PENDING_APPROVAL" || request.status === "INSUFFICIENT_CREDIT"),
-    [workspace.paymentRequests],
-  );
-  const pendingAmount = useMemo(
-    () => pendingRequests.reduce((sum, request) => sum + request.amount, 0),
-    [pendingRequests],
-  );
   const ledgerEntries = useMemo(
     () => [...workspace.ledgerEntries].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [workspace.ledgerEntries],
@@ -704,36 +689,6 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
 
   return (
     <div className={styles.workspace}>
-      <section className={styles.summaryStrip} aria-label="크레딧 요약">
-        <article className={styles.balanceCard}>
-          <div>
-            <span>현재 크레딧</span>
-            <strong>{won(workspace.account.balance)}</strong>
-            <small>최근 갱신 {formatDate(workspace.account.updatedAt)}</small>
-          </div>
-          <button className={styles.primaryButton} type="button" disabled={demoReadOnly} onClick={() => openManagerCreditTopup()}>
-            충전
-          </button>
-        </article>
-        <article className={styles.summaryCard}>
-          <span>지급 처리 필요</span>
-          <strong>{pendingRequests.length}건</strong>
-          <small>승인 대기·잔액 부족 합계 {won(pendingAmount)}</small>
-        </article>
-        <article className={styles.summaryCard}>
-          <span>현재 자동결제 기준</span>
-          <strong>{policyModeLabel[workspace.policy.mode]}</strong>
-          <small>
-            {workspace.policy.mode === "AUTO_DEBIT_UNDER_LIMIT"
-              ? `건당 ${won(workspace.policy.perRequestLimit ?? 0)}`
-              : "모든 지급을 직접 확인"}
-          </small>
-        </article>
-        {workspaceResult.source === "DEMO" ? (
-          <p className={styles.demoNotice}>API 연결이 없어 읽기 화면만 데모 데이터로 표시합니다. 저장·지급 작업은 실제 API 연결이 필요합니다.</p>
-        ) : null}
-      </section>
-
       {feedback ? (
         <p
           className={feedback.kind === "error"
