@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { apiUrl } from "@/lib/api-url";
 import {
-  demoListings,
   findDemoListing,
   tradeListingToCard,
   TRADE_LISTING_NO_PREFIX,
@@ -44,27 +43,7 @@ function resolveListing(
   return listing ? { listing } : null;
 }
 
-function priceDealTone(price: string): string {
-  if (price.startsWith("전세")) return "전세";
-  if (price.startsWith("매매")) return "매매";
-  return "월세"; // 월세·반전세 — 보증금/월세형은 같은 톤으로 묶는다
-}
-
-// 비슷한 매물 — 데모+직접등록 풀에서 거래유형(2점)·방 종류(1점) 일치 순으로 4장.
-function pickSimilarListings(current: Listing, tradeListings: TradeListing[]): Listing[] {
-  const pool: Listing[] = [...demoListings, ...tradeListings.map(tradeListingToCard)];
-  const currentTone = priceDealTone(current.price);
-  return pool
-    .filter((item) => item.listingNo !== current.listingNo)
-    .map((item) => ({
-      item,
-      score:
-        (priceDealTone(item.price) === currentTone ? 2 : 0) + (item.roomType === current.roomType ? 1 : 0)
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-    .map(({ item }) => item);
-}
+// 비슷한 매물 기능은 팀 결정으로 제거(2026-07-18) — 점수 함수는 git 히스토리 참조.
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -97,17 +76,12 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
   }
 
   const isOwner = await isListingOwner(resolved.ownerId);
-  const similarListings = pickSimilarListings(resolved.listing, tradeListings);
-
-  // 3D 히어로 매물은 시안(1440 풀폭)에 맞춰 넓은 프레임 — 도면 없는 매물은 기존 폭 유지.
-  const frameClassName = resolved.listing.floorPlan3D
-    ? "service-frame detail-service-frame detail-frame-wide"
-    : "service-frame detail-service-frame";
 
   return (
     <main className="app-canvas">
-      <div className={frameClassName} aria-label="집우집주 매물 상세">
-        <ListingDetailRoute listing={resolved.listing} isOwner={isOwner} similarListings={similarListings} />
+      {/* 도면 유무와 무관하게 같은 무대 레이아웃(1200 카드) — 스테이지 콘텐츠만 3D↔사진 */}
+      <div className="service-frame detail-service-frame detail-frame-wide" aria-label="집우집주 매물 상세">
+        <ListingDetailRoute listing={resolved.listing} isOwner={isOwner} />
       </div>
     </main>
   );

@@ -3326,9 +3326,11 @@ p {
   background: radial-gradient(ellipse at 50% 40%, #2a2158 0%, #171235 60%, #0f0b24 100%);
 }
 
-/* 시안: 헤더는 별도 바가 아니라 스테이지 위 오버레이 — 스테이지가 최상단부터 시작 */
+/* 시안: 헤더는 별도 바가 아니라 스테이지 위 오버레이 — 스테이지가 최상단부터 시작.
+   배경은 시안의 --color-bg(#faf8fc) — 하단 섹션이 앉는 면. 패널(--color-surface)은 흰색 유지. */
 .listing-detail-screen.has-3d {
   position: relative;
+  background: var(--canvas);
 }
 
 .listing-detail-screen.has-3d .detail-top-title {
@@ -3588,16 +3590,6 @@ p {
   color: #0b0b12;
 }
 
-.hero-photo-caption {
-  position: absolute;
-  right: 16px;
-  bottom: 122px;
-  z-index: 5;
-  color: rgba(203, 191, 245, 0.62);
-  font-size: 0.68rem;
-  font-weight: 800;
-}
-
 .hero-filmstrip {
   position: absolute;
   right: 14px;
@@ -3642,33 +3634,45 @@ p {
   font-weight: 850;
 }
 
-/* 사진 히어로(도면 없음) — 대표 사진 클릭 = 크게 보기 */
-.gallery-main-button {
-  display: block;
-  width: 100%;
-  height: 100%;
+/* 사진 무대(도면 없는 매물) — 같은 스테이지, 캔버스 자리에 대표 사진. 클릭 = 크게 보기 */
+.photo-stage .photo-stage-main {
+  position: absolute;
+  inset: 0 0 118px;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: none;
   cursor: zoom-in;
 }
 
-.gallery-main-button img {
+.photo-stage .photo-stage-main img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-/* ── 등록 주체(집주인) 카드 ── */
+/* 밝은 사진 위 헤더 가독성 — 시안 overlay-legible 계열 상단 스크림(밝은 실내 사진 대비 강화) */
+.photo-stage .photo-stage-main::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 150px;
+  background: linear-gradient(180deg, rgba(11, 8, 30, 0.78), rgba(11, 8, 30, 0.35) 55%, transparent);
+  pointer-events: none;
+}
+
+/* ── 등록 주체(집주인) 카드 — 시안 스펙: surface-muted 배경 + 세리프 아바타 글자 ── */
 .detail-owner-card {
   display: flex;
   align-items: center;
   gap: 12px;
   margin: 14px 18px 0;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
+  padding: 16px;
+  border: 1px solid #ece8f4;
   border-radius: 16px;
-  background: var(--canvas);
+  background: #efecfa;
 }
 
 .detail-owner-avatar {
@@ -3679,9 +3683,10 @@ p {
   height: 44px;
   border-radius: 50%;
   background: #cbbff5;
-  color: #20184a;
-  font-size: 1.05rem;
-  font-weight: 900;
+  color: #17133a;
+  font-family: "Gowun Batang", serif;
+  font-size: 1.06rem;
+  font-weight: 400;
 }
 
 .detail-owner-card div {
@@ -3710,85 +3715,26 @@ p {
   line-height: 1.85;
 }
 
-/* ── 비슷한 매물 ── */
-.detail-similar-section {
-  margin: 20px 18px 0;
-  padding-bottom: 16px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
-}
-
-.detail-similar-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  padding: 0 16px;
-}
-
-.detail-similar-card {
-  display: grid;
-  gap: 3px;
-  border-radius: 14px;
-  color: inherit;
-}
-
-.detail-similar-photo {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  margin-bottom: 6px;
-  border-radius: 12px;
-  background: #dfe3ea;
-  aspect-ratio: 3 / 2;
-}
-
-.detail-similar-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.detail-similar-card strong {
-  color: #172033;
-  font-size: 0.92rem;
-}
-
-.detail-similar-title {
-  overflow: hidden;
-  color: #3f4757;
-  font-size: 0.8rem;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.detail-similar-card small {
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.detail-similar-card:hover .detail-similar-photo {
-  outline: 2px solid #cbbff5;
-  outline-offset: 2px;
-}
-
-/* ── 사진 라이트박스 ── */
+/* ── 사진 라이트박스 — 스테이지 영역 안에서만, 절대 밖으로 넘치지 않게(flex 체인) ── */
 .photo-lightbox-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 90;
-  display: grid;
-  place-items: center;
-  padding: 18px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 16px 16px;
   background: rgba(8, 6, 20, 0.74);
   backdrop-filter: blur(6px);
 }
 
+/* 사진이 스테이지를 거의 채운다 — 헤더(카운터·닫기)만 남기고 나머지는 이미지 */
 .photo-lightbox {
-  width: min(100%, 820px);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
 }
 
 .photo-lightbox header {
@@ -3796,7 +3742,7 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .photo-lightbox header strong {
@@ -3823,11 +3769,13 @@ p {
 
 .photo-lightbox-stage {
   position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .photo-lightbox-stage > img {
   width: 100%;
-  max-height: min(64dvh, 560px);
+  height: 100%;
   border-radius: 14px;
   background: #0f0b24;
   object-fit: contain;
@@ -3992,12 +3940,13 @@ p {
   gap: 10px;
 }
 
+/* 주 CTA = DS 액센트(코랄핑크) — "Accent — KEY CTA & emphasis ONLY" */
 .detail-panel-primary {
   flex: 2.4;
   min-height: 50px;
   border-radius: 14px;
-  background: var(--blue);
-  color: #ffffff;
+  background: var(--pink);
+  color: #0b0b12;
   font-size: 0.9rem;
   font-weight: 900;
   white-space: nowrap;
@@ -4005,7 +3954,7 @@ p {
 
 .detail-panel-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(32, 24, 74, 0.28);
+  box-shadow: 0 10px 22px rgba(242, 137, 157, 0.45);
 }
 
 .detail-panel-ghost {
@@ -4133,38 +4082,19 @@ p {
   font-weight: 600;
 }
 
-.hero-photo-caption {
-  font-weight: 400;
-}
-
-/* 하단 섹션·비슷한 매물 */
+/* 하단 섹션 */
 .detail-description-text {
   color: var(--muted);
   font-weight: 400;
 }
 
-.detail-similar-card strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.detail-similar-title {
-  color: var(--muted);
-  font-size: 0.8125rem;
-  font-weight: 400;
-}
-
-.detail-similar-card small {
-  font-weight: 400;
-}
-
-/* 가격·건물 정보 테이블(공용 detail-info-table)도 같은 스케일로 */
-.detail-info-pair .detail-info-table dt {
+/* 건물 정보 테이블도 같은 스케일로 */
+.detail-building-section .detail-info-table dt {
   color: var(--muted);
   font-weight: 400;
 }
 
-.detail-info-pair .detail-info-table dd {
+.detail-building-section .detail-info-table dd {
   color: var(--ink);
   font-weight: 500;
 }
@@ -11681,9 +11611,15 @@ p {
     overflow: visible;
   }
 
-  /* 3D 히어로 상세 — 시안(1440 풀폭)에 맞춘 넓은 프레임 */
+  /* 3D 히어로 상세 — 풀블리드 대신 살짝 여유 있는 1200px 카드(라운드 유지) */
   .service-frame.detail-frame-wide {
-    width: min(calc(100% - 48px), 1440px);
+    width: min(calc(100% - 48px), 1200px);
+  }
+
+  /* 카드 프레임 라운드에 맞춰 스테이지 위 모서리도 깎는다 */
+  .detail-frame-wide .detail-hero-row {
+    overflow: hidden;
+    border-radius: 24px 24px 0 0;
   }
 
   /* 상단 가로 네비게이션 — 모든 탭에서 얇은 밤하늘 띠(galaxy-texture)로 홈 히어로와 세계관 연결 */
@@ -12695,11 +12631,13 @@ p {
     overflow: auto;
     padding: 6px 0 0;
     border-left: 1px solid var(--line);
+    /* 시안: 패널은 --color-surface(#fff), 하단 영역은 --color-bg(#faf8fc)로 위아래가 다른 면 */
+    background: #ffffff;
   }
 
-  /* 오버레이 헤더의 공유·찜(우상단 고정)과 겹치지 않게 패널 첫 줄을 내린다 */
+  /* 캡션은 좌측, 공유·찜은 우측 코너 — 같은 줄을 나눠 쓰므로 공백 최소화 */
   .listing-detail-screen.has-3d .detail-side-panel {
-    padding-top: 66px;
+    padding-top: 20px;
   }
 
   /* 패널 하단(집주인 카드+CTA)은 바닥 정렬 — 시안의 margin-top:auto */
@@ -12731,14 +12669,8 @@ p {
     color: #e32952;
   }
 
-  /* 건물 정보 단독 카드 — 풀폭이면 라벨/값이 너무 벌어져 반폭으로 제한 */
-  .detail-building-section {
-    max-width: 720px;
-  }
-
   /* 하단 섹션(시안) — 카드 상자 없이 세리프 헤딩 + 본문이 배경 위에 직접 */
-  .detail-lower-duo .detail-info-section,
-  .detail-lower-duo .detail-similar-section {
+  .detail-lower-duo .detail-info-section {
     padding: 14px 0 0;
     border: 0;
     background: transparent;
@@ -12772,7 +12704,7 @@ p {
   }
 
   .detail-price-block {
-    padding-top: 20px;
+    padding-top: 8px;
   }
 
   .detail-price-block .detail-price-main {
@@ -12831,18 +12763,27 @@ p {
     display: none;
   }
 
-  /* 하단 2단(시안) — 좌: 설명+지도(1.35), 우: 비슷한 매물(1) */
+  /* 하단 2단 — 시안 컨테이너 그대로: padding 44px 48px + 상단 구분선(border-top), 갭 44px.
+     히어로 카드(위)와 섹션 영역(아래)을 나누는 그 선이다. */
   .detail-lower-duo {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: 1.35fr 1fr;
-    gap: 0 20px;
+    gap: 0 44px;
     align-items: start;
-    margin: 0 24px;
+    margin: 0;
+    padding: 40px 48px 48px;
+    border-top: 1px solid var(--line);
   }
 
-  .detail-lower-main {
+  .detail-lower-main,
+  .detail-lower-side {
     min-width: 0;
+  }
+
+  /* duo 우측 — 집주인 카드가 건물 정보 위에 앉는다(패널에서 이동) */
+  .detail-lower-side .detail-owner-card {
+    margin: 24px 0 0;
   }
 
   .detail-lower-duo .detail-info-section,
@@ -12853,13 +12794,23 @@ p {
     margin-left: 0;
   }
 
-  .detail-lower-duo .detail-similar-section {
-    margin-top: 20px;
-  }
-
-  /* duo 좌측은 폭이 절반 — 지도는 제목 아래로 스택(시안) */
+  /* duo 좌측은 폭이 절반 — 지도는 제목 아래로 스택(시안).
+     좌우 패딩 0 = 상세 설명과 "위치" 헤딩 시작선 정렬, 위 여백은 시안의 36px 리듬. */
   .detail-lower-duo .detail-map-section {
     grid-template-columns: 1fr;
+    padding: 40px 0 0;
+  }
+
+  /* 상세 설명 — 헤딩과 본문 사이, 본문 줄길이에 숨 쉴 공간 */
+  .detail-lower-duo .detail-description-text {
+    padding: 14px 0 0;
+    line-height: 1.9;
+  }
+
+  /* 지도 박스 — 시안 height 240px */
+  .detail-lower-duo .detail-naver-map {
+    height: 240px;
+    min-height: 240px;
   }
 
   .hero-stage .listing-tour-furniture {

@@ -289,6 +289,7 @@ export default function ListingTourRoom3D({
         hideHint
         horizontalScale={TOUR_HORIZONTAL_SCALE}
         orbitMinDistance={1.6}
+        orbitZoomEnabled={variant !== "hero"}
         fitDistanceScale={variant === "hero" ? TOUR_HORIZONTAL_SCALE * 1.1 : undefined}
         sceneBackground={variant === "hero" ? null : undefined}
         onFloorPointerDown={handleFloorPointerDown}

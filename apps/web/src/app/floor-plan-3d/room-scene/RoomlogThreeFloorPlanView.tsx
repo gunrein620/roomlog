@@ -236,12 +236,15 @@ function RoomOrbitControls({
   enabled = true,
   maxDistance = 42,
   minDistance = 5,
-  target
+  target,
+  zoomEnabled = true
 }: {
   enabled?: boolean;
   maxDistance?: number;
   minDistance?: number;
   target: [number, number, number];
+  /** false면 휠 줌 비활성 — 페이지 스크롤 흐름 속 뷰(상세 히어로)에서 휠을 뺏지 않게. */
+  zoomEnabled?: boolean;
 }) {
   const invalidate = useThree((state) => state.invalidate);
 
@@ -249,6 +252,7 @@ function RoomOrbitControls({
     <OrbitControls
       enableDamping
       enabled={enabled}
+      enableZoom={zoomEnabled}
       makeDefault
       maxDistance={maxDistance}
       maxPolarAngle={Math.PI / 2.05}
@@ -300,6 +304,7 @@ export function RoomlogThreeFloorPlanView({
   horizontalScale = 1,
   orbitMaxDistance = 42,
   orbitMinDistance = 5,
+  orbitZoomEnabled = true,
   onFloorPointerDown,
   onFloorPointerMove,
   onFurniturePointerDown,
@@ -328,6 +333,8 @@ export function RoomlogThreeFloorPlanView({
   horizontalScale?: number;
   orbitMaxDistance?: number;
   orbitMinDistance?: number;
+  /** 휠 줌 허용 여부 — 상세 히어로는 false(페이지 스크롤 우선). */
+  orbitZoomEnabled?: boolean;
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   // 가구 드래그 이동용 — 바닥 위 커서 이동을 컨테이너에 전달한다.
   onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
@@ -430,6 +437,7 @@ export function RoomlogThreeFloorPlanView({
           maxDistance={orbitMaxDistance}
           minDistance={orbitMinDistance}
           target={[wallBounds.centerX * sceneHorizontalScale, 0, wallBounds.centerZ * sceneHorizontalScale]}
+          zoomEnabled={orbitZoomEnabled}
         />
       </Canvas>
       {hideHint ? null : <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>}
