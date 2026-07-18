@@ -9,13 +9,17 @@ import {
   ArrowLeft,
   Banknote,
   Building2,
+  ChevronLeft,
+  ChevronRight,
   Copy,
+  Play,
   Star,
   Layers3,
   MapPinned,
   Phone,
   Ruler,
-  Share2
+  Share2,
+  X
 } from "lucide-react";
 import {
   getListingBuildingRows,
@@ -39,6 +43,7 @@ export function ListingDetailView({
   listing,
   isSaved,
   isOwner = false,
+  similarListings = [],
   onBack,
   onToggleSaved,
   onStartChat
@@ -47,6 +52,8 @@ export function ListingDetailView({
   isSaved: boolean;
   /** 현재 로그인 사용자가 이 매물(직접등록)의 집주인인지 — 서버 페이지가 판정해 내려준다. */
   isOwner?: boolean;
+  /** 같은 조건대 추천 — 서버 페이지가 데모+직접등록 풀에서 골라 내려준다(없으면 섹션 생략). */
+  similarListings?: Listing[];
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
   /** "문자로 문의하기" 등 문의 진입점 — 채팅 탭의 이 매물 대화로 바로 보낸다. */
@@ -56,6 +63,10 @@ export function ListingDetailView({
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  // 사진 라이트박스 — 3D 히어로에선 필름스트립 클릭, 사진 히어로에선 대표 사진 클릭으로 연다.
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // 3D 도면이 있으면 3D가 히어로(사진은 필름스트립), 없으면 기존 사진 갤러리가 히어로.
+  const has3DHero = Boolean(listing.floorPlan3D);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
@@ -114,7 +125,7 @@ export function ListingDetailView({
   };
 
   return (
-    <section className="listing-detail-screen" aria-labelledby="clicked-detail-title">
+    <section className={has3DHero ? "listing-detail-screen has-3d" : "listing-detail-screen"} aria-labelledby="clicked-detail-title">
       <header className="detail-top-title">
         <button className="detail-back-button" type="button" onClick={onBack} aria-label="목록으로 돌아가기">
           <ArrowLeft size={24} strokeWidth={2.5} />
@@ -165,25 +176,76 @@ export function ListingDetailView({
         </div>
       ) : null}
 
-      <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
-        <div className="gallery-main">
-          <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority unoptimized={isRemotePhoto(activePhoto)} />
-          <span className="gallery-photo-count">{activePhotoIndex + 1} / {listing.gallery.length}</span>
+      {has3DHero && listing.floorPlan3D ? (
+        /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스). */
+        <div className="detail-3d-hero" id="detail-3d-hero" aria-label={`${listing.title} 3D 도면 미리보기`}>
+          <ListingTourRoom3D floorPlan={listing.floorPlan3D} variant="hero" />
+          <div className="hero-tour-cta-wrap">
+            {/* 1인칭 진입 — 기존 하단 바와 동일한 정직 게이트(자산 있음/없음/데모)를 그대로 쓴다. */}
+            {splatAssetId ? (
+              <a className="hero-tour-cta" href={`/splat-tour?asset=${splatAssetId}`}>
+                <span className="hero-tour-cta-icon" aria-hidden="true"><Play size={12} strokeWidth={3} fill="currentColor" /></span>
+                1인칭으로 둘러보기
+              </a>
+            ) : isTradeDirectListing ? (
+              <span className="hero-tour-cta disabled" role="note" title="이 매물은 1인칭 투어가 준비되어 있지 않습니다">
+                1인칭 투어 {splatChecked ? "준비 안 됨" : "확인 중"}
+              </span>
+            ) : (
+              <a className="hero-tour-cta" href="/splat-tour">
+                <span className="hero-tour-cta-icon" aria-hidden="true"><Play size={12} strokeWidth={3} fill="currentColor" /></span>
+                1인칭으로 둘러보기 (데모)
+              </a>
+            )}
+          </div>
+          <div className="hero-photo-caption">사진 {listing.gallery.length}장 · 클릭해서 크게 보기</div>
+          <div className="hero-filmstrip" aria-label={`${listing.title} 사진 모음`}>
+            {listing.gallery.slice(0, 4).map((image, index) => (
+              <button
+                type="button"
+                key={image}
+                aria-label={`${listing.title} 사진 ${index + 1} 크게 보기`}
+                onClick={() => setLightboxIndex(index)}
+              >
+                <span className="gallery-image" style={{ backgroundImage: `url(${image})` }} />
+              </button>
+            ))}
+            {listing.gallery.length > 4 ? (
+              <button className="hero-filmstrip-more" type="button" aria-label="사진 전체 보기" onClick={() => setLightboxIndex(4)}>
+                +{listing.gallery.length - 4}
+              </button>
+            ) : null}
+          </div>
         </div>
-        <div className="gallery-stack">
-          {listing.gallery.map((image, index) => (
+      ) : (
+        <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
+          <div className="gallery-main">
+            {/* 대표 사진 클릭 → 라이트박스 — 도면 없는 매물은 사진이 히어로라 크게 보기가 1클릭이어야 한다. */}
             <button
-              className={activePhotoIndex === index ? "gallery-tile active" : "gallery-tile"}
+              className="gallery-main-button"
               type="button"
-              key={image}
-              aria-label={`${listing.title} 사진 ${index + 1} 보기`}
-              onClick={() => setActivePhotoIndex(index)}
+              aria-label={`${listing.title} 사진 크게 보기`}
+              onClick={() => setLightboxIndex(activePhotoIndex)}
             >
-              <span className="gallery-image" style={{ backgroundImage: `url(${image})` }} />
+              <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority unoptimized={isRemotePhoto(activePhoto)} />
             </button>
-          ))}
+            <span className="gallery-photo-count">{activePhotoIndex + 1} / {listing.gallery.length}</span>
+          </div>
+          <div className="gallery-stack">
+            {listing.gallery.map((image, index) => (
+              <button
+                className={activePhotoIndex === index ? "gallery-tile active" : "gallery-tile"}
+                type="button"
+                key={image}
+                aria-label={`${listing.title} 사진 ${index + 1} 보기`}
+                onClick={() => setActivePhotoIndex(index)}
+              >
+                <span className="gallery-image" style={{ backgroundImage: `url(${image})` }} />
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="listing-number-bar">
         <button type="button" aria-label="매물번호 복사" onClick={copyListingNo}>
@@ -230,6 +292,16 @@ export function ListingDetailView({
         {listing.tags.map((tag) => (
           <span key={tag}>{tag}</span>
         ))}
+      </div>
+
+      {/* 등록 주체 카드 — 시안의 중개사 카드 자리. 우리 스코프는 개인 임대인이라
+          직접등록은 "OO (집주인)", 데모 매물은 기존 broker 문자열을 그대로 쓴다. */}
+      <div className="detail-owner-card" aria-label="등록 주체 정보">
+        <span className="detail-owner-avatar" aria-hidden="true">{listing.broker.slice(0, 1)}</span>
+        <div>
+          <strong>{listing.broker}</strong>
+          <span>{listing.verification} · {listing.response}</span>
+        </div>
       </div>
 
       <section className="detail-info-section" aria-label="가격 정보">
@@ -280,7 +352,14 @@ export function ListingDetailView({
         </section>
       </div>
 
-      {/* 3D 진입은 하단 고정 바의 "3D 둘러보기"가 담당 — 본문 중복 배너는 제거했다. */}
+      <section className="detail-info-section detail-description-section" aria-label="상세 설명">
+        <div className="detail-section-heading">
+          <h2>상세 설명</h2>
+          <span>{isDirectListing ? "집주인 등록 문구" : "게시 문구"}</span>
+        </div>
+        <p className="detail-description-text">{listing.headline}</p>
+      </section>
+
       <section className="detail-map-section" aria-label="상세 위치">
         <div>
           <h2>위치</h2>
@@ -298,16 +377,45 @@ export function ListingDetailView({
         />
       </section>
 
-      <div className="detail-contact-bar" id="detail-contact">
+      {similarListings.length > 0 ? (
+        <section className="detail-similar-section" aria-label="비슷한 매물">
+          <div className="detail-section-heading">
+            <h2>비슷한 매물</h2>
+            <span>같은 조건대 추천</span>
+          </div>
+          <div className="detail-similar-grid">
+            {similarListings.map((item) => (
+              <a className="detail-similar-card" href={`/listing/${encodeURIComponent(item.listingNo)}`} key={item.listingNo}>
+                <span className="detail-similar-photo">
+                  <Image src={item.image} alt={`${item.title} 사진`} width={640} height={420} unoptimized={isRemotePhoto(item.image)} />
+                </span>
+                <strong>{item.price}</strong>
+                <span className="detail-similar-title">{item.title}</span>
+                <small>{item.location} · {item.roomType}</small>
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className={has3DHero ? "detail-contact-bar has-3d" : "detail-contact-bar"} id="detail-contact">
         <span className="contact-tooltip">로그인 없이 문의 가능 · 채팅으로 바로 연결</span>
         <button className="detail-contact-small" type="button" aria-label="전화문의" onClick={onStartChat}>
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
         </button>
-        <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
-          <span>3D</span>
-          <strong>둘러보기</strong>
-        </button>
+        {/* 3D가 히어로인 매물은 시트 버튼이 중복 — 히어로로 스크롤하는 앵커로 바꾼다. */}
+        {has3DHero ? (
+          <a className="detail-contact-tour" href="#detail-3d-hero">
+            <span>3D</span>
+            <strong>도면 보기</strong>
+          </a>
+        ) : (
+          <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
+            <span>3D</span>
+            <strong>둘러보기</strong>
+          </button>
+        )}
         {/* 1인칭 체험 — 매물별 정직 게이트.
             · 직접등록(TRADE-) + 대표 자산 있음 → 이 매물 전용 splat 투어(?asset=)
             · 직접등록 + 자산 없음/FAILED뿐 → 비활성 "준비 안 됨"(링크 아님, 없는 상태를 그대로 노출)
@@ -386,6 +494,62 @@ export function ListingDetailView({
               <a href="#detail-contact" onClick={() => setIsTourSheetOpen(false)}>문의하기</a>
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {lightboxIndex !== null ? (
+        <div className="photo-lightbox-backdrop" role="presentation" onClick={() => setLightboxIndex(null)}>
+          <div
+            className="photo-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${listing.title} 사진 크게 보기`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <strong>
+                {listing.title} <span>· {lightboxIndex + 1} / {listing.gallery.length}</span>
+              </strong>
+              <button type="button" aria-label="사진 닫기" onClick={() => setLightboxIndex(null)}>
+                <X size={20} strokeWidth={2.6} />
+              </button>
+            </header>
+            <div className="photo-lightbox-stage">
+              <Image
+                src={listing.gallery[lightboxIndex]}
+                alt={`${listing.title} 사진 ${lightboxIndex + 1}`}
+                width={1200}
+                height={800}
+                unoptimized={isRemotePhoto(listing.gallery[lightboxIndex])}
+              />
+              {listing.gallery.length > 1 ? (
+                <>
+                  <button
+                    className="photo-lightbox-nav prev"
+                    type="button"
+                    aria-label="이전 사진"
+                    onClick={() =>
+                      setLightboxIndex((index) =>
+                        index === null ? null : (index - 1 + listing.gallery.length) % listing.gallery.length
+                      )
+                    }
+                  >
+                    <ChevronLeft size={26} strokeWidth={2.6} />
+                  </button>
+                  <button
+                    className="photo-lightbox-nav next"
+                    type="button"
+                    aria-label="다음 사진"
+                    onClick={() =>
+                      setLightboxIndex((index) => (index === null ? null : (index + 1) % listing.gallery.length))
+                    }
+                  >
+                    <ChevronRight size={26} strokeWidth={2.6} />
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
 

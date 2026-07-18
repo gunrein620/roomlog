@@ -8,7 +8,15 @@ import { ListingDetailView } from "@/app/_components/ListingDetailView";
 import { type Listing } from "@/lib/listing-catalog";
 import { loadSavedListingNos, toggleSavedListingNo } from "@/lib/saved-listings";
 
-export function ListingDetailRoute({ listing, isOwner = false }: { listing: Listing; isOwner?: boolean }) {
+export function ListingDetailRoute({
+  listing,
+  isOwner = false,
+  similarListings = []
+}: {
+  listing: Listing;
+  isOwner?: boolean;
+  similarListings?: Listing[];
+}) {
   const router = useRouter();
   const [savedListingNos, setSavedListingNos] = useState<string[]>([]);
 
@@ -37,6 +45,7 @@ export function ListingDetailRoute({ listing, isOwner = false }: { listing: List
       listing={listing}
       isSaved={savedListingNos.includes(listing.listingNo)}
       isOwner={isOwner}
+      similarListings={similarListings}
       onBack={goBack}
       onToggleSaved={(listingNo) => setSavedListingNos((current) => toggleSavedListingNo(current, listingNo))}
       onStartChat={startChat}

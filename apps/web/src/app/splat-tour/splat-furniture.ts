@@ -7,7 +7,12 @@ export type SplatFurnitureSource =
   | "url-demo"
   | "resident-design"
   | "floor-plan-draft"
+  | "listing-tour"
   | "asset-server";
+
+/** 매물 상세 "3D 보기" 저장의 공유 키 — 상세는 도면별 키와 함께 여기에도 최신본을 쓴다.
+ *  (도면별 키는 이름+벽 해시라 투어가 역산할 수 없어, 공유 키로 다리를 놓는다 — 가구 gap 수정.) */
+export const LISTING_TOUR_FURNITURE_LATEST_KEY = "roomlogListingTourFurnitureLatest";
 
 export interface SplatFurnitureState {
   furnitures: PlacedFurniture[];
@@ -44,10 +49,11 @@ export function resolveSplatFurniture(
 
   if (!storage) return createEmptyState();
 
-  const candidate = chooseStorageCandidate(
+  const candidate = chooseStorageCandidate([
     readFloorPlanDraft(storage),
-    readResidentDesign(storage)
-  );
+    readResidentDesign(storage),
+    readListingTourSave(storage)
+  ]);
   if (!candidate) return createEmptyState();
 
   const furnitures = candidate.furnitures.filter(isValidPlacedFurniture);
@@ -173,15 +179,23 @@ function readStoragePayload(storage: Pick<Storage, "getItem">, key: string): Rec
   }
 }
 
-function chooseStorageCandidate(
-  draft: StorageCandidate | null,
-  resident: StorageCandidate | null
-): StorageCandidate | null {
-  if (draft && resident) {
-    return resident.savedAt >= draft.savedAt ? resident : draft;
-  }
+function readListingTourSave(storage: Pick<Storage, "getItem">): StorageCandidate | null {
+  const payload = readStoragePayload(storage, LISTING_TOUR_FURNITURE_LATEST_KEY);
+  if (!payload) return null;
 
-  return resident ?? draft;
+  return {
+    furnitures: readArray(payload.furnitures),
+    savedAt: readSavedAt(payload.savedAt),
+    source: "listing-tour"
+  };
+}
+
+/** 가장 최근 저장본이 이긴다 — 동률이면 배열 뒤쪽(상세 저장) 우선(기존 draft<resident 동률 규칙 유지). */
+function chooseStorageCandidate(candidates: Array<StorageCandidate | null>): StorageCandidate | null {
+  return candidates.reduce<StorageCandidate | null>(
+    (best, candidate) => (candidate && (!best || candidate.savedAt >= best.savedAt) ? candidate : best),
+    null
+  );
 }
 
 export function isValidPlacedFurniture(value: unknown): value is PlacedFurniture {

@@ -13,6 +13,7 @@ import {
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
+import { LISTING_TOUR_FURNITURE_LATEST_KEY } from "../splat-tour/splat-furniture";
 
 export type ListingFloorPlanWall = {
   id: string;
@@ -68,9 +69,19 @@ function catalogSearchText(item: FurnitureCatalogItem) {
   return `${item.name} ${item.brand} ${item.category ?? ""} ${item.furniture_id}`.toLowerCase();
 }
 
-export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFloorPlan3D }) {
+export default function ListingTourRoom3D({
+  floorPlan,
+  variant = "sheet"
+}: {
+  floorPlan: ListingFloorPlan3D;
+  /** hero = 상세 히어로 스테이지(좌측 글래스 가구 패널 + hover 하이라이트), sheet = 기존 3D 시트 */
+  variant?: "sheet" | "hero";
+}) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
   const [isPlacementOpen, setIsPlacementOpen] = useState(false);
+  // hero 패널 접기 — 시안의 우상단 "가구 배치" 토글. 모바일에선 도면이 좁아 기본 접힘이 낫지만
+  // 데스크톱 첫인상엔 패널이 보여야 해서 열림 기본, 사용자가 토글로 제어한다.
+  const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(true);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
@@ -232,26 +243,27 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
 
   function saveFurnitureLayout() {
     try {
-      window.localStorage.setItem(
-        floorPlanFurnitureStorageKey(floorPlan),
-        JSON.stringify({
-          savedAt: Date.now(),
-          furnitures: placedFurnitures.map((furniture) => ({
-            id: furniture.id,
-            furniture_id: furniture.furniture_id,
-            name: furniture.name,
-            color: furniture.color,
-            length: furniture.length,
-            modelUrl: furniture.modelUrl,
-            position: furniture.position,
-            rotation: furniture.rotation,
-            scale: furniture.scale,
-            sizeMm: furniture.sizeMm,
-            source: furniture.source
-          }))
-        })
-      );
-      setSaveMessage("이 브라우저에 가구 배치를 저장했습니다.");
+      const payload = JSON.stringify({
+        savedAt: Date.now(),
+        planName: floorPlan.name,
+        furnitures: placedFurnitures.map((furniture) => ({
+          id: furniture.id,
+          furniture_id: furniture.furniture_id,
+          name: furniture.name,
+          color: furniture.color,
+          length: furniture.length,
+          modelUrl: furniture.modelUrl,
+          position: furniture.position,
+          rotation: furniture.rotation,
+          scale: furniture.scale,
+          sizeMm: furniture.sizeMm,
+          source: furniture.source
+        }))
+      });
+      window.localStorage.setItem(floorPlanFurnitureStorageKey(floorPlan), payload);
+      // 공유 최신본 키에도 함께 쓴다 — 1인칭 투어는 도면별 키를 역산할 수 없어 이 키를 읽는다(가구 gap 수정).
+      window.localStorage.setItem(LISTING_TOUR_FURNITURE_LATEST_KEY, payload);
+      setSaveMessage("이 브라우저에 가구 배치를 저장했습니다. 1인칭 투어에도 반영돼요.");
     } catch {
       setSaveMessage("저장 공간 문제로 가구 배치를 저장하지 못했습니다.");
     }
@@ -267,7 +279,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
   }
 
   return (
-    <div className="listing-tour-room3d">
+    <div className={variant === "hero" ? "listing-tour-room3d hero-stage" : "listing-tour-room3d"}>
       <RoomlogThreeFloorPlanView
         cameraPosition={[9, 7.5, 11]}
         controlsEnabled={!isFurnitureDragging}
@@ -277,6 +289,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
         hideHint
         horizontalScale={TOUR_HORIZONTAL_SCALE}
         orbitMinDistance={1.6}
+        sceneBackground={variant === "hero" ? null : undefined}
         onFloorPointerDown={handleFloorPointerDown}
         onFloorPointerMove={handleFloorPointerMove}
         onFurniturePointerDown={handleFurniturePointerDown}
@@ -291,16 +304,57 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
         wallsData={wallsData}
       />
 
+      {variant === "hero" ? (
+        <button
+          className="hero-furniture-toggle"
+          type="button"
+          aria-pressed={isHeroPanelOpen}
+          onClick={() => setIsHeroPanelOpen((isOpen) => !isOpen)}
+        >
+          <span className={isHeroPanelOpen ? "hero-furniture-toggle-dot on" : "hero-furniture-toggle-dot"} aria-hidden="true" />
+          가구 배치
+        </button>
+      ) : null}
+
+      {variant !== "hero" || isHeroPanelOpen ? (
       <section className="listing-tour-furniture" aria-label="3D 가구 배치">
         <div className="listing-tour-furniture-head">
           <div>
-            <strong>가구 배치</strong>
+            <strong>
+              가구 배치
+              {variant === "hero" ? <em className="hero-furniture-count">{placedFurnitures.length}</em> : null}
+            </strong>
             <span>{saveMessage}</span>
           </div>
           <button type="button" onClick={() => setIsPlacementOpen((isOpen) => !isOpen)}>
             {isPlacementOpen ? "닫기" : "배치하기"}
           </button>
         </div>
+
+        {variant === "hero" ? (
+          <ul className="hero-furniture-list" aria-label="배치된 가구 목록">
+            {placedFurnitures.map((furniture) => (
+              <li key={furniture.id}>
+                {/* hover(데스크톱)·탭(터치) 모두 지원 — 도면에서 해당 가구가 파랗게 밝아진다 */}
+                <button
+                  className={selectedFurnitureId === furniture.id ? "active" : ""}
+                  type="button"
+                  onMouseEnter={() => setSelectedFurnitureId(furniture.id)}
+                  onMouseLeave={() => setSelectedFurnitureId((current) => (current === furniture.id ? null : current))}
+                  onFocus={() => setSelectedFurnitureId(furniture.id)}
+                  onBlur={() => setSelectedFurnitureId((current) => (current === furniture.id ? null : current))}
+                  onClick={() => setSelectedFurnitureId((current) => (current === furniture.id ? null : furniture.id))}
+                >
+                  <span className="hero-furniture-dot" style={{ backgroundColor: furniture.color }} aria-hidden="true" />
+                  <span className="hero-furniture-name">{furniture.name}</span>
+                </button>
+              </li>
+            ))}
+            {placedFurnitures.length === 0 ? (
+              <li className="hero-furniture-empty">아직 배치된 가구가 없어요 — 배치하기로 넣어보세요</li>
+            ) : null}
+          </ul>
+        ) : null}
 
         {isPlacementOpen ? (
           <div className="listing-tour-furniture-body">
@@ -357,6 +411,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
           </div>
         ) : null}
       </section>
+      ) : null}
     </div>
   );
 }

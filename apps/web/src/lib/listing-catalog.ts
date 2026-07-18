@@ -363,7 +363,37 @@ export const demoMapItems: MapPanelItem[] = mapListings.map(({ listingIndex, ...
   listingNo: demoListings[listingIndex].listingNo
 }));
 
+// 방배 루미에르(첫 데모 매물)의 데모 3D 도면 — 카드가 "3D 투어" 배지를 이미 달고 있어
+// 실제 도면 없이는 과장이 된다. 5.0×3.6m 원룸 + 욕실 파티션, 단위는 미터(벽)·mm(가구 length).
+const DEMO_FLOOR_PLAN_LISTING_NO = "57804322";
+const HALF_PI = Math.PI / 2;
+const demoListingFloorPlan: ListingFloorPlan3D = {
+  name: "방배 루미에르 402호",
+  walls3D: [
+    { id: "demo-wall-n", wall_id: 1, dimensions: { width: 5.3, height: 2.4, depth: 0.15 }, position: [0, 1.2, -1.8], rotation: [0, 0, 0] },
+    { id: "demo-wall-s", wall_id: 2, dimensions: { width: 5.3, height: 2.4, depth: 0.15 }, position: [0, 1.2, 1.8], rotation: [0, 0, 0] },
+    { id: "demo-wall-w", wall_id: 3, dimensions: { width: 3.6, height: 2.4, depth: 0.15 }, position: [-2.5, 1.2, 0], rotation: [0, HALF_PI, 0] },
+    { id: "demo-wall-e", wall_id: 4, dimensions: { width: 3.6, height: 2.4, depth: 0.15 }, position: [2.5, 1.2, 0], rotation: [0, HALF_PI, 0] },
+    // 욕실 파티션 — 남동쪽 구석 1.3×1.25m
+    { id: "demo-wall-bath-a", wall_id: 5, dimensions: { width: 1.3, height: 2.4, depth: 0.12 }, position: [1.85, 1.2, 0.55], rotation: [0, 0, 0] },
+    { id: "demo-wall-bath-b", wall_id: 6, dimensions: { width: 1.25, height: 2.4, depth: 0.12 }, position: [1.2, 1.2, 1.175], rotation: [0, HALF_PI, 0] }
+  ],
+  furnitures: [
+    { id: "demo-fp-bed", furniture_id: "demo-bed", name: "침대", color: "#8b83c0", length: [1600, 450, 2100], position: [-1.4, 0.225, -0.55], rotation: [0, 0, 0], scale: 1 },
+    { id: "demo-fp-wardrobe", furniture_id: "demo-wardrobe", name: "붙박이장", color: "#6f67a8", length: [1500, 1800, 600], position: [-2.05, 0.9, 0.85], rotation: [0, HALF_PI, 0], scale: 1 },
+    { id: "demo-fp-desk", furniture_id: "demo-desk", name: "책상", color: "#a89ccc", length: [1200, 730, 600], position: [1.6, 0.365, -1.35], rotation: [0, 0, 0], scale: 1 },
+    { id: "demo-fp-chair", furniture_id: "demo-chair", name: "의자", color: "#cbbff5", length: [450, 880, 480], position: [1.6, 0.44, -0.72], rotation: [0, 0, 0], scale: 1 },
+    { id: "demo-fp-kitchen", furniture_id: "demo-kitchen", name: "주방 수납", color: "#7d74b3", length: [1800, 850, 600], position: [-0.6, 0.425, 1.42], rotation: [0, 0, 0], scale: 1 },
+    { id: "demo-fp-fridge", furniture_id: "demo-fridge", name: "냉장고", color: "#9e94c9", length: [700, 1650, 720], position: [0.55, 0.825, 1.35], rotation: [0, 0, 0], scale: 1 }
+  ]
+};
+
 /** listingNo로 데모 매물을 찾는다 — 상세 라우트가 서버 매물이 아닐 때 사용. */
 export function findDemoListing(listingNo: string): Listing | undefined {
-  return demoListings.find((item) => item.listingNo === listingNo);
+  const found = demoListings.find((item) => item.listingNo === listingNo);
+  if (!found) return undefined;
+  // 도면은 조회 시점에 합성 — demoListings 리터럴에 넣으면 항목별 타입이 갈라진다.
+  return found.listingNo === DEMO_FLOOR_PLAN_LISTING_NO
+    ? { ...found, has3DTour: true, floorPlan3D: demoListingFloorPlan }
+    : found;
 }

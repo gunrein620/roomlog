@@ -300,6 +300,7 @@ export function RoomlogThreeFloorPlanView({
   onPendingRotate,
   onWallPointerDown,
   pendingFurniture,
+  sceneBackground = "#626260",
   selectedFurnitureId,
   selectedWallId,
   wallsData
@@ -327,6 +328,8 @@ export function RoomlogThreeFloorPlanView({
   onPendingRotate?: () => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
   pendingFurniture: PlacedFurniture | null;
+  /** 캔버스 배경색 — null이면 투명(뒤 CSS 배경이 비친다, 상세 3D 히어로의 밤하늘용). */
+  sceneBackground?: string | null;
   selectedFurnitureId: string | null;
   selectedWallId: string | number | null;
   wallsData: WheretoputWall3D[];
@@ -350,7 +353,7 @@ export function RoomlogThreeFloorPlanView({
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop}>
         <RoomCameraAutoFit wallsData={wallsData} />
-        <color attach="background" args={["#626260"]} />
+        {sceneBackground ? <color attach="background" args={[sceneBackground]} /> : null}
         <ambientLight intensity={0.72} />
         <directionalLight intensity={1.4} position={[6, 12, 8]} />
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
