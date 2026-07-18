@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 import type { ManagerVendorView } from "@roomlog/types";
 import { INITIAL_MANAGER_MUTATION_STATE } from "../../../_components/manager-mutation-state";
 import { assignVendorFromDashboardAction } from "./vendor-assignment-actions";
@@ -51,9 +52,11 @@ export function VendorAssignmentDialog({
         type="button"
         className={styles.trigger}
         disabled={disabled}
+        aria-label={`${currentVendorName ?? "미선정"} 업체 검색`}
         onClick={() => dialogRef.current?.showModal()}
       >
-        {currentVendorName ?? "미선정"}
+        <Search aria-hidden="true" className={styles.searchIcon} />
+        <span>{currentVendorName ?? "미선정"}</span>
       </button>
       <dialog
         ref={dialogRef}

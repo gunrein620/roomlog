@@ -98,6 +98,9 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /ticketId=\{row\.ticket\.id\}/);
   assert.match(vendorAssignmentDialogSource, /등록된 업체 검색/);
   assert.match(vendorAssignmentDialogSource, /showModal\(\)/);
+  assert.match(vendorAssignmentDialogSource, /import \{ Search \} from "lucide-react"/);
+  assert.match(vendorAssignmentDialogSource, /<Search aria-hidden="true"/);
+  assert.match(vendorAssignmentDialogSource, /업체 검색/);
   assert.match(vendorAssignmentDialogSource, /vendors\.filter/);
   assert.match(vendorAssignmentDialogSource, /assignVendorFromDashboardAction/);
   assert.match(vendorAssignmentDialogSource, /router\.refresh\(\)/);

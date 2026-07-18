@@ -8,6 +8,9 @@
 }
 
 .trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
   width: 100%;
   border: 0;
   padding: var(--space-xs) 0;
@@ -15,6 +18,12 @@
   background: transparent;
   font-weight: var(--fw-subtitle);
   text-align: left;
+}
+
+.searchIcon {
+  flex: 0 0 auto;
+  width: var(--fs-body);
+  height: var(--fs-body);
 }
 
 .trigger:hover:not(:disabled) {
