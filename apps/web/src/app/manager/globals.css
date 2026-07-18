@@ -4033,6 +4033,20 @@ html:has(.manager-workspace) {
   font-weight: var(--fw-subtitle);
 }
 
+.manager-complaint-dashboard__row {
+  cursor: pointer;
+}
+
+.manager-complaint-dashboard__row:hover,
+.manager-complaint-dashboard__row[data-selected="true"] {
+  background: var(--surface-container-low);
+}
+
+.manager-complaint-dashboard__row:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
 .manager-complaint-dashboard__category,
 .manager-complaint-dashboard__status {
   display: inline-flex;
@@ -4079,25 +4093,9 @@ html:has(.manager-workspace) {
   text-align: center !important;
 }
 
-/* 최근 접수 내역의 내용 클릭 → 상세 모달을 여는 텍스트 버튼 */
-.manager-complaint-dashboard__row-link {
-  padding: 0;
-  border: 0;
-  background: transparent;
+.manager-complaint-dashboard__row-title {
   color: var(--on-surface);
-  font: inherit;
   font-weight: var(--fw-subtitle);
-  text-align: left;
-  cursor: pointer;
-}
-
-.manager-complaint-dashboard__row-link:hover {
-  color: var(--primary);
-}
-
-.manager-complaint-dashboard__row-link:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
 }
 
 .manager-complaint-dashboard__period button:focus-visible,

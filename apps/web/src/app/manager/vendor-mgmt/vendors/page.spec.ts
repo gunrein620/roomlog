@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 const pageSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/vendors/page.tsx"), "utf8");
+const componentSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/_components.tsx"), "utf8");
 const actionsSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/actions.ts"), "utf8");
 const apiClientSource = readFileSync(join(process.cwd(), "src/lib/vendor-mgmt-api.ts"), "utf8");
 const apiControllerSource = readFileSync(
@@ -30,6 +31,16 @@ test("manager vendor list opens registration in a modal instead of navigating", 
     pageSource,
     /<LinkButton href=\{MANAGER_VENDOR_MGMT_PATHS\.search\}>업체 등록<\/LinkButton>/,
   );
+});
+
+test("manager vendor list does not expose an archive control", () => {
+  assert.doesNotMatch(pageSource, /ManagerVendorArchiveControl/);
+  assert.doesNotMatch(pageSource, /renderManagement=/);
+});
+
+test("manager vendor table does not expose account verification", () => {
+  assert.doesNotMatch(componentSource, /계정·검증/);
+  assert.doesNotMatch(componentSource, /accountStatusLabel\[vendor\.accountStatus\]/);
 });
 
 test("registration dialog is accessible and submits all private vendor fields", () => {

@@ -12,6 +12,7 @@ import {
 import type {
   CancelVendorPaymentRequestInput,
   ConfirmManagerCreditTopupInput,
+  CreateGaraVendorPayoutInput,
   CreateManagerCreditTopupInput,
   ManagerCreditAccountView,
   ManagerCreditTopupOrderPublicView,
@@ -166,6 +167,16 @@ export class CreditController {
     const managerId = await this.credit.requireManager(authorization);
     const checkout = await this.credit.createTopupOrder(managerId, input);
     return { ...checkout, order: publicTopupOrder(checkout.order) };
+  }
+
+  @Post("manager/gara/vendor-payout-requests")
+  async createGaraVendorPayout(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() input: CreateGaraVendorPayoutInput
+  ) {
+    const managerId = await this.credit.requireManager(authorization);
+    const result = await this.credit.createGaraVendorPayout(managerId, input);
+    return { request: result.request, account: publicAccount(result.account) };
   }
 
   @Get("manager/credits/topup-orders/:orderId")
