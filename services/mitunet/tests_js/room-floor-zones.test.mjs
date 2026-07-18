@@ -199,3 +199,63 @@ test("moves a semantic seed out of a small dark fixture enclosure", () => {
   assert.equal(map.zones[0].seed[0] < 17 || map.zones[0].seed[0] > 23 || map.zones[0].seed[1] < 10 || map.zones[0].seed[1] > 16, true);
   assert.ok(decodeRoomFloorLabels(map).reduce((sum, value) => sum + Number(value === 1), 0) > 500);
 });
+
+test("uses default wood with one conservative entrance tile when room analysis is unavailable", () => {
+  const width = 60;
+  const height = 40;
+  const interiorMask = new Uint8Array(width * height);
+  for (let y = 4; y < 36; y += 1) {
+    for (let x = 4; x < 56; x += 1) interiorMask[y * width + x] = 1;
+  }
+
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask,
+    millimetersPerPixel: 100,
+    openings: [
+      { id: "front", kind: "door", valid: true, axis: "horizontal", center_x: 30, center_y: 36, width: 10, height: 2 },
+    ],
+    polygons: { door: [], wall: [], window: [] },
+    rooms: [],
+    width,
+  });
+  const labels = decodeRoomFloorLabels(map);
+  const woodLabel = map.zones.findIndex((zone) => zone.material === "WOOD") + 1;
+  const entranceLabel = map.zones.findIndex((zone) => zone.material === "STONE_TILE") + 1;
+
+  assert.ok(woodLabel > 0);
+  assert.ok(entranceLabel > 0);
+  assert.equal(labels[10 * width + 30], woodLabel);
+  const entrancePixels = labels.reduce((sum, label) => sum + Number(label === entranceLabel), 0);
+  const interiorPixels = interiorMask.reduce((sum, value) => sum + value, 0);
+  assert.ok(entrancePixels > 0);
+  assert.ok(entrancePixels <= interiorPixels * 0.15);
+});
+
+test("falls back to the label-free floor map when semantic rooms are unusable", () => {
+  const width = 60;
+  const height = 40;
+  const interiorMask = new Uint8Array(width * height);
+  for (let y = 4; y < 36; y += 1) {
+    for (let x = 4; x < 56; x += 1) interiorMask[y * width + x] = 1;
+  }
+
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask,
+    millimetersPerPixel: 100,
+    openings: [
+      { id: "front", kind: "door", valid: true, axis: "horizontal", center_x: 30, center_y: 36, width: 10, height: 2 },
+    ],
+    polygons: { door: [], wall: [], window: [] },
+    rooms: [
+      { confidence: 0.1, label: "Living room", polygon: normalizedBox(4, 4, 56, 36, width, height) },
+    ],
+    width,
+  });
+
+  assert.deepEqual(
+    map.zones.map((zone) => zone.material).sort(),
+    ["STONE_TILE", "WOOD"],
+  );
+});

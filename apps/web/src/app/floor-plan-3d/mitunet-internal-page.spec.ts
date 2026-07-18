@@ -86,3 +86,9 @@ test("keeps mounted model and furniture binaries out of the Docker build context
   assert.match(dockerIgnoreSource, /^services\/mitunet$/m);
   assert.match(dockerIgnoreSource, /^runtime-assets\/furniture-glb-dataset$/m);
 });
+
+test("keeps label-free floor generation available when room analysis fails", () => {
+  assert.match(viewerSource, /let analysisRooms = \[\]/);
+  assert.match(viewerSource, /catch \(error\) \{[\s\S]*?Room analysis unavailable/);
+  assert.match(viewerSource, /rooms:\s*analysisRooms/);
+});

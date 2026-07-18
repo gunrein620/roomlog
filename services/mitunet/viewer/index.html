@@ -1182,19 +1182,25 @@ async function ensureRoomFloorMaterials() {
   if (currentComposedPlan?.floor_materials) return true;
   if (!currentComposedPlan?.input_image_b64 || !floorFinishLayout) return false;
 
-  const response = await fetch("/room-materials", {
-    body: JSON.stringify({
-      imageDataUrl: `data:image/png;base64,${currentComposedPlan.input_image_b64}`,
-    }),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  });
-  if (!response.ok) {
-    throw new Error(await responseError(response, `Room analysis failed (${response.status})`));
-  }
-  const analysis = await response.json();
-  if (analysis.status !== "ready" || !Array.isArray(analysis.rooms) || analysis.rooms.length === 0) {
-    throw new Error(analysis.summary || "No room labels were detected");
+  let analysisRooms = [];
+  try {
+    const response = await fetch("/room-materials", {
+      body: JSON.stringify({
+        imageDataUrl: `data:image/png;base64,${currentComposedPlan.input_image_b64}`,
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(await responseError(response, `Room analysis failed (${response.status})`));
+    }
+    const analysis = await response.json();
+    if (analysis.status !== "ready" || !Array.isArray(analysis.rooms) || analysis.rooms.length === 0) {
+      throw new Error(analysis.summary || "No room labels were detected");
+    }
+    analysisRooms = analysis.rooms;
+  } catch (error) {
+    console.warn("Room analysis unavailable; using label-free floor materials.", error);
   }
 
   const [width, height] = currentComposedPlan.canvas_size ?? [1024, 1024];
@@ -1211,7 +1217,7 @@ async function ensureRoomFloorMaterials() {
     millimetersPerPixel: currentComposedPlan.calibration?.millimetersPerPixel ?? null,
     openings: currentComposedPlan.openings ?? [],
     polygons: currentComposedPlan.polygons ?? {},
-    rooms: analysis.rooms,
+    rooms: analysisRooms,
     sourceRgba,
     width,
   });

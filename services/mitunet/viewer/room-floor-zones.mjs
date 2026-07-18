@@ -273,6 +273,82 @@ function fillTemporaryBarriers(labels, interiorMask, permanentSolid, width, heig
   }
 }
 
+function addEntranceFloorOverride({
+  height,
+  interiorMask,
+  labels,
+  millimetersPerPixel,
+  openings,
+  permanentSolid,
+  rooms,
+  width,
+  zones,
+}) {
+  const entrance = buildEntranceFloorOverride({
+    height,
+    interiorMask,
+    labels,
+    millimetersPerPixel,
+    openings,
+    permanentSolid,
+    rooms,
+    width,
+  });
+  if (
+    !entrance
+    || zones[entrance.baseLabel - 1]?.material === "STONE_TILE"
+    || zones.length >= 255
+  ) return;
+
+  const label = zones.length + 1;
+  for (const index of entrance.pixels) labels[index] = label;
+  zones.push({
+    confidence: entrance.confidence,
+    id: `room-${label}`,
+    label: entrance.label,
+    material: "STONE_TILE",
+    roomType: "entrance",
+    seed: entrance.seed,
+  });
+}
+
+function buildLabelFreeFloorMap({
+  height,
+  interiorMask,
+  millimetersPerPixel,
+  openings,
+  permanentSolid,
+  width,
+}) {
+  const labels = new Uint8Array(interiorMask.length);
+  let seedIndex = -1;
+  for (let index = 0; index < interiorMask.length; index += 1) {
+    if (!interiorMask[index] || permanentSolid[index]) continue;
+    labels[index] = 1;
+    if (seedIndex < 0) seedIndex = index;
+  }
+  const zones = [{
+    confidence: 0,
+    id: "room-1",
+    label: "Default floor",
+    material: "WOOD",
+    roomType: "unknown",
+    seed: seedIndex < 0 ? [0, 0] : [seedIndex % width, Math.floor(seedIndex / width)],
+  }];
+  addEntranceFloorOverride({
+    height,
+    interiorMask,
+    labels,
+    millimetersPerPixel,
+    openings,
+    permanentSolid,
+    rooms: [],
+    width,
+    zones,
+  });
+  return { ...encodeRoomFloorLabels(labels, width, height), zones };
+}
+
 export function buildRoomFloorMaterialMap({
   height,
   interiorMask,
@@ -295,12 +371,22 @@ export function buildRoomFloorMaterialMap({
   ) {
     throw new RangeError("Invalid room floor dimensions");
   }
-  if (!Array.isArray(rooms) || rooms.length < 1 || rooms.length > MAX_ROOMS) {
-    throw new RangeError("Room floor analysis requires between 1 and 64 rooms");
+  if (!Array.isArray(rooms) || rooms.length > MAX_ROOMS) {
+    throw new RangeError("Room floor analysis requires at most 64 rooms");
   }
 
   const permanentSolid = new Uint8Array(interiorMask.length);
   rasterize([...(polygons.wall ?? []), ...(polygons.window ?? [])], width, height, permanentSolid);
+  if (!rooms.length) {
+    return buildLabelFreeFloorMap({
+      height,
+      interiorMask,
+      millimetersPerPixel,
+      openings,
+      permanentSolid,
+      width,
+    });
+  }
   const doorBarrier = new Uint8Array(interiorMask.length);
   rasterize(polygons.door ?? [], width, height, doorBarrier);
   const temporaryBarrier = permanentSolid.slice();
@@ -319,7 +405,16 @@ export function buildRoomFloorMaterialMap({
       centroid: polygonCentroid(room?.polygon, width, height),
     }))
     .filter(({ room, centroid }) => centroid && Number(room?.confidence) >= MIN_CONFIDENCE);
-  if (!validRooms.length) throw new Error("Room floor analysis returned no usable rooms");
+  if (!validRooms.length) {
+    return buildLabelFreeFloorMap({
+      height,
+      interiorMask,
+      millimetersPerPixel,
+      openings,
+      permanentSolid,
+      width,
+    });
+  }
 
   const labels = new Uint8Array(interiorMask.length);
   const queue = new Int32Array(interiorMask.length);
@@ -356,7 +451,16 @@ export function buildRoomFloorMaterialMap({
       seed: [seed.x, seed.y],
     });
   }
-  if (!zones.length) throw new Error("Room floor analysis produced no stable room seeds");
+  if (!zones.length) {
+    return buildLabelFreeFloorMap({
+      height,
+      interiorMask,
+      millimetersPerPixel,
+      openings,
+      permanentSolid,
+      width,
+    });
+  }
 
   while (head < tail) {
     const index = queue[head++];
