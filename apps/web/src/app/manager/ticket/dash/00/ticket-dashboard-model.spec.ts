@@ -27,7 +27,7 @@ const ticket = (id: string, status: Ticket["status"]): Ticket => ({
 
 describe("manager defect dashboard model", () => {
   const rows: DefectDashboardRow[] = [
-    { ticket: ticket("waiting", "received") },
+    { ticket: ticket("waiting", "received"), isManagerUnread: true },
     {
       ticket: ticket("processing", "processing"),
       repair: {
@@ -40,7 +40,7 @@ describe("manager defect dashboard model", () => {
       },
     },
     { ticket: ticket("done", "resolved") },
-    { ticket: ticket("cancelled", "cancelled") },
+    { ticket: ticket("cancelled", "cancelled"), isManagerUnread: true },
   ];
 
   it("groups ticket states into the requested status chips", () => {
@@ -75,12 +75,22 @@ describe("manager defect dashboard model", () => {
   it("counts and filters live rows without fabricating periodic rows", () => {
     assert.deepEqual(countDefectStatuses(rows), {
       all: 4,
+      unread: 2,
       waiting: 1,
       in_progress: 1,
       completed: 1,
       cancelled: 1,
       periodic: 0,
     });
+    assert.deepEqual(
+      filterDefectRows(rows, {
+        status: "unread",
+        worker: "all",
+        building: "all",
+        template: "all",
+      }).map((row) => row.ticket.id),
+      ["waiting", "cancelled"],
+    );
     assert.deepEqual(
       filterDefectRows(rows, {
         status: "periodic",

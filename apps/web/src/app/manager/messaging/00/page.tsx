@@ -14,6 +14,11 @@ import {
   resolveBuildingFilter,
 } from "@/lib/messaging-building-filter";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import {
+  managerThreadConfirmationLabel,
+  managerThreadNeedsReply,
+  sortManagerThreads,
+} from "@/lib/manager-messaging-thread-status";
 import { filterThreadsBySearch } from "@/lib/messaging-thread-search";
 import { formatThreadLocation } from "@/lib/messaging-thread-location";
 import { ApiError } from "@/lib/server-api";
@@ -70,12 +75,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const filteredThreads = filterThreadsByBuilding(threads, activeBuilding);
   const searchQuery = q?.trim() ?? "";
   const searchedThreads = filterThreadsBySearch(filteredThreads, searchQuery);
-  const sortedThreads = [...searchedThreads].sort((a, b) => {
-    const urgentA = a.unreadCount + Number(a.pendingRequest);
-    const urgentB = b.unreadCount + Number(b.pendingRequest);
-    return urgentB - urgentA || b.updatedAt.localeCompare(a.updatedAt);
-  });
-  const needsReply = searchedThreads.filter((thread) => thread.unreadCount > 0 || thread.pendingRequest).length;
+  const sortedThreads = sortManagerThreads(searchedThreads);
+  const needsReply = searchedThreads.filter(managerThreadNeedsReply).length;
 
   return (
     <>
@@ -195,7 +196,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 }
 
 function ThreadCard({ thread }: { thread: Thread }) {
-  const needsReply = thread.unreadCount > 0 || thread.pendingRequest;
+  const needsReply = managerThreadNeedsReply(thread);
+  const confirmationLabel = managerThreadConfirmationLabel(thread);
   const locationLabel = formatThreadLocation(thread);
   return (
     <Card
@@ -212,6 +214,33 @@ function ThreadCard({ thread }: { thread: Thread }) {
         <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
           <Badge emphasis={needsReply}>{locationLabel}</Badge>
           <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
+          {thread.isManagerTicketUnread ? (
+            <span
+              aria-label="티켓 미확인"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--radius-full)",
+                color: "var(--primary)",
+                background: "var(--primary-container)",
+                fontSize: "var(--fs-caption)",
+                fontWeight: 800,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: "var(--space-sm)",
+                  height: "var(--space-sm)",
+                  borderRadius: "var(--radius-full)",
+                  background: "var(--primary)",
+                }}
+              />
+              <span>미확인</span>
+            </span>
+          ) : null}
         </div>
         {needsReply ? (
           <Badge emphasis>
@@ -251,7 +280,17 @@ function ThreadCard({ thread }: { thread: Thread }) {
         {thread.lastMessage}
       </div>
       <div style={{ marginTop: "auto", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
-        미응답 {formatDateTime(thread.updatedAt)} · 미읽음 {thread.unreadCount}
+        미응답 {formatDateTime(thread.updatedAt)} ·{" "}
+        <span
+          data-confirmation={confirmationLabel === "미확인" ? "unconfirmed" : "confirmed"}
+          style={{
+            color:
+              confirmationLabel === "미확인"
+                ? "var(--primary)"
+                : "var(--on-surface-variant)",
+            fontWeight: 800,
+          }}
+        >{confirmationLabel}</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-sm)", alignItems: "center" }}>
         <Link

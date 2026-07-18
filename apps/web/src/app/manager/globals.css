@@ -2288,11 +2288,27 @@ html:has(.manager-workspace) {
   background: var(--surface-container-low);
 }
 
+.manager-defect-dashboard__table tbody tr[data-unread="true"] {
+  background: color-mix(
+    in srgb,
+    var(--primary) 7%,
+    var(--surface-container-lowest)
+  );
+}
+
+.manager-defect-dashboard__table tbody tr[data-unread="true"] td:first-child {
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
 .manager-defect-dashboard__table tr:last-child td {
   border-bottom: 0;
 }
 
 .manager-defect-dashboard__job-link {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
   padding: 0;
   border: 0;
   background: transparent;
@@ -2302,6 +2318,28 @@ html:has(.manager-workspace) {
   text-align: left;
   text-decoration: none;
   cursor: pointer;
+}
+
+.manager-defect-dashboard__unread-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.manager-defect-dashboard__unread-dot {
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--primary);
+}
+
+.manager-defect-dashboard__unread-badge {
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  color: var(--primary);
+  background: var(--primary-container);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
 }
 
 .manager-defect-dashboard__job-link:hover {

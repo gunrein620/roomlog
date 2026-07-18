@@ -53,6 +53,14 @@ describe("manager ticket attachment mapping", () => {
 });
 
 describe("manager ticket row loading", () => {
+  it("preserves the manager unread state on dashboard rows", async () => {
+    const [row] = await listManagerTicketRows(async () => [
+      { ...detailTicket, isManagerUnread: true },
+    ]);
+
+    assert.equal(row?.isManagerUnread, true);
+  });
+
   it("propagates API failures instead of returning an empty dashboard", async () => {
     const failure = new Error("manager tickets unavailable");
 

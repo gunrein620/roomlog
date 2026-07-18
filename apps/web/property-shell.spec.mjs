@@ -6,6 +6,7 @@ import { test } from "node:test";
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
 const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
 const tenantMyPageSource = readFileSync(new URL("./src/app/my/flows/TenantMyPage.tsx", import.meta.url), "utf8");
+const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const mobileRoleMenuSource = readFileSync(new URL("./src/app/_components/MobileRoleMenu.tsx", import.meta.url), "utf8");
 const spaSource = [
   homeAppSource,
@@ -41,8 +42,8 @@ test("tenant complaint modal persists, restores, and clears the authenticated ro
   assert.match(tenantMyPageSource, /deleteTenantComplaintDraft\(selectedTenantRoomId\)/);
   assert.match(tenantMyPageSource, /mergeTenantComplaintDraftImageUrls\(requestImages, uploadedUrls\)/);
   assert.match(tenantMyPageSource, /roomId:\s*selectedTenantRoomId/);
-  assert.match(tenantMyPageSource, /requestDraftLoadGuardRef\.current\.isCurrent\(loadToken\)/);
-  assert.match(tenantMyPageSource, /setRequestDraft\(EMPTY_REQUEST_DRAFT\);[\s\S]*?clearRequestImages\(\);[\s\S]*?loadTenantComplaintDraft/);
+  assert.match(tenantMyPageSource, /setSavedRequestDraft\(saved\)/);
+  assert.match(tenantMyPageSource, /setSavedRequestDraft\(null\)/);
   assert.match(tenantMyPageSource, /serializeTenantComplaintDraftOccurredAt\(requestDraft\.occurredAt\)/);
   assert.match(tenantMyPageSource, /requestDraftMutationGuardRef\.current\.tryBegin\("submit"\)/);
   assert.match(tenantMyPageSource, /clientRequestId:\s*requestSubmissionId/);
@@ -53,6 +54,17 @@ test("tenant complaint modal persists, restores, and clears the authenticated ro
     tenantMyPageSource,
     /const handleRequestDraftSave = \(\) => \{[\s\S]*?showToast\("민원\/하자 요청이 임시 저장되었습니다\."\);\n  \};/
   );
+});
+
+test("tenant complaint history exposes a saved draft separately from a blank new request", () => {
+  assert.match(tenantMyPageSource, /savedRequestDraft/);
+  assert.match(tenantMyPageSource, /const openNewRequestSheet = \(\) =>/);
+  assert.match(tenantMyPageSource, /const openSavedRequestSheet = \(\) =>/);
+  assert.match(
+    tenantMyPageSource,
+    /savedRequestDraft \? \([\s\S]*?>\s*임시 저장\s*<\/[\s\S]*?신규 요청하기/
+  );
+  assert.match(globalsCssSource, /\.tenant-section-actions\s*\{/);
 });
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
@@ -76,7 +88,6 @@ const floorPlanModel = {
   ...(await import("./src/app/floor-plan-3d/plan-extraction/wall-detection.mjs"))
 };
 const dimensionLayout = await import("./src/app/floor-plan-3d/plan-extraction/dimension-layout.mjs");
-const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const webPackageSource = readFileSync(new URL("./package.json", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
 const floorPlanVisualSource = `${floorPlanRouteSource}\n${globalsCssSource}`;
