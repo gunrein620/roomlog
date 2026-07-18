@@ -27,6 +27,7 @@ export function materialForRoom(room) {
     BALCONY: "BALCONY_TILE",
     BATHROOM: "TILE",
     BEDROOM: "WOOD",
+    COMMON_AREA: "CONCRETE",
     DRESS_ROOM: "WOOD",
     ENTRY: "STONE_TILE",
     HALLWAY: "WOOD",
@@ -451,18 +452,42 @@ export function buildRoomFloorMaterialMap({
   let tail = 0;
   const zones = [];
   const roomBySeed = new Map();
+  const seedCandidates = [];
   for (const { area, room, centroid } of validRooms) {
     const material = materialForRoom(room);
     if (material === "STONE_TILE") continue;
     const seed = findStableSeed(centroid, interiorMask, barrier, components, width, height, minimumSize);
     if (!seed) continue;
-    const candidate = { area, material, room, seed };
-    const key = seed.y * width + seed.x;
+    seedCandidates.push({
+      area,
+      componentId: components.ids[seed.y * width + seed.x],
+      material,
+      room,
+      seed,
+    });
+  }
+  const privateComponentIds = new Set(
+    seedCandidates
+      .filter(({ material }) => material !== "CONCRETE")
+      .map(({ componentId }) => componentId),
+  );
+  for (const candidate of seedCandidates) {
+    if (
+      candidate.material === "CONCRETE"
+      && (
+        privateComponentIds.size === 0
+        || privateComponentIds.has(candidate.componentId)
+      )
+    ) continue;
+    const key = candidate.seed.y * width + candidate.seed.x;
     const current = roomBySeed.get(key);
     if (
       !current
-      || area > current.area
-      || (area === current.area && Number(room.confidence) > Number(current.room.confidence))
+      || candidate.area > current.area
+      || (
+        candidate.area === current.area
+        && Number(candidate.room.confidence) > Number(current.room.confidence)
+      )
     ) {
       roomBySeed.set(key, candidate);
     }
