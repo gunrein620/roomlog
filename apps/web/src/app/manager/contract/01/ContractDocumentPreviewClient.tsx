@@ -93,32 +93,31 @@ export function ContractDocumentPreviewClient({
 
   return (
     <div style={documentPreviewClientStyle}>
-      <div style={documentChipRowStyle}>
-        <button
-          type="button"
-          data-contract-highlight-button="read-values"
-          data-highlight-count={highlightBoxes.length}
-          data-preview-kind={previewKind}
-          disabled={!hasHighlightBoxes}
-          aria-pressed={showOcrOverlay}
-          title={hasHighlightBoxes ? "읽어온 값 위치를 누르는 동안만 표시합니다." : "저장된 OCR 위치 좌표가 없습니다. OCR을 다시 실행해야 표시됩니다."}
-          onPointerDown={showReadValues}
-          onPointerUp={hideReadValues}
-          onPointerCancel={hideReadValues}
-          onPointerLeave={hideReadValues}
-          onMouseUp={hideReadValues}
-          onTouchEnd={hideReadValues}
-          onClick={hideReadValues}
-          onKeyDown={handleReadValuesKeyDown}
-          onKeyUp={handleReadValuesKeyUp}
-          onBlur={hideReadValues}
-          style={!hasHighlightBoxes ? readValuesButtonDisabledStyle : showOcrOverlay ? readValuesButtonActiveStyle : readValuesButtonStyle}
-        >
-          읽어온 값
-        </button>
-      </div>
-
       <div style={documentFrameStyle}>
+        <div style={documentPreviewNavStyle}>
+          <button
+            type="button"
+            data-contract-highlight-button="read-values"
+            data-highlight-count={highlightBoxes.length}
+            data-preview-kind={previewKind}
+            disabled={!hasHighlightBoxes}
+            aria-pressed={showOcrOverlay}
+            title={hasHighlightBoxes ? "읽어온 값 위치를 누르는 동안만 표시합니다." : "저장된 OCR 위치 좌표가 없습니다. OCR을 다시 실행해야 표시됩니다."}
+            onPointerDown={showReadValues}
+            onPointerUp={hideReadValues}
+            onPointerCancel={hideReadValues}
+            onPointerLeave={hideReadValues}
+            onMouseUp={hideReadValues}
+            onTouchEnd={hideReadValues}
+            onClick={hideReadValues}
+            onKeyDown={handleReadValuesKeyDown}
+            onKeyUp={handleReadValuesKeyUp}
+            onBlur={hideReadValues}
+            style={!hasHighlightBoxes ? readValuesButtonDisabledStyle : showOcrOverlay ? readValuesButtonActiveStyle : readValuesButtonStyle}
+          >
+            읽어온 값
+          </button>
+        </div>
         {previewUrl ? (
           previewKind === "image" ? (
             <div style={documentPreviewSurfaceStyle}>
@@ -576,14 +575,6 @@ function pdfPreviewSrc(url: string) {
   return url.includes("#") ? url : `${url}#${hash}`;
 }
 
-const documentChipRowStyle = {
-  display: "flex",
-  gap: "var(--space-xs)",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  minHeight: 36,
-} as const;
-
 const documentModeButtonStyle = {
   display: "inline-flex",
   alignItems: "center",
@@ -599,6 +590,7 @@ const documentModeButtonStyle = {
   font: "inherit",
   fontSize: "var(--fs-caption)",
   fontWeight: 800,
+  pointerEvents: "auto",
   cursor: "pointer",
 } as const;
 
@@ -626,21 +618,34 @@ const readValuesButtonDisabledStyle = {
 
 const documentPreviewClientStyle = {
   display: "grid",
-  gridTemplateRows: "auto 1fr",
-  gap: "var(--space-sm)",
+  gridTemplateRows: "1fr",
+  height: "100%",
   minHeight: 0,
 } as const;
 
 const documentFrameStyle = {
+  position: "relative",
   display: "grid",
-  minHeight: 560,
+  height: "100%",
+  minHeight: 720,
   minWidth: 0,
+} as const;
+
+const documentPreviewNavStyle = {
+  position: "absolute",
+  top: "var(--space-sm)",
+  right: "var(--space-sm)",
+  zIndex: 10,
+  display: "flex",
+  justifyContent: "flex-end",
+  pointerEvents: "none",
 } as const;
 
 const documentPreviewSurfaceStyle = {
   position: "relative",
   display: "grid",
-  minHeight: 560,
+  height: "100%",
+  minHeight: 720,
   overflow: "hidden",
   borderRadius: "var(--radius-sm)",
 } as const;
@@ -648,15 +653,16 @@ const documentPreviewSurfaceStyle = {
 const fallbackFrameStyle = {
   position: "relative",
   display: "grid",
-  minHeight: 560,
+  height: "100%",
+  minHeight: 720,
   overflow: "hidden",
 } as const;
 
 const pdfDocumentSurfaceStyle = {
   position: "relative",
   display: "grid",
-  minHeight: 760,
-  maxHeight: 980,
+  height: "100%",
+  minHeight: 860,
   overflowX: "hidden",
   overflowY: "auto",
   border: "1px solid var(--border)",
@@ -699,7 +705,7 @@ const pdfCanvasStyle = {
 } as const;
 
 const pdfLoadingStyle = {
-  minHeight: 560,
+  minHeight: 720,
   display: "grid",
   placeItems: "center",
   color: "white",
@@ -708,7 +714,7 @@ const pdfLoadingStyle = {
 
 const documentImageStyle = {
   width: "100%",
-  minHeight: 560,
+  minHeight: 720,
   height: "100%",
   objectFit: "contain",
   border: "1px solid var(--border)",
