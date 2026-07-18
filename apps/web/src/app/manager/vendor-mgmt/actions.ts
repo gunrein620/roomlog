@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   archiveManagerVendor,
+  createManagerVendor,
   registerManagerVendor,
   updateManagerVendorNote,
 } from "@/lib/vendor-mgmt-api";
@@ -26,6 +27,23 @@ function refreshVendorPages(vendorId: string) {
   revalidatePath(MANAGER_VENDOR_MGMT_PATHS.search);
   revalidatePath(MANAGER_VENDOR_MGMT_PATHS.vendor(vendorId));
   revalidatePath(MANAGER_VENDOR_MGMT_PATHS.performance(vendorId));
+}
+
+export async function createManualVendorAction(
+  _previousState: ManagerMutationState,
+  formData: FormData,
+): Promise<ManagerMutationState> {
+  try {
+    await createManagerVendor({
+      businessName: requiredFormString(formData, "businessName"),
+      phone: requiredFormString(formData, "phone"),
+      accountNumber: requiredFormString(formData, "accountNumber"),
+    });
+    revalidatePath(MANAGER_VENDOR_MGMT_PATHS.vendors);
+    return managerMutationSuccess("업체를 등록했습니다.");
+  } catch (error) {
+    return managerMutationError(error);
+  }
 }
 
 export async function registerVendorAction(

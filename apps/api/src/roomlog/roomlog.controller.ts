@@ -22,6 +22,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import type {
   ConfirmTenantVendorConnectionInput,
+  CreateManagerVendorInput,
   DecideRepairCompletionInput,
   PrepareTenantVendorConnectionInput,
   RequestTenantDirectPaymentInput,
@@ -2323,6 +2324,16 @@ export class RoomlogController {
       user.id,
       catalogFilters(query, trade, serviceArea, verificationStatus, isActive)
     );
+  }
+
+  @Post("manager/vendor-mgmt/vendors/manual")
+  createManualManagerVendor(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateManagerVendorInput
+  ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId"]);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireManagerVendorDomain().createManual(user.id, body);
   }
 
   @Put("manager/vendor-mgmt/vendors/:vendorId/registration")
