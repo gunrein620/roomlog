@@ -233,12 +233,18 @@ def main():
     pts, cols = pts[uniq], cols[uniq]
     print(f"[voxel {args.voxel}m] 점 {len(pts):,}")
 
-    # 바닥 y=0 앵커 — ARKit 원점은 촬영 시작 시 기기 높이(≈1.1m)라 바닥이 offset된다.
-    # (--orientation-method/--center-method none으로 nerfstudio가 프레임을 그대로 두므로 offset이
-    #  spz까지 남는다.) 정합 뷰어가 런타임에 바닥을 추정·보정하던 부담(오판 시 방이 뒤집혀 앉음)을
-    # 없애려, dense 점군에서 바닥 슬래브를 찾아 여기서 y=0으로 굽는다. up축 = world Y(index 1,
-    # OpenGL/ARKit 중력정렬). 점군과 카메라 포즈를 같은 양만큼 rigid 이동해 일관성을 유지한다.
-    _ys = pts[:, 1]
+    # ── 캐노니컬 프레임 정규화: 180° X Y-up 플립 + 바닥 y=0 앵커 ──────────────────
+    # Record3D/ARKit→OpenGL 파이프라인 출력은 뷰어 프레임 기준 **Y-down**이다(방이 180° 뒤집혀
+    # 카메라가 바닥 밑에서 봄 — 실측 확인). c0dccba가 "이미 Y-up"으로 오판해 splat-transform의
+    # 회전 굽기(-r -90,0,0)를 뺐던 게 원인. ARKit 월드→OpenGL 규약은 결정론적이라 **모든 Record3D
+    # 캡처가 동일하게 Y-down** → 여기서 180° X 회전((x,y,z)→(x,-y,-z))으로 Y-up으로 세운다.
+    # 그다음 dense 점군에서 바닥을 찾아 y=0으로 앵커. 점군과 카메라 c2w에 같은 월드변환을 적용해
+    # 일관성 유지(포즈 quaternion은 안 만지고 c2w 행렬 곱으로 처리 — frame_entry 참조).
+    R_YUP = np.diag([1.0, -1.0, -1.0])  # 180° X (Y-up 플립)
+    pts[:, 1] *= -1.0
+    pts[:, 2] *= -1.0
+
+    _ys = pts[:, 1]  # 플립 후: 바닥이 low-Y
     _lo, _hi = float(_ys.min()), float(_ys.max())
     _nbins = max(1, int(np.ceil((_hi - _lo) / 0.05)))  # 5cm 빈
     _counts, _edges = np.histogram(_ys, bins=_nbins, range=(_lo, _hi))
@@ -251,13 +257,19 @@ def main():
             _floor_y = 0.5 * (float(_edges[_i]) + float(_edges[_i + 1]))
             break
     pts[:, 1] -= _floor_y
-    poses[:, 5] -= _floor_y  # ty(카메라 world-Y)도 이동 → frame_entry·검증이 자동 일관
-    print(f"[floor-anchor] 바닥 y={_floor_y:.3f}m → 0 앵커 (점군·카메라 {len(poses)}개 rigid 이동)")
+    print(f"[canonical] 180° X Y-up 플립 + 바닥 y={_floor_y:.3f}→0 앵커 (점군·카메라 {len(poses)}개)")
+
+    def _canonical_c2w(i):
+        # 월드 180° X 플립 후 바닥 앵커를 c2w에 반영(점군과 동일 변환).
+        c2w = quat_trans_to_c2w(poses[i])
+        c2w[:3, :] = R_YUP @ c2w[:3, :]
+        c2w[1, 3] -= _floor_y
+        return c2w
 
     # frames: train+eval을 원시 인덱스 순으로 병합, split은 filename 리스트로 선언
     def frame_entry(i):
         e = {"file_path": f"rgb/{i}.jpg",
-             "transform_matrix": quat_trans_to_c2w(poses[i]).tolist()}
+             "transform_matrix": _canonical_c2w(i).tolist()}
         if args.depth_out != "none":
             ext = {"exr": "exr", "npy": "npy", "png": "png"}[args.depth_out]
             sub = "depth" if args.depth_out == "exr" else f"depth_{args.depth_out}"
@@ -270,8 +282,9 @@ def main():
     # bbox 검증(방 크기 나와야 정상 — 수 m)
     lo, hi = pts.min(0), pts.max(0)
     print(f"[verify] bbox(m) X {hi[0]-lo[0]:.2f}  Y {hi[1]-lo[1]:.2f}  Z {hi[2]-lo[2]:.2f}")
-    cam_t = np.array([quat_trans_to_c2w(poses[i])[:3, 3] for i in merged])
+    cam_t = np.array([_canonical_c2w(i)[:3, 3] for i in merged])
     print(f"[verify] 카메라 {len(frames)}개 중심 {cam_t.mean(0).round(2)} / 점군 중심 {pts.mean(0).round(2)}")
+    print(f"[verify] Y-up·바닥0 기대: 카메라 Y>0 · 점군 Y_min≈0 (실제 Y_min {pts[:,1].min():.2f})")
     print(f"[verify] 카메라가 점군 bbox 안? "
           f"{np.all((cam_t.mean(0) > lo - 1) & (cam_t.mean(0) < hi + 1))}")
 
