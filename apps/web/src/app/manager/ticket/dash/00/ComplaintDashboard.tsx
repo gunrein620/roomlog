@@ -12,6 +12,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import {
   buildComplaintDashboard,
   complaintCategory,
@@ -80,11 +81,19 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
   const [pickerYear, setPickerYear] = useState(() => monthParts(latestComplaintMonth(rows)).year);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
+  const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
   const calendarRef = useRef<HTMLDivElement>(null);
   const effectiveRows = useMemo(
-    () => applyTicketLaneOverrides(rows, ticketLaneOverrides),
-    [rows, ticketLaneOverrides],
+    () =>
+      applyTicketLaneOverrides(rows, ticketLaneOverrides).map((row) =>
+        locallyReadTicketIds.has(row.ticket.id)
+          ? { ...row, isManagerUnread: false }
+          : row,
+      ),
+    [locallyReadTicketIds, rows, ticketLaneOverrides],
   );
   const dashboard = useMemo(() => buildComplaintDashboard(effectiveRows, month), [effectiveRows, month]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
@@ -123,6 +132,21 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     setMonth(nextMonth);
     setPickerYear(monthParts(nextMonth).year);
     setCalendarOpen(false);
+  }
+
+  function selectRow(row: DefectDashboardRow) {
+    setSelectedRow(row);
+    void markManagerTicketRead(row.ticket.id)
+      .then(() => {
+        setLocallyReadTicketIds((current) => {
+          const next = new Set(current);
+          next.add(row.ticket.id);
+          return next;
+        });
+      })
+      .catch(() => {
+        // 패널은 그대로 열어두고 읽음 표시는 서버 저장이 성공할 때만 갱신한다.
+      });
   }
 
   function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
@@ -303,11 +327,11 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
                   data-selected={selectedRow?.ticket.id === row.ticket.id ? "true" : undefined}
                   tabIndex={0}
                   aria-label={`${row.ticket.title} 상세 대화 열기`}
-                  onClick={() => setSelectedRow(row)}
+                  onClick={() => selectRow(row)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      setSelectedRow(row);
+                      selectRow(row);
                     }
                   }}
                 >

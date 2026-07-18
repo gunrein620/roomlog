@@ -34,11 +34,23 @@ test("대시보드 최근 접수 행의 어느 셀을 눌러도 대화 사이드
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
 
   assert.match(complaintDashboardSource, /className="manager-complaint-dashboard__row"/);
-  assert.match(complaintDashboardSource, /onClick=\{\(\) => setSelectedRow\(row\)\}/);
+  assert.match(complaintDashboardSource, /onClick=\{\(\) => selectRow\(row\)\}/);
   assert.match(complaintDashboardSource, /onKeyDown=\{\(event\) => \{/);
   assert.match(complaintDashboardSource, /event\.key === "Enter" \|\| event\.key === " "/);
   assert.match(complaintDashboardSource, /tabIndex=\{0\}/);
   assert.doesNotMatch(complaintDashboardSource, /<button[\s\S]*manager-complaint-dashboard__row-link/);
+});
+
+test("대시보드에서 민원을 열면 성공한 읽음 저장 뒤 미확인 상태를 지운다", () => {
+  const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
+
+  assert.match(complaintDashboardSource, /import \{ markManagerTicketRead \} from "@\/lib\/manager-ticket-unread"/);
+  assert.match(complaintDashboardSource, /const \[locallyReadTicketIds, setLocallyReadTicketIds\] = useState<Set<string>>/);
+  assert.match(complaintDashboardSource, /function selectRow\(row: DefectDashboardRow\)/);
+  assert.match(complaintDashboardSource, /void markManagerTicketRead\(row\.ticket\.id\)/);
+  assert.match(complaintDashboardSource, /markManagerTicketRead\(row\.ticket\.id\)[\s\S]*setLocallyReadTicketIds/);
+  assert.match(complaintDashboardSource, /locallyReadTicketIds\.has\(row\.ticket\.id\)[\s\S]*isManagerUnread: false/);
+  assert.match(complaintDashboardSource, /onClick=\{\(\) => selectRow\(row\)\}/);
 });
 
 test("패널은 티켓 스레드를 세입자와 같은 소스로 읽고 쓴다", () => {
