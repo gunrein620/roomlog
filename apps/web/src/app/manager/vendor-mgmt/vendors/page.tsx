@@ -7,7 +7,6 @@ import {
   VendorScreenHeader,
   VendorSection,
 } from "../_components";
-import { ManagerVendorArchiveControl } from "./ManagerVendorArchiveControl";
 import { ManagerVendorRegistrationDialog } from "./ManagerVendorRegistrationDialog";
 
 type SearchParams = Promise<{ query?: string; trade?: string }>;
@@ -34,16 +33,7 @@ export default async function ManagerVendorsPage({ searchParams }: { searchParam
           description="계정 연결과 운영 검증이 모두 완료된 업체만 하자 작업에 배정할 수 있습니다."
         >
           {activeVendors.length > 0 ? (
-            <ManagerVendorTable
-              vendors={activeVendors}
-              renderManagement={(vendor) => (
-                <ManagerVendorArchiveControl
-                  vendorId={vendor.vendorId}
-                  vendorName={vendor.catalog.businessName}
-                  disabled={result.source === "DEMO"}
-                />
-              )}
-            />
+            <ManagerVendorTable vendors={activeVendors} />
           ) : (
             <EmptyState title="등록한 업체가 없습니다" description="업체 등록 버튼에서 협력업체 정보를 등록해 주세요." />
           )}

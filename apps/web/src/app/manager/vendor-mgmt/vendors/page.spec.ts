@@ -32,6 +32,11 @@ test("manager vendor list opens registration in a modal instead of navigating", 
   );
 });
 
+test("manager vendor list does not expose an archive control", () => {
+  assert.doesNotMatch(pageSource, /ManagerVendorArchiveControl/);
+  assert.doesNotMatch(pageSource, /renderManagement=/);
+});
+
 test("registration dialog is accessible and submits all private vendor fields", () => {
   assert.equal(existsSync(dialogPath), true);
   assert.match(dialogSource, /dialogRef\.current\?\.showModal\(\)/);
