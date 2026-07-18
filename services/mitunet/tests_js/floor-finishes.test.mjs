@@ -178,6 +178,30 @@ test("renders deterministic material colors and preserves a legacy wood fallback
   assert.deepEqual([...legacy.slice(0, 4)], [...buildFloorFinishRgba({ height, interiorMask, width }).slice(0, 4)]);
 });
 
+test("renders deterministic concrete distinct from wood and entry stone", () => {
+  const width = 8;
+  const height = 4;
+  const interiorMask = new Uint8Array(width * height).fill(1);
+  const labels = new Uint8Array(width * height).fill(1);
+  const concreteMap = {
+    ...encodeRoomFloorLabels(labels, width, height),
+    zones: [{ material: "CONCRETE" }],
+  };
+  const stoneMap = {
+    ...encodeRoomFloorLabels(labels, width, height),
+    zones: [{ material: "STONE_TILE" }],
+  };
+  const first = buildFloorFinishRgba({ floorMaterials: concreteMap, height, interiorMask, width });
+  const second = buildFloorFinishRgba({ floorMaterials: concreteMap, height, interiorMask, width });
+  const stone = buildFloorFinishRgba({ floorMaterials: stoneMap, height, interiorMask, width });
+  const wood = buildFloorFinishRgba({ height, interiorMask, width });
+
+  assert.deepEqual(first, second);
+  assert.equal(first[3], 255);
+  assert.notDeepEqual(first, stone);
+  assert.notDeepEqual(first, wood);
+});
+
 test("renders previously saved kitchen floor zones as wood", () => {
   const width = 8;
   const height = 4;
