@@ -3834,14 +3834,15 @@ p {
 
 /* ── 사진 라이트박스 — 스테이지 영역 안에서만, 절대 밖으로 넘치지 않게(flex 체인) ── */
 .photo-lightbox-backdrop {
-  position: absolute;
+  /* fixed 풀스크린 — absolute(스테이지 한정)면 큰 사진과 거의 같은 크기라 "확대"가 성립하지 않는다 */
+  position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 120;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 12px 16px 16px;
-  background: rgba(8, 6, 20, 0.74);
+  padding: 16px 20px 20px;
+  background: rgba(8, 6, 20, 0.86);
   backdrop-filter: blur(6px);
 }
 
