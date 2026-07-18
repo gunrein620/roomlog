@@ -148,13 +148,15 @@ function polygonCentroid(polygon, width, height) {
     sumX += (current.x + next.x) * cross;
     sumY += (current.y + next.y) * cross;
   }
-  if (Math.abs(doubleArea) < Number.EPSILON) {
-    return {
+  const centroid = Math.abs(doubleArea) < Number.EPSILON
+    ? {
       x: Math.round(points.reduce((sum, point) => sum + point.x, 0) / points.length),
       y: Math.round(points.reduce((sum, point) => sum + point.y, 0) / points.length),
-    };
-  }
-  return { x: Math.round(sumX / (3 * doubleArea)), y: Math.round(sumY / (3 * doubleArea)) };
+    }
+    : { x: Math.round(sumX / (3 * doubleArea)), y: Math.round(sumY / (3 * doubleArea)) };
+  return centroid.x < 0 || centroid.x >= width || centroid.y < 0 || centroid.y >= height
+    ? null
+    : centroid;
 }
 
 function polygonArea(polygon) {
@@ -318,6 +320,7 @@ function buildLabelFreeFloorMap({
   millimetersPerPixel,
   openings,
   permanentSolid,
+  rooms = [],
   width,
 }) {
   const labels = new Uint8Array(interiorMask.length);
@@ -342,7 +345,7 @@ function buildLabelFreeFloorMap({
     millimetersPerPixel,
     openings,
     permanentSolid,
-    rooms: [],
+    rooms,
     width,
     zones,
   });
@@ -423,6 +426,7 @@ export function buildRoomFloorMaterialMap({
   const zones = [];
   const roomByComponent = new Map();
   for (const { area, room, centroid } of validRooms) {
+    if (materialForRoomLabel(room.label) === "STONE_TILE") continue;
     const seed = findStableSeed(centroid, interiorMask, barrier, components, width, height, minimumSize);
     if (!seed) continue;
     const componentId = components.ids[seed.y * width + seed.x];
@@ -458,6 +462,7 @@ export function buildRoomFloorMaterialMap({
       millimetersPerPixel,
       openings,
       permanentSolid,
+      rooms: validRooms.map(({ room }) => room),
       width,
     });
   }

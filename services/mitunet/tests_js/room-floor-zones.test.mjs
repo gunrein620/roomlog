@@ -259,3 +259,57 @@ test("falls back to the label-free floor map when semantic rooms are unusable", 
     ["STONE_TILE", "WOOD"],
   );
 });
+
+test("does not let an entrance-only semantic polygon own the whole floor component", () => {
+  const width = 60;
+  const height = 40;
+  const interiorMask = new Uint8Array(width * height);
+  for (let y = 4; y < 36; y += 1) {
+    for (let x = 4; x < 56; x += 1) interiorMask[y * width + x] = 1;
+  }
+
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask,
+    millimetersPerPixel: 100,
+    openings: [
+      { id: "front", kind: "door", valid: true, axis: "horizontal", center_x: 30, center_y: 36, width: 10, height: 2 },
+    ],
+    polygons: { door: [], wall: [], window: [] },
+    rooms: [
+      { confidence: 0.99, label: "Entrance", polygon: normalizedBox(4, 4, 56, 36, width, height) },
+    ],
+    width,
+  });
+  const labels = decodeRoomFloorLabels(map);
+  const entranceLabel = map.zones.findIndex((zone) => zone.material === "STONE_TILE") + 1;
+  const entrancePixels = labels.reduce((sum, label) => sum + Number(label === entranceLabel), 0);
+  const interiorPixels = interiorMask.reduce((sum, value) => sum + value, 0);
+
+  assert.deepEqual(map.zones.map((zone) => zone.material).sort(), ["STONE_TILE", "WOOD"]);
+  assert.ok(entrancePixels > 0);
+  assert.ok(entrancePixels <= interiorPixels * 0.15);
+});
+
+test("rejects an out-of-bounds entrance centroid instead of snapping it into the floor", () => {
+  const width = 60;
+  const height = 40;
+  const interiorMask = new Uint8Array(width * height);
+  for (let y = 4; y < 36; y += 1) {
+    for (let x = 4; x < 56; x += 1) interiorMask[y * width + x] = 1;
+  }
+
+  const map = buildRoomFloorMaterialMap({
+    height,
+    interiorMask,
+    openings: [],
+    polygons: { door: [], wall: [], window: [] },
+    rooms: [
+      { confidence: 0.99, label: "Entrance", polygon: normalizedBox(-30, -30, -10, -10, width, height) },
+    ],
+    width,
+  });
+
+  assert.deepEqual(map.zones.map((zone) => zone.material), ["WOOD"]);
+  assert.deepEqual(new Set(decodeRoomFloorLabels(map)), new Set([0, 1]));
+});
