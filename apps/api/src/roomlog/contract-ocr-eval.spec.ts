@@ -9,6 +9,9 @@ const fieldKeys = [
   "depositBaseAmount",
   "depositConversionAmount",
   "depositFinalAmount",
+  "monthlyRentAmount",
+  "contractStartDate",
+  "contractEndDate",
   "specialTerms",
   "autoRenewal",
   "restorationDuty",
@@ -131,11 +134,11 @@ describe("Contract OCR eval fixtures", () => {
     assert.equal(deposit?.needsCheck, false);
     assert.equal(specialTerms?.value, "보증금 반환 전 미납 관리비와 원상복구 비용을 정산한다.");
     assert.equal(result.extraction.clauseSummary, "특약: 보증금 반환 전 정산");
-    assert.equal(extractionValue(result, "월세"), undefined);
+    assert.equal(extractionValue(result, "월세")?.value, "650,000원");
     assert.equal(extractionValue(result, "계약 기간"), undefined);
   });
 
-  it("filters miscellaneous OCR item labels but accepts special-term aliases", async () => {
+  it("accepts monthly-rent, contract-period, and special-term aliases", async () => {
     const result = await runContractOcrEval(
       ocrFields({}),
       [
@@ -145,6 +148,14 @@ describe("Contract OCR eval fixtures", () => {
           group: "money",
           needsCheck: false,
           evidence: "월 임대료 표기",
+          masked: false
+        },
+        {
+          label: "임대차기간",
+          value: "2025.05.01 ~ 2027.04.30",
+          group: "term",
+          needsCheck: false,
+          evidence: "임대차기간 2025.05.01부터 2027.04.30까지",
           masked: false
         },
         {
@@ -158,7 +169,9 @@ describe("Contract OCR eval fixtures", () => {
       ]
     );
 
-    assert.equal(extractionValue(result, "월세"), undefined);
+    assert.equal(extractionValue(result, "월세")?.value, "650,000원");
+    assert.equal(extractionValue(result, "계약 시작일")?.value, "2025-05-01");
+    assert.equal(extractionValue(result, "계약 종료일")?.value, "2027-04-30");
     assert.equal(extractionValue(result, "특약")?.value, "전대 및 양도는 임대인 사전 동의를 받는다.");
   });
 

@@ -27,7 +27,7 @@ type SearchParams = Promise<{
 }>;
 type ManagerContractDetailResult = Awaited<ReturnType<typeof getManagerContractDetail>>;
 const DOCUMENT_ABSENT_VALUE = "문서에 없음";
-const IMPORTANT_CONTRACT_LABELS = ["보증금", "특약", "자동연장", "원상복구", "수선 책임"] as const;
+const IMPORTANT_CONTRACT_LABELS = ["보증금", "월세", "계약 시작일", "계약 종료일", "특약", "자동연장", "원상복구", "수선 책임"] as const;
 type ImportantContractLabel = (typeof IMPORTANT_CONTRACT_LABELS)[number];
 const OPTIONAL_CONTRACT_CLAUSE_LABELS = ["특약", "자동연장", "원상복구", "수선 책임"] as const;
 
@@ -56,7 +56,7 @@ async function confirmContractAction(formData: FormData) {
   } catch (error) {
     const message = error instanceof ApiError && error.message.trim()
       ? error.message
-      : "계약을 확정하지 못했습니다. 보증금과 특약 조항을 확인한 뒤 다시 시도해 주세요.";
+      : "계약을 확정하지 못했습니다. 계약 핵심 항목을 확인한 뒤 다시 시도해 주세요.";
     failure = { message };
   }
 
@@ -85,6 +85,9 @@ async function updateManualCorrectionAction(formData: FormData) {
   try {
     await updateManagerContractManualValues(contractId, {
       deposit: textValue(formData, "deposit"),
+      monthlyRent: numberValue(formData, "monthlyRent"),
+      startDate: dateValue(formData, "startDate"),
+      endDate: dateValue(formData, "endDate"),
       specialTerms: textValue(formData, "specialTerms"),
       autoRenewal: textValue(formData, "autoRenewal"),
       restorationDuty: textValue(formData, "restorationDuty"),
@@ -204,7 +207,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
 function ContractDocumentPreview({
   detail,
-  sourceLabel,
 }: {
   detail: ManagerContractDetailResult;
   sourceLabel: string;
@@ -221,7 +223,7 @@ function ContractDocumentPreview({
           <p style={coreReviewCaptionStyle}>{document?.fileName ?? `${detail.row.buildingName} ${detail.row.contract.unitId}호`}</p>
         </div>
         <div style={documentChipRowStyle}>
-          <Badge emphasis>{sourceLabel}</Badge>
+          <Badge emphasis>읽어온 값</Badge>
           <Badge>{previewKind === "image" ? "이미지 원문" : "PDF 원문"}</Badge>
         </div>
       </div>
@@ -436,7 +438,7 @@ function ManualCorrectionForm({ detail, sourceKind }: { detail: ManagerContractD
     <Card style={manualCardStyle}>
       <div style={manualHeaderStyle}>
         <div style={{ fontWeight: 900 }}>계약서 원문에서 중요한 부분만 고칩니다</div>
-        <p style={mutedBodyStyle}>월세·관리비·기간·납부일·주소는 매물 DB 값을 사용하고, 보증금과 특약성 조항만 원문 기준으로 저장하세요.</p>
+        <p style={mutedBodyStyle}>관리비·납부일·주소는 매물 DB 값을 사용하고, 보증금·월 임대료·계약 기간·특약성 조항만 원문 기준으로 저장하세요.</p>
       </div>
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
@@ -445,6 +447,20 @@ function ManualCorrectionForm({ detail, sourceKind }: { detail: ManagerContractD
             <CorrectionField fieldId="contract-field-deposit" label="보증금">
               <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
             </CorrectionField>
+          </CorrectionGroup>
+
+          <CorrectionGroup title="월 임대료·계약 기간" note="월 임대료, 월 임차료, 차임처럼 계약서의 월 단위 임대료와 계약 시작·종료일만 원문 기준으로 정리합니다.">
+            <CorrectionField fieldId="contract-field-monthlyRent" label="월 임대료">
+              <input id="contract-field-monthlyRent" name="monthlyRent" type="text" inputMode="numeric" defaultValue={values.monthlyRent} placeholder="예: 650,000" style={correctionInputStyle} />
+            </CorrectionField>
+            <div style={twoColumnFieldStyle}>
+              <CorrectionField fieldId="contract-field-startDate" label="계약 시작일">
+                <input id="contract-field-startDate" name="startDate" type="date" defaultValue={values.startDate} style={correctionInputStyle} />
+              </CorrectionField>
+              <CorrectionField fieldId="contract-field-endDate" label="계약 종료일">
+                <input id="contract-field-endDate" name="endDate" type="date" defaultValue={values.endDate} style={correctionInputStyle} />
+              </CorrectionField>
+            </div>
           </CorrectionGroup>
 
           <CorrectionGroup title="특약·책임 조항" note="특약, 자동연장, 원상복구, 수선 책임처럼 분쟁 기준이 되는 조항만 원문 기준으로 정리합니다.">
@@ -553,6 +569,9 @@ type OcrFailureInfo = {
 function buildValueRows(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind): ValueRow[] {
   return [
     makeValueRow(detail, "보증금", storedManualValue(detail, "보증금", detail.manualValues.deposit), sourceKind),
+    makeValueRow(detail, "월세", storedManualValue(detail, "월세", detail.manualValues.rent), sourceKind),
+    makeValueRow(detail, "계약 시작일", storedManualValue(detail, "계약 시작일", detail.manualValues.startDate), sourceKind),
+    makeValueRow(detail, "계약 종료일", storedManualValue(detail, "계약 종료일", detail.manualValues.endDate), sourceKind),
     makeValueRow(detail, "특약", storedManualValue(detail, "특약", detail.manualValues.specialTerms), sourceKind),
     makeValueRow(detail, "자동연장", "", sourceKind),
     makeValueRow(detail, "원상복구", "", sourceKind),
@@ -640,6 +659,11 @@ function summarizeContractValue(label: string, value: string) {
   if (label === "보증금") {
     return preferredMoneySummary(normalized, ["전환 후", "임대보증금", "보증금", "기본"]);
   }
+  if (label === "월세") {
+    return preferredMoneySummary(normalized, ["월 임대료", "월 임차료", "월 차임", "월 납입액", "월 납부액", "차임", "임대료", "월세"]);
+  }
+  if (label === "계약 시작일") return preferredDateSummary(normalized, "start");
+  if (label === "계약 종료일") return preferredDateSummary(normalized, "end");
 
   return normalized;
 }
@@ -655,12 +679,20 @@ function preferredMoneySummary(value: string, labels: string[]) {
   return value;
 }
 
+function preferredDateSummary(value: string, position: "start" | "end") {
+  const dates = extractDateValues(value);
+  if (dates.length === 0) return value;
+  return position === "start" ? dates[0] ?? value : dates[dates.length - 1] ?? value;
+}
+
 function contractValueDetails(label: string, value: string): ValueDetail[] {
   const normalized = value.trim();
   if (!normalized || isMissingDisplayValue(normalized) || normalized === "직접 입력 필요") return [];
   if (isDocumentAbsentValue(normalized)) return [{ label: "판정", value: "원문에 해당 조항 없음" }];
 
   if (label === "보증금") return moneyDetails(normalized, ["기본", "전환보증금", "전환 후", "임대보증금", "보증금"]);
+  if (label === "월세") return moneyDetails(normalized, ["월 임대료", "월 임차료", "월 차임", "월 납입액", "월 납부액", "차임", "임대료", "월세"]);
+  if (label === "계약 시작일" || label === "계약 종료일") return dateDetails(normalized);
   if (["특약", "자동연장", "원상복구", "수선 책임"].includes(label)) return [{ label: "조항 요약", value: normalized }];
 
   return [];
@@ -682,6 +714,23 @@ function moneyDetails(value: string, labels: string[]): ValueDetail[] {
   return amounts.map((amount, index) => ({ label: `후보 ${index + 1}`, value: amount }));
 }
 
+function dateDetails(value: string): ValueDetail[] {
+  return extractDateValues(value).map((date, index) => ({ label: `날짜 ${index + 1}`, value: date }));
+}
+
+function extractDateValues(value: string) {
+  return Array.from(value.matchAll(/\d{4}[./-]\d{1,2}[./-]\d{1,2}/g))
+    .map((match) => normalizeDateValue(match[0]))
+    .filter(Boolean) as string[];
+}
+
+function normalizeDateValue(value: string) {
+  const match = value.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+  if (!match) return undefined;
+
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -691,6 +740,15 @@ function manualDefaults(detail: ManagerContractDetailResult, sourceKind: OcrSour
     deposit:
       storedManualValue(detail, "보증금", detail.manualValues.deposit) ||
       textInputCandidate(detail, "보증금", sourceKind),
+    monthlyRent:
+      moneyInputCandidate(storedManualValue(detail, "월세", detail.manualValues.rent)) ||
+      moneyInputCandidate(textInputCandidate(detail, "월세", sourceKind)),
+    startDate:
+      dateInputCandidate(storedManualValue(detail, "계약 시작일", detail.manualValues.startDate)) ||
+      dateInputCandidate(textInputCandidate(detail, "계약 시작일", sourceKind)),
+    endDate:
+      dateInputCandidate(storedManualValue(detail, "계약 종료일", detail.manualValues.endDate)) ||
+      dateInputCandidate(textInputCandidate(detail, "계약 종료일", sourceKind)),
     specialTerms:
       storedManualValue(detail, "특약", detail.manualValues.specialTerms) ||
       textInputCandidate(detail, "특약", sourceKind),
@@ -716,6 +774,16 @@ function textInputCandidate(detail: ManagerContractDetailResult, label: string, 
   return isMissingDisplayValue(value) ? "" : value;
 }
 
+function moneyInputCandidate(value: string) {
+  const digits = value.replace(/[^\d]/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("ko-KR");
+}
+
+function dateInputCandidate(value: string) {
+  return extractDateValues(value)[0] ?? "";
+}
+
 function isMissingDisplayValue(value?: string) {
   const normalized = value?.trim();
   return !normalized || normalized === "미확인" || normalized === "원문 확인 필요" || normalized === "관리자 수동값 없음" || normalized === "없음";
@@ -728,6 +796,16 @@ function isDocumentAbsentValue(value?: string) {
 
 function textValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
+}
+
+function numberValue(formData: FormData, name: string) {
+  const digits = textValue(formData, name).replace(/[^\d]/g, "");
+  if (!digits) return undefined;
+  return Number(digits);
+}
+
+function dateValue(formData: FormData, name: string) {
+  return normalizeDateValue(textValue(formData, name));
 }
 
 function manualInputValue(value?: string) {
