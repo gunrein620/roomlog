@@ -61,3 +61,27 @@ test("패널은 오른쪽 절반을 차지하는 고정 사이드 표면이다",
   assert.match(cssSource, /\.manager-ticket-panel__stream/);
   assert.match(cssSource, /\.manager-ticket-panel__composer/);
 });
+
+test("진행 상태 토글은 접수·진행·완료 3레인이고 패널 상단 가운데에 놓인다", () => {
+  const panelSource = readFileSync(panelPath, "utf8");
+  const cssSource = readFileSync(cssPath, "utf8");
+
+  assert.match(panelSource, /TICKET_LANES\.map/);
+  assert.match(panelSource, /aria-pressed=\{lane === value\}/);
+  assert.match(panelSource, /\/lane`/);
+  // 읽기 전용 상태 배지는 토글로 대체됐다.
+  assert.doesNotMatch(panelSource, /defectDisplayStatus/);
+
+  const laneBlock = cssSource.match(/\.manager-ticket-panel__lanes \{[^}]*\}/)?.[0];
+  assert.ok(laneBlock, ".manager-ticket-panel__lanes 규칙이 있어야 한다");
+  assert.match(laneBlock, /justify-self: center/);
+  assert.match(cssSource, /\.manager-ticket-panel__lanes button\[aria-pressed="true"\]/);
+});
+
+test("레인 전환은 낙관적으로 반영하고 실패하면 되돌린다", () => {
+  const panelSource = readFileSync(panelPath, "utf8");
+
+  assert.match(panelSource, /const previousLane = lane/);
+  assert.match(panelSource, /setLane\(nextLane\)/);
+  assert.match(panelSource, /setLane\(previousLane\)/);
+});

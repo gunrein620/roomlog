@@ -15,10 +15,15 @@ import {
   ticketStatusLabel,
 } from "../../_components/ticket-manager-ui";
 import {
-  defectDisplayStatus,
   resolveManagerAttachmentUrl,
   type DefectDashboardRow,
 } from "./ticket-dashboard-model";
+import {
+  TICKET_LANES,
+  canSwitchTicketLane,
+  ticketLaneOf,
+  type TicketLane,
+} from "./ticket-lane";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -118,6 +123,9 @@ export function TicketChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
+  // 레인은 서버가 진실이지만 목록 행은 다음 새로고침까지 옛 상태라, 패널 안에서 따로 들고 간다.
+  const [lane, setLane] = useState<TicketLane | null>(null);
+  const [isSwitchingLane, setIsSwitchingLane] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(
@@ -142,7 +150,10 @@ export function TicketChatPanel({
     setMessages([]);
     setDraft("");
     setError("");
+    setLane(row ? ticketLaneOf(row.ticket.status) : null);
     if (ticketId) void refresh();
+    // row는 열 때마다 새 객체라 ticketId만 본다 — 같은 티켓이면 레인을 다시 덮어쓰지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, ticketId]);
 
   // 실시간: 세입자·업체 쪽 티켓 활동 신호를 받으면 스레드를 다시 읽는다.
@@ -218,8 +229,38 @@ export function TicketChatPanel({
     }
   }
 
+  async function switchLane(nextLane: TicketLane) {
+    if (!ticketId || isSwitchingLane || nextLane === lane) return;
+
+    const previousLane = lane;
+    setLane(nextLane); // 낙관적 반영 — 실패하면 되돌린다.
+    setIsSwitchingLane(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/manager/tickets/${encodeURIComponent(ticketId)}/lane`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lane: nextLane }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => undefined)) as
+          | { message?: string }
+          | undefined;
+        throw new Error(data?.message || "진행 상태를 바꾸지 못했습니다.");
+      }
+    } catch (laneError) {
+      setLane(previousLane);
+      setError(laneError instanceof Error ? laneError.message : "진행 상태를 바꾸지 못했습니다.");
+    } finally {
+      setIsSwitchingLane(false);
+    }
+  }
+
   if (!row || !ticketId) return null;
   const { ticket } = row;
+  const laneSwitchable = canSwitchTicketLane(ticket.status);
 
   return (
     <>
@@ -231,29 +272,46 @@ export function TicketChatPanel({
         aria-labelledby="manager-ticket-panel-title"
       >
         <header className="manager-ticket-panel__header">
-          <div>
-            <p className="manager-ticket-panel__badges">
-              <span
-                className="manager-defect-dashboard__type-badge"
-                data-ticket-type={ticket.type}
-              >
-                {ticketTypeLabel[ticket.type]}
-              </span>
-              <span
-                className="manager-defect-dashboard__status-badge"
-                data-status={defectDisplayStatus(row)}
-              >
+          <div className="manager-ticket-panel__header-top">
+            <div>
+              <p className="manager-ticket-panel__badges">
+                <span
+                  className="manager-defect-dashboard__type-badge"
+                  data-ticket-type={ticket.type}
+                >
+                  {ticketTypeLabel[ticket.type]}
+                </span>
+              </p>
+              <h2 id="manager-ticket-panel-title">{ticket.title}</h2>
+              <p className="manager-ticket-panel__meta">
+                {row.buildingName ?? "—"} · {ticket.unitId || "호실 미상"}
+              </p>
+            </div>
+            <button type="button" aria-label="대화 패널 닫기" onClick={onClose}>
+              <X aria-hidden="true" />
+            </button>
+          </div>
+
+          {/* 진행 상태 토글 — 상태 배지를 대신한다(읽기만 하던 배지를 누를 수 있는 축으로) */}
+          <div className="manager-ticket-panel__lanes" role="group" aria-label="진행 상태">
+            {laneSwitchable ? (
+              TICKET_LANES.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={lane === value}
+                  disabled={isSwitchingLane}
+                  onClick={() => void switchLane(value)}
+                >
+                  {label}
+                </button>
+              ))
+            ) : (
+              <span className="manager-ticket-panel__lanes-locked">
                 {ticketStatusLabel[ticket.status]}
               </span>
-            </p>
-            <h2 id="manager-ticket-panel-title">{ticket.title}</h2>
-            <p className="manager-ticket-panel__meta">
-              {row.buildingName ?? "—"} · {ticket.unitId || "호실 미상"}
-            </p>
+            )}
           </div>
-          <button type="button" aria-label="대화 패널 닫기" onClick={onClose}>
-            <X aria-hidden="true" />
-          </button>
         </header>
 
         <div className="manager-ticket-panel__stream" ref={streamRef} aria-label="세입자 대화">

@@ -84,6 +84,7 @@ import {
   UpdateAnnouncementDraftInput,
   UpdateMoveoutChecklistInput,
   ManagerTicketReplyInput,
+  SetManagerTicketLaneInput,
   MatchDepositInput,
   RealtimeClientSecretInput,
   RecordRealtimeTurnInput,
@@ -2211,6 +2212,20 @@ export class RoomlogController {
 
     const result = this.roomlogService.sendManagerTicketReply(user.id, ticketId, body);
     // 세입자 상세 시트·관리인 대화 패널이 같은 신호로 스레드를 다시 읽는다.
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
+  @Post("manager/tickets/:ticketId/lane")
+  setManagerTicketLane(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: SetManagerTicketLaneInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    const result = this.roomlogService.setManagerTicketLane(user.id, ticketId, body);
     this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
 
     return result;

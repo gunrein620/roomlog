@@ -15,7 +15,6 @@ import {
   defectDisplayStatus,
   filterDefectRows,
   formatDefectDate,
-  formatDefectMoney,
   paginateDefectRows,
   type DefectDashboardFilters,
   type DefectDashboardRow,
@@ -31,7 +30,6 @@ const TABLE_COLUMNS = [
   "호실",
   "작업자",
   "예정일시",
-  "청구 금액",
   "상태",
   "작업",
 ] as const;
@@ -108,9 +106,6 @@ function DashboardRow({
       </td>
       <td className="manager-defect-dashboard__muted-cell">
         {formatDefectDate(row.repair?.scheduledAt)}
-      </td>
-      <td className="manager-defect-dashboard__amount">
-        {formatDefectMoney(row.repair?.quoteAmount)}
       </td>
       <td>
         <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
@@ -331,7 +326,7 @@ export function ManagerDefectDashboard({
             ))}
             {pageResult.rows.length === 0 ? (
               <tr>
-                <td className="manager-defect-dashboard__empty" colSpan={9}>
+                <td className="manager-defect-dashboard__empty" colSpan={8}>
                   조건에 맞는 하자·민원 티켓이 없습니다.
                 </td>
               </tr>

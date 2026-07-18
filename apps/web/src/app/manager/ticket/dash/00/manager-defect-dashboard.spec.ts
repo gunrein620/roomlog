@@ -78,12 +78,15 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
     "호실",
     "작업자",
     "예정일시",
-    "청구 금액",
     "상태",
     "작업",
   ]) {
     assert.match(componentSource, new RegExp(column));
   }
+
+  // 청구 금액은 목록에서 뺐다 — 금액은 결제·비용 승인 화면에서만 다룬다.
+  assert.doesNotMatch(componentSource, /청구 금액/);
+  assert.doesNotMatch(componentSource, /formatDefectMoney/);
 
   assert.match(componentSource, /aria-pressed/);
   assert.match(componentSource, /defectDisplayStatus/);

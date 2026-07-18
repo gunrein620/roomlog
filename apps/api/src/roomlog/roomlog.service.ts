@@ -193,7 +193,9 @@ import {
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerReplyIntent,
+  ManagerTicketLane,
   ManagerTicketReplyInput,
+  SetManagerTicketLaneInput,
   MaintenanceFee,
   MatchDepositInput,
   MoveInChecklistItem,
@@ -314,6 +316,22 @@ export type GoogleSocialLoginInput = {
 };
 
 export type KakaoSocialLoginInput = GoogleSocialLoginInput;
+
+/**
+ * 관리인 진행 레인(3단계) → 티켓 상태. 세부 상태를 접은 대표값 하나씩만 쓴다.
+ * 되돌리기(완료→접수)도 허용한다 — 실무에서 잘못 누른 것을 되돌릴 길이 없으면 안 된다.
+ */
+const MANAGER_TICKET_LANE_STATUS: Record<ManagerTicketLane, TicketStatus> = {
+  received: "RECEIVED",
+  processing: "REPAIR_IN_PROGRESS",
+  resolved: "COMPLETED"
+};
+
+const MANAGER_TICKET_LANE_LABEL: Record<ManagerTicketLane, string> = {
+  received: "접수",
+  processing: "진행",
+  resolved: "완료"
+};
 
 const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
   {
@@ -6901,6 +6919,41 @@ export class RoomlogService implements OnModuleDestroy {
       message: this.presentTicketMessage(message),
       ticket: this.presentTicket(ticket)
     };
+  }
+
+  /**
+   * 관리인이 대화 패널에서 진행 레인(접수·진행·완료)을 직접 넘긴다.
+   * 티켓 상태 축만 움직이며 수리(RepairRequest)·결제는 건드리지 않는다 — 둘은 별개 축이고,
+   * 결제 게이트는 수리 완료를 근거로 하지 실무자가 접은 이 레인을 근거로 하지 않는다.
+   * 취소된 티켓은 토글로 되살리지 않는다(되살리기는 재요청 경로가 따로 있다).
+   */
+  setManagerTicketLane(managerId: string, ticketId: string, input: SetManagerTicketLaneInput) {
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+
+    const toStatus = MANAGER_TICKET_LANE_STATUS[input?.lane];
+
+    if (!toStatus) {
+      throw new BadRequestException("진행 상태는 접수·진행·완료 중 하나여야 합니다.");
+    }
+
+    if (ticket.status === "CANCELLED") {
+      throw new BadRequestException("취소된 건의 진행 상태는 변경할 수 없습니다.");
+    }
+
+    if (ticket.status === toStatus) {
+      return { ticket: this.presentTicket(ticket) };
+    }
+
+    const transitioned = this.transitionTicket(
+      ticketId,
+      toStatus,
+      managerId,
+      `관리인이 진행 상태를 ${MANAGER_TICKET_LANE_LABEL[input.lane]}(으)로 변경`
+    );
+    this.persistStore();
+
+    return { ticket: this.presentTicket(transitioned) };
   }
 
   assignVendor(managerId: string, ticketId: string, input: AssignVendorInput): RepairRequest {

@@ -4478,12 +4478,61 @@ html:has(.manager-workspace) {
 }
 
 .manager-ticket-panel__header {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.manager-ticket-panel__header-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-md);
-  padding: var(--space-lg) var(--space-lg) var(--space-md);
-  border-bottom: 1px solid var(--border);
+}
+
+.manager-ticket-panel__lanes {
+  justify-self: center;
+  display: inline-flex;
+  gap: var(--space-3xs, 2px);
+  padding: var(--space-3xs, 2px);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-container);
+}
+
+.manager-ticket-panel__lanes button {
+  min-width: calc(var(--touch-target) * 1.4);
+  min-height: calc(var(--touch-target) * 0.8);
+  padding: 0 var(--space-md);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.manager-ticket-panel__lanes button:hover:not(:disabled) {
+  color: var(--on-surface);
+}
+
+.manager-ticket-panel__lanes button[aria-pressed="true"],
+.manager-ticket-panel__lanes button[aria-pressed="true"]:hover {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.manager-ticket-panel__lanes button:disabled {
+  cursor: progress;
+}
+
+.manager-ticket-panel__lanes-locked {
+  padding: var(--space-xs) var(--space-md);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 700;
 }
 
 .manager-ticket-panel__badges {
@@ -4508,7 +4557,7 @@ html:has(.manager-workspace) {
   line-height: var(--lh-caption);
 }
 
-.manager-ticket-panel__header button {
+.manager-ticket-panel__header-top button {
   flex: 0 0 auto;
   width: 36px;
   height: 36px;
@@ -4521,12 +4570,12 @@ html:has(.manager-workspace) {
   cursor: pointer;
 }
 
-.manager-ticket-panel__header button:hover {
+.manager-ticket-panel__header-top button:hover {
   background: var(--surface-container);
   color: var(--on-surface);
 }
 
-.manager-ticket-panel__header button svg {
+.manager-ticket-panel__header-top button svg {
   width: 20px;
   height: 20px;
 }
