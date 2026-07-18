@@ -157,6 +157,7 @@ import {
   FloorPlanAiRoomStructure,
   FloorPlanAiRoomStructureNoiseFlags,
   FloorPlanAiRoomStructurePlanStyle,
+  FloorPlanAiRoomType,
   FloorPlanAiScaleCandidate,
   FloorPlanAiTextDetection,
   FloorPlanAiWallCandidate,
@@ -434,6 +435,21 @@ const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
         properties: {
           confidence: { maximum: 1, minimum: 0, type: "number" },
           label: { type: "string" },
+          roomType: {
+            enum: [
+              "LIVING_ROOM",
+              "BEDROOM",
+              "DRESS_ROOM",
+              "KITCHEN_DINING",
+              "BATHROOM",
+              "LAUNDRY_UTILITY",
+              "BALCONY",
+              "ENTRY",
+              "HALLWAY",
+              "UNKNOWN"
+            ],
+            type: "string"
+          },
           polygon: {
             items: FLOOR_PLAN_ROOM_POINT_SCHEMA,
             maxItems: 12,
@@ -441,7 +457,7 @@ const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
             type: "array"
           }
         },
-        required: ["label", "polygon", "confidence"],
+        required: ["label", "roomType", "polygon", "confidence"],
         type: "object"
       },
       maxItems: 40,
@@ -8266,7 +8282,10 @@ export class RoomlogService implements OnModuleDestroy {
     imageDataUrl: string,
     prompt?: string
   ): Promise<FloorPlanAiAnalysisResult> {
-    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    // Ten representative Naver plans averaged 4.99s with Terra/no reasoning,
+    // versus 17.85s with gpt-5.5/low while returning the same or more room types.
+    // Deployment can still override either setting with the floor-plan env vars.
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.6-terra";
     const instructions = [
       "당신은 Roomlog의 도면 방 구조 분석기입니다.",
       "도면 스타일을 solid-filled, double-line-hollow, hatched, gray-fill 중 하나로 분류합니다.",
@@ -8287,6 +8306,7 @@ export class RoomlogService implements OnModuleDestroy {
         body: JSON.stringify({
           model: openAiModel,
           instructions,
+          reasoning: { effort: process.env.OPENAI_FLOOR_PLAN_EFFORT || "none" },
           input: [
             {
               role: "user",
@@ -8594,10 +8614,26 @@ export class RoomlogService implements OnModuleDestroy {
         {
           confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
           label,
-          polygon
+          polygon,
+          roomType: this.validAiRoomType(item?.roomType)
         }
       ];
     });
+  }
+
+  private validAiRoomType(value: unknown): FloorPlanAiRoomType {
+    return value === "LIVING_ROOM"
+      || value === "BEDROOM"
+      || value === "DRESS_ROOM"
+      || value === "KITCHEN_DINING"
+      || value === "BATHROOM"
+      || value === "LAUNDRY_UTILITY"
+      || value === "BALCONY"
+      || value === "ENTRY"
+      || value === "HALLWAY"
+      || value === "UNKNOWN"
+      ? value
+      : "UNKNOWN";
   }
 
   private validAiRoomPolygon(value: unknown) {

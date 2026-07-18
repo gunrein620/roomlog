@@ -50,6 +50,7 @@ import {
   furnitureImageUrl,
   isFurnitureCatalogItem,
   isLandlordOptionFurniture,
+  loadGlbDatasetCatalog,
   moveFurnitureDraftToPoint,
   normalizeCatalogItem,
   reopenFurnitureDraft,
@@ -130,8 +131,48 @@ function candidateTypeLabel(type: string) {
 const MAX_VISIBLE_PRINTED_DIMENSIONS = 24;
 const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
-const FURNITURE_KIND_FILTERS = ["전체", "침대", "식탁", "의자", "소파", "책상", "서랍", "옷장", "기타"] as const;
-type FurnitureKindFilter = (typeof FURNITURE_KIND_FILTERS)[number];
+const FURNITURE_CATEGORY_ORDER = [
+  "소파·의자",
+  "침실",
+  "테이블·책상",
+  "수납",
+  "주방·다이닝",
+  "욕실·세탁",
+  "조명",
+  "데코",
+  "야외",
+  "가전·전자"
+] as const;
+type FurnitureKindFilter = string;
+
+function furnitureCategoryLabel(item: FurnitureCatalogItem) {
+  return item.category?.trim() || catalogKind(item);
+}
+
+function distributeFurnitureCategories(items: FurnitureCatalogItem[]) {
+  const buckets = new Map<string, FurnitureCatalogItem[]>();
+  for (const item of items) {
+    const category = furnitureCategoryLabel(item);
+    const bucket = buckets.get(category) ?? [];
+    bucket.push(item);
+    buckets.set(category, bucket);
+  }
+
+  const categoryOrder = [
+    ...FURNITURE_CATEGORY_ORDER.filter((category) => buckets.has(category)),
+    ...[...buckets.keys()].filter((category) => !FURNITURE_CATEGORY_ORDER.includes(category as (typeof FURNITURE_CATEGORY_ORDER)[number])).sort((left, right) => left.localeCompare(right, "ko"))
+  ];
+  const distributed: FurnitureCatalogItem[] = [];
+
+  for (let index = 0; distributed.length < items.length; index += 1) {
+    for (const category of categoryOrder) {
+      const item = buckets.get(category)?.[index];
+      if (item) distributed.push(item);
+    }
+  }
+
+  return distributed;
+}
 
 type RoboflowBoundingBox = { x: number; y: number; width: number; height: number; confidence?: number };
 
@@ -1385,24 +1426,35 @@ export default function RoomlogFloorPlanEditor() {
   const furnitureKindCounts = useMemo(
     () =>
       furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
-        const kind = catalogKind(item);
+        const kind = furnitureCategoryLabel(item);
         counts[kind] = (counts[kind] ?? 0) + 1;
 
         return counts;
       }, {}),
     [furnitureCatalog]
   );
+  const furnitureKindFilters = useMemo(() => {
+    const available = new Set(Object.keys(furnitureKindCounts));
+    const ordered = FURNITURE_CATEGORY_ORDER.filter((category) => available.has(category));
+    const remaining = [...available]
+      .filter((category) => !FURNITURE_CATEGORY_ORDER.includes(category as (typeof FURNITURE_CATEGORY_ORDER)[number]))
+      .sort((left, right) => left.localeCompare(right, "ko"));
+
+    return ["전체", ...ordered, ...remaining];
+  }, [furnitureKindCounts]);
   const filteredFurnitureCatalog = useMemo(() => {
     const query = furnitureSearchQuery.trim().toLowerCase();
 
-    return furnitureCatalog.filter((item) => {
-      const kind = catalogKind(item);
+    const matchingItems = furnitureCatalog.filter((item) => {
+      const kind = furnitureCategoryLabel(item);
       const matchesKind = furnitureKindFilter === "전체" || kind === furnitureKindFilter;
       const searchableText = `${item.name} ${item.brand} ${item.category ?? ""} ${item.source ?? ""}`.toLowerCase();
       const matchesQuery = !query || searchableText.includes(query);
 
       return matchesKind && matchesQuery;
     });
+
+    return furnitureKindFilter === "전체" ? distributeFurnitureCategories(matchingItems) : matchingItems;
   }, [furnitureCatalog, furnitureKindFilter, furnitureSearchQuery]);
 
   useEffect(() => {
@@ -1410,6 +1462,14 @@ export default function RoomlogFloorPlanEditor() {
 
     async function loadFurnitureCatalog() {
       try {
+        const datasetItems = await loadGlbDatasetCatalog();
+        if (datasetItems.length) {
+          if (!isActive) return;
+          setFurnitureCatalog(datasetItems);
+          setFurnitureCatalogStatus("가구 에셋 카탈로그");
+          return;
+        }
+
         const response = await fetch(apiUrl("/furniture-catalog"));
         if (!response.ok) throw new Error(`Furniture catalog fetch failed: ${response.status}`);
 
@@ -2366,26 +2426,20 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(`${item.name} 배치 위치를 3D 바닥에서 클릭`);
   }
 
-  // 가구 드래그 이동 — 좌클릭을 누른 채 끌면 가구가 커서를 따라오고, 떼면 그 자리에 멈춘다(확정은 ✓).
-  const [isFurnitureDragging, setIsFurnitureDragging] = useState(false);
-  useEffect(() => {
-    if (!isFurnitureDragging) return;
-    const endDrag = () => setIsFurnitureDragging(false);
-    window.addEventListener("pointerup", endDrag);
-    return () => window.removeEventListener("pointerup", endDrag);
-  }, [isFurnitureDragging]);
-
   function handle3DFloorPointerDown(event: ThreeEvent<PointerEvent>) {
     // 우클릭/휠클릭은 카메라 조작용 — 좌클릭일 때만 가구를 옮긴다.
     if (event.button !== 0) return;
     if (tool !== "furniture") return;
     event.stopPropagation();
+    if (!pendingFurniture) {
+      setSelectedFurnitureId(null);
+      return;
+    }
     placeFurnitureAtPoint(event.point);
-    if (pendingFurniture) setIsFurnitureDragging(true);
   }
 
   function handle3DFloorPointerMove(event: ThreeEvent<PointerEvent>) {
-    if (!isFurnitureDragging || !pendingFurniture) return;
+    if (!pendingFurniture) return;
     placeFurnitureAtPoint(event.point);
   }
 
@@ -2411,10 +2465,10 @@ export default function RoomlogFloorPlanEditor() {
 
   function restorePendingFurnitureOrigin() {
     const original = pendingFurnitureOriginRef.current;
-    if (!original) return false;
+    if (!original) return null;
     pendingFurnitureOriginRef.current = null;
     setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, original]);
-    return true;
+    return original;
   }
 
   function confirmPendingFurniturePlacement() {
@@ -2424,7 +2478,7 @@ export default function RoomlogFloorPlanEditor() {
     const nextFurniture = finalizeFurnitureDraft(pendingFurniture, "landlord");
     setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
     setPendingFurniture(null);
-    setSelectedFurnitureId(null);
+    setSelectedFurnitureId(nextFurniture.id);
     setUploadStatus(`${nextFurniture.name} 임대인 옵션 가구 배치 완료`);
   }
 
@@ -2434,49 +2488,57 @@ export default function RoomlogFloorPlanEditor() {
     const targetName = pendingFurniture.name;
     const restored = restorePendingFurnitureOrigin();
     setPendingFurniture(null);
-    setSelectedFurnitureId(null);
+    setSelectedFurnitureId(restored?.id ?? null);
     setUploadStatus(restored ? `${targetName} 원래 자리로 되돌림` : `${targetName} 배치 취소`);
   }
 
-  // 재편집 중이든 새 배치든, 집고 있는 가구를 완전히 없앤다(원위치 복구 없음).
-  function deletePendingFurniture() {
-    if (!pendingFurniture) return;
+  function beginSelectedFurnitureMove() {
+    if (!selectedFurnitureId) return;
+    const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
+    if (!furniture) return;
 
-    const targetName = pendingFurniture.name;
-    pendingFurnitureOriginRef.current = null;
-    setPendingFurniture(null);
-    setSelectedFurnitureId(null);
-    setUploadStatus(`${targetName} 삭제`);
-  }
-
-  function rotatePendingFurniture() {
-    if (!pendingFurniture) return;
-
-    const nextFurniture = rotateFurnitureQuarterTurn(pendingFurniture);
-    setPendingFurniture(nextFurniture);
-    setUploadStatus(`${nextFurniture.name} 90도 회전`);
-  }
-
-  function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    if (tool === "furniture" && pendingFurniture) {
-      placeFurnitureAtPoint(event.point);
-      setIsFurnitureDragging(true);
-      return;
-    }
-
-    // 배치 완료된 가구를 클릭하면 다시 집어들어 재편집 모드로 — 취소(✕)하면 원래 자리로 돌아간다.
-    // 확정 표시(source)가 붙은 채로는 이동이 막히므로 초안 상태로 되돌려서 집는다.
     pendingFurnitureOriginRef.current = furniture;
     pendingFurniturePlacedOnceRef.current = true;
     setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
     setPendingFurniture(reopenFurnitureDraft(furniture));
     setSelectedFurnitureId(null);
+    setTool("furniture");
+    setUploadStatus(`${furniture.name} 이동 중 — ✓로 배치를 완료하세요`);
+  }
+
+  function rotateSelectedFurniture(direction: -1 | 1) {
+    if (!selectedFurnitureId) return;
+    const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
+    if (!furniture) return;
+
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.map((item) => (
+      item.id === furniture.id ? rotateFurnitureQuarterTurn(item, direction) : item
+    )));
+    setUploadStatus(`${furniture.name} ${direction < 0 ? "왼쪽" : "오른쪽"}으로 90도 회전`);
+  }
+
+  function deleteSelectedFurniture() {
+    if (!selectedFurnitureId) return;
+    const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
+    if (!furniture) return;
+
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
+    setSelectedFurnitureId(null);
+    setUploadStatus(`${furniture.name} 삭제`);
+  }
+
+  function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    if (pendingFurniture) {
+      placeFurnitureAtPoint(event.point);
+      return;
+    }
+
+    setSelectedFurnitureId(furniture.id);
     setSelectedWall(null);
     setTool("furniture");
-    setIsFurnitureDragging(true);
-    setUploadStatus(`${furniture.name} 재편집 — 끌어서 옮기고 ✓로 확정하세요`);
+    setUploadStatus(`${furniture.name} 선택 — 가구 위 아이콘으로 조작하세요`);
   }
 
   function handleMouseDown(event: React.MouseEvent<HTMLCanvasElement>) {
@@ -4318,15 +4380,17 @@ export default function RoomlogFloorPlanEditor() {
           </div>
         ) : (
           <RoomlogThreeFloorPlanView
-            controlsEnabled={!isFurnitureDragging}
+            controlsEnabled={!pendingFurniture}
             furnitureData={placedFurnitures}
             onFloorPointerDown={handle3DFloorPointerDown}
             onFloorPointerMove={handle3DFloorPointerMove}
             onFurniturePointerDown={handleFurniturePointerDown}
             onPendingCancel={cancelPendingFurniturePlacement}
             onPendingConfirm={confirmPendingFurniturePlacement}
-            onPendingDelete={deletePendingFurniture}
-            onPendingRotate={rotatePendingFurniture}
+            onSelectedDelete={deleteSelectedFurniture}
+            onSelectedMove={beginSelectedFurnitureMove}
+            onSelectedRotateLeft={() => rotateSelectedFurniture(-1)}
+            onSelectedRotateRight={() => rotateSelectedFurniture(1)}
             onWallPointerDown={handle3DWallPointerDown}
             pendingFurniture={pendingFurniture}
             selectedFurnitureId={selectedFurnitureId}
@@ -4577,7 +4641,7 @@ export default function RoomlogFloorPlanEditor() {
                 />
               </div>
               <div className="floor-plan-furniture-kind-tabs" role="tablist" aria-label="도면 캔버스">
-                {FURNITURE_KIND_FILTERS.map((kind) => (
+                {furnitureKindFilters.map((kind) => (
                   <button
                     aria-selected={furnitureKindFilter === kind}
                     className={furnitureKindFilter === kind ? "active" : ""}
@@ -4622,7 +4686,7 @@ export default function RoomlogFloorPlanEditor() {
                       </span>
                       <strong>{item.name}</strong>
                       <small>
-                        {catalogKind(item)} · {item.brand}
+                        {furnitureCategoryLabel(item)} · {item.brand}
                       </small>
                       <em>{item.length.join("x")}mm</em>
                       {fit.verdict !== "unknown" ? (

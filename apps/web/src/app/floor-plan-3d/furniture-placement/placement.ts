@@ -31,10 +31,10 @@ export function moveFurnitureDraftToPoint(
   };
 }
 
-export function rotateFurnitureQuarterTurn(furniture: PlacedFurniture): PlacedFurniture {
+export function rotateFurnitureQuarterTurn(furniture: PlacedFurniture, direction: -1 | 1 = 1): PlacedFurniture {
   return {
     ...furniture,
-    rotation: [0, Number((furniture.rotation[1] + Math.PI / 2).toFixed(4)), 0]
+    rotation: [0, Number((furniture.rotation[1] + direction * Math.PI / 2).toFixed(4)), 0]
   };
 }
 

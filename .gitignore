@@ -28,6 +28,11 @@ yarn-error.log*
 .worktrees/
 worktrees/
 
+# RoomLog-local runtime assets are intentionally kept outside normal Git history.
+/services/mitunet/weights/*.pth
+/services/mitunet/weights/*.pt
+/runtime-assets/furniture-glb-dataset/
+
 # 임시 데모 산출물 (GPU 재구성 드라이런, ~20MB — 좋은 캡처 나오면 room.spz로 대체)
 apps/web/public/samples/dryrun.ply
 

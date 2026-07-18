@@ -26,7 +26,7 @@ const migratedShellFiles = [
   "src/app/manager/ticket/dash/layout.tsx",
   "src/app/manager/billing/_components.tsx",
   "src/app/manager/contract/_components.tsx",
-  "src/app/manager/vendor-mgmt/_components.tsx",
+  "src/app/manager/vendor-mgmt/layout.tsx",
   "src/app/manager/home/_components.tsx",
 ];
 

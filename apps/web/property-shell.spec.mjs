@@ -1529,6 +1529,7 @@ test("keeps local development free from stale service worker caches", () => {
   assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/_next\/"\)/);
   // 회귀 방지: API 응답은 서비스워커 캐시-우선에서 제외돼야 최신 매물이 즉시 보인다.
   assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/api\/"\)/);
+  assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/floor-plan-3d\/furniture-assets\/"\)/);
   assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
   assert.match(serviceWorkerSource, /new URL\(request\.url\)/);
   assert.match(nextConfigSource, /allowedDevOrigins:\s*\[\s*"127\.0\.0\.1"\s*\]/);
@@ -1554,8 +1555,13 @@ test("removes obvious mockup copy from the visible product shell", () => {
   assert.doesNotMatch(pageSource, /<code>NEXT_PUBLIC_NAVER_MAP_CLIENT_ID<\/code>/);
 });
 
-test("links the landlord 3D floor plan action to the dedicated creation page", () => {
-  assert.match(pageSource, /href="\/floor-plan-3d"/);
+test("links the landlord 3D floor plan action to the internal MitUNet page", () => {
+  assert.match(pageSource, /buildRoomlogMitunetEditorPath/);
+  assert.match(pageSource, /window\.location\.href = editorPath/);
+  assert.doesNotMatch(pageSource, /NEXT_PUBLIC_MITUNET_EDITOR_URL/);
+  assert.doesNotMatch(pageSource, /buildMitunetEditorUrl/);
+  assert.doesNotMatch(pageSource, /window\.open/);
+  assert.doesNotMatch(pageSource, /href="\/floor-plan-3d"/);
   assert.match(pageSource, /3D 도면 만들기/);
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");

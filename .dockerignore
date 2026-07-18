@@ -22,6 +22,8 @@ yarn-error.log*
 docs/technical-challenges
 tmp
 tools
+services/mitunet
+runtime-assets/furniture-glb-dataset
 
 # 대용량 로컬 전용 샘플 — 이미지에 넣지 않는다 (뷰어는 spz만 로드)
 # spz는 기본 전체 제외 후 커밋된 3종만 되살린다(프로덕션 뷰어가 로드) —
