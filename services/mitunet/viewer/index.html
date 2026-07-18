@@ -648,10 +648,12 @@ import {
   sendRoomLogCompletion,
 } from "/viewer-assets/roomlog-integration.mjs";
 import {
+  buildFloorFinishRgba,
   buildInteriorMask,
   maskContains,
   worldToMaskPixel,
 } from "/viewer-assets/floor-finishes.mjs";
+import { buildRoomFloorMaterialMap } from "/viewer-assets/room-floor-zones.mjs";
 import {
   FURNITURE_MANIFEST_URL,
   cloneFurniturePlacements,
@@ -839,6 +841,7 @@ let suppressCanvasClick = false;
 // Shared with Task 5 pointer validation so furniture can only be placed on
 // pixels classified as enclosed interior floor.
 let floorPlacementState = null;
+let floorFinishLayout = null;
 
 function createConcreteTexture() {
   // One tile = one courtyard slab. The plane repeats it on a grid, so the
@@ -1097,49 +1100,28 @@ function buildInputImagePlane(b64, contentRect, scale, cx, cy) {
   });
 }
 
-function buildWoodFinish(data, scale, cx, cy, hasPhysicalScale, furnitureSceneScale) {
+function rebuildFloorFinish(data, layout) {
+  const { scale, cx, cy, hasPhysicalScale, furnitureSceneScale } = layout;
   const [width, height] = data.canvas_size ?? [1024, 1024];
   const mask = buildInteriorMask(data.polygons ?? {}, width, height, data.openings ?? []);
+  while (finishGroup.children.length > 0) {
+    const finish = finishGroup.children[0];
+    finishGroup.remove(finish);
+    disposeMeshDeep(finish);
+    if (Array.isArray(finish.material)) finish.material.forEach(material => material.dispose());
+    else finish.material?.dispose();
+  }
   const textureCanvas = document.createElement("canvas");
   textureCanvas.width = width;
   textureCanvas.height = height;
   const context = textureCanvas.getContext("2d");
   const image = context.createImageData(width, height);
-  const plankHeight = 18;
-  const plankWidth = 132;
-  // Deterministic per-plank hash so each board gets its own subtle tone,
-  // which is what makes the floor read as real wood instead of a flat fill.
-  const plankTone = (row, col) => {
-    const h = Math.sin(row * 127.1 + col * 311.7) * 43758.5453;
-    return (h - Math.floor(h)) - 0.5; // -0.5..0.5
-  };
-
-  for (let y = 0; y < height; y += 1) {
-    const plankRow = Math.floor(y / plankHeight);
-    const stagger = (plankRow % 2) * Math.floor(plankWidth / 2);
-    for (let x = 0; x < width; x += 1) {
-      const index = y * width + x;
-      if (!mask[index]) continue;
-      const offset = index * 4;
-      const plankCol = Math.floor((x + stagger) / plankWidth);
-      const seam = y % plankHeight === 0 || (x + stagger) % plankWidth === 0;
-      // Board-to-board variation (±10) plus fine grain waves along the board.
-      const tone = Math.round(20 * plankTone(plankRow, plankCol));
-      const grain = Math.round(
-        4 * Math.sin(x * 0.11 + plankRow * 0.8)
-        + 2 * Math.sin(x * 0.31 + plankRow * 2.3),
-      );
-      // Warm oak base, kept well below the white walls' luminance so the two
-      // stay separated under the ACES-graded lighting.
-      const r = 196 + tone + grain;
-      const g = 158 + tone + grain;
-      const b = 112 + Math.round((tone + grain) * 0.6);
-      image.data[offset] = seam ? 146 : r;
-      image.data[offset + 1] = seam ? 114 : g;
-      image.data[offset + 2] = seam ? 78 : b;
-      image.data[offset + 3] = 255;
-    }
-  }
+  image.data.set(buildFloorFinishRgba({
+    floorMaterials: data.floor_materials,
+    height,
+    interiorMask: mask,
+    width,
+  }));
   context.putImageData(image, 0, 0);
 
   const texture = new THREE.CanvasTexture(textureCanvas);
@@ -1173,6 +1155,68 @@ function buildWoodFinish(data, scale, cx, cy, hasPhysicalScale, furnitureSceneSc
     hasPhysicalScale,
     furnitureSceneScale,
   };
+  floorFinishLayout = layout;
+}
+
+function decodeInputImageRgba(base64, width, height) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        reject(new Error("Unable to read the floor-plan image"));
+        return;
+      }
+      context.drawImage(image, 0, 0, width, height);
+      resolve(context.getImageData(0, 0, width, height).data);
+    };
+    image.onerror = () => reject(new Error("Unable to decode the floor-plan image"));
+    image.src = "data:image/png;base64," + base64;
+  });
+}
+
+async function ensureRoomFloorMaterials() {
+  if (currentComposedPlan?.floor_materials) return true;
+  if (!currentComposedPlan?.input_image_b64 || !floorFinishLayout) return false;
+
+  const response = await fetch("/room-materials", {
+    body: JSON.stringify({
+      imageDataUrl: `data:image/png;base64,${currentComposedPlan.input_image_b64}`,
+    }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(await responseError(response, `Room analysis failed (${response.status})`));
+  }
+  const analysis = await response.json();
+  if (analysis.status !== "ready" || !Array.isArray(analysis.rooms) || analysis.rooms.length === 0) {
+    throw new Error(analysis.summary || "No room labels were detected");
+  }
+
+  const [width, height] = currentComposedPlan.canvas_size ?? [1024, 1024];
+  const interiorMask = buildInteriorMask(
+    currentComposedPlan.polygons ?? {},
+    width,
+    height,
+    currentComposedPlan.openings ?? [],
+  );
+  const sourceRgba = await decodeInputImageRgba(currentComposedPlan.input_image_b64, width, height);
+  currentComposedPlan.floor_materials = buildRoomFloorMaterialMap({
+    height,
+    interiorMask,
+    millimetersPerPixel: currentComposedPlan.calibration?.millimetersPerPixel ?? null,
+    openings: currentComposedPlan.openings ?? [],
+    polygons: currentComposedPlan.polygons ?? {},
+    rooms: analysis.rooms,
+    sourceRgba,
+    width,
+  });
+  rebuildFloorFinish(currentComposedPlan, floorFinishLayout);
+  return true;
 }
 
 function pointIsInsideFinishedFloor(point) {
@@ -1239,6 +1283,7 @@ function clearPlan() {
     }
   }
   floorPlacementState = null;
+  floorFinishLayout = null;
   animations.length = 0;
 }
 
@@ -1274,7 +1319,7 @@ async function loadPlan(data) {
     ? 1
     : WALL_HEIGHT / PHYSICAL_WALL_HEIGHT;
 
-  buildWoodFinish(data, scale, cx, cy, hasPhysicalScale, furnitureSceneScale);
+  rebuildFloorFinish(data, { scale, cx, cy, hasPhysicalScale, furnitureSceneScale });
 
   // Frame the camera on the model's actual world bbox. After centering, the
   // model is at world (0, WALL_HEIGHT/2, 0), with horizontal extent bw*scale x
@@ -2121,8 +2166,21 @@ function setFurnishingVisibility(furnishing) {
 
 async function enterFurnishingStage() {
   const entering = currentView === "3d";
+  let roomMaterialWarning = "";
   if (!currentComposedPlan || inFlight || (!entering && currentView !== "furnishing")) return;
   if (entering) {
+    inFlight = true;
+    updateEditorControls();
+    setStatus("방별 바닥재를 만드는 중입니다.");
+    try {
+      await ensureRoomFloorMaterials();
+    } catch (error) {
+      rebuildFloorFinish(currentComposedPlan, floorFinishLayout);
+      roomMaterialWarning = `방 분류를 적용하지 못해 기본 마루를 사용합니다: ${error.message}`;
+      setStatus(roomMaterialWarning, "warning");
+    } finally {
+      inFlight = false;
+    }
     currentView = "furnishing";
     setCanvasViewState("furnishing");
     setFurnishingVisibility(true);
@@ -2146,7 +2204,11 @@ async function enterFurnishingStage() {
     fillFurnitureCategories();
     catalogOffset = 0;
     renderFurnitureCatalog();
-    setStatus(`${furnitureCatalog.length}개 가구를 불러왔습니다. 항목을 눌러 배치하세요.`);
+    if (roomMaterialWarning) {
+      setStatus(roomMaterialWarning, "warning");
+    } else {
+      setStatus(`${furnitureCatalog.length}개 가구를 불러왔습니다. 항목을 눌러 배치하세요.`);
+    }
   } catch (error) {
     renderFurnitureCatalogError(error);
     setStatus(`가구 목록 로딩 실패: ${error.message}`, "error");
