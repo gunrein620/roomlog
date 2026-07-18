@@ -75,6 +75,15 @@ type OpenAiContractOcrField = {
   evidence?: string;
   needsCheck?: boolean;
   masked?: boolean;
+  regions?: ContractExtraction["items"][number]["regions"];
+};
+
+type OpenAiContractOcrRegion = {
+  page?: unknown;
+  x?: unknown;
+  y?: unknown;
+  width?: unknown;
+  height?: unknown;
 };
 
 type OpenAiContractOcrFields = {
@@ -1585,6 +1594,7 @@ export class RoomlogContractDomain {
         value: existing.value,
         needsCheck: true,
         masked: item.masked || existing.masked,
+        regions: this.mergeOcrRegions(item.regions, existing.regions),
         evidence: item.evidence
           ? `${item.evidence} · OCR 미확인으로 기존 저장값 유지`
           : "OCR 미확인으로 기존 저장값 유지"
@@ -2283,6 +2293,13 @@ export class RoomlogContractDomain {
       .join(", ") || "없음";
 
     return [
+      "For every extracted fields entry and items entry, include regions when possible.",
+      "regions must be an array of { page, x, y, width, height }, where page starts at 1 and x/y/width/height are normalized 0..1 page coordinates.",
+      "Each region must tightly cover the exact source text used for the extracted value, not the field label, table header, whole row, whole section, or nearby explanation.",
+      "For money fields, regions must cover the amount cell/text such as 53,288,000 or 67,510. For period fields, regions must cover the date text. For clause fields, regions must cover the clause body text.",
+      "Do not return a region around labels like 계약기간, 보증금, 월 임대료, 특약, 자동연장, 원상복구, 수선 책임 unless that label text itself is the extracted value.",
+      "If only a broad section/table box is possible, leave regions empty instead of returning an imprecise box.",
+      "If the coordinate is uncertain, return an empty regions array for that field or item.",
       "첨부된 임대차 계약서 원본에서 Roomlog 계약 핵심 검토 테이블에 넣을 항목만 추출해줘.",
       `파일명: ${document.fileName ?? "계약서 원본"}`,
       `관리 호실: ${room.buildingName} ${this.displayUnitId(room)}`,
@@ -2304,15 +2321,31 @@ export class RoomlogContractDomain {
   }
 
   private contractOcrJsonSchema() {
+    const regionSchema = {
+      type: "object",
+      properties: {
+        page: { type: "number" },
+        x: { type: "number" },
+        y: { type: "number" },
+        width: { type: "number" },
+        height: { type: "number" }
+      },
+      required: ["page", "x", "y", "width", "height"],
+      additionalProperties: false
+    };
     const fieldSchema = {
       type: "object",
       properties: {
         value: { type: "string" },
         evidence: { type: "string" },
         needsCheck: { type: "boolean" },
-        masked: { type: "boolean" }
+        masked: { type: "boolean" },
+        regions: {
+          type: "array",
+          items: regionSchema
+        }
       },
-      required: ["value", "evidence", "needsCheck", "masked"],
+      required: ["value", "evidence", "needsCheck", "masked", "regions"],
       additionalProperties: false
     };
     const fieldsProperties = [
@@ -2351,9 +2384,13 @@ export class RoomlogContractDomain {
               group: { enum: ["money", "term", "responsibility"], type: "string" },
               needsCheck: { type: "boolean" },
               evidence: { type: "string" },
-              masked: { type: "boolean" }
+              masked: { type: "boolean" },
+              regions: {
+                type: "array",
+                items: regionSchema
+              }
             },
-            required: ["label", "value", "group", "needsCheck", "evidence", "masked"],
+            required: ["label", "value", "group", "needsCheck", "evidence", "masked", "regions"],
             additionalProperties: false
           }
         },
@@ -2447,7 +2484,8 @@ export class RoomlogContractDomain {
         group,
         needsCheck: documentAbsent ? false : activeFields.some((item) => item?.needsCheck !== false),
         evidence: evidence || "OpenAI OCR 세부 필드 추출",
-        masked: masked || activeFields.some((item) => item?.masked === true)
+        masked: masked || activeFields.some((item) => item?.masked === true),
+        regions: this.mergeOcrRegions(...activeFields.map((item) => item.regions))
       });
     };
 
@@ -2506,8 +2544,76 @@ export class RoomlogContractDomain {
       value: this.stringValue(value.value),
       evidence: this.stringValue(value.evidence),
       needsCheck: typeof value.needsCheck === "boolean" ? value.needsCheck : true,
-      masked: typeof value.masked === "boolean" ? value.masked : false
+      masked: typeof value.masked === "boolean" ? value.masked : false,
+      regions: this.normalizeOpenAiOcrRegions(value.regions)
     };
+  }
+
+  private normalizeOpenAiOcrRegions(value: unknown): ContractExtraction["items"][number]["regions"] {
+    if (!Array.isArray(value)) return undefined;
+
+    const regions = value
+      .map((rawRegion) => {
+        if (!this.isRecord(rawRegion)) return undefined;
+
+        const region = rawRegion as OpenAiContractOcrRegion;
+        const x = this.numberValue(region.x);
+        const y = this.numberValue(region.y);
+        const width = this.numberValue(region.width);
+        const height = this.numberValue(region.height);
+        if (x === undefined || y === undefined || width === undefined || height === undefined) return undefined;
+        if (width <= 0 || height <= 0) return undefined;
+
+        const left = this.clampUnit(x);
+        const top = this.clampUnit(y);
+        const right = this.clampUnit(x + width);
+        const bottom = this.clampUnit(y + height);
+        if (right <= left || bottom <= top) return undefined;
+
+        const page = this.numberValue(region.page);
+        return {
+          page: page && page > 0 ? Math.floor(page) : 1,
+          x: left,
+          y: top,
+          width: right - left,
+          height: bottom - top
+        };
+      })
+      .filter(
+        (region): region is { page: number; x: number; y: number; width: number; height: number } => Boolean(region)
+      )
+      .slice(0, 8);
+
+    return regions.length > 0 ? regions : undefined;
+  }
+
+  private mergeOcrRegions(
+    ...regionLists: Array<ContractExtraction["items"][number]["regions"] | undefined>
+  ): ContractExtraction["items"][number]["regions"] {
+    const merged: NonNullable<ContractExtraction["items"][number]["regions"]> = [];
+    const seen = new Set<string>();
+
+    for (const regions of regionLists) {
+      for (const region of regions ?? []) {
+        const key = [region.page ?? 1, region.x, region.y, region.width, region.height]
+          .map((value) => Number(value).toFixed(4))
+          .join(":");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push({ ...region });
+      }
+    }
+
+    return merged.length > 0 ? merged.slice(0, 8) : undefined;
+  }
+
+  private numberValue(value: unknown) {
+    const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+    return Number.isFinite(number) ? number : undefined;
+  }
+
+  private clampUnit(value: number) {
+    return Math.min(1, Math.max(0, value));
   }
 
   private mergeOpenAiOcrItems(
@@ -2531,7 +2637,8 @@ export class RoomlogContractDomain {
           ...fieldItem,
           evidence: [existing.evidence, fieldItem.evidence].filter(Boolean).join(" / "),
           needsCheck: replacingMissingExisting ? fieldItem.needsCheck : existing.needsCheck || fieldItem.needsCheck,
-          masked: existing.masked || fieldItem.masked
+          masked: existing.masked || fieldItem.masked,
+          regions: this.mergeOcrRegions(existing.regions, fieldItem.regions)
         };
       }
     }
@@ -2722,7 +2829,8 @@ export class RoomlogContractDomain {
         group: this.normalizeOcrGroup(this.stringValue(rawItem.group), label),
         needsCheck: documentAbsent ? false : typeof rawItem.needsCheck === "boolean" ? rawItem.needsCheck : true,
         evidence: this.stringValue(rawItem.evidence) || "OpenAI OCR 추출",
-        masked: typeof rawItem.masked === "boolean" ? rawItem.masked : this.shouldMaskOcrLabel(label)
+        masked: typeof rawItem.masked === "boolean" ? rawItem.masked : this.shouldMaskOcrLabel(label),
+        regions: this.normalizeOpenAiOcrRegions(rawItem.regions)
       };
 
       items.push(...this.expandContractPeriodOcrItem(baseItem));
@@ -2886,7 +2994,10 @@ export class RoomlogContractDomain {
     return {
       ...extraction,
       highlights: [...extraction.highlights],
-      items: extraction.items.map((item) => ({ ...item })),
+      items: extraction.items.map((item) => ({
+        ...item,
+        regions: item.regions?.map((region) => ({ ...region }))
+      })),
       helpNotes: extraction.helpNotes
         .filter((note) => note.clause !== TRADE_ACCEPTANCE_MARKER_CLAUSE)
         .map((note) => ({ ...note }))

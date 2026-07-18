@@ -19,11 +19,19 @@ const fieldKeys = [
 ] as const;
 
 type OcrFieldKey = (typeof fieldKeys)[number];
+type OcrRegion = {
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 type OcrField = {
   value: string;
   evidence: string;
   needsCheck: boolean;
   masked: boolean;
+  regions: OcrRegion[];
 };
 type OcrItem = {
   label: string;
@@ -32,10 +40,11 @@ type OcrItem = {
   needsCheck: boolean;
   evidence: string;
   masked: boolean;
+  regions?: OcrRegion[];
 };
 
 function emptyField(): OcrField {
-  return { value: "", evidence: "", needsCheck: true, masked: false };
+  return { value: "", evidence: "", needsCheck: true, masked: false, regions: [] };
 }
 
 function ocrFields(overrides: Partial<Record<OcrFieldKey, Partial<OcrField>>>) {
@@ -62,7 +71,7 @@ async function runContractOcrEval(
           summary: "계약 OCR eval 샘플",
           clauseSummary: "특약: 보증금 반환 전 정산",
           highlights: ["eval fixture"],
-          items,
+          items: items.map((item) => ({ regions: [], ...item })),
           fields,
           helpNotes: []
         })

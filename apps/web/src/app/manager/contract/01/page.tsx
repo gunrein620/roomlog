@@ -17,7 +17,9 @@ import {
   StaticButton,
   captionStyle,
 } from "../_components";
+import { ContractComparisonTableClient } from "./ContractComparisonTableClient";
 import { ContractConfirmErrorFocus } from "./ContractConfirmErrorFocus";
+import { ContractDocumentPreviewClient } from "./ContractDocumentPreviewClient";
 
 type SearchParams = Promise<{
   id?: string;
@@ -163,7 +165,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         ) : null}
 
         <div style={ocrWorkspaceStyle}>
-          <ContractDocumentPreview detail={detail} sourceLabel={source.label} />
+          <ContractDocumentPreview detail={detail} />
           <Card style={coreReviewCardStyle}>
             <div style={coreReviewHeaderStyle}>
               <div>
@@ -209,11 +211,16 @@ function ContractDocumentPreview({
   detail,
 }: {
   detail: ManagerContractDetailResult;
-  sourceLabel: string;
 }) {
   const document = detail.currentDocument;
   const previewUrl = contractDocumentPreviewUrl(document);
   const previewKind = contractDocumentPreviewKind(document);
+  const highlightItems = contractReviewItems(detail.extraction.items).map((item) => ({
+    label: item.label,
+    value: item.value,
+    needsCheck: item.needsCheck,
+    regions: item.regions,
+  }));
 
   return (
     <Card style={documentPreviewCardStyle}>
@@ -222,50 +229,14 @@ function ContractDocumentPreview({
           <h2 style={coreReviewTitleStyle}>계약서 이미지</h2>
           <p style={coreReviewCaptionStyle}>{document?.fileName ?? `${detail.row.buildingName} ${detail.row.contract.unitId}호`}</p>
         </div>
-        <div style={documentChipRowStyle}>
-          <Badge emphasis>읽어온 값</Badge>
-          <Badge>{previewKind === "image" ? "이미지 원문" : "PDF 원문"}</Badge>
-        </div>
       </div>
-      <div style={documentFrameStyle}>
-        {previewUrl ? (
-          previewKind === "image" ? (
-            <img src={previewUrl} alt="계약서 원문 미리보기" style={documentImageStyle} />
-          ) : (
-            <iframe title="계약서 PDF 원문 미리보기" src={pdfPreviewSrc(previewUrl)} style={documentIframeStyle} />
-          )
-        ) : (
-          <ContractDocumentFallback tenantName={detail.row.tenantName} />
-        )}
-      </div>
+      <ContractDocumentPreviewClient
+        previewUrl={previewUrl}
+        previewKind={previewKind}
+        tenantName={detail.row.tenantName}
+        highlights={highlightItems}
+      />
     </Card>
-  );
-}
-
-function ContractDocumentFallback({ tenantName }: { tenantName: string }) {
-  return (
-    <div style={documentPageStyle} aria-label="계약서 원문 미리보기">
-      <div style={documentTitleStyle}>계약(해약) 사실확인원</div>
-      <div style={docLineMidStyle} />
-      <div style={docLineStyle} />
-      <div style={docLineShortStyle} />
-      <div style={depositHighlightStyle}>
-        <span>보증금 근거</span>
-      </div>
-      <div style={{ ...docLineStyle, marginTop: 88 }} />
-      <div style={docLineMidStyle} />
-      <div style={docLineShortStyle} />
-      <div style={clauseHighlightStyle}>
-        <span>특약성 조항 영역</span>
-      </div>
-      <div style={{ ...docLineStyle, marginTop: 92 }} />
-      <div style={docLineMidStyle} />
-      <div style={docLineStyle} />
-      <div style={documentMetaStyle}>
-        <strong>{tenantName}</strong>
-        <span>원문 파일 없음</span>
-      </div>
-    </div>
   );
 }
 
@@ -291,10 +262,6 @@ function contractDocumentPreviewKind(document: ManagerContractDetailResult["curr
   return /\.(png|jpe?g|webp|gif|bmp|avif)(\?|#|$)/i.test(value) ? "image" : "pdf";
 }
 
-function pdfPreviewSrc(url: string) {
-  return url.includes("#") ? url : `${url}#toolbar=1&navpanes=0&view=FitH`;
-}
-
 function encodeFilePath(value: string) {
   return value
     .replace(/^\/+/, "")
@@ -305,52 +272,7 @@ function encodeFilePath(value: string) {
 }
 
 function ComparisonTable({ rows }: { rows: ValueRow[] }) {
-  return (
-    <div style={coreReviewListStyle}>
-      {rows.map((row) => {
-        const hasDetails =
-          row.ocrDetails.length > 0 ||
-          row.dbDetails.length > 0 ||
-          row.validationMessages.length > 0 ||
-          Boolean(row.evidence?.trim());
-
-        return (
-          <article key={row.label} style={coreReviewItemStyle}>
-            <div style={coreReviewItemTopStyle}>
-              <span style={coreReviewItemTitleStyle}>{row.label}</span>
-              <div style={coreReviewStatusStyle}>
-                <Badge emphasis={row.statusEmphasis}>{row.status}</Badge>
-                {row.validationMessages.length ? (
-                  <span style={validationCountStyle}>검증 사유 {row.validationMessages.length}</span>
-                ) : null}
-              </div>
-            </div>
-            <div style={compareGridStyle}>
-              <div style={compareBoxStyle}>
-                <span style={compareLabelStyle}>OCR 요약</span>
-                <ValueText value={row.ocrValue} />
-              </div>
-              <div style={compareBoxStyle}>
-                <span style={compareLabelStyle}>저장값 요약</span>
-                <ValueText value={row.dbValue} />
-              </div>
-              <div style={compareBoxStrongStyle}>
-                <span style={compareLabelStyle}>최종값</span>
-                <ValueText value={row.finalValue} strong />
-              </div>
-            </div>
-            {row.evidence ? <div style={coreEvidenceStyle}>{row.evidence}</div> : null}
-            {hasDetails ? (
-              <details style={coreDetailsStyle}>
-                <summary style={coreDetailsSummaryStyle}>상세 보기</summary>
-                <RowDetailPanel row={row} />
-              </details>
-            ) : null}
-          </article>
-        );
-      })}
-    </div>
-  );
+  return <ContractComparisonTableClient rows={rows} />;
 }
 
 function RowDetailPanel({ row }: { row: ValueRow }) {
@@ -605,7 +527,7 @@ function makeValueRow(
   const validationMessages = validationMessagesFromEvidence(ocrFailed ? undefined : item?.evidence);
   const hasUsableOcrValue = !isMissingDisplayValue(rawOcrValue);
   const hasDbValue = Boolean(normalizedDbValue);
-  const shouldPreferDbValue = hasDbValue && (ocrFailed || Boolean(item?.needsCheck) || validationMessages.length > 0);
+  const shouldPreferDbValue = hasDbValue && ocrFailed;
   const finalRawValue = shouldPreferDbValue
     ? normalizedDbValue
     : hasUsableOcrValue
@@ -734,8 +656,8 @@ function manualDefaults(
 ) {
   return {
     deposit:
-      storedManualValue(detail, "보증금", detail.manualValues.deposit) ||
-      textInputCandidate(detail, "보증금", sourceKind),
+      textInputCandidate(detail, "보증금", sourceKind) ||
+      storedManualValue(detail, "보증금", detail.manualValues.deposit),
     monthlyRent:
       moneyInputCandidate(valueRowFinalValue(valueRows, "월세")) ||
       moneyInputCandidate(valueRowOcrValue(valueRows, "월세")) ||
@@ -749,8 +671,8 @@ function manualDefaults(
       ocrDateInputCandidate(detail, "end", sourceKind) ||
       dateInputCandidate(storedManualValue(detail, "계약 종료일", detail.manualValues.endDate)),
     specialTerms:
-      storedManualValue(detail, "특약", detail.manualValues.specialTerms) ||
-      textInputCandidate(detail, "특약", sourceKind),
+      textInputCandidate(detail, "특약", sourceKind) ||
+      storedManualValue(detail, "특약", detail.manualValues.specialTerms),
     autoRenewal: textInputCandidate(detail, "자동연장", sourceKind),
     restorationDuty: textInputCandidate(detail, "원상복구", sourceKind),
     repairDuty: textInputCandidate(detail, "수선 책임", sourceKind),
@@ -923,112 +845,6 @@ const documentPreviewHeaderStyle = {
   alignItems: "flex-start",
   gap: "var(--space-md)",
   flexWrap: "wrap",
-} as const;
-
-const documentChipRowStyle = {
-  display: "flex",
-  gap: "var(--space-xs)",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-} as const;
-
-const documentFrameStyle = {
-  display: "grid",
-  minHeight: 560,
-} as const;
-
-const documentIframeStyle = {
-  width: "100%",
-  minHeight: 560,
-  height: "100%",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container-lowest)",
-} as const;
-
-const documentImageStyle = {
-  width: "100%",
-  minHeight: 560,
-  height: "100%",
-  objectFit: "contain",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container-lowest)",
-} as const;
-
-const documentPageStyle = {
-  position: "relative",
-  display: "grid",
-  alignContent: "start",
-  minHeight: 560,
-  overflow: "hidden",
-  padding: "32px",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container-lowest)",
-  boxShadow: "0 20px 44px rgba(15, 23, 42, 0.08)",
-} as const;
-
-const documentTitleStyle = {
-  margin: "4px 0 28px",
-  textAlign: "center",
-  color: "var(--on-surface)",
-  fontSize: "var(--fs-subtitle)",
-  fontWeight: 900,
-  lineHeight: "var(--lh-title)",
-} as const;
-
-const docLineStyle = {
-  height: 13,
-  margin: "14px 0",
-  borderRadius: 2,
-  background: "var(--surface-container-high)",
-} as const;
-
-const docLineMidStyle = {
-  ...docLineStyle,
-  width: "78%",
-} as const;
-
-const docLineShortStyle = {
-  ...docLineStyle,
-  width: "58%",
-} as const;
-
-const depositHighlightStyle = {
-  position: "absolute",
-  top: 214,
-  left: 58,
-  right: 58,
-  display: "flex",
-  alignItems: "center",
-  height: 48,
-  padding: "0 var(--space-sm)",
-  border: "2px solid var(--primary)",
-  borderRadius: "var(--radius-sm)",
-  color: "var(--primary)",
-  background: "rgba(92, 69, 217, 0.08)",
-  fontSize: "var(--fs-caption)",
-  fontWeight: 900,
-} as const;
-
-const clauseHighlightStyle = {
-  ...depositHighlightStyle,
-  top: 384,
-  borderColor: "#18a36d",
-  color: "#047857",
-  background: "rgba(18, 128, 92, 0.08)",
-} as const;
-
-const documentMetaStyle = {
-  position: "absolute",
-  right: 32,
-  bottom: 28,
-  display: "grid",
-  gap: 4,
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  textAlign: "right",
 } as const;
 
 const coreReviewCardStyle = {
