@@ -96,6 +96,9 @@ class UnavailableManagerVendorRepository implements ManagerVendorRepository {
   async findJobByTicket() {
     return workflowUnavailable();
   }
+  async createManual(): Promise<never> {
+    return workflowUnavailable();
+  }
   async register(): Promise<never> {
     return workflowUnavailable();
   }

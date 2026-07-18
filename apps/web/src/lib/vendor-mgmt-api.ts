@@ -1,4 +1,5 @@
 import type {
+  CreateManagerVendorInput,
   DecideRepairCompletionInput,
   ManagerVendorDetail,
   ManagerVendorJobLookup,
@@ -192,6 +193,15 @@ export function registerManagerVendor(vendorId: string): Promise<ManagerVendorVi
   return serverFetch<ManagerVendorView>(
     `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}/registration`,
     { method: "PUT", body: JSON.stringify({}) },
+  );
+}
+
+export function createManagerVendor(
+  input: CreateManagerVendorInput,
+): Promise<ManagerVendorView> {
+  return serverFetch<ManagerVendorView>(
+    "/manager/vendor-mgmt/vendors/manual",
+    { method: "POST", body: JSON.stringify(input) },
   );
 }
 

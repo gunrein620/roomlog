@@ -1,5 +1,11 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import type {
+  CreateManagerVendorInput,
   ManagerVendorDetail,
   ManagerVendorJobLookup,
   ManagerVendorView,
@@ -41,6 +47,10 @@ function translateRepositoryError(error: unknown): never {
   if (error instanceof ManagerVendorRepositoryError) {
     if (error.code === "INVALID_MANAGER") {
       throw new ForbiddenException("업체 관리 권한이 없습니다.");
+    }
+
+    if (error.code === "DUPLICATE_VENDOR") {
+      throw new ConflictException("이미 등록한 전화번호입니다.");
     }
 
     throw new NotFoundException("조회 가능한 업체를 찾을 수 없습니다.");
@@ -154,6 +164,34 @@ export class RoomlogManagerVendorDomain {
     return result
       ? { ...result, job: publicJob(result.job) }
       : null;
+  }
+
+  createManual(
+    managerId: string,
+    input: CreateManagerVendorInput,
+  ): Promise<ManagerVendorView> {
+    const businessName = input.businessName.trim();
+    const phone = input.phone.replace(/[\s-]/g, "");
+    const accountNumber = input.accountNumber.replace(/[\s-]/g, "");
+
+    if (!businessName) {
+      throw new BadRequestException("업체명을 입력해 주세요.");
+    }
+    if (businessName.length > 100) {
+      throw new BadRequestException("업체명은 100자 이하로 입력해 주세요.");
+    }
+    if (!/^\d{9,11}$/.test(phone)) {
+      throw new BadRequestException("전화번호를 확인해 주세요.");
+    }
+    if (!/^\d{6,40}$/.test(accountNumber)) {
+      throw new BadRequestException("계좌번호를 확인해 주세요.");
+    }
+
+    return this.execute(() => this.repository.createManual(managerId, {
+      businessName,
+      phone,
+      accountNumber,
+    }));
   }
 
   register(managerId: string, vendorId: string): Promise<ManagerVendorView> {
