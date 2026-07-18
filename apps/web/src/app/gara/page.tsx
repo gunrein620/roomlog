@@ -1,49 +1,34 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
+import { getManagerCreditAccount } from "@/lib/vendor-credit-api";
+import { listManagerVendors } from "@/lib/vendor-mgmt-api";
+import { requireUser } from "@/lib/session";
+import { GaraPayoutWorkspace } from "./GaraPayoutWorkspace";
 
 export const metadata: Metadata = {
   title: "Gara | 룸로그",
 };
 
-export default function GaraPage() {
+export const dynamic = "force-dynamic";
+
+export default async function GaraPage() {
+  await requireUser("LANDLORD", "/gara");
+  const [vendorsResult, creditResult] = await Promise.all([
+    listManagerVendors(),
+    getManagerCreditAccount(),
+  ]);
+  const vendors = vendorsResult.data.filter((vendor) => vendor.status === "ACTIVE");
+
   return (
-    <main
-      style={{
-        minHeight: "100dvh",
-        display: "grid",
-        placeItems: "center",
-        padding: "var(--space-xl)",
-        background: "var(--surface)",
-      }}
+    <ManagerAppShell
+      title="Gara 지급 요청"
+      context="등록한 업체에 대해 관리자 크레딧을 차감하고 지급 요청을 생성합니다."
     >
-      <section
-        style={{
-          width: "min(100%, 480px)",
-          display: "grid",
-          gap: "var(--space-lg)",
-          padding: "var(--space-xxl)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-lg)",
-          background: "var(--surface-container-lowest)",
-          boxShadow: "var(--shadow)",
-        }}
-      >
-        <p style={{ margin: 0, color: "var(--primary)", fontWeight: "var(--fw-subtitle)" }}>
-          Gara
-        </p>
-        <h1 style={{ margin: 0, color: "var(--on-surface)", fontSize: "var(--fs-title)" }}>
-          Gara
-        </h1>
-        <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>
-          Gara 페이지입니다.
-        </p>
-        <Link
-          href="/"
-          style={{ color: "var(--primary)", fontWeight: "var(--fw-subtitle)" }}
-        >
-          홈으로 돌아가기
-        </Link>
-      </section>
-    </main>
+      <GaraPayoutWorkspace
+        vendors={vendors}
+        initialBalance={creditResult.data.balance}
+        demo={vendorsResult.source === "DEMO" || creditResult.source === "DEMO"}
+      />
+    </ManagerAppShell>
   );
 }

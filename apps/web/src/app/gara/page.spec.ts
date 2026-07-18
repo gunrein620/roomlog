@@ -5,11 +5,12 @@ import test from "node:test";
 
 const pagePath = path.join(process.cwd(), "src/app/gara/page.tsx");
 
-test("/gara renders a standalone page with a home link", () => {
+test("/gara renders registered vendors with payout request controls", () => {
   assert.equal(existsSync(pagePath), true, `${pagePath} must exist`);
 
   const source = readFileSync(pagePath, "utf8");
   assert.match(source, /title:\s*"Gara \| 룸로그"/);
-  assert.match(source, /<h1[\s\S]*?>\s*Gara\s*<\/h1>/);
-  assert.match(source, /href="\/"/);
+  assert.match(source, /listManagerVendors/);
+  assert.match(source, /getManagerCreditAccount/);
+  assert.match(source, /GaraPayoutWorkspace/);
 });
