@@ -28,7 +28,7 @@ export default async function ManagerVendorsPage({ searchParams }: { searchParam
           title="내 업체"
           description="운영팀이 검증한 업체 중 직접 등록한 협력업체와 진행 중인 작업을 관리합니다. 업체 원장 정보는 이 화면에서 수정하지 않습니다."
           demo={result.source === "DEMO"}
-          actions={<LinkButton href={MANAGER_VENDOR_MGMT_PATHS.search}>업체 찾기</LinkButton>}
+          actions={<LinkButton href={MANAGER_VENDOR_MGMT_PATHS.search}>업체 등록</LinkButton>}
         />
         <VendorSection
           title={`${activeVendors.length}개 업체`}
