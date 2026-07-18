@@ -7409,18 +7409,6 @@ p {
   color: var(--blue);
 }
 
-.tenant-request-detail-form .tenant-request-type-toggle button:disabled {
-  cursor: default;
-  opacity: 1;
-}
-
-.tenant-request-detail-meta-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
-  align-items: end;
-  gap: 24px;
-}
-
 .tenant-request-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 0.58fr);
@@ -7452,16 +7440,7 @@ p {
   min-height: 182px;
 }
 
-.tenant-request-detail-form input[readonly],
-.tenant-request-detail-form textarea[readonly] {
-  cursor: default;
-}
-
-.tenant-request-detail-form .tenant-request-body-field textarea {
-  min-height: 320px;
-}
-
-/* 민원/하자 상세 — 처리 상태·책임 판단·이의제기·진행 메시지 (세입자탭 본선 상세) */
+/* 민원/하자 상세 — 처리 상태·긴급도·진행 메시지 (세입자탭 본선 상세) */
 .tenant-request-urgency {
   display: flex;
   flex-direction: column;
@@ -7487,7 +7466,6 @@ p {
 }
 
 .tenant-defect-progress,
-.tenant-defect-appeal,
 .tenant-defect-messages {
   display: flex;
   flex-direction: column;
@@ -7521,99 +7499,21 @@ p {
   background: var(--blue-soft);
 }
 
-.tenant-defect-ai-hint {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.tenant-defect-ai-hint em {
-  margin-left: 6px;
-  font-style: normal;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--muted);
-  opacity: 0.8;
-}
-
-.tenant-defect-decision {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--blue) 32%, var(--line));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--blue-soft) 55%, var(--paper));
-}
-
-.tenant-defect-decision strong {
-  font-size: 0.94rem;
-  font-weight: 900;
-  color: var(--ink);
-}
-
-.tenant-defect-decision p {
-  margin: 0;
-  font-size: 0.88rem;
-  color: var(--muted);
-}
-
-.tenant-defect-confirm {
-  align-self: flex-start;
-  min-height: 44px;
-  padding: 0 18px;
-  border: none;
-  border-radius: 10px;
-  background: var(--blue);
-  color: #fff;
-  font-size: 0.94rem;
-  font-weight: 900;
-}
-
-.tenant-defect-appeal > strong,
 .tenant-defect-messages > strong {
   font-size: 0.94rem;
   font-weight: 900;
   color: var(--ink);
 }
 
-.tenant-defect-appeal p {
-  margin: 0;
-  font-size: 0.88rem;
-  color: var(--muted);
-}
-
-.tenant-defect-appeal-open {
-  font-weight: 800;
-  color: var(--blue);
-}
-
-.tenant-defect-appeal button {
-  align-self: flex-start;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1.5px solid var(--blue);
-  border-radius: 10px;
-  background: var(--paper);
-  color: var(--blue);
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
-.tenant-defect-appeal button:disabled {
-  opacity: 0.5;
-}
-
 .tenant-defect-messages ul {
-  /* column-reverse + 역순 렌더로 스크롤이 항상 최신(하단)에 붙는다 — 쌓여도 카드가 안 길어짐 */
+  /* 한 줄 메시지 5개 기준 고정 높이. 이후 대화는 이 영역 안에서만 스크롤한다. */
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
   margin: 0;
   padding: 0 4px 0 0;
   list-style: none;
-  max-height: 340px;
+  height: 292px;
   overflow-y: auto;
 }
 
@@ -7630,6 +7530,17 @@ p {
 .tenant-defect-messages li[data-sender="TENANT"] {
   border-color: color-mix(in srgb, var(--blue) 30%, var(--line));
   background: color-mix(in srgb, var(--blue-soft) 45%, var(--paper));
+}
+
+.tenant-defect-messages li.tenant-defect-message-empty {
+  margin-block: auto;
+  border-style: dashed;
+  background: var(--paper);
+  text-align: center;
+}
+
+.tenant-defect-messages li.tenant-defect-message-empty p {
+  color: var(--muted);
 }
 
 .tenant-defect-messages li span {
@@ -7784,15 +7695,6 @@ p {
 }
 
 @media (max-width: 640px) {
-  .tenant-request-detail-meta-row {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .tenant-request-detail-form .tenant-request-body-field textarea {
-    min-height: 220px;
-  }
-
   .tenant-request-row {
     grid-template-columns: 1fr;
   }
