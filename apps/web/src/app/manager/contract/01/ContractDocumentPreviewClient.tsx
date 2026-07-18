@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type PreviewKind = "image" | "pdf";
 
@@ -118,19 +118,19 @@ export function ContractDocumentPreviewClient({
 
   return (
     <div style={documentPreviewClientStyle}>
+      <div style={documentPreviewStickyNavStyle}>{readValuesButton}</div>
       <div style={documentFrameStyle}>
         {previewUrl ? (
           previewKind === "image" ? (
             <div style={documentPreviewSurfaceStyle}>
-              <div style={documentPreviewFloatingNavStyle}>{readValuesButton}</div>
               <img src={previewUrl} alt="계약서 원문 미리보기" style={documentImageStyle} />
               {showHighlights ? <HighlightOverlay boxes={highlightBoxes} previewKind="image" /> : null}
             </div>
           ) : (
-            <PdfDocumentFrame previewUrl={previewUrl} showHighlights={showHighlights} boxes={highlightBoxes} readValuesButton={readValuesButton} />
+            <PdfDocumentFrame previewUrl={previewUrl} showHighlights={showHighlights} boxes={highlightBoxes} />
           )
         ) : (
-          <ContractDocumentFallback tenantName={tenantName} showHighlights={showHighlights} boxes={highlightBoxes} readValuesButton={readValuesButton} />
+          <ContractDocumentFallback tenantName={tenantName} showHighlights={showHighlights} boxes={highlightBoxes} />
         )}
       </div>
     </div>
@@ -141,12 +141,10 @@ function PdfDocumentFrame({
   previewUrl,
   showHighlights,
   boxes,
-  readValuesButton,
 }: {
   previewUrl: string;
   showHighlights: boolean;
   boxes: HighlightBox[];
-  readValuesButton: ReactNode;
 }) {
   const [pdfDocument, setPdfDocument] = useState<PdfDocumentProxy | null>(null);
   const [pageNumbers, setPageNumbers] = useState<number[]>([]);
@@ -191,7 +189,6 @@ function PdfDocumentFrame({
 
   return (
     <div style={pdfDocumentSurfaceStyle}>
-      <div style={documentPreviewStickyNavStyle}>{readValuesButton}</div>
       {loadError ? (
         <iframe
           title="계약서 PDF 원문 미리보기"
@@ -382,16 +379,13 @@ function ContractDocumentFallback({
   tenantName,
   showHighlights,
   boxes,
-  readValuesButton,
 }: {
   tenantName: string;
   showHighlights: boolean;
   boxes: HighlightBox[];
-  readValuesButton: ReactNode;
 }) {
   return (
     <div style={fallbackFrameStyle}>
-      <div style={documentPreviewFloatingNavStyle}>{readValuesButton}</div>
       <StaticContractSheet tenantName={tenantName} />
       {showHighlights ? <HighlightOverlay boxes={boxes} previewKind="image" /> : null}
     </div>
@@ -626,7 +620,7 @@ const readValuesButtonDisabledStyle = {
 
 const documentPreviewClientStyle = {
   display: "grid",
-  gridTemplateRows: "1fr",
+  gridTemplateRows: "0 1fr",
   height: "100%",
   minHeight: 0,
 } as const;
@@ -639,24 +633,16 @@ const documentFrameStyle = {
   minWidth: 0,
 } as const;
 
-const documentPreviewFloatingNavStyle = {
-  position: "absolute",
-  top: "var(--space-sm)",
-  right: "var(--space-sm)",
-  zIndex: 10,
-  display: "flex",
-  justifyContent: "flex-end",
-  pointerEvents: "none",
-} as const;
-
 const documentPreviewStickyNavStyle = {
   position: "sticky",
-  top: "var(--space-sm)",
-  zIndex: 20,
+  top: "var(--space-md)",
+  zIndex: 40,
   display: "flex",
   justifyContent: "flex-end",
+  alignItems: "flex-start",
+  height: 0,
+  padding: "var(--space-sm)",
   pointerEvents: "none",
-  marginBottom: -36,
 } as const;
 
 const documentPreviewSurfaceStyle = {

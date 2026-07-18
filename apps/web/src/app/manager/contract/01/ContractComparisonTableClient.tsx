@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 export type ContractValueDetail = {
   label: string;
@@ -177,8 +177,39 @@ function detailsForSource(row: ContractValueRow, source: DetailSource) {
   return [];
 }
 
-function formatClauseBreaks(value?: string) {
-  return value?.trim().replace(/\s+(?=\d+\.\s)/g, "\n") ?? "";
+function formatClauseBreaks(value?: string): ReactNode {
+  const text = value?.trim() ?? "";
+  if (!text) return "";
+
+  const clauses = splitNumberedClauses(text);
+  if (!clauses.length) return text;
+
+  return (
+    <ol style={numberedClauseListStyle}>
+      {clauses.map((clause, index) => (
+        <li key={`${clause.marker}-${index}`} style={numberedClauseItemStyle}>
+          <span style={numberedClauseMarkerStyle}>{clause.marker}</span>
+          <span>{clause.text}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function splitNumberedClauses(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  const matches = Array.from(normalized.matchAll(/(?:^|\s)([①②③④⑤⑥⑦⑧⑨⑩]|(?:[1-9]|10)\.)\s*/g));
+  if (!matches.length) return [];
+
+  return matches
+    .map((match, index) => {
+      const marker = match[1] ?? "";
+      const start = (match.index ?? 0) + match[0].length;
+      const end = index + 1 < matches.length ? matches[index + 1].index ?? normalized.length : normalized.length;
+      const text = normalized.slice(start, end).trim();
+      return text ? { marker, text } : null;
+    })
+    .filter((clause): clause is { marker: string; text: string } => Boolean(clause));
 }
 
 function compactValue(value: string) {
@@ -386,9 +417,29 @@ const expandedDetailTextStyle = {
   border: "1px solid var(--border)",
   borderRadius: "var(--radius-sm)",
   background: "var(--surface-container-lowest)",
-  whiteSpace: "pre-wrap",
   overflowWrap: "anywhere",
   fontWeight: 800,
+} as const;
+
+const numberedClauseListStyle = {
+  display: "grid",
+  gap: 8,
+  margin: 0,
+  padding: 0,
+  listStyle: "none",
+} as const;
+
+const numberedClauseItemStyle = {
+  display: "grid",
+  gridTemplateColumns: "auto minmax(0, 1fr)",
+  gap: 8,
+  alignItems: "start",
+} as const;
+
+const numberedClauseMarkerStyle = {
+  color: "var(--primary)",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
 } as const;
 
 const expandedDetailListStyle = {
