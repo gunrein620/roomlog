@@ -1144,6 +1144,33 @@ p {
   font-weight: 700;
 }
 
+/* 자유 텍스트 검색창 — 테두리 있는 입력 박스, 타이핑 즉시 홈 피드가 필터링된다 */
+.search-field--query {
+  cursor: text;
+}
+
+.search-field-input {
+  width: 100%;
+  min-width: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  outline: 0;
+  padding: 9px 14px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.search-field-input:focus {
+  border-color: var(--blue);
+}
+
+.search-field-input::placeholder {
+  color: var(--subtle);
+  font-weight: 700;
+}
+
 .search-field-value {
   max-width: 100%;
   color: var(--ink);
@@ -10091,13 +10118,20 @@ p {
 }
 
 .search-sheet-input button {
+  flex: 0 0 auto;
   min-height: 34px;
-  padding: 0 12px;
+  padding: 0 14px;
   border-radius: 10px;
-  background: var(--blue);
-  color: #ffffff;
+  /* 검색카드 CTA(.search-submit)와 같은 코랄핑크 — 통합검색도 같은 테마로 읽히게 */
+  background: var(--pink);
+  color: #0b0b12;
   font-size: 0.78rem;
   font-weight: 900;
+  white-space: nowrap;
+}
+
+.search-sheet-input button:disabled {
+  opacity: 0.6;
 }
 
 .search-live-preview {
@@ -12711,6 +12745,15 @@ p {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .search-field-input {
+    padding: 11px 16px;
+    font-size: 1.05rem;
+  }
+
+  .search-field--query {
+    flex: 1.7;
   }
 
   .search-field-divider {
