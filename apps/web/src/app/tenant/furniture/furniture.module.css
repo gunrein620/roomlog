@@ -261,6 +261,22 @@ a.count:hover {
   font-size: var(--fs-subtitle);
 }
 
+/* meshUrl 있으면 GLB, 없으면 회색 박스를 그리는 3D 미리보기(FurniturePreview3D) 캔버스 프레임 */
+.preview3d {
+  overflow: hidden;
+  width: var(--control-secondary-size);
+  height: var(--control-secondary-size);
+  flex: none;
+  border-radius: var(--radius);
+  background: var(--wz-surface-muted);
+}
+
+.preview3d canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 .itemName {
   margin: 0;
   overflow: hidden;
