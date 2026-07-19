@@ -63,11 +63,25 @@ type OpenAiChatCompletionResponse = {
 // 데모 수준의 프로세스 메모리 저장소라 서버 재시작 시 보류 액션은 유실된다.
 const pendingCopilotActions = new Map<string, CopilotPendingActionRecord>();
 const pendingActionTtlMs = 10 * 60 * 1000;
+// 공지(messaging.send_announcement)는 보류 카드 없이 즉시 실행한다 — 페르소나 지침이
+// 호출 전 대화에서 명시 승인을 받도록 강제하고, 카드까지 겹치면 이중 확인이 된다.
 const sendCommands: Record<string, CopilotPendingAction["kind"] | undefined> = {
   "billing.send_dunning": "billing.send_dunning",
-  "messaging.send_reply": "messaging.send_reply",
-  "messaging.send_announcement": "messaging.send_announcement"
+  "messaging.send_reply": "messaging.send_reply"
 };
+
+// 짧은 명시 승인 발화 판별 — 내용이 함께 담긴 첫 요청("...5만원 인상 공지 보내줘")은
+// 길이 제한에 걸려 승인으로 치지 않고, "진행해"/"응 보내" 같은 답변만 승인으로 본다.
+export function isExplicitApproval(message?: string): boolean {
+  const normalized = (message ?? "").trim();
+
+  if (!normalized || normalized.length > 25) return false;
+  if (/(지\s*마|말아|말고|취소|안\s*돼|안돼|않|중단|보류)/.test(normalized)) return false;
+
+  return /(진행|발송|보내|승인|전송|괜찮|응|어|네|넵|예|그래|좋아|ㅇㅋ|ㅇㅇ|ㄱ+|고고|ok|okay|yes)/i.test(
+    normalized
+  );
+}
 
 export class RoomlogCopilotDomain {
   constructor(
@@ -140,6 +154,9 @@ export class RoomlogCopilotDomain {
     input: CopilotChatRequest
   ): Promise<CopilotChatResponse> {
     const messages = this.initialMessages(input);
+    const lastUserMessage = [...(input.messages ?? [])]
+      .reverse()
+      .find((message) => message.role === "user")?.content;
     let pendingAction: CopilotPendingAction | undefined;
 
     for (let iteration = 0; iteration < 4; iteration += 1) {
@@ -162,7 +179,7 @@ export class RoomlogCopilotDomain {
       });
 
       for (const toolCall of toolCalls) {
-        const toolResult = await this.runToolCall(managerId, toolCall);
+        const toolResult = await this.runToolCall(managerId, toolCall, lastUserMessage);
 
         if (toolResult.pendingAction) {
           pendingAction = toolResult.pendingAction;
@@ -234,7 +251,8 @@ export class RoomlogCopilotDomain {
 
   private async runToolCall(
     managerId: string,
-    toolCall: OpenAiToolCall
+    toolCall: OpenAiToolCall,
+    lastUserMessage?: string
   ): Promise<{
     content: unknown;
     pendingAction?: CopilotPendingAction;
@@ -261,6 +279,23 @@ export class RoomlogCopilotDomain {
     }
 
     const commandInput = parsedCommand.input;
+
+    // 공지는 모델 지침만으로는 확인 단계가 비결정적이라 서버가 1회 확인을 강제한다:
+    // 마지막 사용자 발화가 짧은 명시 승인("진행해", "응 보내")일 때만 실행하고,
+    // 아니면 요약을 보여주고 승인을 받아오라는 결과를 돌려준다.
+    if (
+      commandInput.command === "messaging.send_announcement" &&
+      !isExplicitApproval(lastUserMessage)
+    ) {
+      return {
+        content: {
+          status: "needs_confirmation",
+          summary:
+            "공지 발송 전 관리인 승인이 필요합니다. 대상·제목·본문을 요약해 보여주고 발송해도 되는지 물어보세요. 관리인이 승인하면 같은 내용으로 다시 호출하세요."
+        }
+      };
+    }
+
     const pendingKind = sendCommands[commandInput.command];
 
     if (pendingKind) {
@@ -425,9 +460,7 @@ export class RoomlogCopilotDomain {
       reply:
         action.kind === "billing.send_dunning"
           ? "독촉 발송을 취소했습니다."
-          : action.kind === "messaging.send_announcement"
-            ? "공지 발송을 취소했습니다."
-            : "메시지 발송을 취소했습니다."
+          : "메시지 발송을 취소했습니다."
     };
   }
 

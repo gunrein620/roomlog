@@ -5330,57 +5330,6 @@ export class RoomlogService implements OnModuleDestroy {
       }
     }
 
-    if (kind === "messaging.send_announcement") {
-      const title = input.title?.trim() ?? "";
-      const announcementBody = input.body?.trim() || input.text?.trim() || "";
-
-      if (!title || !announcementBody) {
-        return {
-          status: "blocked" as const,
-          domain: "messaging" as const,
-          summary: "공지 제목과 내용을 함께 알려주시면 발송을 준비하겠습니다.",
-          requiresConfirmation: true
-        };
-      }
-
-      try {
-        const audience = this.messaging.resolveManagerAnnouncementAudience(
-          managerId,
-          input.target
-        );
-
-        if (audience.recipientCount === 0) {
-          return {
-            status: "blocked" as const,
-            domain: "messaging" as const,
-            summary: `${audience.targetLabel} 대상에는 공지를 받을 세입자가 없습니다. 대상을 다시 확인해 주세요.`,
-            requiresConfirmation: true
-          };
-        }
-
-        return {
-          status: "ready" as const,
-          commandInput: {
-            ...input,
-            command: "messaging.send_announcement",
-            title,
-            body: announcementBody
-          },
-          summary: `${audience.targetLabel} ${audience.recipientCount}세대에 '${title}' 공지 발송`
-        };
-      } catch (error) {
-        return {
-          status: "blocked" as const,
-          domain: "messaging" as const,
-          summary:
-            error instanceof Error
-              ? error.message
-              : "공지 대상을 확인하지 못했습니다. 전체·건물·호실 중 하나로 알려주세요.",
-          requiresConfirmation: true
-        };
-      }
-    }
-
     const threadId = input.threadId?.trim() || this.defaultManagerMessagingThreadId(managerId);
 
     if (!threadId) {

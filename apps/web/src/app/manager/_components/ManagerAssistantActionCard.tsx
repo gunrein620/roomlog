@@ -20,12 +20,7 @@ export function ManagerAssistantActionCard({
   onReviseDunning,
 }: ManagerAssistantActionCardProps) {
   const preview = action.dunningPreview;
-  const confirmLabel =
-    action.kind === "billing.send_dunning"
-      ? "독촉 발송"
-      : action.kind === "messaging.send_announcement"
-        ? "공지 발송"
-        : "메시지 발송";
+  const confirmLabel = action.kind === "billing.send_dunning" ? "독촉 발송" : "메시지 발송";
   const [editing, setEditing] = useState(false);
   const [messageText, setMessageText] = useState(preview?.messageText ?? "");
 

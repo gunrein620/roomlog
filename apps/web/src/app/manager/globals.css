@@ -1749,6 +1749,13 @@ html:has(.manager-workspace) {
   height: auto;
 }
 
+/* 모달 시절의 고정 max-height는 패널 flex 높이와 어긋나 마지막 항목(확인 카드 등)이
+   잘린다 — 패널에서는 그리드 행(minmax(0,1fr))이 높이를 결정하게 둔다. */
+.manager-assistant-panel .manager-ai-transcript {
+  min-height: 0;
+  max-height: none;
+}
+
 /* 좁은 화면에서는 본문을 절반으로 쪼갤 수 없어 오버레이 드로어로 폴백한다. */
 @media (max-width: 1024px) {
   .manager-assistant-panel {

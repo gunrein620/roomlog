@@ -68,7 +68,7 @@ export interface ManagerDunningActionPreview {
 
 export interface ManagerCopilotPendingAction {
   id: string;
-  kind: "billing.send_dunning" | "messaging.send_reply" | "messaging.send_announcement";
+  kind: "billing.send_dunning" | "messaging.send_reply";
   summary: string;
   dunningPreview?: ManagerDunningActionPreview;
 }

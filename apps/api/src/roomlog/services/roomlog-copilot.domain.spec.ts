@@ -5,6 +5,7 @@ import {
   buildManagerAgentInstructions,
   toChatCompletionTools
 } from "./manager-agent-persona";
+import { isExplicitApproval } from "./roomlog-copilot.domain";
 
 const expectedVoiceInstructions = [
   "당신은 룸로그 관리인 운영 에이전트입니다.",
@@ -17,7 +18,7 @@ const expectedVoiceInstructions = [
   "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
   "billing.send_dunning은 청구 전용 채널이며 항상 확인 카드로 보류한 뒤 관리인이 승인해야 발송합니다. 납부 신고 또는 미연결 입금이 있으면 발송을 차단하고 입금 확인을 안내합니다.",
   "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉은 소통 채널로 보내지 않습니다.",
-  "공지 발송 요청은 messaging.send_announcement 명령으로만 준비합니다 — 일반 답장(messaging.send_reply)으로 공지를 보내지 않습니다. 대상이 애매하면 명령을 호출하기 전에 전체 세대인지, 특정 건물인지, 특정 호실인지 먼저 되물어 확정합니다. target에는 '전체', 건물명, 또는 '건물명 302호' 형식을 넣고, 제목은 title, 본문은 body로 정리해 전달합니다. 공지는 항상 확인 카드로 보류되어 관리인이 승인해야 발송됩니다.",
+  "공지 발송 요청은 messaging.send_announcement 명령으로만 처리합니다 — 일반 답장(messaging.send_reply)으로 공지를 보내지 않습니다. 대상이 애매하면 전체 세대인지, 특정 건물인지, 특정 호실인지 먼저 되물어 확정합니다. 명령을 호출하기 전에 대상·제목·본문을 요약해 보여주고 발송해도 되는지 한 번 확인을 받습니다. 관리인이 명시적으로 승인(예: '보내', '진행해')한 그 다음 턴에만 명령을 호출하며, 호출하면 즉시 발송됩니다. 승인 없이 호출하지 않습니다. target에는 '전체', 건물명, 또는 '건물명 302호' 형식을 넣고, 제목은 title, 본문은 body로 전달합니다.",
   "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
 ].join("\n");
 
@@ -990,6 +991,23 @@ describe("manager copilot chat domain", () => {
     } finally {
       if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
       else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("treats only short affirmative replies as explicit announcement approval", () => {
+    for (const approved of ["진행해", "응 보내줘", "네 발송해주세요", "ㅇㅋ", "좋아 진행", "ok"]) {
+      assert.equal(isExplicitApproval(approved), true, approved);
+    }
+
+    for (const rejected of [
+      undefined,
+      "",
+      "보내지 마",
+      "진행하지 말고 취소해",
+      "정글빌라 전체에 다음달부터 월세 5만원 인상된다고 공지 보내줘",
+      "무슨 얘기야?"
+    ]) {
+      assert.equal(isExplicitApproval(rejected), false, String(rejected));
     }
   });
 });
