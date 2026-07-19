@@ -66,6 +66,15 @@ test("shows the supplied night landscape over the empty green workspace", async 
   assert.match(css, /body\.upload-empty #workspace-empty-backdrop\s*\{[\s\S]*?opacity:\s*1;/);
 });
 
+test("hides the workspace header bar on the empty landing screen", async () => {
+  const html = await readFile(viewerPath, "utf8");
+  const css = readViewerStyle(html);
+
+  assert.ok(html.includes('id="workspace-header"'));
+  assert.match(css, /#workspace-header\s*\{[\s\S]*?display:\s*none;/);
+  assert.match(css, /#workspace-empty-backdrop\s*\{[\s\S]*?inset:\s*0;/);
+});
+
 test("keeps the existing viewer hooks and integration request paths intact", async () => {
   const html = await readFile(viewerPath, "utf8");
 
