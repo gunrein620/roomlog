@@ -182,9 +182,9 @@ export function ContractRegisterForm({
           </div>
           <h3 style={guideTitleStyle}>이번 OCR이 읽는 항목</h3>
           <div style={guideListStyle}>
-            <OcrReadItem index="1" title="보증금 구조" note="기본 보증금, 전환보증금, 최종 보증금" badge="필수" emphasis />
-            <OcrReadItem index="2" title="특약" note="계약서에 없으면 문서에 없음으로 확정" badge="선택" />
-            <OcrReadItem index="3" title="자동연장·원상복구·수선 책임" note="있으면 원문 기준으로 저장, 없으면 숨김 처리" badge="선택" />
+            <OcrReadItem index="1" title="보증금 구조" badge="필수" emphasis />
+            <OcrReadItem index="2" title="특약" badge="선택" />
+            <OcrReadItem index="3" title="자동연장·원상복구·수선 책임" badge="선택" />
           </div>
         </Card>
       </div>
@@ -203,23 +203,18 @@ function pdfPreviewSrc(url: string) {
 function OcrReadItem({
   index,
   title,
-  note,
   badge,
   emphasis = false,
 }: {
   index: string;
   title: string;
-  note: string;
   badge: string;
   emphasis?: boolean;
 }) {
   return (
     <div style={guideItemStyle}>
       <span style={guideIndexStyle}>{index}</span>
-      <div style={guideItemTextStyle}>
-        <strong style={guideItemTitleStyle}>{title}</strong>
-        <span>{note}</span>
-      </div>
+      <strong style={guideItemTitleStyle}>{title}</strong>
       <span style={emphasis ? requiredBadgeStyle : optionalBadgeStyle}>{badge}</span>
     </div>
   );
@@ -441,16 +436,8 @@ const guideIndexStyle = {
   fontWeight: 900,
 } as const;
 
-const guideItemTextStyle = {
-  minWidth: 0,
-  display: "grid",
-  gap: "var(--space-xs)",
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  lineHeight: "var(--lh-caption)",
-} as const;
-
 const guideItemTitleStyle = {
+  minWidth: 0,
   color: "var(--on-surface)",
   fontSize: "var(--fs-body)",
   lineHeight: "var(--lh-body)",
