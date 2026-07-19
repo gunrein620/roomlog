@@ -790,7 +790,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
           <div className={styles.policyActions}>
             <span>최근 저장 {formatDate(workspace.policy.updatedAt)}</span>
             <button className={styles.primaryButton} type="submit" disabled={busyKeys.has("policy") || demoReadOnly}>
-              {busyKeys.has("policy") ? "저장 중" : "정책 저장"}
+              {busyKeys.has("policy") ? "저장 중" : "저장"}
             </button>
           </div>
         </form>

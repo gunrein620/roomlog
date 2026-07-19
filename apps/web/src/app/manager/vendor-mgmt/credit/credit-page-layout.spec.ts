@@ -38,6 +38,11 @@ test("starts the credit page with payment policy instead of settlement overview"
   assert.doesNotMatch(workspaceSource, /<h2>Gara 업체 지급 요청<\/h2>/);
 });
 
+test("labels the policy submit button as save", () => {
+  assert.match(workspaceSource, /\? "저장 중" : "저장"/);
+  assert.doesNotMatch(workspaceSource, /"정책 저장"/);
+});
+
 test("keeps Gara payout cards focused on vendor, requested date, paid date, and amount", () => {
   assert.match(garaPayoutSection, /request\.vendorName/);
   assert.match(garaPayoutSection, /요청일/);
