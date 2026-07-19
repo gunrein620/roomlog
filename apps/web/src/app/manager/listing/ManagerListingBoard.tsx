@@ -31,19 +31,6 @@ const STATUS_TAB_LABELS: Record<ListingStatusTab, string> = {
   available: "미계약",
 };
 
-const registrationLinkStyle = {
-  minHeight: "var(--touch-target)",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 var(--space-lg)",
-  borderRadius: "var(--radius-btn)",
-  background: "var(--primary)",
-  color: "var(--on-primary)",
-  textDecoration: "none",
-  fontWeight: 800,
-} as const;
-
 function ListingCard({ listing, onOpen }: { listing: ManagerListingRow; onOpen: () => void }) {
   return (
     <button
@@ -282,7 +269,6 @@ export function ManagerListingBoard({
         <Card className={styles.empty}>
           <strong>등록된 매물이 없습니다</strong>
           <p>새 매물을 등록하면 이곳에서 관리할 수 있습니다.</p>
-          <Link href="/sell" style={registrationLinkStyle}>새 매물 등록</Link>
         </Card>
       ) : visibleListings.length === 0 ? (
         <Card className={styles.empty}>

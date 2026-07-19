@@ -10,6 +10,7 @@ import { Prisma, type CreditTopupOrder } from "@prisma/client";
 import type { DomainEventRepository } from "../domain-events/domain-event.repository";
 import { DOMAIN_EVENT_REPOSITORY } from "../domain-events/domain-event.repository";
 import type {
+  ArchivePublicGaraVendorRegistrationCommand,
   CancelReadyTopupCommand,
   ClaimTopupConfirmationCommand,
   CreateGaraTopupOrderCommand,
@@ -590,6 +591,28 @@ export class PrismaCreditCommandRepository
           createdAt: payout.createdAt.toISOString()
         }
       };
+    });
+  }
+
+  async archivePublicGaraVendorRegistration(
+    input: ArchivePublicGaraVendorRegistrationCommand
+  ): Promise<Readonly<{ managerId: string }>> {
+    const managerVendorId = requireNonblank(input.managerVendorId, "managerVendorId");
+
+    return this.serializable(async (tx) => {
+      const registration = await tx.managerVendor.findUnique({
+        where: { id: managerVendorId },
+        select: { managerId: true, status: true }
+      });
+      if (!registration || registration.status !== "ACTIVE") {
+        throw new NotFoundException("삭제할 Gara 업체 등록을 찾을 수 없습니다.");
+      }
+
+      await tx.managerVendor.update({
+        where: { id: managerVendorId },
+        data: { status: "ARCHIVED" }
+      });
+      return { managerId: registration.managerId };
     });
   }
 

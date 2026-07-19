@@ -8986,6 +8986,8 @@ p {
 }
 
 .tenant-defect-messages li {
+  align-self: flex-start;
+  max-width: 82%;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -8996,6 +8998,7 @@ p {
 }
 
 .tenant-defect-messages li[data-sender="TENANT"] {
+  align-self: flex-end;
   border-color: color-mix(in srgb, var(--blue) 30%, var(--line));
   background: color-mix(in srgb, var(--blue-soft) 45%, var(--paper));
 }
@@ -16709,6 +16712,8 @@ p {
   width: min(50vw, 720px);
   max-height: none;
   height: 100dvh;
+  display: flex;
+  flex-direction: column;
   padding: 18px 24px 24px;
   border-radius: 24px 0 0 24px;
 }
@@ -16717,26 +16722,30 @@ p {
   display: none;
 }
 
+.tenant-request-detail-panel .tenant-request-detail-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tenant-request-detail-panel .tenant-defect-messages {
+  flex: 1;
+  min-height: 0;
+}
+
+.tenant-request-detail-panel .tenant-defect-messages ul {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
 @media (max-width: 768px) {
   .notification-sheet.tenant-request-detail-panel {
     width: 100%;
     height: 100dvh;
     padding: 18px 18px 24px;
     border-radius: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .tenant-request-detail-panel .tenant-request-detail-form {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .tenant-request-detail-panel .tenant-defect-messages {
-    flex: 1;
-    min-height: 0;
   }
 
   .tenant-defect-chat-input {
