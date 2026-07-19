@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { KakaoTalkLogoIcon } from "../_components/KakaoTalkLogoIcon";
 import { socialAuthErrorMessage } from "../_components/WoozuLoginScreen";
 
@@ -93,20 +94,23 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="signup-page">
-      <section className="signup-card" aria-label="일반 회원가입">
-        <div className="signup-brand">
-          <span>WOOZU 계정</span>
-          <h1>회원가입</h1>
-          <p>{notice}</p>
-        </div>
+    <main className="app-canvas login-canvas signup-page">
+      {/* 로그인과 같은 밤하늘 문법 — 브랜드·헤드라인은 하늘 위, 카드는 폼만 */}
+      <div className="login-hero">
+        <a className="login-hero-logo" href="/" aria-label="홈으로 이동">
+          <Image src="/uju-logo-trim.png" alt="우주" width={108} height={108} priority />
+        </a>
+        <h1><span className="hero-woozu">우주</span>에서 시작해보세요!</h1>
+        <p className="login-hero-sub">{notice}</p>
+      </div>
 
-        <a className="signup-social-button signup-social-button--kakao" href={kakaoSignupUrl}>
+      <section className="signup-card" aria-label="일반 회원가입">
+        <a className="social-button kakao" href={kakaoSignupUrl}>
           <span className="kakao-logo-icon" aria-hidden="true"><KakaoTalkLogoIcon /></span>
           카카오톡으로 회원가입
         </a>
 
-        <a className="signup-google-button" href={googleSignupUrl}>
+        <a className="social-button google" href={googleSignupUrl}>
           <span aria-hidden="true">G</span>
           Google로 회원가입
         </a>
