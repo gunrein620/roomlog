@@ -5893,6 +5893,35 @@ describe("RoomlogService", () => {
     assert.equal(guardedDunningResult.navigation, undefined);
   });
 
+  it("summarizes the manager portfolio with contracts and vacant rooms", async () => {
+    const service = new RoomlogService();
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "portfolio.summary",
+      text: "내가 계약한 매물이 뭐뭐 있지?"
+    });
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "portfolio");
+    assert.match(result.summary, /관리 중인 집 \d+곳/);
+    assert.match(result.summary, /계약 중 \d+곳/);
+    assert.equal(result.navigation?.href, "/manager/listing");
+
+    const data = result.data as {
+      totalRooms: number;
+      contracts: Array<{ unitId: string; tenantName: string; buildingName: string }>;
+      vacantRooms: Array<{ buildingName: string; roomNo: string }>;
+    };
+    assert.equal(typeof data.totalRooms, "number");
+    assert.ok(Array.isArray(data.contracts));
+    assert.ok(Array.isArray(data.vacantRooms));
+    for (const contract of data.contracts) {
+      assert.equal(typeof contract.unitId, "string");
+      assert.equal(typeof contract.tenantName, "string");
+      assert.equal(typeof contract.buildingName, "string");
+    }
+  });
+
   it("summarizes total ticket counts for the manager agent", async () => {
     const service = new RoomlogService();
 

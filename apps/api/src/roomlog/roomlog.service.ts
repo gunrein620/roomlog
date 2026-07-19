@@ -5469,6 +5469,44 @@ export class RoomlogService implements OnModuleDestroy {
       }
     }
 
+    if (command === "portfolio.summary") {
+      const rooms = this.store.rooms.filter((room) => room.landlordId === managerId);
+      const dashboard = this.getManagerContractDashboard(managerId);
+      const contracts = dashboard.rows.map((row) => ({
+        unitId: row.contract.unitId,
+        buildingName: row.buildingName,
+        tenantName: row.tenantName,
+        monthlyRent: row.contract.monthlyRent,
+        startDate: row.contract.startDate,
+        endDate: row.contract.endDate,
+        daysToExpire: row.daysToExpire,
+        status: row.statusLabel
+      }));
+      const contractedRoomIds = new Set(dashboard.rows.map((row) => row.contract.roomId));
+      const vacantRooms = rooms
+        .filter((room) => !contractedRoomIds.has(room.id))
+        .map((room) => ({
+          buildingName: room.buildingName,
+          roomNo: room.roomNo,
+          address: room.address
+        }));
+
+      return {
+        status: "executed",
+        domain: "portfolio",
+        summary: `관리 중인 집 ${rooms.length}곳 — 계약 중 ${contractedRoomIds.size}곳, 미계약 ${vacantRooms.length}곳입니다.`,
+        data: {
+          totalRooms: rooms.length,
+          contracts,
+          vacantRooms
+        },
+        navigation: {
+          label: "매물 관리",
+          href: "/manager/listing"
+        }
+      };
+    }
+
     if (command === "billing.summary") {
       const dashboard = this.getManagerBillDashboard(managerId);
       const collection = this.getManagerCollection(managerId);
@@ -13726,6 +13764,10 @@ export class RoomlogService implements OnModuleDestroy {
 
     if (command.startsWith("credit.")) {
       return "credit";
+    }
+
+    if (command.startsWith("portfolio.")) {
+      return "portfolio";
     }
 
     if (command.startsWith("messaging.")) {

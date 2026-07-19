@@ -6,6 +6,7 @@ export type ManagerAgentCommandName =
   | "billing.summary"
   | "billing.send_dunning"
   | "credit.balance"
+  | "portfolio.summary"
   | "messaging.list_threads"
   | "messaging.draft_reply"
   | "messaging.send_reply";
@@ -21,7 +22,7 @@ export interface ManagerAgentCommandInput {
 
 export interface ManagerAgentCommandResult {
   status: "executed" | "draft_only" | "blocked";
-  domain: "ticket" | "billing" | "credit" | "messaging" | "system";
+  domain: "ticket" | "billing" | "credit" | "portfolio" | "messaging" | "system";
   summary: string;
   data?: unknown;
   navigation?: {
