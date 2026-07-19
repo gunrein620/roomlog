@@ -225,6 +225,32 @@ describe("parseCaptureFloorPlanInput", () => {
       BadRequestException
     );
   });
+
+  // 회귀(2026-07-19 로컬 E2E에서 발견): 실 RoomPlan 캡처는 벽을 두께 없는 얇은 면으로 모델링해
+  // thickness=0으로 온다. 예전 검증기는 thickness>0을 요구해 실 데이터가 전부 400이었다.
+  it("accepts thickness 0 — real RoomPlan walls are zero-thickness planes", () => {
+    const parsed = parseCaptureFloorPlanInput({
+      captureFloorPlan: {
+        frame: "arkit-metric",
+        walls: [{ start: [-3.05, -2.47], end: [0.73, -2.24], height: 2.7, thickness: 0 }],
+        openings: []
+      }
+    });
+    assert.equal(parsed.walls[0].thickness, 0);
+  });
+
+  it("still rejects negative thickness", () => {
+    assert.throws(
+      () =>
+        parseCaptureFloorPlanInput({
+          captureFloorPlan: {
+            frame: "arkit-metric",
+            walls: [{ start: [0, 0], end: [3.7, 0], height: 2.7, thickness: -0.1 }]
+          }
+        }),
+      BadRequestException
+    );
+  });
 });
 
 // 컨트롤러 배선 — 2점 수동 정합(PATCH :id/registration)과 동일한 role-guard/소유권 게이트 패턴을 따르는지.

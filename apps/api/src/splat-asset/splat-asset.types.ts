@@ -177,13 +177,24 @@ function parsePositiveNumber(value: unknown, field: string): number {
   return n;
 }
 
+/**
+ * 0을 허용하는 숫자. RoomPlan은 벽을 **두께 없는 얇은 면**으로 모델링해서 실제 캡처의
+ * `CapturedRoom.Surface.dimensions.z`(= thickness)가 0으로 온다(2026-07-19 실캡처 확인).
+ * 매처는 벽 중심선 세그먼트만 쓰므로 두께가 양수일 필요가 없다 — 0을 거부하면 실 데이터가 전부 400.
+ */
+function parseNonNegativeNumber(value: unknown, field: string): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new BadRequestException(`${field}는 0 이상의 숫자여야 합니다.`);
+  return n;
+}
+
 function parseMetricWall(value: unknown, index: number): MetricWall {
   const raw = (value ?? {}) as Record<string, unknown>;
   return {
     start: parsePoint2(raw.start, `walls[${index}].start`),
     end: parsePoint2(raw.end, `walls[${index}].end`),
     height: parsePositiveNumber(raw.height, `walls[${index}].height`),
-    thickness: parsePositiveNumber(raw.thickness, `walls[${index}].thickness`)
+    thickness: parseNonNegativeNumber(raw.thickness, `walls[${index}].thickness`)
   };
 }
 
