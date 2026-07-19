@@ -76,7 +76,9 @@ function unavailableQueryRepository(): CreditQueryRepository {
     assertManagerAccess: unavailable,
     getAccount: unavailable,
     getWorkspace: unavailable,
-    getTopupOrder: unavailable
+    getTopupOrder: unavailable,
+    listPublicGaraVendors: unavailable,
+    getGaraTopupOrder: unavailable
   };
 }
 

@@ -15,6 +15,7 @@ export type CreateTopupOrderCommand = Readonly<{
   amount: number;
   creationKey: string;
   returnPath: string;
+  garaManagerVendorId?: string;
 }>;
 
 export type CreateTopupOrderResult = Readonly<{

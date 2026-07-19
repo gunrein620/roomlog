@@ -51,6 +51,28 @@ export interface CreateGaraVendorPayoutResult {
   account: ManagerCreditAccountPublicView;
 }
 
+export interface GaraVendorCreditPublicView {
+  id: string;
+  businessName: string;
+  phone: string;
+  settlementAccountNumber?: string;
+  linkedAccount: { name: string; email: string };
+  cumulativeCredit: number;
+}
+
+export interface CreateGaraVendorCreditCheckoutInput {
+  managerVendorId: string;
+  amount: number;
+  creationKey: string;
+}
+
+export interface GaraVendorCreditCheckout {
+  order: ManagerCreditTopupOrderPublicView;
+  clientKey: string;
+  customerKey: string;
+  orderName: string;
+}
+
 export interface ManagerCreditAccountView {
   id: string;
   balance: number;

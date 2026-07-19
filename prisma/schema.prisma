@@ -941,6 +941,7 @@ model ManagerVendor {
   manager      UserAccount         @relation("ManagerVendorManager", fields: [managerId], references: [id], onDelete: Restrict)
   vendor       VendorProfile       @relation(fields: [vendorId], references: [id], onDelete: Restrict)
   garaVendorPayoutRequests GaraVendorPayoutRequest[]
+  garaTopupOrders CreditTopupOrder[] @relation("GaraTopupOrderRegistration")
 
   @@unique([managerId, vendorId])
   @@index([managerId, status])
@@ -1188,6 +1189,7 @@ model GaraVendorPayoutRequest {
   vendorId              String
   creditAccountId       String
   ledgerEntryId         String                 @unique
+  topupOrderId          String?                @unique
   amount                BigInt
   accountNumberSnapshot String
   status                GaraVendorPayoutStatus @default(CREDIT_DEBITED)
@@ -1200,6 +1202,7 @@ model GaraVendorPayoutRequest {
   vendor        VendorProfile     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
   creditAccount CreditAccount     @relation(fields: [creditAccountId], references: [id], onDelete: Restrict)
   ledgerEntry   CreditLedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+  topupOrder    CreditTopupOrder? @relation(fields: [topupOrderId], references: [id], onDelete: SetNull)
 
   @@index([managerId, createdAt])
   @@index([managerVendorId, createdAt])
@@ -1210,6 +1213,7 @@ model CreditTopupOrder {
   id              String                 @id
   creditAccountId String
   managerId       String
+  garaManagerVendorId String?
   orderId         String                 @unique
   creationKey     String                 @unique
   payloadHash     String
@@ -1224,8 +1228,11 @@ model CreditTopupOrder {
   updatedAt       DateTime               @updatedAt
 
   creditAccount CreditAccount @relation(fields: [creditAccountId, managerId], references: [id, managerId], onDelete: Restrict)
+  garaManagerVendor ManagerVendor? @relation("GaraTopupOrderRegistration", fields: [garaManagerVendorId], references: [id], onDelete: SetNull)
+  garaVendorPayoutRequest GaraVendorPayoutRequest?
 
   @@index([managerId, status, updatedAt])
+  @@index([garaManagerVendorId, status])
 }
 
 model AutoPayPolicy {

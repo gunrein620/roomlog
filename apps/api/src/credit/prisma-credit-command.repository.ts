@@ -97,11 +97,13 @@ function topupPayloadHash(input: {
   managerId: string;
   amount: number;
   returnPath: string;
+  garaManagerVendorId?: string;
 }) {
   return createHash("sha256")
     .update(
       JSON.stringify({
         amount: input.amount,
+        garaManagerVendorId: input.garaManagerVendorId,
         managerId: input.managerId,
         returnPath: input.returnPath
       })
@@ -223,7 +225,15 @@ export class PrismaCreditCommandRepository
     const amount = requirePositiveSafeMoney(input.amount, "amount");
     const creationKey = requireNonblank(input.creationKey, "creationKey");
     const returnPath = normalizeReturnPath(input.returnPath);
-    const payloadHash = topupPayloadHash({ managerId, amount, returnPath });
+    const garaManagerVendorId = input.garaManagerVendorId
+      ? requireNonblank(input.garaManagerVendorId, "garaManagerVendorId")
+      : undefined;
+    const payloadHash = topupPayloadHash({
+      managerId,
+      amount,
+      returnPath,
+      garaManagerVendorId
+    });
 
     return this.serializable(async (tx) => {
       const account = await this.ensureAccountRows(tx, managerId);
@@ -253,7 +263,8 @@ export class PrismaCreditCommandRepository
           payloadHash,
           amount: BigInt(amount),
           status: "READY",
-          returnPath
+          returnPath,
+          ...(garaManagerVendorId ? { garaManagerVendorId } : {})
         }
       });
       return { order: mapCreditTopupOrder(order) };
