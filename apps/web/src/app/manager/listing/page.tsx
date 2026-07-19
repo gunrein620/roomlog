@@ -53,12 +53,6 @@ export default async function ManagerListingPage({ searchParams }: { searchParam
             flexWrap: "wrap",
           }}
         >
-          <div>
-            <h1 style={{ margin: 0, fontSize: "var(--fs-title)" }}>등록한 매물</h1>
-            <p style={{ color: "var(--on-surface-variant)" }}>
-              현재 노출 상태와 등록 정보를 한곳에서 확인합니다.
-            </p>
-          </div>
           <Link href="/sell" style={linkStyle}>새 매물 등록</Link>
         </header>
 
