@@ -5,6 +5,10 @@ import test from "node:test";
 
 const pageSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/vendors/page.tsx"), "utf8");
 const componentSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/_components.tsx"), "utf8");
+const workspaceStylesSource = readFileSync(
+  join(process.cwd(), "src/app/manager/vendor-mgmt/VendorWorkspace.module.css"),
+  "utf8",
+);
 const actionsSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/actions.ts"), "utf8");
 const apiClientSource = readFileSync(join(process.cwd(), "src/lib/vendor-mgmt-api.ts"), "utf8");
 const apiControllerSource = readFileSync(
@@ -49,6 +53,15 @@ test("manager vendor list omits explanatory copy from the list header and count 
 test("manager vendor table does not expose account verification", () => {
   assert.doesNotMatch(componentSource, /계정·검증/);
   assert.doesNotMatch(componentSource, /accountStatusLabel\[vendor\.accountStatus\]/);
+});
+
+test("vendor detail action matches the compact registration status pill", () => {
+  const detailButtonRule = workspaceStylesSource.match(/\.detailButton\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(detailButtonRule, /var\(--touch-target\)/);
+  assert.match(
+    workspaceStylesSource,
+    /\.statusMuted,\s*\.detailButton\s*\{[\s\S]*?min-height:\s*28px;[\s\S]*?padding:\s*0 var\(--space-sm\);[\s\S]*?border-radius:\s*var\(--radius-full\);/,
+  );
 });
 
 test("registration dialog is accessible and submits all private vendor fields", () => {

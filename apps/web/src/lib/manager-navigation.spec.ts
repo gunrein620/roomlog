@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
   MANAGER_NAV_GROUPS,
@@ -9,13 +11,35 @@ import {
 
 const items: ManagerNavItem[] = MANAGER_NAV_GROUPS.flatMap((group) => [...group.items]);
 const hrefs = items.flatMap((item) => [item.href, ...item.children.map((child) => child.href)]);
+const settingsPagePath = join(process.cwd(), "src/app/manager/home/06/page.tsx");
+const voiceHomePath = join(process.cwd(), "src/app/manager/vox/00/page.tsx");
 
 describe("manager workspace navigation", () => {
   it("contains every manager desktop domain entry", () => {
     assert.deepEqual(items.map((item) => item.id), [
       "dashboard", "listing", "contract", "billing", "ticket",
-      "messaging", "vendor", "report", "assistant", "settings",
+      "messaging", "vendor",
     ]);
+  });
+
+  it("removes the unused insight group from the permanent sidebar", () => {
+    assert.equal(MANAGER_NAV_GROUPS.some((group) => group.label === "인사이트"), false);
+    assert.deepEqual(getManagerNavState("/manager/report/00"), {
+      activeItemId: null,
+      activeChildHref: null,
+    });
+    assert.deepEqual(getManagerNavState("/manager/agent/realtime"), {
+      activeItemId: null,
+      activeChildHref: null,
+    });
+  });
+
+  it("removes the unused account settings group, route, and voice-home tab", () => {
+    const voiceHomeSource = readFileSync(voiceHomePath, "utf8");
+
+    assert.equal(MANAGER_NAV_GROUPS.some((group) => group.label === "계정"), false);
+    assert.equal(existsSync(settingsPagePath), false);
+    assert.doesNotMatch(voiceHomeSource, /M-HOME-06|key: "settings"|label: "설정"/);
   });
 
   it("keeps entity-bound routes out of permanent navigation", () => {
@@ -81,7 +105,7 @@ describe("manager workspace navigation", () => {
     );
   });
 
-  it("matches every permanent child and keeps settings separate from dashboard", () => {
+  it("matches every permanent child", () => {
     for (const item of items) {
       for (const child of item.children) {
         // 해시 앵커 자식(#report 등)은 별도 테스트에서 다룬다 — pathname 기준 매칭은 해시를 모른다.
@@ -89,19 +113,18 @@ describe("manager workspace navigation", () => {
         assert.deepEqual(getManagerNavState(child.href), { activeItemId: item.id, activeChildHref: child.href });
       }
     }
-    assert.deepEqual(getManagerNavState("/manager/home/06"), { activeItemId: "settings", activeChildHref: null });
+    assert.deepEqual(getManagerNavState("/manager/home/06"), { activeItemId: null, activeChildHref: null });
     assert.deepEqual(getManagerNavState("/manager/listing"), {
       activeItemId: "listing",
       activeChildHref: "/manager/listing?status=contracted",
     });
-    assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: "assistant", activeChildHref: null });
+    assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: null, activeChildHref: null });
   });
 
   it("matches every contextual route to its parent only", () => {
     const cases = [
       ["/manager/contract/01?id=doc", "contract"], ["/manager/billing/bill-1", "billing"],
       ["/manager/messaging/04?id=thread", "messaging"], ["/manager/vendor-mgmt/02?id=vendor", "vendor"],
-      ["/manager/report/03?id=report", "report"],
     ] as const;
     for (const [pathname, activeItemId] of cases) {
       assert.deepEqual(getManagerNavState(pathname), { activeItemId, activeChildHref: null });
