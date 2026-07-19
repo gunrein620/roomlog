@@ -1493,7 +1493,7 @@ test("is configured as an installable PWA shell", () => {
   assert.match(layoutSource, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(layoutSource, /appleWebApp/);
   assert.match(layoutSource, /apple-touch-icon\.png/);
-  assert.match(layoutSource, /themeColor:\s*"#2f55ff"/);
+  assert.match(layoutSource, /themeColor:\s*"#20184a"/);
   assert.match(layoutSource, /PwaRegister/);
   assert.match(manifestSource, /display:\s*"standalone"/);
   assert.match(manifestSource, /start_url:\s*"\/"/);

@@ -11306,12 +11306,12 @@ p {
 }
 
 .floor-plan-pending-actions button.is-confirm {
-  background: #20184a;
+  background: #16a34a;
   color: #ffffff;
 }
 
 .floor-plan-pending-actions button.is-confirm:hover {
-  background: #20184a;
+  background: #15803d;
 }
 
 .floor-plan-pending-actions button.is-cancel {
