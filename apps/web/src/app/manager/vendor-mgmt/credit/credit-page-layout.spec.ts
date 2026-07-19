@@ -43,3 +43,9 @@ test("keeps Gara payout cards focused on vendor, requested date, paid date, and 
   assert.doesNotMatch(garaPayoutSection, /Gara 지급 요청/);
   assert.doesNotMatch(garaPayoutSection, /크레딧 지급 완료/);
 });
+
+test("publishes the settled credit balance to the header without waiting for a socket event", () => {
+  assert.match(workspaceSource, /let result: unknown;/);
+  assert.match(workspaceSource, /result = await mutation\(\);/);
+  assert.match(workspaceSource, /notifyManagerCreditBalanceChanged\(extractCreditBalance\(result\)\)/);
+});

@@ -109,6 +109,14 @@ function parsePositiveSafeInteger(value: string): number | null {
   return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
 }
 
+function extractCreditBalance(value: unknown): number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const balance = (value as { account?: { balance?: unknown } }).account?.balance;
+  return typeof balance === "number" && Number.isSafeInteger(balance) && balance >= 0
+    ? balance
+    : undefined;
+}
+
 function ledgerReferenceLabel(referenceType: string): string {
   switch (referenceType) {
     case "DEMO_SEED":
@@ -408,8 +416,9 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     const feedbackToken = feedbackSequence.begin();
     markBusy(key, true);
     feedbackSequence.publish(feedbackToken, () => setFeedback(null));
+    let result: unknown;
     try {
-      await mutation();
+      result = await mutation();
     } catch (error) {
       feedbackSequence.publish(feedbackToken, () => {
         setFeedback({ kind: "error", text: messageFromError(error) });
@@ -418,7 +427,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
       return;
     }
 
-    notifyManagerCreditBalanceChanged();
+    notifyManagerCreditBalanceChanged(extractCreditBalance(result));
     try {
       await refreshWorkspace();
       feedbackSequence.publish(feedbackToken, () => {

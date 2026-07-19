@@ -259,7 +259,18 @@ export function ManagerCreditUtility() {
 
   useEffect(() => {
     const openFromWorkspace = () => openDialog();
-    const refreshFromWorkspace = () => void loadAccount();
+    const refreshFromWorkspace = (event?: unknown) => {
+      const balance = event instanceof CustomEvent
+        && typeof event.detail?.balance === "number"
+        && Number.isSafeInteger(event.detail.balance)
+        && event.detail.balance >= 0
+        ? event.detail.balance
+        : undefined;
+      if (balance !== undefined) {
+        setAccount((current) => current ? { ...current, balance } : current);
+      }
+      void loadAccount();
+    };
     const socket = getRealtimeSocket();
     window.addEventListener(OPEN_MANAGER_CREDIT_TOPUP_EVENT, openFromWorkspace);
     window.addEventListener(
@@ -267,6 +278,7 @@ export function ManagerCreditUtility() {
       refreshFromWorkspace,
     );
     socket.on("manager:credit-updated", refreshFromWorkspace);
+    socket.on("connect", refreshFromWorkspace);
     return () => {
       window.removeEventListener(OPEN_MANAGER_CREDIT_TOPUP_EVENT, openFromWorkspace);
       window.removeEventListener(
@@ -274,6 +286,7 @@ export function ManagerCreditUtility() {
         refreshFromWorkspace,
       );
       socket.off("manager:credit-updated", refreshFromWorkspace);
+      socket.off("connect", refreshFromWorkspace);
     };
   }, [loadAccount]);
 

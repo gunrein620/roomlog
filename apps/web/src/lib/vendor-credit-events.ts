@@ -6,7 +6,9 @@ export function openManagerCreditTopup(): void {
   window.dispatchEvent(new Event(OPEN_MANAGER_CREDIT_TOPUP_EVENT));
 }
 
-export function notifyManagerCreditBalanceChanged(): void {
+export function notifyManagerCreditBalanceChanged(balance?: number): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(MANAGER_CREDIT_BALANCE_CHANGED_EVENT));
+  window.dispatchEvent(new CustomEvent(MANAGER_CREDIT_BALANCE_CHANGED_EVENT, {
+    detail: { balance },
+  }));
 }

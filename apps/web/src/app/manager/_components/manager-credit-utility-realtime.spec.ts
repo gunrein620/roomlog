@@ -12,4 +12,6 @@ test("refreshes the manager credit header when its credit balance changes over r
   assert.match(source, /getRealtimeSocket/);
   assert.match(source, /socket\.on\("manager:credit-updated", refreshFromWorkspace\)/);
   assert.match(source, /socket\.off\("manager:credit-updated", refreshFromWorkspace\)/);
+  assert.match(source, /socket\.on\("connect", refreshFromWorkspace\)/);
+  assert.match(source, /socket\.off\("connect", refreshFromWorkspace\)/);
 });
