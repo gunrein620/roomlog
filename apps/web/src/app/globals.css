@@ -1766,6 +1766,8 @@ p {
 }
 
 .home-footer-location,
+.home-footer-team,
+.home-footer-contact,
 .home-footer-links {
   display: flex;
   min-height: 44px;
@@ -1774,6 +1776,10 @@ p {
 }
 
 .home-footer-location {
+  flex-wrap: wrap;
+}
+
+.home-footer-team {
   flex-wrap: wrap;
 }
 
@@ -1797,6 +1803,7 @@ p {
 
 .home-footer-location a,
 .home-footer-location button,
+.home-footer-team button,
 .home-footer-links a {
   width: auto;
   height: auto;
@@ -1810,6 +1817,16 @@ p {
 
 .home-footer-links {
   border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.home-footer-team,
+.home-footer-contact {
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.home-footer-team-members {
+  color: #cfd3da;
 }
 
 .home-footer-location a,

@@ -1643,6 +1643,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeMapFilter, setActiveMapFilter] = useState("시세");
   const [activeSort, setActiveSort] = useState(sortOptions[0].label);
+  const [isFooterTeamOpen, setIsFooterTeamOpen] = useState(false);
   const [homeListingPage, setHomeListingPage] = useState(1);
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
   const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
@@ -2597,6 +2598,13 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           GitHub
         </a>
       </div>
+      <div className="home-footer-team">
+        <button type="button" onClick={() => setIsFooterTeamOpen((isOpen) => !isOpen)} aria-expanded={isFooterTeamOpen}>
+          팀 카이사르
+        </button>
+        {isFooterTeamOpen ? <span className="home-footer-team-members">고명석 · 김용 · 김정환 · 박건우 · 박승현 · 서원규</span> : null}
+      </div>
+      <div className="home-footer-contact">Contact : 010-2965-7486</div>
     </footer>
   );
 

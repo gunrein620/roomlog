@@ -1458,7 +1458,13 @@ test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /크래프톤 정글/);
   assert.match(homeAppSource, /https:\/\/jungle\.krafton\.com\//);
   assert.match(homeAppSource, /https:\/\/github\.com\/gunrein620\/roomlog/);
+  assert.match(homeAppSource, /isFooterTeamOpen/);
+  assert.match(homeAppSource, /팀 카이사르/);
+  assert.match(homeAppSource, /고명석 · 김용 · 김정환 · 박건우 · 박승현 · 서원규/);
+  assert.match(homeAppSource, /Contact : 010-2965-7486/);
   assert.match(cssSource, /\.home-footer/);
+  assert.match(cssSource, /\.home-footer-team/);
+  assert.match(cssSource, /\.home-footer-contact/);
   assert.match(cssSource, /\.home-footer-location a,[\s\S]*color:\s*#ffffff/);
 });
 
