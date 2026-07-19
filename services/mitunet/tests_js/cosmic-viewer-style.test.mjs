@@ -1,0 +1,78 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const viewerPath = fileURLToPath(new URL("../viewer/index.html", import.meta.url));
+
+function readViewerStyle(html) {
+  const match = html.match(/<style>([\s\S]*?)<\/style>/);
+  assert.ok(match, "viewer must keep its inline style block");
+  return match[1].replace(/\r\n/g, "\n");
+}
+
+test("uses the RoomLog cosmic tokens for every floating viewer surface", async () => {
+  const html = await readFile(viewerPath, "utf8");
+  const css = readViewerStyle(html);
+
+  for (const declaration of [
+    '@font-face {\n    font-family: "NanumSquareRound"',
+    "--surface: #f1eef9;",
+    "--primary: #5747cf;",
+    "--nav-surface: #201a3f;",
+    "--shadow: 0 24px 56px rgba(35, 27, 74, .09);",
+    "--radius-md: 20px;",
+    "#ui,\n  #editor-tools",
+    "#furniture-panel",
+    "#furniture-floating-toolbar",
+    "body.dragging::after",
+  ]) {
+    assert.ok(css.includes(declaration), `missing cosmic style: ${declaration}`);
+  }
+
+  assert.match(css, /#ui,[\s\S]*?border:\s*0;/);
+  assert.match(css, /#furniture-panel\s*\{[\s\S]*?border:\s*0;/);
+  assert.match(css, /body\.dragging::after\s*\{[\s\S]*?content:\s*"PNG 또는 JPG를 여기에 놓으세요"/);
+
+  for (const declaration of [
+    "#workspace-header",
+    "#workspace-brand",
+    "body.view-original #editor-tools",
+    "#view-controls {",
+    "bottom: 28px;",
+    "#upload-btn {",
+  ]) {
+    assert.ok(css.includes(declaration), `missing architectural shell: ${declaration}`);
+  }
+});
+
+test("keeps the existing viewer hooks and integration request paths intact", async () => {
+  const html = await readFile(viewerPath, "utf8");
+
+  for (const hook of [
+    'id="workspace-header"',
+    'id="workspace-brand"',
+    'id="upload-btn"',
+    'id="demo-select"',
+    'id="status"',
+    'id="view-switch"',
+    'id="editor-tools"',
+    'id="furniture-panel"',
+    'id="furniture-floating-toolbar"',
+    'id="save-json-btn"',
+    'id="connect-roomlog-btn"',
+    'canvas id="scene"',
+  ]) {
+    assert.ok(html.includes(hook), `missing viewer hook: ${hook}`);
+  }
+
+  for (const requestPath of [
+    'fetch("/extract-image"',
+    'fetch("/compose-edits"',
+    'fetch("/room-materials"',
+    'fetch("/integration-config"',
+    'fetch("/healthz"',
+  ]) {
+    assert.ok(html.includes(requestPath), `missing integration path: ${requestPath}`);
+  }
+});
