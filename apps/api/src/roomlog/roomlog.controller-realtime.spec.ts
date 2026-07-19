@@ -125,27 +125,67 @@ describe("roomlog complaint realtime activity", () => {
     ]);
   });
 
-  it("identifies the ticket after a manager changes its lane", () => {
+  it("identifies the ticket and its new status after a manager changes its lane", () => {
     const { controller, broadcasts, header, ticket } = setupManagerController();
-    const clientRequestId = "lane-request-1";
     broadcasts.length = 0;
 
-    controller.setManagerTicketLane(header, ticket.id, {
-      lane: "processing",
-      clientRequestId,
-    });
+    controller.setManagerTicketLane(header, ticket.id, { lane: "processing" });
 
+    // 전용 이벤트라 대시보드 자동 새로고침(roomlog:activity)을 건드리지 않는다 —
+    // 바꾼 본인 화면은 응답으로 이미 갱신됐고, 신호는 다른 화면만 보면 된다.
     assert.deepEqual(broadcasts, [
       {
-        event: "roomlog:activity",
+        event: "roomlog:ticket-lane",
         payload: {
-          kind: "ticket",
-          action: "lane_changed",
           ticketId: ticket.id,
-          clientRequestId,
+          status: "REPAIR_IN_PROGRESS",
         },
       },
     ]);
+  });
+
+  it("carries the message body so the other side never re-reads the thread", () => {
+    const { controller, broadcasts, header, ticket } = setupManagerController();
+    broadcasts.length = 0;
+
+    const result = controller.sendManagerReply(header, ticket.id, {
+      messageText: "내일 오전에 기사 방문 잡겠습니다.",
+    });
+
+    assert.equal(broadcasts.length, 1);
+    const [broadcast] = broadcasts;
+    assert.equal(broadcast.event, "roomlog:ticket-message");
+    assert.equal(broadcast.payload.ticketId, ticket.id);
+    // 받는 쪽이 붙이기만 하면 되도록 저장된 메시지를 그대로 싣는다.
+    // 재조회를 시키면 Postgres 투영이 따라오기 전이라 한 박자 밀린 스레드가 온다.
+    assert.deepEqual(broadcast.payload.message, result.message);
+    assert.equal(
+      (broadcast.payload.message as { messageText: string }).messageText,
+      "내일 오전에 기사 방문 잡겠습니다.",
+    );
+    assert.equal((broadcast.payload.message as { senderRole: string }).senderRole, "LANDLORD");
+  });
+
+  it("carries the tenant message body on the same event", () => {
+    const { service, controller, broadcasts, ticket } = setupManagerController();
+    const tenantAuth = service.login({
+      email: "tenant@roomlog.test",
+      password: "password123!",
+    });
+    broadcasts.length = 0;
+
+    const result = controller.addTenantMessage(
+      `Bearer ${tenantAuth.accessToken}`,
+      ticket.complaintId,
+      { messageText: "저녁 7시 이후 방문 가능합니다." },
+    );
+
+    assert.equal(broadcasts.length, 1);
+    const [broadcast] = broadcasts;
+    assert.equal(broadcast.event, "roomlog:ticket-message");
+    assert.equal(broadcast.payload.ticketId, ticket.id);
+    assert.deepEqual(broadcast.payload.message, result.message);
+    assert.equal((broadcast.payload.message as { senderRole: string }).senderRole, "TENANT");
   });
 
   it("broadcasts exactly once for a durable manager proxy intake and not for its idempotent retry", async () => {

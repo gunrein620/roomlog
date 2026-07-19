@@ -801,6 +801,14 @@ export type ContractDocument = {
   uploadedAt: string;
 };
 
+export type ExtractionRegion = {
+  page?: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type ExtractionItem = {
   label: string;
   value: string;
@@ -808,6 +816,7 @@ export type ExtractionItem = {
   needsCheck: boolean;
   evidence?: string;
   masked?: boolean;
+  regions?: ExtractionRegion[];
 };
 
 export type ContractHelpNote = {
@@ -1283,7 +1292,6 @@ export type ManagerTicketLane = "received" | "processing" | "resolved";
 
 export type SetManagerTicketLaneInput = {
   lane: ManagerTicketLane;
-  clientRequestId?: string;
 };
 
 export type ManagerReplyDraftResult = {

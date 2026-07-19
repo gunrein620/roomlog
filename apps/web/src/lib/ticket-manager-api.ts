@@ -268,14 +268,19 @@ export async function listManagerTicketRows(
 ): Promise<
   { ticket: Ticket; repair?: RepairJob; buildingName?: string; attachmentUrls: string[]; isManagerUnread?: boolean }[]
 > {
-  return (await loadTickets()).map((t) => ({
-    ticket: toManagerTicket(t),
-    repair: toManagerRepair(t) ?? undefined,
-    // 팀 응답의 room.buildingName을 그대로 실어 대시보드 "건물/호실"이 "—"로 비지 않게 한다.
-    buildingName: t.room?.buildingName?.trim() || undefined,
-    attachmentUrls: managerTicketAttachmentUrls(t),
-    isManagerUnread: t.isManagerUnread === true
-  }));
+  return (await loadTickets())
+    .map((t) => ({
+      ticket: toManagerTicket(t),
+      repair: toManagerRepair(t) ?? undefined,
+      // 팀 응답의 room.buildingName을 그대로 실어 대시보드 "건물/호실"이 "—"로 비지 않게 한다.
+      buildingName: t.room?.buildingName?.trim() || undefined,
+      attachmentUrls: managerTicketAttachmentUrls(t),
+      isManagerUnread: t.isManagerUnread === true,
+    }))
+    .sort(
+      (left, right) =>
+        Date.parse(right.ticket.updatedAt) - Date.parse(left.ticket.updatedAt),
+    );
 }
 
 export async function getManagerQueueSummary(): Promise<ManagerQueueSummary> {

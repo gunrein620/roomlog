@@ -15,6 +15,27 @@ export function vendorAssignmentWhere(
   };
 }
 
+export function isDirectManagerVendor(
+  vendor: { createdByManagerId: string | null },
+  managerId: string,
+) {
+  return vendor.createdByManagerId === managerId;
+}
+
+export function managerVendorAssignmentWhere(
+  managerId: string,
+): Prisma.VendorProfileWhereInput {
+  return {
+    managerVendors: {
+      some: { managerId, status: "ACTIVE" },
+    },
+    OR: [
+      vendorAssignmentWhere(),
+      { createdByManagerId: managerId, isActive: true },
+    ],
+  };
+}
+
 function normalizeServiceArea(value: string) {
   return value
     .trim()

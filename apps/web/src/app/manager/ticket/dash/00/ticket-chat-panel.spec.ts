@@ -20,14 +20,41 @@ test("행 클릭은 모달이 아니라 대화 사이드 패널을 연다", () =
 
   for (const source of [dashboardSource, complaintDashboardSource]) {
     assert.match(source, /<TicketChatPanel\s+row=\{selectedRow\}/);
-    assert.match(source, /onTicketLaneChanged=\{applyConfirmedTicketLane\}/);
     assert.doesNotMatch(source, /TicketDetailDialog/);
+    // 선택은 행 객체가 아니라 티켓 id로 들고 최신 rows에서 되찾는다.
+    // 행 객체를 state에 담아두면 RSC 새로고침이 도착할 때 패널이 닫히거나 옛 상태로 되돌아간다.
+    assert.match(source, /useState<string \| null>\(null\)/);
+    assert.match(source, /effectiveRows\.find\(\(row\) => row\.ticket\.id === selectedTicketId\)/);
+    assert.doesNotMatch(source, /setSelectedRow/);
   }
 
   // 행 전체가 패널을 열되, 액션 메뉴 칸의 클릭은 패널로 새지 않아야 한다.
   assert.match(dashboardSource, /className="manager-defect-dashboard__row"/);
   assert.match(dashboardSource, /onClick=\{\(\) => onSelect\(row\)\}/);
   assert.match(dashboardSource, /onClick=\{\(event\) => event\.stopPropagation\(\)\}/);
+});
+
+test("대시보드 최근 접수 행의 어느 셀을 눌러도 대화 사이드 패널을 연다", () => {
+  const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
+
+  assert.match(complaintDashboardSource, /className="manager-complaint-dashboard__row"/);
+  assert.match(complaintDashboardSource, /onClick=\{\(\) => selectRow\(row\)\}/);
+  assert.match(complaintDashboardSource, /onKeyDown=\{\(event\) => \{/);
+  assert.match(complaintDashboardSource, /event\.key === "Enter" \|\| event\.key === " "/);
+  assert.match(complaintDashboardSource, /tabIndex=\{0\}/);
+  assert.doesNotMatch(complaintDashboardSource, /<button[\s\S]*manager-complaint-dashboard__row-link/);
+});
+
+test("대시보드에서 민원을 열면 성공한 읽음 저장 뒤 미확인 상태를 지운다", () => {
+  const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
+
+  assert.match(complaintDashboardSource, /import \{ markManagerTicketRead \} from "@\/lib\/manager-ticket-unread"/);
+  assert.match(complaintDashboardSource, /const \[locallyReadTicketIds, setLocallyReadTicketIds\] = useState<Set<string>>/);
+  assert.match(complaintDashboardSource, /function selectRow\(row: DefectDashboardRow\)/);
+  assert.match(complaintDashboardSource, /void markManagerTicketRead\(row\.ticket\.id\)/);
+  assert.match(complaintDashboardSource, /markManagerTicketRead\(row\.ticket\.id\)[\s\S]*setLocallyReadTicketIds/);
+  assert.match(complaintDashboardSource, /locallyReadTicketIds\.has\(row\.ticket\.id\)[\s\S]*isManagerUnread: false/);
+  assert.match(complaintDashboardSource, /onClick=\{\(\) => selectRow\(row\)\}/);
 });
 
 test("패널은 티켓 스레드를 세입자와 같은 소스로 읽고 쓴다", () => {
@@ -40,15 +67,21 @@ test("패널은 티켓 스레드를 세입자와 같은 소스로 읽고 쓴다"
   assert.match(panelSource, /messageText/);
 });
 
-test("패널은 실시간 신호로만 갱신한다", () => {
+test("패널은 쓰기 뒤 스레드를 재조회하지 않는다", () => {
   const panelSource = readFileSync(panelPath, "utf8");
 
+  // 쓰기 직후 재조회는 Postgres 투영이 따라오기 전이라 "한 박자 밀린" 스레드를 돌려줬다.
+  // 상대 메시지는 소켓 페이로드로, 내 메시지는 POST 응답으로 붙인다.
   assert.match(panelSource, /getRealtimeSocket/);
-  assert.match(panelSource, /socket\.on\("roomlog:activity", onActivity\)/);
-  assert.match(panelSource, /socket\.off\("roomlog:activity", onActivity\)/);
-  assert.match(panelSource, /kind === "ticket"/);
+  assert.match(panelSource, /socket\.on\("roomlog:ticket-message", onTicketMessage\)/);
+  assert.match(panelSource, /socket\.off\("roomlog:ticket-message", onTicketMessage\)/);
+  assert.match(panelSource, /appendTicketMessage\(current, message\)/);
+  assert.match(panelSource, /appendTicketMessage\(current, sent\)/);
+
+  // 재조회 헬퍼는 최초 적재에서만 쓰인다.
+  assert.equal(panelSource.match(/fetchTicketMessages\(/g)?.length, 2);
+  assert.doesNotMatch(panelSource, /refresh\(\{ silent/);
   assert.doesNotMatch(panelSource, /window\.setInterval/);
-  assert.doesNotMatch(panelSource, /POLL_INTERVAL_MS/);
 });
 
 test("패널은 오른쪽 절반을 차지하는 고정 사이드 표면이다", () => {
@@ -90,27 +123,24 @@ test("레인 전환은 낙관적으로 반영하고 실패하면 되돌린다", 
   assert.match(panelSource, /setLane\(previousLane\)/);
 });
 
-test("레인 전환 성공은 소켓 왕복을 기다리지 않고 대시보드를 즉시 갱신한다", () => {
+test("레인 전환은 서버가 확인한 상태로 맞추고 목록도 갱신한다", () => {
   const panelSource = readFileSync(panelPath, "utf8");
   const switchLaneSource = panelSource.match(
     /async function switchLane[\s\S]*?\n  }\n\n  if \(!row/,
   )?.[0];
 
-  assert.match(panelSource, /useRouter/);
-  assert.match(panelSource, /const router = useRouter\(\)/);
   assert.ok(switchLaneSource);
-  assert.match(switchLaneSource, /const clientRequestId = crypto\.randomUUID\(\)/);
-  assert.match(switchLaneSource, /beginLocalTicketLaneMutation\(clientRequestId\)/);
-  assert.match(switchLaneSource, /body: JSON\.stringify\(\{ lane: nextLane, clientRequestId \}\)/);
-  assert.match(switchLaneSource, /completeLocalTicketLaneMutation\(clientRequestId\)/);
-  assert.match(switchLaneSource, /abandonLocalTicketLaneMutation\(clientRequestId\)/);
+  assert.match(switchLaneSource, /body: JSON\.stringify\(\{ lane: nextLane \}\)/);
   assert.match(switchLaneSource, /ticketLaneFromServerStatus\(data\?\.ticket\?\.status\) \?\? nextLane/);
-  assert.match(
-    switchLaneSource,
-    /onTicketLaneChanged\?\.\(ticketId, confirmedLane, confirmedUpdatedAt\)/,
-  );
-  assert.match(
-    switchLaneSource,
-    /if \(!response\.ok\)[\s\S]*throw new Error[\s\S]*router\.refresh\(\)/,
-  );
+
+  // 목록 배지는 콜백으로 그 자리에서 바꾼다. router.refresh()는 서버 트리를 다시 그려
+  // 패널을 닫아버리므로 쓰지 않는다 — 상태는 목록 맨 왼쪽 열에 이미 보인다.
+  assert.match(switchLaneSource, /onLaneChange\?\.\(ticketId, confirmed\)/);
+  assert.doesNotMatch(panelSource, /router\.refresh\(\)/);
+  assert.doesNotMatch(panelSource, /useRouter/);
+
+  // 낙관적 상태를 지키려고 두던 clientRequestId 추적은 걷어냈다 —
+  // 읽기 저장소가 밀린 쓰기를 기다리므로 새로고침이 옛 상태를 되돌려주지 않는다.
+  assert.doesNotMatch(panelSource, /clientRequestId/);
+  assert.doesNotMatch(panelSource, /LocalTicketLaneMutation/);
 });

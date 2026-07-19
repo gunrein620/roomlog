@@ -26,6 +26,11 @@ const ticketDetailDialogPath = join(
   root,
   "src/app/manager/ticket/dash/00/TicketDetailDialog.tsx",
 );
+const vendorAssignmentDialogPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/VendorAssignmentDialog.tsx",
+);
+const dashboardActionsPath = join(root, "src/app/manager/ticket/dash/00/vendor-assignment-actions.ts");
 const layoutPath = join(root, "src/app/manager/ticket/dash/layout.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
@@ -37,6 +42,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.equal(existsSync(componentPath), true, componentPath);
   assert.equal(existsSync(actionMenuPath), true, actionMenuPath);
   assert.equal(existsSync(complaintDashboardPath), true, complaintDashboardPath);
+  assert.equal(existsSync(vendorAssignmentDialogPath), true, vendorAssignmentDialogPath);
 
   const componentSource = readFileSync(componentPath, "utf8");
   const actionMenuSource = readFileSync(actionMenuPath, "utf8");
@@ -45,6 +51,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.equal(existsSync(autoRefreshPath), true, autoRefreshPath);
   const autoRefreshSource = readFileSync(autoRefreshPath, "utf8");
   const ticketDetailDialogSource = readFileSync(ticketDetailDialogPath, "utf8");
+  const vendorAssignmentDialogSource = readFileSync(vendorAssignmentDialogPath, "utf8");
+  const dashboardActionsSource = readFileSync(dashboardActionsPath, "utf8");
   const layoutSource = readFileSync(layoutPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
@@ -71,33 +79,48 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
       componentSource.indexOf('htmlFor="manager-defect-worker"'),
   );
 
-  for (const column of [
-    "유형",
+  // 상태가 맨 왼쪽 — 레인 토글 결과를 패널을 닫지 않고 바로 확인할 수 있어야 한다.
+  const tableColumns = componentSource
+    .match(/const TABLE_COLUMNS = \[([\s\S]*?)\] as const;/)?.[1]
+    ?.match(/"([^"]+)"/g)
+    ?.map((column) => column.replaceAll('"', ""));
+
+  assert.deepEqual(tableColumns, [
+    "상태",
     "작업명",
     "건물",
     "호실",
     "작업자",
-    "예정일시",
-    "상태",
+    "업체 선정",
+    "유형",
     "작업",
-  ]) {
-    assert.match(componentSource, new RegExp(column));
-  }
+  ]);
 
-  // 청구 금액은 목록에서 뺐다 — 금액은 결제·비용 승인 화면에서만 다룬다.
+  assert.match(componentSource, /<VendorAssignmentDialog/);
+  assert.match(componentSource, /vendors=\{vendors\}/);
+  assert.match(componentSource, /ticketId=\{row\.ticket\.id\}/);
+  assert.match(vendorAssignmentDialogSource, /등록된 업체 검색/);
+  assert.match(vendorAssignmentDialogSource, /showModal\(\)/);
+  assert.match(vendorAssignmentDialogSource, /import \{ Search \} from "lucide-react"/);
+  assert.match(vendorAssignmentDialogSource, /<Search aria-hidden="true"/);
+  assert.match(vendorAssignmentDialogSource, /업체 검색/);
+  assert.match(vendorAssignmentDialogSource, /vendors\.filter/);
+  assert.match(vendorAssignmentDialogSource, /assignVendorFromDashboardAction/);
+  assert.match(vendorAssignmentDialogSource, /router\.refresh\(\)/);
+  assert.match(dashboardActionsSource, /assignManagerVendor/);
+  assert.match(dashboardActionsSource, /revalidatePath\("\/manager\/ticket\/dash\/00"\)/);
   assert.doesNotMatch(componentSource, /청구 금액/);
   assert.doesNotMatch(componentSource, /formatDefectMoney/);
 
   assert.match(componentSource, /aria-pressed/);
   assert.match(componentSource, /ticketLaneOf/);
-  assert.match(componentSource, /applyTicketLaneOverrides\(rows, ticketLaneOverrides\)/);
-  assert.match(componentSource, /reconcileTicketLaneOverrides\(current, rows\)/);
-  assert.match(componentSource, /function applyConfirmedTicketLane/);
+  // 레인 오버라이드 맵은 걷어냈다 — 읽기 저장소가 밀린 쓰기를 기다리므로 서버 행이 곧 진실이다.
+  assert.doesNotMatch(componentSource, /LaneOverride/);
   assert.match(componentSource, /received: "접수"/);
   assert.match(componentSource, /processing: "진행"/);
   assert.match(componentSource, /resolved: "완료"/);
   assert.doesNotMatch(componentSource, /defectDisplayStatus/);
-  assert.doesNotMatch(componentSource, /업체 선정/);
+  assert.doesNotMatch(componentSource, /예정일시/);
   assert.doesNotMatch(componentSource, /미완료/);
   assert.match(cssSource, /data-status="received"/);
   assert.match(cssSource, /data-status="processing"/);
@@ -118,6 +141,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(actionMenuSource, /addEventListener\("resize"/);
   assert.doesNotMatch(componentSource, /manager-defect-dashboard__primary-action/);
   assert.doesNotMatch(componentSource, />\s*정보입력\s*</);
+  assert.doesNotMatch(componentSource, />\s*대리\s*접수\s*</);
+  assert.doesNotMatch(componentSource, /ManagerProxyIntakeDialog/);
   assert.match(actionMenuSource, /상세·정보입력/);
   assert.match(actionMenuSource, /업체 선정·견적/);
   assert.match(actionMenuSource, /결제·비용 승인/);
@@ -140,7 +165,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.ok(managerDashboardRender);
   assert.match(managerDashboardRender, /rows=\{rows\}/);
   assert.match(managerDashboardRender, /initialTemplate=\{initialTemplate\}/);
-  assert.match(managerDashboardRender, /proxyIntakeRooms=\{proxyIntakeRooms\}/);
+  assert.doesNotMatch(managerDashboardRender, /proxyIntakeRooms=/);
+  assert.doesNotMatch(pageSource, /listManagerProxyIntakeRooms/);
   assert.match(autoRefreshSource, /getRealtimeSocket/);
   assert.match(autoRefreshSource, /shouldRefreshTicketDashboard/);
   assert.match(autoRefreshSource, /router\.refresh\(\)/);
@@ -149,7 +175,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(autoRefreshSource, /refreshGateRef/);
   assert.match(autoRefreshSource, /refreshGateRef\.current\.request/);
   assert.match(autoRefreshSource, /refreshGateRef\.current\.flush/);
-  assert.match(autoRefreshSource, /isLocalTicketLaneMutationActivity/);
+  // 레인 브로드캐스트는 별도 이벤트(roomlog:ticket-lane)라 대시보드 새로고침을 건드리지 않는다.
+  assert.doesNotMatch(autoRefreshSource, /LocalTicketLaneMutation/);
   assert.match(autoRefreshSource, /queueMicrotask\(flushPendingRefresh\)/);
   assert.match(autoRefreshSource, /addEventListener\("focusout", flushAfterFocusSettles\)/);
   assert.match(autoRefreshSource, /addEventListener\("visibilitychange", flushPendingRefresh\)/);
@@ -166,6 +193,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   // 과거 추적 데모 상수는 사용하지 않고, Git 비추적 로컬 파일만 서버 로더로 추가한다.
   assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(pageSource, /listManagerTicketRows/);
+  assert.match(pageSource, /listManagerVendors/);
+  assert.match(managerDashboardRender, /vendors=\{vendorResult\.data\}/);
   assert.match(componentSource, /initialTemplate/);
   assert.match(componentSource, /markManagerTicketRead/);
   assert.match(componentSource, /void markManagerTicketRead\(row\.ticket\.id\)/);

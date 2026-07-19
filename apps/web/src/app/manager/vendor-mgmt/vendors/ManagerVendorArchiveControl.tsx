@@ -55,7 +55,7 @@ export function ManagerVendorArchiveControl({
             <h2 id={titleId}>{vendorName} 연결을 해제할까요?</h2>
             <p>
               기존 작업·결제 이력은 유지되며 신규 작업 배정 후보에서만 제외됩니다.
-              필요하면 업체 찾기에서 다시 등록할 수 있습니다.
+              필요하면 업체 등록으로 다시 추가할 수 있습니다.
             </p>
           </div>
           {state.status === "error" ? (

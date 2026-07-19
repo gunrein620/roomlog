@@ -252,6 +252,7 @@ const notificationItems = [
 
 // 하드코딩 데모 지표/추천/체크리스트 상수들 제거 — 데모 컨셉 정리(4d1010a8 후속)
 
+const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 
 const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   source: "default",
@@ -277,6 +278,7 @@ const MAP_QUERY_TYPE_LABELS: Record<MapQueryType, string> = {
 };
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
+const mapTopbarInputValueForArea = (area: string) => area === CURRENT_LOCATION_AREA_LABEL ? "" : area;
 
 let naverMapServiceLoadPromise: Promise<boolean> | null = null;
 
@@ -1156,7 +1158,6 @@ function FilterBottomSheet({
 
 function SearchBottomSheet({
   isOpen,
-  currentArea,
   isResolving = false,
   isMapMode = false,
   queryCandidates = [],
@@ -1179,77 +1180,17 @@ function SearchBottomSheet({
   onSelectArea: (area: string) => void | Promise<void>;
   onSelectCandidate?: (keyword: string, candidate: MapResolvedQuery) => void;
 }) {
-  const [searchValue, setSearchValue] = useState(currentArea);
-
-  useEffect(() => {
-    if (isOpen) {
-      setSearchValue(currentArea);
-    }
-  }, [currentArea, isOpen]);
-
-  const submitSearch = () => {
-    const keyword = searchValue.trim();
-
-    if (!keyword || isResolving) {
-      return;
-    }
-
-    onSelectArea(keyword);
-  };
-  const normalizedSearchValue = searchValue.trim() || currentArea;
-  const searchPreviewCount = normalizedSearchValue.includes("강남") || normalizedSearchValue.includes("역삼") ? 22 : normalizedSearchValue.includes("성수") ? 19 : 42;
-
   if (!isOpen) {
     return null;
   }
 
   return (
     <div className="search-sheet-backdrop" role="presentation" onClick={onClose}>
-      <section className="search-sheet" role="dialog" aria-modal="true" aria-labelledby="search-sheet-title" onClick={(event) => event.stopPropagation()}>
+      <section className="search-sheet" role="dialog" aria-modal="true" aria-label="검색 결과" onClick={(event) => event.stopPropagation()}>
         <div className="sheet-handle" aria-hidden="true" />
-        <header>
-          <div>
-            <span>통합검색</span>
-            <h2 id="search-sheet-title">어디에서 방을 찾을까요?</h2>
-          </div>
+        <header className="search-sheet-close-row">
           <button type="button" onClick={onClose} aria-label="검색 닫기">×</button>
         </header>
-
-        <form className="search-sheet-input" onSubmit={(event) => {
-          event.preventDefault();
-          submitSearch();
-        }}>
-          <Search size={20} strokeWidth={2.4} aria-hidden="true" />
-          <input value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label="통합 검색어" />
-          <button type="submit" disabled={isResolving}>{isResolving ? "확인 중" : "검색"}</button>
-        </form>
-
-        {!isMapMode ? (
-          <section className="search-live-preview" aria-label="검색 결과 미리보기">
-            <div>
-              <span>바로 보기</span>
-              <strong>{normalizedSearchValue} 주변 확인매물</strong>
-              <p>지도에서 시세, 3D 투어, 중개사 응답 상태를 함께 비교합니다.</p>
-            </div>
-            <div className="search-live-stats">
-              <span>
-                <b>{searchPreviewCount}개</b>
-                예상 매물
-              </span>
-              <span>
-                <b>{Math.max(3, Math.round(searchPreviewCount * 0.28))}개</b>
-                3D 가능
-              </span>
-              <span>
-                <b>8분</b>
-                평균 응답
-              </span>
-            </div>
-            <button type="button" onClick={submitSearch} disabled={isResolving}>
-              {isResolving ? "위치 확인 중" : <>지도에서 {normalizedSearchValue} 보기</>}
-            </button>
-          </section>
-        ) : null}
 
         {queryCandidates.length > 0 ? (
           <section className="search-result-candidates" aria-label="주소 검색 결과">
@@ -1565,13 +1506,13 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
         setMapSearchContext({
           source: "user-location",
-          label: "내 위치 주변",
+          label: CURRENT_LOCATION_AREA_LABEL,
           center,
           radiusM: 3000
         });
         setMapSearchMatchedListingNos([]);
         setHasResolvedMapContext(true);
-        setSelectedArea("내 위치 주변");
+        setSelectedArea(CURRENT_LOCATION_AREA_LABEL);
         setActiveMapResultTab("rooms");
         setMapLocationStatus("granted");
       },
@@ -1598,10 +1539,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
   // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).
   useEffect(() => {
-    if (hasResolvedMapContext || mapQueryStatus === "fallback") {
-      setMapTopbarSearchValue(selectedArea);
+    if (!isSearchSheetOpen && mapQueryStatus !== "resolving" && (hasResolvedMapContext || mapQueryStatus === "fallback")) {
+      setMapTopbarSearchValue(mapTopbarInputValueForArea(selectedArea));
     }
-  }, [hasResolvedMapContext, mapQueryStatus, selectedArea]);
+  }, [hasResolvedMapContext, isSearchSheetOpen, mapQueryStatus, selectedArea]);
 
   const sortedTradeListings = tradeListings
     .filter((listing) => listing.status !== "계약완료")
@@ -2198,7 +2139,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const submitMapTopbarSearch = async () => {
     const keyword = mapTopbarSearchValue.trim();
     if (!keyword) {
-      setMapTopbarSearchValue(selectedArea);
+      setMapTopbarSearchValue(mapTopbarInputValueForArea(selectedArea));
       return;
     }
 
@@ -2636,6 +2577,16 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 placeholder="동네, 역, 주소 검색"
               />
             </label>
+            <button
+              className="map-search-submit-button"
+              type="submit"
+              aria-label="지도 검색"
+              title="검색"
+              disabled={mapQueryStatus === "resolving"}
+            >
+              <span className="map-search-submit-label">검색</span>
+              <Search size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
             <button
               className="map-location-action-button"
               type="button"

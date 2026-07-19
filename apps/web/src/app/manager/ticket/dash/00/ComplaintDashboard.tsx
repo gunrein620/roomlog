@@ -12,6 +12,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import {
   buildComplaintDashboard,
   complaintCategory,
@@ -24,13 +25,6 @@ import {
 import { TicketChatPanel } from "./TicketChatPanel";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
-import type { TicketLane } from "./ticket-lane";
-import {
-  applyTicketLaneOverrides,
-  reconcileTicketLaneOverrides,
-  ticketStatusForLane,
-  type TicketLaneOverride,
-} from "./ticket-lane-local-state";
 
 const METRICS = [
   { id: "total", label: "전체 접수", icon: ListChecks },
@@ -79,13 +73,23 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
   const [month, setMonth] = useState(() => latestComplaintMonth(rows));
   const [pickerYear, setPickerYear] = useState(() => monthParts(latestComplaintMonth(rows)).year);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
-  const [ticketLaneOverrides, setTicketLaneOverrides] = useState<TicketLaneOverride>({});
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const calendarRef = useRef<HTMLDivElement>(null);
   const effectiveRows = useMemo(
-    () => applyTicketLaneOverrides(rows, ticketLaneOverrides),
-    [rows, ticketLaneOverrides],
+    () =>
+      rows.map((row) =>
+        locallyReadTicketIds.has(row.ticket.id)
+          ? { ...row, isManagerUnread: false }
+          : row,
+      ),
+    [locallyReadTicketIds, rows],
   );
+  // 열린 패널이 가리키는 행은 항상 최신 rows에서 되찾는다 — 새로고침돼도 선택이 살아 있다.
+  const selectedRow =
+    effectiveRows.find((row) => row.ticket.id === selectedTicketId) ?? null;
   const dashboard = useMemo(() => buildComplaintDashboard(effectiveRows, month), [effectiveRows, month]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
   const donutSegments = dashboard.categories.reduce<string[]>((segments, category, index) => {
@@ -114,10 +118,6 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     };
   }, [calendarOpen]);
 
-  useEffect(() => {
-    setTicketLaneOverrides((current) => reconcileTicketLaneOverrides(current, rows));
-  }, [rows]);
-
   function changeMonth(amount: number) {
     const nextMonth = moveMonth(month, amount);
     setMonth(nextMonth);
@@ -125,13 +125,19 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     setCalendarOpen(false);
   }
 
-  function applyConfirmedTicketLane(ticketId: string, lane: TicketLane, updatedAt?: string) {
-    setTicketLaneOverrides((current) => ({ ...current, [ticketId]: { lane, updatedAt } }));
-    setSelectedRow((current) =>
-      current?.ticket.id === ticketId
-        ? { ...current, ticket: { ...current.ticket, status: ticketStatusForLane(lane) } }
-        : current,
-    );
+  function selectRow(row: DefectDashboardRow) {
+    setSelectedTicketId(row.ticket.id);
+    void markManagerTicketRead(row.ticket.id)
+      .then(() => {
+        setLocallyReadTicketIds((current) => {
+          const next = new Set(current);
+          next.add(row.ticket.id);
+          return next;
+        });
+      })
+      .catch(() => {
+        // 패널은 그대로 열어두고 읽음 표시는 서버 저장이 성공할 때만 갱신한다.
+      });
   }
 
   return (
@@ -297,18 +303,22 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
             </thead>
             <tbody>
               {dashboard.recent.map((row) => (
-                <tr key={row.ticket.id}>
+                <tr
+                  key={row.ticket.id}
+                  className="manager-complaint-dashboard__row"
+                  data-selected={selectedRow?.ticket.id === row.ticket.id ? "true" : undefined}
+                  tabIndex={0}
+                  aria-label={`${row.ticket.title} 상세 대화 열기`}
+                  onClick={() => selectRow(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      selectRow(row);
+                    }
+                  }}
+                >
                   <td><span className="manager-complaint-dashboard__category" data-category={complaintCategory(row.ticket)}>{dashboardTicketTypeLabel(row.ticket)}</span></td>
-                  <td>
-                    {/* 접수 내용 클릭 → 상세 모달(페이지 이동 없이 바로 확인) */}
-                    <button
-                      type="button"
-                      className="manager-complaint-dashboard__row-link"
-                      onClick={() => setSelectedRow(row)}
-                    >
-                      {row.ticket.title}
-                    </button>
-                  </td>
+                  <td><span className="manager-complaint-dashboard__row-title">{row.ticket.title}</span></td>
                   <td>{row.buildingName ?? "—"} / {row.ticket.unitId || "—"}</td>
                   <td>{formatComplaintDate(row.ticket.createdAt)}</td>
                   <td>
@@ -327,8 +337,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
 
       <TicketChatPanel
         row={selectedRow}
-        onClose={() => setSelectedRow(null)}
-        onTicketLaneChanged={applyConfirmedTicketLane}
+        onClose={() => setSelectedTicketId(null)}
       />
     </section>
   );
