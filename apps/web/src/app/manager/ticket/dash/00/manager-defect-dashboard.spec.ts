@@ -276,12 +276,12 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /"민원\/하자 관리"/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-16: 민원·하자 미확인 배지와 접근성 레이블을 사이드바에 추가.
-    "6105a849a871ec677cb1173d1c57b9006b1c087a71bc240d0f63bd08f1144a20",
+    // 2026-07-19: 미사용 설정·인사이트 메뉴를 제거한 사이드바 기준.
+    "0222d53b05be90166506c392b7435ced78984579281a801fd5d1a40f85a86dc2",
   );
   assert.equal(
     sha256(navigationSource),
-    // 2026-07-16 kms-manager-chat 기준 티켓 내비게이션 소스.
-    "6757c4f9932ccb15dbe875350c2caf42faeb16f054dffe5d16ee88a5b900c775",
+    // 2026-07-19: 미사용 설정·인사이트 메뉴를 제거한 내비게이션 기준.
+    "a0a4564c7325ba3b1b37981875790a40e19764297a2d9660da2c414db2aa6291",
   );
 });
