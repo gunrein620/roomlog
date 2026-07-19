@@ -3,7 +3,7 @@
 // 네이버 지도 프리뷰 — 상세 라우트(/listing/[id])의 위치 지도와 SPA 지도 탭이 공유한다.
 // 상세 라우트 분리(1단계)로 page.tsx에서 추출했다. 전역 window.naver 타입 선언도 이 모듈이 단일 소유.
 import Script from "next/script";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type NaverLatLng = {
   lat?: () => number;
@@ -242,6 +242,13 @@ export function NaverMapPreview({
       : "";
   const addressKey = typeof address === "string" ? address.trim() : "";
 
+  const closeCenterInfoWindow = useCallback((maps: NaverMapsApi | undefined) => {
+    centerInfoWindowRef.current?.close();
+    centerInfoWindowRef.current = null;
+    removeMapListener(maps, centerInfoWindowListenerRef.current);
+    centerInfoWindowListenerRef.current = null;
+  }, []);
+
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
   }, [onViewportChange]);
@@ -249,10 +256,7 @@ export function NaverMapPreview({
   useEffect(() => {
     return () => {
       const maps = window.naver?.maps;
-      centerInfoWindowRef.current?.close();
-      centerInfoWindowRef.current = null;
-      removeMapListener(maps, centerInfoWindowListenerRef.current);
-      centerInfoWindowListenerRef.current = null;
+      closeCenterInfoWindow(maps);
       viewportListenersRef.current.forEach((listener) => {
         if (listener.remove) {
           listener.remove();
@@ -266,7 +270,7 @@ export function NaverMapPreview({
         viewportPollTimerRef.current = null;
       }
     };
-  }, []);
+  }, [closeCenterInfoWindow]);
 
   useEffect(() => {
     if (window.naver?.maps) {
@@ -383,26 +387,25 @@ export function NaverMapPreview({
     onViewportChangeRef.current?.(readMapViewport(map));
 
     if (!showCenterMarker) {
-      centerInfoWindowRef.current?.close();
-      centerInfoWindowRef.current = null;
-      removeMapListener(maps, centerInfoWindowListenerRef.current);
-      centerInfoWindowListenerRef.current = null;
+      closeCenterInfoWindow(maps);
       centerMarkerRef.current?.setMap(null);
       centerMarkerRef.current = null;
       return;
     }
 
+    closeCenterInfoWindow(maps);
     if (centerMarkerRef.current?.setPosition) {
       centerMarkerRef.current.setPosition(nextCenter);
-      return;
+    } else {
+      centerMarkerRef.current?.setMap(null);
+      centerMarkerRef.current = new maps.Marker({
+        map,
+        position: nextCenter
+      });
     }
 
-    centerMarkerRef.current?.setMap(null);
-    const marker = new maps.Marker({
-      map,
-      position: nextCenter
-    });
-    centerMarkerRef.current = marker;
+    const marker = centerMarkerRef.current;
+    if (!marker) return;
     const infoWindowHandle = createDismissibleInfoWindow(
       maps,
       map,
@@ -412,7 +415,7 @@ export function NaverMapPreview({
     );
     centerInfoWindowRef.current = infoWindowHandle.infoWindow;
     centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
-  }, [addressKey, centerKey, loadState, showCenterMarker, title]);
+  }, [addressKey, centerKey, closeCenterInfoWindow, loadState, showCenterMarker, title]);
 
   useEffect(() => {
     if (centerKey || !addressKey || loadState !== "ready") return;
@@ -433,31 +436,30 @@ export function NaverMapPreview({
       onViewportChangeRef.current?.(readMapViewport(map));
 
       if (!showCenterMarker) {
-        centerInfoWindowRef.current?.close();
-        centerInfoWindowRef.current = null;
-        removeMapListener(maps, centerInfoWindowListenerRef.current);
-        centerInfoWindowListenerRef.current = null;
+        closeCenterInfoWindow(maps);
         centerMarkerRef.current?.setMap(null);
         centerMarkerRef.current = null;
         return;
       }
 
+      closeCenterInfoWindow(maps);
       if (centerMarkerRef.current?.setPosition) {
         centerMarkerRef.current.setPosition(nextCenter);
-        return;
+      } else {
+        centerMarkerRef.current?.setMap(null);
+        centerMarkerRef.current = new maps.Marker({
+          map,
+          position: nextCenter
+        });
       }
 
-      centerMarkerRef.current?.setMap(null);
-      const marker = new maps.Marker({
-        map,
-        position: nextCenter
-      });
-      centerMarkerRef.current = marker;
+      const marker = centerMarkerRef.current;
+      if (!marker) return;
       const infoWindowHandle = createDismissibleInfoWindow(maps, map, marker, "매물 위치", addressKey);
       centerInfoWindowRef.current = infoWindowHandle.infoWindow;
       centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
     });
-  }, [addressKey, centerKey, loadState, showCenterMarker]);
+  }, [addressKey, centerKey, closeCenterInfoWindow, loadState, showCenterMarker]);
 
   const handleScriptReady = () => {
     requestAnimationFrame(() => {
