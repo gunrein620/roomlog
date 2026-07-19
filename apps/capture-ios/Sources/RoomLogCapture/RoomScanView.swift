@@ -9,6 +9,8 @@ struct RoomScanView: View {
     @State private var captureController = RoomScanSessionController()
     @State private var capturedRoom: CapturedRoom?
     @State private var phase: RoomScanPhase = .scanning
+    /// "정밀 스캔"으로 넘어갈 대상(nil이 아니면 ObjectCaptureScanView를 시트로 띄운다).
+    @State private var objectCaptureTarget: TenantFurnitureSummary?
 
     var body: some View {
         NavigationStack {
@@ -41,6 +43,29 @@ struct RoomScanView: View {
         .onDisappear {
             captureController.cancel()
         }
+        .sheet(item: $objectCaptureTarget) { furniture in
+            // 프로젝트 deploymentTarget이 이미 iOS 17이라(project.yml) 별도 #available 분기 불필요.
+            ObjectCaptureScanView(furniture: furniture)
+                .environmentObject(account)
+        }
+    }
+
+    /// success 화면에 뜨는 가구 1행 — "정밀 스캔"으로 Object Capture 플로우를 연다.
+    private func furnitureRow(_ item: TenantFurnitureSummary) -> some View {
+        HStack {
+            Text((item.label?.isEmpty == false ? item.label : nil) ?? item.category)
+                .font(.subheadline)
+                .foregroundStyle(Woozu.surfaceMuted)
+            Spacer()
+            Button("정밀 스캔") {
+                objectCaptureTarget = item
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Woozu.secondarySoft)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Woozu.night.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var captureView: some View {
@@ -87,16 +112,30 @@ struct RoomScanView: View {
                         .font(.subheadline)
                         .foregroundStyle(Woozu.secondarySoft)
 
-                case .success(let count):
+                case .success(let items):
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 32))
                         .foregroundStyle(Woozu.secondarySoft)
-                    Text("가구 \(count)개 등록됨")
+                    Text("가구 \(items.count)개 등록됨")
                         .font(.system(.title3, design: .serif))
                         .foregroundStyle(Woozu.surfaceMuted)
-                    Text("내 방의 가구가 우주에 기록되었어요.")
+                    Text("정밀하게 스캔하면 실제 모습으로 바꿀 수 있어요.")
                         .font(.subheadline)
                         .foregroundStyle(Woozu.secondarySoft)
+
+                    if !items.isEmpty {
+                        VStack(spacing: 8) {
+                            ForEach(items) { item in
+                                furnitureRow(item)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+
+                    Button("완료") {
+                        dismiss()
+                    }
+                    .buttonStyle(WoozuPrimaryButtonStyle())
 
                 case .failure(let message):
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -225,7 +264,7 @@ struct RoomScanView: View {
             request.httpBody = try JSONEncoder().encode(payload)
             phase = .uploading
 
-            URLSession.shared.dataTask(with: request) { _, response, error in
+            URLSession.shared.dataTask(with: request) { data, response, error in
                 DispatchQueue.main.async {
                     if let error {
                         self.phase = .failure(error.localizedDescription)
@@ -243,7 +282,13 @@ struct RoomScanView: View {
                         self.phase = .failure("가구 등록 실패 (HTTP \(http.statusCode))")
                         return
                     }
-                    self.phase = .success(objects.count)
+                    // 응답은 TenantFurniture[] 전체지만 여기선 정밀 스캔(Object Capture) 진입에
+                    // 필요한 id/category/label만 뽑아 쓴다.
+                    guard let data, let created = try? JSONDecoder().decode([TenantFurnitureSummary].self, from: data) else {
+                        self.phase = .success([])
+                        return
+                    }
+                    self.phase = .success(created)
                 }
             }.resume()
         } catch {
@@ -275,8 +320,8 @@ struct RoomScanView: View {
 }
 
 /// 우주(WOOZU) 브랜드 토큰 — woo-zu-design-system tokens.css의 hex를 sRGB 0–1로 변환한 값.
-/// 새 파일 추가 없이 이 화면에서만 쓰는 인라인 팔레트.
-private enum Woozu {
+/// 새 파일 추가 없이 인라인으로 둔 팔레트. ObjectCaptureScanView.swift도 재사용하므로 internal.
+enum Woozu {
     static let primary = Color(red: 0.125, green: 0.094, blue: 0.290)       // #20184A
     static let primary900 = Color(red: 0.090, green: 0.075, blue: 0.227)    // #17133A
     static let secondary = Color(red: 0.545, green: 0.514, blue: 0.753)     // #8B83C0
@@ -296,8 +341,8 @@ private enum Woozu {
     )
 }
 
-/// 코랄 키 액션 버튼 — 화면당 하나의 핵심 CTA에만 사용.
-private struct WoozuPrimaryButtonStyle: ButtonStyle {
+/// 코랄 키 액션 버튼 — 화면당 하나의 핵심 CTA에만 사용. ObjectCaptureScanView.swift도 재사용.
+struct WoozuPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
@@ -315,7 +360,7 @@ private enum RoomScanPhase {
     case scanning
     case processing
     case uploading
-    case success(Int)
+    case success([TenantFurnitureSummary])
     case failure(String)
 
     var blocksDismissal: Bool {
@@ -326,6 +371,14 @@ private enum RoomScanPhase {
             return false
         }
     }
+}
+
+/// `POST tenant-furniture/roomplan-import` 응답(TenantFurniture[])에서 정밀 스캔(Object Capture)
+/// 진입에 필요한 필드만 뽑아 디코드한다 — @roomlog/types TenantFurniture의 부분집합.
+struct TenantFurnitureSummary: Decodable, Equatable, Identifiable {
+    let id: String
+    let category: String
+    let label: String?
 }
 
 private struct RoomPlanImportPayload: Encodable {
