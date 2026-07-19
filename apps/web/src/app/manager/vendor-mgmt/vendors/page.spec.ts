@@ -38,6 +38,11 @@ test("manager vendor list does not expose an archive control", () => {
   assert.doesNotMatch(pageSource, /renderManagement=/);
 });
 
+test("manager vendor list omits explanatory copy from the list header and count section", () => {
+  assert.doesNotMatch(pageSource, /운영팀이 검증한 업체 중 직접 등록한 협력업체와 진행 중인 작업을 관리합니다/);
+  assert.doesNotMatch(pageSource, /계정 연결과 운영 검증이 모두 완료된 업체만 하자 작업에 배정할 수 있습니다/);
+});
+
 test("manager vendor table does not expose account verification", () => {
   assert.doesNotMatch(componentSource, /계정·검증/);
   assert.doesNotMatch(componentSource, /accountStatusLabel\[vendor\.accountStatus\]/);
