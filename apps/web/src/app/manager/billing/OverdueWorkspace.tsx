@@ -6,7 +6,6 @@ import { Bot, ChevronRight, CircleAlert, Search } from "lucide-react";
 import type { ManagerOverdueWorkspace, OverdueCase } from "@roomlog/types";
 import {
   filterOverdueCases,
-  managerAgentOverdueHref,
   overdueStageLabel,
   sortOverdueCases,
   type OverdueAgeBucket,
@@ -193,16 +192,11 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
                 </div>
               )}
 
-              <div className={styles.detailActions}>
-                {queue === "waiting" ? (
+              {queue === "waiting" ? (
+                <div className={styles.detailActions}>
                   <Link className={styles.primaryLink} href="/manager/billing/matching">입출금 내역에서 확인</Link>
-                ) : (
-                  <Link className={styles.aiLink} href={managerAgentOverdueHref(selected)}>
-                    <Bot aria-hidden="true" size={16} />
-                    AI 채팅에서 처리
-                  </Link>
-                )}
-              </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <div className={styles.emptyState}>왼쪽 목록에서 확인할 청구를 선택하세요.</div>

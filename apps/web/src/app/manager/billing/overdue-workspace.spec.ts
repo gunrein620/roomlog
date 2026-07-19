@@ -50,7 +50,7 @@ test("billing summaries balance desktop spacing and the overdue search icon stay
 
 test("overdue detail keeps actions inside the overdue workflow", () => {
   assert.doesNotMatch(componentSource, /청구 상세|FileText|detailSecondaryLink/);
-  assert.match(componentSource, /AI 채팅에서 처리/);
+  assert.doesNotMatch(componentSource, /AI 채팅에서 처리|managerAgentOverdueHref/);
   assert.match(componentSource, /입출금 내역에서 확인/);
   assert.match(
     styleSource,
