@@ -28,7 +28,7 @@ export default async function Page() {
       footer={
         <>
           <LinkButton href={callRoutes["04"]} fullWidth>승인</LinkButton>
-          <LinkButton href={dashRoutes["04"]} variant="secondary" fullWidth>다른 업체</LinkButton>
+          <LinkButton href={dashRoutes["01"]} variant="secondary" fullWidth>다른 업체</LinkButton>
           <LinkButton href={callRoutes["00"]} variant="ghost" fullWidth>보류</LinkButton>
         </>
       }
@@ -42,7 +42,7 @@ export default async function Page() {
         <div style={muted}>승인하면 repair_status가 업체 배정/견적 승인 흐름으로 진행됩니다.</div>
       </Card>
       <SingleUserStatus ticket={ticket} repair={repair} />
-      <LinkButton href={dashRoutes["04"]} variant="secondary" fullWidth>견적 비교는 웹에서</LinkButton>
+      <LinkButton href={dashRoutes["01"]} variant="secondary" fullWidth>업체 배정은 웹에서</LinkButton>
     </MobileScreen>
   );
 }

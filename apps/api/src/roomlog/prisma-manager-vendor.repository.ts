@@ -145,6 +145,10 @@ function mapSearchResult(
     catalog,
     accountStatus: account,
     registrationStatus: registration,
+    registrationSource:
+      managerId !== undefined && isDirectManagerVendor(row, managerId)
+        ? "MANAGER_DIRECT"
+        : "PLATFORM",
     ...assignmentState(
       catalog,
       account,
