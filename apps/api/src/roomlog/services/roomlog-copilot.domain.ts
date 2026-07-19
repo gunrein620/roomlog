@@ -65,7 +65,8 @@ const pendingCopilotActions = new Map<string, CopilotPendingActionRecord>();
 const pendingActionTtlMs = 10 * 60 * 1000;
 const sendCommands: Record<string, CopilotPendingAction["kind"] | undefined> = {
   "billing.send_dunning": "billing.send_dunning",
-  "messaging.send_reply": "messaging.send_reply"
+  "messaging.send_reply": "messaging.send_reply",
+  "messaging.send_announcement": "messaging.send_announcement"
 };
 
 export class RoomlogCopilotDomain {
@@ -292,7 +293,9 @@ export class RoomlogCopilotDomain {
           billId: this.optionalStringValue(parsed.billId),
           channel: this.optionalStringValue(parsed.channel),
           threadId: this.optionalStringValue(parsed.threadId),
-          body: this.optionalStringValue(parsed.body)
+          body: this.optionalStringValue(parsed.body),
+          title: this.optionalStringValue(parsed.title),
+          target: this.optionalStringValue(parsed.target)
         }
       };
     } catch {
@@ -422,7 +425,9 @@ export class RoomlogCopilotDomain {
       reply:
         action.kind === "billing.send_dunning"
           ? "독촉 발송을 취소했습니다."
-          : "메시지 발송을 취소했습니다."
+          : action.kind === "messaging.send_announcement"
+            ? "공지 발송을 취소했습니다."
+            : "메시지 발송을 취소했습니다."
     };
   }
 

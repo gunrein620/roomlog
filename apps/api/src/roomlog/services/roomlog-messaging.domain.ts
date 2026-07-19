@@ -11,6 +11,7 @@ import type {
   MessagingAnnouncementDraft,
   MessagingAnnouncementReadState,
   MessagingAnnouncementResult,
+  MessagingAnnouncementScope,
   MessagingMessage,
   MessagingMessageSender,
   ManagerMessagingRecipient,
@@ -444,6 +445,112 @@ export class RoomlogMessagingDomain {
       tenantName: tenant.name,
       preferredLang: this.preferredLangFor(tenant)
     }));
+  }
+
+  // AI 비서의 자연어 공지 대상("전체", 건물명, "건물명 302호")을 실제 호실 스코프로 해석한다.
+  // 애매하거나 못 찾으면 BadRequest로 이유를 돌려줘, 에이전트가 사용자에게 되묻게 한다.
+  resolveManagerAnnouncementAudience(
+    managerId: string,
+    target?: string
+  ): {
+    scope: MessagingAnnouncementScope;
+    targetLabel: string;
+    targetRoomIds: string[];
+    recipientCount: number;
+  } {
+    const managedRooms = this.store.rooms.filter((room) => room.landlordId === managerId);
+
+    if (managedRooms.length === 0) {
+      throw new ForbiddenException("관리 중인 호실이 없습니다.");
+    }
+
+    const normalized = (target ?? "").trim();
+    const wantsAll = !normalized || /^(전체|전부|모두|모든\s*세대|전\s*세대|all)$/i.test(normalized);
+
+    let scope: MessagingAnnouncementScope;
+    let targetLabel: string;
+    let rooms: Room[];
+
+    if (wantsAll) {
+      scope = "all";
+      targetLabel = "전체";
+      rooms = managedRooms;
+    } else {
+      const buildingMatches = managedRooms.filter(
+        (room) =>
+          room.buildingName &&
+          (normalized.includes(room.buildingName) || room.buildingName.includes(normalized))
+      );
+      const roomNoMatch = normalized.match(/(\d+)\s*호/);
+
+      if (roomNoMatch) {
+        const roomNo = roomNoMatch[1];
+        const pool = buildingMatches.length ? buildingMatches : managedRooms;
+        // roomNo는 "302호"처럼 접미사를 포함할 수 있어 표시용 정규화 값으로 비교한다.
+        rooms = pool.filter((room) => this.displayUnitId(room) === roomNo);
+
+        if (rooms.length === 0) {
+          throw new BadRequestException(
+            `'${normalized}' 대상 호실을 찾지 못했습니다. 건물명과 호수를 다시 확인해 주세요.`
+          );
+        }
+        if (rooms.length > 1) {
+          throw new BadRequestException(
+            `${roomNo}호가 여러 건물에 있습니다. 건물명을 함께 알려주세요.`
+          );
+        }
+
+        scope = "unit";
+        targetLabel = `${rooms[0].buildingName} ${this.displayUnitId(rooms[0])}호`;
+      } else if (buildingMatches.length) {
+        const buildingNames = [...new Set(buildingMatches.map((room) => room.buildingName))];
+
+        if (buildingNames.length > 1) {
+          throw new BadRequestException(
+            `'${normalized}'에 해당하는 건물이 여러 곳입니다(${buildingNames.join(", ")}). 하나를 지정해 주세요.`
+          );
+        }
+
+        scope = "building";
+        targetLabel = buildingNames[0];
+        rooms = buildingMatches;
+      } else {
+        throw new BadRequestException(
+          `'${normalized}' 대상을 찾지 못했습니다. 전체, 건물명, 또는 '건물명 302호' 형식으로 알려주세요.`
+        );
+      }
+    }
+
+    const targetRoomIds = rooms.map((room) => room.id);
+    const recipientCount = this.recipientsForDraft({
+      targetRoomIds
+    } as MessagingAnnouncementDraft).length;
+
+    return { scope, targetLabel, targetRoomIds, recipientCount };
+  }
+
+  // AI 비서 확정 경로 — 초안 생성과 발송을 한 번에 처리한다. 긴급(urgent) 카테고리는
+  // 번역 검수 게이트가 있어 화면 전용이므로, 에이전트 공지는 생활(life)로 고정한다.
+  sendManagerAgentAnnouncement(
+    managerId: string,
+    input: {
+      scope: MessagingAnnouncementScope;
+      targetLabel: string;
+      targetRoomIds: string[];
+      title: string;
+      body: string;
+    }
+  ): MessagingAnnouncementResult {
+    const draft = this.createManagerAnnouncementDraft(managerId, {
+      category: "life",
+      scope: input.scope,
+      targetLabel: input.targetLabel,
+      targetRoomIds: input.targetRoomIds,
+      title: input.title,
+      body: input.body
+    });
+
+    return this.sendManagerAnnouncementDraft(managerId, draft.id);
   }
 
   sendManagerAnnouncementDraft(managerId: string, draftId: string): MessagingAnnouncementResult {

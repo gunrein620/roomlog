@@ -5922,6 +5922,55 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("prepares and sends manager announcements through the confirm-gated agent path", async () => {
+    const service = new RoomlogService();
+
+    // 대상이 애매하거나 제목·내용이 없으면 보류 준비 자체를 막고 되묻게 한다.
+    const missingContent = await service.resolveManagerAgentPendingCommand(
+      "landlord-demo",
+      "messaging.send_announcement",
+      { command: "messaging.send_announcement", target: "전체" }
+    );
+    assert.equal(missingContent.status, "blocked");
+    assert.match(missingContent.summary, /제목과 내용/);
+
+    const unknownTarget = await service.resolveManagerAgentPendingCommand(
+      "landlord-demo",
+      "messaging.send_announcement",
+      {
+        command: "messaging.send_announcement",
+        target: "존재하지않는빌라",
+        title: "단수 안내",
+        body: "내일 단수 예정입니다."
+      }
+    );
+    assert.equal(unknownTarget.status, "blocked");
+    assert.match(unknownTarget.summary, /대상을 찾지 못했습니다/);
+
+    // 명확한 대상은 수신 세대 수와 함께 확인 카드로 준비된다.
+    const ready = await service.resolveManagerAgentPendingCommand(
+      "landlord-demo",
+      "messaging.send_announcement",
+      {
+        command: "messaging.send_announcement",
+        target: "전체",
+        title: "단수 안내",
+        body: "6월 20일 14-15시 단수 예정입니다."
+      }
+    );
+    assert.equal(ready.status, "ready");
+    assert.match(ready.summary, /전체 \d+세대에 '단수 안내' 공지 발송/);
+
+    // 확정 실행은 실제 공지 발송으로 이어진다 (생활 카테고리 고정).
+    if (ready.status !== "ready") throw new Error("ready 상태가 아닙니다.");
+    const executed = await service.runManagerAgentCommand("landlord-demo", ready.commandInput);
+    assert.equal(executed.status, "executed");
+    assert.equal(executed.domain, "messaging");
+    assert.match(executed.summary, /공지를 발송했습니다/);
+    const results = service.listManagerAnnouncementResults("landlord-demo");
+    assert.ok(results.some((result) => result.title === "단수 안내" && result.category === "life"));
+  });
+
   it("summarizes total ticket counts for the manager agent", async () => {
     const service = new RoomlogService();
 

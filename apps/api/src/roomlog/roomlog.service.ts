@@ -5330,6 +5330,57 @@ export class RoomlogService implements OnModuleDestroy {
       }
     }
 
+    if (kind === "messaging.send_announcement") {
+      const title = input.title?.trim() ?? "";
+      const announcementBody = input.body?.trim() || input.text?.trim() || "";
+
+      if (!title || !announcementBody) {
+        return {
+          status: "blocked" as const,
+          domain: "messaging" as const,
+          summary: "공지 제목과 내용을 함께 알려주시면 발송을 준비하겠습니다.",
+          requiresConfirmation: true
+        };
+      }
+
+      try {
+        const audience = this.messaging.resolveManagerAnnouncementAudience(
+          managerId,
+          input.target
+        );
+
+        if (audience.recipientCount === 0) {
+          return {
+            status: "blocked" as const,
+            domain: "messaging" as const,
+            summary: `${audience.targetLabel} 대상에는 공지를 받을 세입자가 없습니다. 대상을 다시 확인해 주세요.`,
+            requiresConfirmation: true
+          };
+        }
+
+        return {
+          status: "ready" as const,
+          commandInput: {
+            ...input,
+            command: "messaging.send_announcement",
+            title,
+            body: announcementBody
+          },
+          summary: `${audience.targetLabel} ${audience.recipientCount}세대에 '${title}' 공지 발송`
+        };
+      } catch (error) {
+        return {
+          status: "blocked" as const,
+          domain: "messaging" as const,
+          summary:
+            error instanceof Error
+              ? error.message
+              : "공지 대상을 확인하지 못했습니다. 전체·건물·호실 중 하나로 알려주세요.",
+          requiresConfirmation: true
+        };
+      }
+    }
+
     const threadId = input.threadId?.trim() || this.defaultManagerMessagingThreadId(managerId);
 
     if (!threadId) {
@@ -5564,6 +5615,46 @@ export class RoomlogService implements OnModuleDestroy {
             error instanceof Error
               ? `${error.message} 독촉 발송을 중단했습니다.`
               : "독촉 대상과 가드 상태를 확인하지 못해 발송을 중단했습니다.",
+          requiresConfirmation: true
+        };
+      }
+    }
+
+    if (command === "messaging.send_announcement") {
+      const title = input.title?.trim() ?? "";
+      const announcementBody = body || text;
+
+      try {
+        const audience = this.messaging.resolveManagerAnnouncementAudience(
+          managerId,
+          input.target
+        );
+        const result = this.messaging.sendManagerAgentAnnouncement(managerId, {
+          scope: audience.scope,
+          targetLabel: audience.targetLabel,
+          targetRoomIds: audience.targetRoomIds,
+          title,
+          body: announcementBody
+        });
+
+        return {
+          status: "executed",
+          domain: "messaging",
+          summary: `${audience.targetLabel} ${result.counts.total}세대에 '${result.title}' 공지를 발송했습니다.`,
+          data: result,
+          navigation: {
+            label: "소통 허브",
+            href: "/manager/messaging/00"
+          }
+        };
+      } catch (error) {
+        return {
+          status: "blocked",
+          domain: "messaging",
+          summary:
+            error instanceof Error
+              ? `${error.message} 공지 발송을 중단했습니다.`
+              : "공지 대상과 내용을 확인하지 못해 발송을 중단했습니다.",
           requiresConfirmation: true
         };
       }
@@ -13742,7 +13833,15 @@ export class RoomlogService implements OnModuleDestroy {
   private managerAgentBlockedCommand(command: string, text: string) {
     const normalized = `${command} ${text}`.toLowerCase();
 
-    if (/confirm_payment|payment\.confirm|match_deposit|deposit\.match|announcement\.send|send_announcement|결제\s*확정|입금\s*확정|입금\s*매칭|공지\s*발송/.test(normalized)) {
+    if (/confirm_payment|payment\.confirm|match_deposit|deposit\.match|결제\s*확정|입금\s*확정|입금\s*매칭/.test(normalized)) {
+      return true;
+    }
+
+    // 공지는 확인 카드로 보류되는 messaging.send_announcement 경로만 허용한다.
+    if (
+      command !== "messaging.send_announcement" &&
+      /announcement\.send|send_announcement|공지\s*발송/.test(normalized)
+    ) {
       return true;
     }
 

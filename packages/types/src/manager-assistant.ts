@@ -9,7 +9,8 @@ export type ManagerAgentCommandName =
   | "portfolio.summary"
   | "messaging.list_threads"
   | "messaging.draft_reply"
-  | "messaging.send_reply";
+  | "messaging.send_reply"
+  | "messaging.send_announcement";
 
 export interface ManagerAgentCommandInput {
   command: string;
@@ -18,6 +19,10 @@ export interface ManagerAgentCommandInput {
   channel?: string;
   threadId?: string;
   body?: string;
+  /** 공지 제목 (messaging.send_announcement) */
+  title?: string;
+  /** 공지 대상 — "전체", 건물명, 또는 "건물명 302호" (messaging.send_announcement) */
+  target?: string;
 }
 
 export interface ManagerAgentCommandResult {
@@ -63,7 +68,7 @@ export interface ManagerDunningActionPreview {
 
 export interface ManagerCopilotPendingAction {
   id: string;
-  kind: "billing.send_dunning" | "messaging.send_reply";
+  kind: "billing.send_dunning" | "messaging.send_reply" | "messaging.send_announcement";
   summary: string;
   dunningPreview?: ManagerDunningActionPreview;
 }
