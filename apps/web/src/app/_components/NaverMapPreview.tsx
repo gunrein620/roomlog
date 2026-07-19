@@ -242,12 +242,25 @@ export function NaverMapPreview({
       : "";
   const addressKey = typeof address === "string" ? address.trim() : "";
 
-  const closeCenterInfoWindow = useCallback((maps: NaverMapsApi | undefined) => {
+  const closeCenterInfoWindow = useCallback((maps?: NaverMapsApi) => {
     centerInfoWindowRef.current?.close();
     centerInfoWindowRef.current = null;
     removeMapListener(maps, centerInfoWindowListenerRef.current);
     centerInfoWindowListenerRef.current = null;
   }, []);
+
+  const openCenterInfoWindow = useCallback((
+    maps: NaverMapsApi,
+    map: NaverMap,
+    marker: NaverMarker,
+    label: string,
+    detail: string
+  ) => {
+    closeCenterInfoWindow(maps);
+    const infoWindowHandle = createDismissibleInfoWindow(maps, map, marker, label, detail);
+    centerInfoWindowRef.current = infoWindowHandle.infoWindow;
+    centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
+  }, [closeCenterInfoWindow]);
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
@@ -396,26 +409,24 @@ export function NaverMapPreview({
     closeCenterInfoWindow(maps);
     if (centerMarkerRef.current?.setPosition) {
       centerMarkerRef.current.setPosition(nextCenter);
-    } else {
-      centerMarkerRef.current?.setMap(null);
-      centerMarkerRef.current = new maps.Marker({
+      openCenterInfoWindow(
+        maps,
         map,
-        position: nextCenter
-      });
+        centerMarkerRef.current,
+        title || "이 매물",
+        addressKey || "현재 위치"
+      );
+      return;
     }
 
-    const marker = centerMarkerRef.current;
-    if (!marker) return;
-    const infoWindowHandle = createDismissibleInfoWindow(
-      maps,
+    centerMarkerRef.current?.setMap(null);
+    const marker = new maps.Marker({
       map,
-      marker,
-      title || "이 매물",
-      addressKey || "현재 위치"
-    );
-    centerInfoWindowRef.current = infoWindowHandle.infoWindow;
-    centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
-  }, [addressKey, centerKey, closeCenterInfoWindow, loadState, showCenterMarker, title]);
+      position: nextCenter
+    });
+    centerMarkerRef.current = marker;
+    openCenterInfoWindow(maps, map, marker, title || "이 매물", addressKey || "현재 위치");
+  }, [addressKey, centerKey, closeCenterInfoWindow, loadState, openCenterInfoWindow, showCenterMarker, title]);
 
   useEffect(() => {
     if (centerKey || !addressKey || loadState !== "ready") return;
@@ -445,21 +456,19 @@ export function NaverMapPreview({
       closeCenterInfoWindow(maps);
       if (centerMarkerRef.current?.setPosition) {
         centerMarkerRef.current.setPosition(nextCenter);
-      } else {
-        centerMarkerRef.current?.setMap(null);
-        centerMarkerRef.current = new maps.Marker({
-          map,
-          position: nextCenter
-        });
+        openCenterInfoWindow(maps, map, centerMarkerRef.current, "매물 위치", addressKey);
+        return;
       }
 
-      const marker = centerMarkerRef.current;
-      if (!marker) return;
-      const infoWindowHandle = createDismissibleInfoWindow(maps, map, marker, "매물 위치", addressKey);
-      centerInfoWindowRef.current = infoWindowHandle.infoWindow;
-      centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
+      centerMarkerRef.current?.setMap(null);
+      const marker = new maps.Marker({
+        map,
+        position: nextCenter
+      });
+      centerMarkerRef.current = marker;
+      openCenterInfoWindow(maps, map, marker, "매물 위치", addressKey);
     });
-  }, [addressKey, centerKey, closeCenterInfoWindow, loadState, showCenterMarker]);
+  }, [addressKey, centerKey, closeCenterInfoWindow, loadState, openCenterInfoWindow, showCenterMarker]);
 
   const handleScriptReady = () => {
     requestAnimationFrame(() => {

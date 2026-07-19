@@ -71,8 +71,6 @@ const vendorDetailPage = source("app/vendor/job/01/page.tsx");
 const vendorEstimatePage = source("app/vendor/job/02/page.tsx");
 const vendorComponents = source("app/vendor/job/_components.tsx");
 const vendorWorkflowApi = source("lib/vendor-workflow-api.ts");
-const managerPage = source("app/manager/ticket/dash/04/page.tsx");
-const managerActions = source("app/manager/ticket/dash/04/actions.ts");
 
 test("revision note selector only exposes the current revision request provenance", () => {
   assert.equal(typeof selectVendorRevisionRequestNote, "function");
@@ -181,34 +179,4 @@ test("vendor screens wire trimmed availability and accessible revision-note UI",
       < vendorEstimatePage.indexOf("<EstimateResponseForm"),
     "the revision request must appear above the estimate form",
   );
-});
-
-test("manager visit review wires exactly two guarded actions without a client timestamp", () => {
-  const visitStart = managerPage.indexOf('estimate.responseType === "VISIT_REQUIRED"');
-  const visitEnd = managerPage.indexOf("{readOnly ?", visitStart);
-  assert.notEqual(visitStart, -1);
-  assert.notEqual(visitEnd, -1);
-  const visitBlock = managerPage.slice(visitStart, visitEnd);
-
-  assert.doesNotMatch(visitBlock, /name="scheduledAt"/);
-  assert.match(visitBlock, /formatVisitProposal\(estimate\.visitAvailableAt\)/);
-  assert.match(visitBlock, />업체 제안 일정</);
-  assert.equal((visitBlock.match(/<ManagerMutationForm action=/g) ?? []).length, 2);
-  assert.equal((visitBlock.match(/<button\b/g) ?? []).length, 2);
-  assert.equal((visitBlock.match(/>이 일정으로 확정<\/button>/g) ?? []).length, 1);
-  assert.equal((visitBlock.match(/>다른 시간 요청<\/button>/g) ?? []).length, 1);
-  assert.equal((visitBlock.match(/disabled=\{demo\}/g) ?? []).length, 2);
-
-  const guardedCondition = managerPage.slice(Math.max(0, visitStart - 100), visitStart);
-  assert.match(guardedCondition, /!readOnly/);
-});
-
-test("manager actions re-read the authoritative proposal before confirm or revision", () => {
-  assert.match(managerActions, /findManagerVendorJobByTicket/);
-  assert.match(managerActions, /requireCurrentManagerVisitProposal/);
-  assert.doesNotMatch(managerActions, /required\(formData, "scheduledAt"\)/);
-  assert.match(managerActions, /scheduledAt: proposal\.visitAvailableAt/);
-  assert.match(managerActions, /const note = required\(formData, "note"\);/);
-  assert.match(managerActions, /action: "REQUEST_REVISION"/);
-  assert.match(managerActions, /note: `방문 시간 재협의: \$\{note\}`/);
 });

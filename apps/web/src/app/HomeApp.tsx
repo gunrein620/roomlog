@@ -602,6 +602,14 @@ type ExternalMapSearchResult = {
   errorMessage?: string;
 };
 
+async function resolveMapQueryFallback(keyword: string, errorMessage?: string): Promise<ExternalMapSearchResult> {
+  const candidates = await resolveMapQueryCandidates(keyword);
+  return {
+    candidates,
+    errorMessage: candidates.length > 0 ? undefined : errorMessage
+  };
+}
+
 async function resolveLocalPlaceCandidates(query: string): Promise<ExternalMapSearchResult> {
   const keyword = query.trim();
   if (!keyword) return { candidates: [] };
@@ -610,10 +618,7 @@ async function resolveLocalPlaceCandidates(query: string): Promise<ExternalMapSe
     const response = await fetch(`/api/map/search?q=${encodeURIComponent(keyword)}`, { cache: "no-store" });
     const payload = (await response.json()) as NaverLocalPlaceSearchResponse;
     if (!response.ok || payload.configured === false) {
-      return {
-        candidates: [],
-        errorMessage: payload.message || "지역 검색 서비스를 확인할 수 없습니다."
-      };
+      return resolveMapQueryFallback(keyword, payload.message || "지도 검색 서비스를 확인할 수 없습니다.");
     }
 
     const seen = new Set<string>();
@@ -628,7 +633,21 @@ async function resolveLocalPlaceCandidates(query: string): Promise<ExternalMapSe
       if (item.kind === "address" || item.canonicalAddress) {
         addressCandidateCount += 1;
         const canonicalAddress = item.canonicalAddress?.trim() || addressText;
-        const geocoded = (await resolveMapQueryCandidates(canonicalAddress))[0];
+        const geocodeQueries = Array.from(
+          new Set(
+            [
+              canonicalAddress,
+              item.roadAddress?.trim(),
+              item.title?.trim(),
+              [item.description?.trim(), item.title?.trim()].filter(Boolean).join(" ")
+            ].filter((value): value is string => Boolean(value))
+          )
+        );
+        let geocoded: MapResolvedQuery | undefined;
+        for (const geocodeQuery of geocodeQueries) {
+          geocoded = (await resolveMapQueryCandidates(geocodeQuery))[0];
+          if (geocoded) break;
+        }
         if (!geocoded) continue;
 
         const key = `address|${geocoded.center.lat.toFixed(6)}|${geocoded.center.lng.toFixed(6)}`;
@@ -675,7 +694,7 @@ async function resolveLocalPlaceCandidates(query: string): Promise<ExternalMapSe
           : undefined
     };
   } catch {
-    return { candidates: [], errorMessage: "지역 검색 서비스 연결에 실패했습니다." };
+    return resolveMapQueryFallback(keyword, "지도 검색 서비스 연결에 실패했습니다.");
   }
 }
 

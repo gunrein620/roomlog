@@ -371,6 +371,127 @@ describe("Prisma direct handling authority", () => {
   );
 
   it(
+    "allows changing the selected vendor when a vendor-assigned ticket has no active repair",
+    { skip: !databaseUrl },
+    async () => {
+      const prisma = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: databaseUrl! })
+      });
+      const suffix = `${Date.now().toString(36)}_selected_change`;
+      const fixture = await createFixture(prisma, suffix);
+      const alternateVendorId = `vendor_direct_alternate_${suffix}`;
+      const events = new PrismaDomainEventRepository(databaseUrl!);
+      const assignments = new PrismaVendorWorkflowRepository(databaseUrl!, events);
+      try {
+        await prisma.vendorProfile.create({
+          data: {
+            id: alternateVendorId,
+            businessName: `직접 처리 변경 설비 ${suffix}`,
+            contactPerson: "이기사",
+            phone: `02-${suffix.slice(-4).padStart(4, "0")}-7003`,
+            serviceArea: "성동구",
+            trades: ["PLUMBING"],
+            serviceAreas: ["성동구"],
+            verificationStatus: "VERIFIED",
+            isActive: true
+          }
+        });
+        await prisma.managerVendor.create({
+          data: {
+            id: `manager_vendor_direct_alternate_${suffix}`,
+            managerId: fixture.managerId,
+            vendorId: alternateVendorId
+          }
+        });
+        await prisma.vendorAccountLink.create({
+          data: {
+            id: `vendor_link_direct_alternate_${suffix}`,
+            vendorId: alternateVendorId,
+            userId: fixture.vendorUserId
+          }
+        });
+        await prisma.ticket.update({
+          where: { id: fixture.ticketId },
+          data: { assignedVendorId: fixture.vendorId, status: "VENDOR_ASSIGNED" }
+        });
+        await prisma.complaint.update({
+          where: { id: fixture.complaintId },
+          data: { status: "VENDOR_ASSIGNED" }
+        });
+
+        const reassigned = await assignments.assignVendor({
+          managerId: fixture.managerId,
+          ticketId: fixture.ticketId,
+          vendorId: alternateVendorId,
+          requestNote: "선정 업체를 다른 업체로 변경합니다."
+        });
+
+        assert.equal(reassigned.status, "REQUESTED");
+        assert.equal(
+          (
+            await prisma.ticket.findUniqueOrThrow({ where: { id: fixture.ticketId } })
+          ).assignedVendorId,
+          alternateVendorId
+        );
+      } finally {
+        await assignments.close();
+        await events.close();
+        await prisma.managerVendor.deleteMany({ where: { vendorId: alternateVendorId } });
+        await prisma.vendorAccountLink.deleteMany({ where: { vendorId: alternateVendorId } });
+        try {
+          await cleanupFixture(prisma, fixture);
+        } finally {
+          await prisma.vendorProfile.deleteMany({ where: { id: alternateVendorId } });
+          await prisma.$disconnect();
+        }
+      }
+    }
+  );
+
+  it(
+    "allows selecting a vendor for an in-progress ticket without an active repair",
+    { skip: !databaseUrl },
+    async () => {
+      const prisma = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: databaseUrl! })
+      });
+      const fixture = await createFixture(prisma, `${Date.now().toString(36)}_legacy_progress`);
+      const events = new PrismaDomainEventRepository(databaseUrl!);
+      const assignments = new PrismaVendorWorkflowRepository(databaseUrl!, events);
+      try {
+        await prisma.ticket.update({
+          where: { id: fixture.ticketId },
+          data: { status: "REPAIR_IN_PROGRESS" }
+        });
+        await prisma.complaint.update({
+          where: { id: fixture.complaintId },
+          data: { status: "REPAIR_IN_PROGRESS" }
+        });
+
+        const assigned = await assignments.assignVendor({
+          managerId: fixture.managerId,
+          ticketId: fixture.ticketId,
+          vendorId: fixture.vendorId,
+          requestNote: "활성 수리가 없는 기존 처리 건에 업체를 선정합니다."
+        });
+
+        assert.equal(assigned.status, "REQUESTED");
+        assert.equal(
+          (
+            await prisma.ticket.findUniqueOrThrow({ where: { id: fixture.ticketId } })
+          ).status,
+          "VENDOR_ASSIGNED"
+        );
+      } finally {
+        await assignments.close();
+        await events.close();
+        await cleanupFixture(prisma, fixture);
+        await prisma.$disconnect();
+      }
+    }
+  );
+
+  it(
     "preserves reassignment of an active requested repair to a different vendor",
     { skip: !databaseUrl },
     async () => {

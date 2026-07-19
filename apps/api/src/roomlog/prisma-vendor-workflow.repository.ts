@@ -28,10 +28,13 @@ import type { AddVendorRepairMessageInput } from "./roomlog.types";
 import type { DomainEventRepository } from "../domain-events/domain-event.repository";
 import { mapRepairPaymentOrder } from "../credit/prisma-repair-payment-order.repository";
 import { publicRepairPaymentOrder } from "../credit/repair-payment-order-public";
+import { withDeadlockRetry } from "./prisma-deadlock-retry";
 import {
   requiredVendorTrade
 } from "./vendor-trade-compatibility";
 import {
+  isDirectManagerVendor,
+  managerVendorAssignmentWhere,
   vendorAssignmentWhere,
   vendorServesAddress
 } from "./vendor-assignment-eligibility";
@@ -53,6 +56,8 @@ const NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES = [
   "REVIEWING",
   "ADDITIONAL_INFO_REQUESTED",
   "VENDOR_ASSIGNMENT_PENDING",
+  "VENDOR_ASSIGNED",
+  "REPAIR_IN_PROGRESS",
   "REOPENED"
 ] as const;
 const PRESERVED_REPAIR_LIFECYCLE_STATUSES = ["SCHEDULED", "IN_PROGRESS"] as const;
@@ -547,7 +552,9 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       throw workflowError("INVALID_REQUEST", "업체에 전달할 요청 내용을 입력해 주세요.");
     }
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      // 스토어 프로젝터의 전체 미러 트랜잭션과 겹치면 데드락(40P01) 피해자로
+      // 롤백될 수 있다 — 트랜잭션 전체를 짧게 재시도한다(2026-07-19 운영 장애).
+      return await withDeadlockRetry(() => this.prisma.$transaction(async (tx) => {
         const manager = await tx.userAccount.findFirst({
           where: { id: command.managerId, status: "ACTIVE" },
           select: { id: true }
@@ -582,7 +589,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         const candidate = await tx.vendorProfile.findFirst({
           where: {
             id: command.vendorId,
-            ...vendorAssignmentWhere(command.managerId)
+            ...managerVendorAssignmentWhere(command.managerId)
           },
           include: {
             accountLinks: {
@@ -596,15 +603,16 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
             }
           }
         });
-        if (
-          !candidate ||
-          candidate.accountLinks.length === 0 ||
-          candidate.managerVendors.length === 0
-        ) {
+        const directRegistration = candidate
+          ? isDirectManagerVendor(candidate, command.managerId)
+          : false;
+        if (!candidate || candidate.managerVendors.length === 0 || (
+          !directRegistration && candidate.accountLinks.length === 0
+        )) {
           throw workflowError("VENDOR_NOT_ASSIGNABLE", "현재 상태의 업체는 배정할 수 없습니다.");
         }
 
-        if (!vendorServesAddress(candidate, ticket.room.address)) {
+        if (!directRegistration && !vendorServesAddress(candidate, ticket.room.address)) {
           throw workflowError("VENDOR_NOT_ASSIGNABLE", "해당 하자 위치에 출동 가능한 업체가 아닙니다.");
         }
 
@@ -674,7 +682,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         });
 
         return await this.projectJob(tx, repair.id);
-      });
+      }));
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
         throw error;

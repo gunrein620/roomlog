@@ -39,7 +39,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       </div>
       <div style={row}>
         <LinkButton href={ticketDashHref("01", ticket.id)}>이 근거로 책임 검토 반영</LinkButton>
-        <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">사진 재요청</LinkButton>
       </div>
     </div>
   );

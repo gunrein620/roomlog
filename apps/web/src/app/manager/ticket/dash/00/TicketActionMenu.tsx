@@ -112,9 +112,6 @@ export function TicketActionMenu({ ticketId, ticketTitle }: TicketActionMenuProp
               <Link role="menuitem" href={ticketDashHref("01", ticketId)}>
                 상세·정보입력
               </Link>
-              <Link role="menuitem" href={ticketDashHref("04", ticketId)}>
-                업체 선정·견적
-              </Link>
               <Link role="menuitem" href={ticketDashHref("05", ticketId)}>
                 결제·비용 승인
               </Link>

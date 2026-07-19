@@ -29,6 +29,8 @@ import {
   type ManagerVendorRepositoryErrorCode
 } from "./manager-vendor.repository";
 import {
+  isDirectManagerVendor,
+  managerVendorAssignmentWhere,
   vendorAssignmentWhere,
   vendorServesAddress
 } from "./vendor-assignment-eligibility";
@@ -121,17 +123,21 @@ function accountStatus(links: readonly VendorAccountLink[]): VendorAccountProjec
 function assignmentState(
   catalog: VendorCatalogRecord,
   account: VendorAccountProjectionStatus,
-  registration: "ACTIVE" | "ARCHIVED" | "UNREGISTERED"
+  registration: "ACTIVE" | "ARCHIVED" | "UNREGISTERED",
+  directRegistration = false,
 ) {
   const assignmentBlockReasons: VendorCatalogSearchResult["assignmentBlockReasons"] = [];
-  if (catalog.verificationStatus !== "VERIFIED") assignmentBlockReasons.push("UNVERIFIED");
+  if (!directRegistration && catalog.verificationStatus !== "VERIFIED") assignmentBlockReasons.push("UNVERIFIED");
   if (!catalog.isActive) assignmentBlockReasons.push("INACTIVE");
-  if (account !== "ACTIVE") assignmentBlockReasons.push("ACCOUNT_UNLINKED");
+  if (!directRegistration && account !== "ACTIVE") assignmentBlockReasons.push("ACCOUNT_UNLINKED");
   if (registration !== "ACTIVE") assignmentBlockReasons.push("NOT_REGISTERED");
   return { canAssign: assignmentBlockReasons.length === 0, assignmentBlockReasons };
 }
 
-function mapSearchResult(row: CatalogProjection): VendorCatalogSearchResult {
+function mapSearchResult(
+  row: CatalogProjection,
+  managerId?: string,
+): VendorCatalogSearchResult {
   const catalog = mapCatalog(row);
   const account = accountStatus(row.accountLinks);
   const registration = row.managerVendors[0]?.status ?? "UNREGISTERED";
@@ -139,7 +145,16 @@ function mapSearchResult(row: CatalogProjection): VendorCatalogSearchResult {
     catalog,
     accountStatus: account,
     registrationStatus: registration,
-    ...assignmentState(catalog, account, registration)
+    registrationSource:
+      managerId !== undefined && isDirectManagerVendor(row, managerId)
+        ? "MANAGER_DIRECT"
+        : "PLATFORM",
+    ...assignmentState(
+      catalog,
+      account,
+      registration,
+      managerId !== undefined && isDirectManagerVendor(row, managerId),
+    )
   };
 }
 
@@ -305,7 +320,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
   async searchCatalog(managerId: string, filters: VendorCatalogSearchFilters) {
     await this.assertValidManager(this.prisma, managerId);
     const rows = await this.catalogRows(this.prisma, managerId, filters);
-    return rows.map(mapSearchResult);
+    return rows.map((row) => mapSearchResult(row));
   }
 
   async searchAssignmentCandidates(
@@ -324,7 +339,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     const normalizedQuery = query?.trim();
     const rows = await this.prisma.vendorProfile.findMany({
       where: {
-        ...vendorAssignmentWhere(managerId),
+        ...managerVendorAssignmentWhere(managerId),
         ...(normalizedQuery
           ? { businessName: { contains: normalizedQuery, mode: "insensitive" } }
           : {})
@@ -341,7 +356,10 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       take: 25
     });
     const suggestedTrade = suggestedVendorTrade(ticket.category);
-    const candidates = rows.filter((vendor) => vendorServesAddress(vendor, ticket.room.address));
+    const candidates = rows.filter((vendor) =>
+      isDirectManagerVendor(vendor, managerId)
+      || vendorServesAddress(vendor, ticket.room.address),
+    );
     if (suggestedTrade) {
       candidates.sort((left, right) =>
         Number(vendorSupportsRequiredTrade(right.trades, suggestedTrade))
@@ -349,7 +367,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       );
     }
     return candidates
-      .map(mapSearchResult);
+      .map((vendor) => mapSearchResult(vendor, managerId));
   }
 
   async list(managerId: string, filters: VendorCatalogSearchFilters) {
@@ -487,8 +505,8 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
             serviceAreas: [],
             verificationStatus: "PENDING",
             isActive: true,
-            createdByManagerId: managerId
-          }
+            createdByManagerId: managerId,
+          },
         });
         await tx.managerVendor.create({
           data: {
@@ -496,8 +514,8 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
             managerId,
             vendorId,
             status: "ACTIVE",
-            settlementAccountNumber: input.accountNumber
-          }
+            settlementAccountNumber: input.accountNumber,
+          },
         });
         return this.requireView(tx, managerId, vendorId);
       });
@@ -585,10 +603,10 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
         {
           OR: [
             vendorAssignmentWhere(),
-            { createdByManagerId: managerId }
-          ]
-        }
-      ]
+            { createdByManagerId: managerId },
+          ],
+        },
+      ],
     };
   }
 
@@ -605,7 +623,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     const rows = await db.vendorProfile.findMany({
       where: {
         ...this.operationalCatalogWhere(filters),
-        createdByManagerId: null
+        createdByManagerId: null,
       },
       include: {
         accountLinks: true,
@@ -629,7 +647,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       where: {
         managerId,
         vendorId,
-        vendor: this.visibleCatalogWhere(managerId, {})
+        vendor: this.visibleCatalogWhere(managerId, {}),
       },
       include: { vendor: { include: { accountLinks: true } } }
     });

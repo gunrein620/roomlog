@@ -14,6 +14,7 @@ export type SocketTicketPayload = {
   sub: string;
   name: string;
   exp: number;
+  scope?: "PUBLIC_GARA";
 };
 
 function sign(payload: string): string {
@@ -23,6 +24,21 @@ function sign(payload: string): string {
 export function issueSocketTicket(userId: string, name: string): string {
   const payload = Buffer.from(
     JSON.stringify({ sub: userId, name, exp: Date.now() + TICKET_TTL_MS } satisfies SocketTicketPayload),
+    "utf8"
+  ).toString("base64url");
+
+  return `${payload}.${sign(payload)}`;
+}
+
+/** Gara 공개 화면은 사용자 데이터 없이 지급 목록 갱신 신호만 구독한다. */
+export function issuePublicGaraSocketTicket(): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: "public-gara",
+      name: "Gara 공개 화면",
+      scope: "PUBLIC_GARA",
+      exp: Date.now() + TICKET_TTL_MS
+    } satisfies SocketTicketPayload),
     "utf8"
   ).toString("base64url");
 

@@ -26,6 +26,12 @@ export class RealtimeGateway implements OnGatewayConnection {
       return;
     }
 
+    if (payload.scope === "PUBLIC_GARA") {
+      void client.join("public:gara");
+      this.logger.debug("connected public Gara client");
+      return;
+    }
+
     client.data.userId = payload.sub;
     void client.join(`user:${payload.sub}`);
     this.logger.debug(`connected user=${payload.sub}`);
@@ -50,5 +56,10 @@ export class RealtimeGateway implements OnGatewayConnection {
   /** 인증된 전체 클라이언트에게 보낸다 (룸로그 메시징/공지 갱신 신호). */
   broadcast(event: string, payload: Record<string, unknown>) {
     this.server?.emit(event, payload);
+  }
+
+  /** Gara 공개 화면과 관리자 화면 모두에 안전한 갱신 신호만 보낸다. */
+  notifyGaraPayoutUpdated() {
+    this.server?.emit("gara:payout-updated", { kind: "payout" });
   }
 }

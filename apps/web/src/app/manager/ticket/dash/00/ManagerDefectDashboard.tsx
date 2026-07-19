@@ -2,18 +2,16 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { ManagerVendorView } from "@roomlog/types";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
-import type { ManagerProxyIntakeRoom } from "@/lib/ticket-manager-api";
 import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
-import { ManagerProxyIntakeDialog } from "./ManagerProxyIntakeDialog";
-import styles from "./proxy-intake.module.css";
 import { TicketActionMenu } from "./TicketActionMenu";
+import { VendorAssignmentDialog } from "./VendorAssignmentDialog";
 import { TicketChatPanel } from "./TicketChatPanel";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
   filterDefectRows,
-  formatDefectDate,
   paginateDefectRows,
   type DefectDashboardFilters,
   type DefectDashboardRow,
@@ -28,7 +26,7 @@ const TABLE_COLUMNS = [
   "건물",
   "호실",
   "작업자",
-  "예정일시",
+  "업체 선정",
   "유형",
   "작업",
 ] as const;
@@ -59,10 +57,14 @@ function DashboardRow({
   row,
   isSelected,
   onSelect,
+  vendors,
+  vendorSelectionDisabled,
 }: {
   row: DefectDashboardRow;
   isSelected: boolean;
   onSelect: (row: DefectDashboardRow) => void;
+  vendors: readonly ManagerVendorView[];
+  vendorSelectionDisabled: boolean;
 }) {
   const displayStatus = ticketLaneOf(row.ticket.status) ?? "cancelled";
 
@@ -107,7 +109,12 @@ function DashboardRow({
         {row.repair?.vendorName ?? "미배정"}
       </td>
       <td className="manager-defect-dashboard__muted-cell">
-        {formatDefectDate(row.repair?.scheduledAt)}
+        <VendorAssignmentDialog
+          ticketId={row.ticket.id}
+          currentVendorName={row.repair?.vendorName}
+          vendors={vendors}
+          disabled={vendorSelectionDisabled}
+        />
       </td>
       <td>
         <span
@@ -131,11 +138,13 @@ function DashboardRow({
 
 export function ManagerDefectDashboard({
   rows,
-  proxyIntakeRooms,
+  vendors,
+  vendorSelectionDisabled = false,
   initialTemplate = "all",
 }: {
   rows: readonly DefectDashboardRow[];
-  proxyIntakeRooms: readonly ManagerProxyIntakeRoom[];
+  vendors: readonly ManagerVendorView[];
+  vendorSelectionDisabled?: boolean;
   initialTemplate?: DefectDashboardFilters["template"];
 }) {
   const [filters, setFilters] = useState<DefectDashboardFilters>({
@@ -149,7 +158,6 @@ export function ManagerDefectDashboard({
   const [locallyReadTicketIds, setLocallyReadTicketIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [proxyIntakeOpen, setProxyIntakeOpen] = useState(false);
   // 패널에서 바꾼 레인을 목록에 바로 반영한다(서버 트리를 다시 그리면 패널이 닫히므로).
   const [laneById, setLaneById] = useState<Record<string, TicketLane>>({});
 
@@ -224,25 +232,9 @@ export function ManagerDefectDashboard({
 
   return (
     <section className="manager-defect-dashboard" aria-labelledby="manager-defect-title">
-      <div className={styles.header}>
-        <h2 id="manager-defect-title">
-          {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원/하자 관리"}
-        </h2>
-        <div className={styles.headerAction}>
-          <button
-            type="button"
-            className={styles.openButton}
-            disabled={proxyIntakeRooms.length === 0}
-            aria-describedby={proxyIntakeRooms.length === 0 ? "proxy-intake-empty-hint" : undefined}
-            onClick={() => setProxyIntakeOpen(true)}
-          >대리 접수</button>
-          {proxyIntakeRooms.length === 0 ? (
-            <span id="proxy-intake-empty-hint" className={styles.emptyHint}>
-              대리 접수 가능한 호실이 없습니다.
-            </span>
-          ) : null}
-        </div>
-      </div>
+      <h2 id="manager-defect-title">
+        {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원/하자 관리"}
+      </h2>
 
       <div
         className="manager-defect-dashboard__status-filters"
@@ -332,6 +324,8 @@ export function ManagerDefectDashboard({
                 row={row}
                 isSelected={selectedRow?.ticket.id === row.ticket.id}
                 onSelect={selectRow}
+                vendors={vendors}
+                vendorSelectionDisabled={vendorSelectionDisabled}
               />
             ))}
             {pageResult.rows.length === 0 ? (
@@ -381,13 +375,6 @@ export function ManagerDefectDashboard({
           </button>
         </nav>
       </footer>
-
-      {proxyIntakeOpen ? (
-        <ManagerProxyIntakeDialog
-          rooms={proxyIntakeRooms}
-          onClose={() => setProxyIntakeOpen(false)}
-        />
-      ) : null}
 
       <TicketChatPanel
         row={selectedRow}
