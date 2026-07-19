@@ -2371,7 +2371,7 @@ export default function TenantMyPage({
               <div className="tenant-request-image-strip" aria-label="이미지 첨부">
                 <label className="tenant-request-image-input">
                   <ImagePlus size={24} strokeWidth={2.4} aria-hidden="true" />
-                  <span>이미지<br />(입력)</span>
+                  <span className="tenant-sr-only">이미지 첨부</span>
                   <input type="file" accept="image/*" multiple onChange={handleRequestImageChange} />
                 </label>
                 {requestImages.map((image) => (
