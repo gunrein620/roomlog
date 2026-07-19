@@ -68,10 +68,23 @@ services:
       # GPU_KEEP_WARM=1: 오케스트레이터가 인스턴스를 절대 stop하지 않음(사람이 수동 관리).
       # stop=NVMe 초기화로 docker 이미지가 날아가 bootstrap이 재실패하는 함정 회피 — 데모 기간 권장.
       GPU_KEEP_WARM: ${GPU_KEEP_WARM:-}
+      # 임차인 가구 USDZ→GLB 변환 워커(services/mesh-worker) — CPU 전용, GPU 인스턴스가 아니라 항상
+      # 켜져 있는 컨테이너. GPU_WORKER_SECRET을 그대로 공유한다(콜백 인증을 이원화하지 않는다).
+      MESH_WORKER_URL: ${MESH_WORKER_URL:-http://mesh-worker:5001}
     ports:
       - "4000:4000"
     volumes:
       - roomlog-api-data:/data
+
+  mesh-worker:
+    build:
+      context: .
+      dockerfile: services/mesh-worker/Dockerfile
+    container_name: roomlog-mesh-worker
+    restart: unless-stopped
+    environment:
+      PORT: "5001"
+      GPU_WORKER_SECRET: ${GPU_WORKER_SECRET:-}
 
   migration:
     image: roomlog-api:${ROOMLOG_API_IMAGE_TAG:-deploy}

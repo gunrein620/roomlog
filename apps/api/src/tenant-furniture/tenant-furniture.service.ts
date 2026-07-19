@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
   ServiceUnavailableException
@@ -20,6 +21,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 // 서브패스를 유지하며, 이 type-only import는 런타임 require로 emit되지 않는다.
 import type * as TenantFurnitureContract from "@roomlog/types/tenant-furniture";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
+import {
+  createMeshConversionDispatcher,
+  type MeshConversionDispatcher
+} from "./mesh-conversion-dispatcher";
 
 type FurnitureDimensionsMm = TenantFurnitureContract.FurnitureDimensionsMm;
 type ObjectCaptureCompleteRequest = TenantFurnitureContract.ObjectCaptureCompleteRequest;
@@ -245,12 +250,18 @@ function placementView(row: PrismaTenantFurniturePlacement): TenantFurniturePlac
 
 @Injectable()
 export class TenantFurnitureService {
+  private readonly logger = new Logger(TenantFurnitureService.name);
   private readonly prisma?: PrismaClient;
   // splat-asset.service와 동일 기본값 — S3_UPLOADS_ENABLED가 켜지면 자동으로 S3 어댑터로 전환된다.
   private readonly storageAdapter: FileStorageAdapter = createFileStorageAdapter(
     process.env,
     resolve(process.env.LOCAL_UPLOAD_DIR || "uploads"),
     process.env.PUBLIC_UPLOAD_BASE_URL || "/api/files"
+  );
+  // MESH_WORKER_URL/PUBLIC_API_BASE_URL/GPU_WORKER_SECRET 중 하나라도 비면 dispatch() 즉시 실패
+  // (UnconfiguredMeshConversionDispatcher) — 로컬 dev 기본값. 테스트는 이 필드를 직접 교체한다.
+  private readonly meshConversionDispatcher: MeshConversionDispatcher = createMeshConversionDispatcher(
+    process.env
   );
 
   constructor(
@@ -475,20 +486,62 @@ export class TenantFurnitureService {
   }
 
   /**
-   * USDZ→GLB 변환 잡 훅 — 지금은 상태만 CONVERTING으로 올린다("잡 레코드" = 이 가구 행 자체, 별도
-   * 테이블 없음). TODO: GPU 박스에 실제 USDZ→GLB 잡을 디스패치한다(변환 도구 = 인프라, 아직 미설치).
-   * reconstruction 모듈의 큐→인스턴스 기동→SSM 잡 패턴(gpu-instance.service.ts,
-   * reconstruction-orchestrator.service.ts)을 그대로 재사용할 자리 — 지금은 받는 쪽 배선만 완성해둔다.
+   * USDZ→GLB 변환 잡 훅 — 상태를 CONVERTING으로 올린 뒤 mesh-worker에 실제 변환 잡을 디스패치한다
+   * ("잡 레코드" = 이 가구 행 자체, 별도 테이블 없음). GPU 재구성과 달리 이 변환은 CPU 작업(Blender
+   * headless)이라 GPU 인스턴스 기동/정지 수명주기가 없다 — mesh-worker는 항상 켜져 있는 경량 컨테이너
+   * (mesh-conversion-dispatcher.ts 참고, reconstruction 패턴을 그대로 복사하지 않은 이유).
+   * 디스패치 자체가 실패하면(워커 미배선·presign 불가 등) CONVERTING에 조용히 머무르지 않고 즉시
+   * FAILED로 떨어뜨린다 — "빈 상태·오류를 데모로 은폐 금지" 원칙. 기존 meshUrl(업그레이드 전 값)은
+   * 건드리지 않는다.
    */
   async queueMeshConversion(furniture: PrismaTenantFurniture): Promise<PrismaTenantFurniture> {
-    return this.getPrisma().tenantFurniture.update({
+    const converting = await this.getPrisma().tenantFurniture.update({
       where: { id: furniture.id },
       data: { meshJobState: "CONVERTING" }
+    });
+
+    try {
+      await this.dispatchMeshConversion(converting);
+    } catch (err) {
+      const message = (err as Error).message;
+      this.logger.warn(`메시 변환 디스패치 실패 furniture=${furniture.id}: ${message}`);
+      return this.getPrisma().tenantFurniture.update({
+        where: { id: furniture.id },
+        data: { meshJobState: "FAILED" }
+      });
+    }
+
+    return converting;
+  }
+
+  /** GLB 업로드용 presigned PUT을 발급하고 워커에 잡을 던진다. 실패하면 그대로 던져 호출자가 처리한다. */
+  private async dispatchMeshConversion(furniture: PrismaTenantFurniture): Promise<void> {
+    if (!furniture.usdzUrl) {
+      throw new Error("usdzUrl 없이 변환을 큐잉할 수 없습니다.");
+    }
+    if (!this.storageAdapter.presignUpload) {
+      // 로컬(S3 비활성) 개발 환경 — presignObjectCapture와 동일하게 이 스코프는 멀티파트 폴백을 구현하지 않는다.
+      throw new Error("GLB 업로드를 위해 S3 저장소가 필요합니다(로컬 개발 환경은 변환을 지원하지 않습니다).");
+    }
+
+    const key = `object-capture-glb/${furniture.ownerTenantId}/${furniture.id}-${randomUUID().slice(0, 8)}.glb`;
+    const presigned = await this.storageAdapter.presignUpload({
+      key,
+      mimeType: "model/gltf-binary",
+      expiresInSeconds: 3600
+    });
+
+    await this.meshConversionDispatcher.dispatch({
+      furnitureId: furniture.id,
+      usdzUrl: furniture.usdzUrl,
+      glbUploadUrl: presigned.uploadUrl,
+      glbUploadHeaders: presigned.headers,
+      glbPublicUrl: presigned.publicUrl
     });
   }
 
   /**
-   * GPU 콜백(성공) — GLB URL을 붙이고 source를 object-capture로 승격한다. 업그레이드 대상(기존
+   * mesh-worker 콜백(성공) — GLB URL을 붙이고 source를 object-capture로 승격한다. 업그레이드 대상(기존
    * roomplan/manual 가구)은 변환이 끝나기 전까지 원래 source로 회색 박스를 그대로 렌더해야 하므로,
    * source 전환은 여기(완료 시점)에서만 일어난다 — 새로 만든 가구는 생성 시점에 이미 object-capture라
    * 여기서는 멱등한 재확인이다.
@@ -502,9 +555,10 @@ export class TenantFurnitureService {
     return furnitureView(row);
   }
 
-  /** GPU 콜백(실패) — 잡 상태만 FAILED로 남긴다. 기존 meshUrl(업그레이드 전 값)은 건드리지 않는다. */
+  /** 워커 콜백(실패) — 잡 상태만 FAILED로 남긴다. 기존 meshUrl(업그레이드 전 값)은 건드리지 않는다. */
   async markMeshConversionFailed(furnitureId: string, error: string): Promise<TenantFurniture> {
     await this.requireExists(furnitureId);
+    this.logger.warn(`메시 변환 워커 실패 콜백 furniture=${furnitureId}: ${error}`);
     const row = await this.getPrisma().tenantFurniture.update({
       where: { id: furnitureId },
       data: { meshJobState: "FAILED" }

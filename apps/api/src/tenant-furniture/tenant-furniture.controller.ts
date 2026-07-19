@@ -104,8 +104,9 @@ export class TenantFurnitureController {
     return this.tenantFurnitureService.completeObjectCapture(user.id, body);
   }
 
-  // GPU 박스 콜백(워커 시크릿) — 사람(TENANT) 인증이 아니라 시스템 주체. splat-asset의
-  // reconstruction.controller.ts와 동일한 콜백 패턴(성공/실패 분리)을 따른다.
+  // mesh-worker 콜백(워커 시크릿) — 사람(TENANT) 인증이 아니라 시스템 주체. GPU_WORKER_SECRET을
+  // reconstruction과 공유한다(둘 다 requireWorkerSecret). splat-asset의 reconstruction.controller.ts와
+  // 동일한 콜백 패턴(성공/실패 분리)을 따른다.
   @Post(":id/mesh-conversion/complete")
   async completeMeshConversion(
     @Headers("x-worker-secret") workerSecret: string | undefined,

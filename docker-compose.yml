@@ -51,6 +51,12 @@ services:
       VENDOR_ACTIVATION_KEY_PEPPER: ${VENDOR_ACTIVATION_KEY_PEPPER:-roomlog-local-vendor-activation-pepper}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-roomlog-files}
+      # 임차인 가구 USDZ→GLB 변환 워커(services/mesh-worker). S3_UPLOADS_ENABLED가 꺼져 있으면(로컬
+      # 기본값) GLB 업로드용 presign을 발급할 수 없어 큐잉 자체가 즉시 FAILED로 떨어진다 — 로컬에서
+      # 끝까지 확인하려면 S3_UPLOADS_ENABLED=true 등 S3 값도 함께 채워야 한다(docs/mesh-conversion-worker.md).
+      MESH_WORKER_URL: ${MESH_WORKER_URL:-http://mesh-worker:5001}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://api:4000}
+      GPU_WORKER_SECRET: ${GPU_WORKER_SECRET:-roomlog-local-worker-secret}
     ports:
       - "4000:4000"
     volumes:
@@ -60,6 +66,18 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
+
+  mesh-worker:
+    build:
+      context: .
+      dockerfile: services/mesh-worker/Dockerfile
+    container_name: roomlog-mesh-worker
+    restart: unless-stopped
+    environment:
+      PORT: "5001"
+      GPU_WORKER_SECRET: ${GPU_WORKER_SECRET:-roomlog-local-worker-secret}
+    ports:
+      - "5001:5001"
 
   migration:
     image: roomlog-api:${ROOMLOG_API_IMAGE_TAG:-local}

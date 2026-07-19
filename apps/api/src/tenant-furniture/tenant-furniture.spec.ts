@@ -24,6 +24,28 @@ function serviceWithFakes(prisma: unknown, storageAdapter: unknown): TenantFurni
   return service;
 }
 
+/** presignUpload를 갖춘 최소 스토리지 페이크 — GLB 업로드 대상 발급까지 필요한 테스트가 재사용한다. */
+function fakeStorageAdapterWithPresign(overrides: Record<string, unknown> = {}) {
+  return {
+    headObject: async () => ({ sizeBytes: 4096, mimeType: "model/vnd.usdz+zip" }),
+    publicUrl: (key: string) => `https://cdn.example/${key}`,
+    presignUpload: async (input: { key: string; mimeType: string }) => ({
+      uploadUrl: `https://s3.example/put/${input.key}`,
+      key: input.key,
+      headers: { "Content-Type": input.mimeType },
+      expiresAt: new Date("2026-07-19T01:00:00.000Z"),
+      publicUrl: `https://cdn.example/${input.key}`
+    }),
+    ...overrides
+  };
+}
+
+/** dispatch()가 즉시 성공하는 페이크 디스패처를 서비스에 심는다. */
+function withNoOpDispatcher(service: TenantFurnitureService): TenantFurnitureService {
+  (service as any).meshConversionDispatcher = { dispatch: async () => {} };
+  return service;
+}
+
 describe("mapRoomPlanCategory", () => {
   it("maps RoomPlan labels case-insensitively and tolerates separators", () => {
     assert.equal(mapRoomPlanCategory("BED"), "bed");
@@ -322,10 +344,7 @@ describe("TenantFurnitureService object-capture complete", () => {
         }
       }
     };
-    const service = serviceWithFakes(prisma, {
-      headObject: async () => ({ sizeBytes: 4096, mimeType: "model/vnd.usdz+zip" }),
-      publicUrl: (key: string) => `https://cdn.example/${key}`
-    });
+    const service = withNoOpDispatcher(serviceWithFakes(prisma, fakeStorageAdapterWithPresign()));
 
     const result = await service.completeObjectCapture("tenant-1", {
       key: "object-capture/tenant-1/scan.usdz",
@@ -363,7 +382,7 @@ describe("TenantFurnitureService object-capture complete", () => {
     assert.equal(result.usdzUrl, "https://cdn.example/object-capture/tenant-1/scan.usdz");
   });
 
-  it("upgrades an existing furniture's usdzUrl but only the GPU callback flips source/meshUrl", async () => {
+  it("upgrades an existing furniture's usdzUrl but only the worker callback flips source/meshUrl", async () => {
     const existing = {
       id: "tf-1",
       ownerTenantId: "tenant-1",
@@ -389,17 +408,14 @@ describe("TenantFurnitureService object-capture complete", () => {
         }
       }
     };
-    const service = serviceWithFakes(prisma, {
-      headObject: async () => ({ sizeBytes: 4096, mimeType: "model/vnd.usdz+zip" }),
-      publicUrl: (key: string) => `https://cdn.example/${key}`
-    });
+    const service = withNoOpDispatcher(serviceWithFakes(prisma, fakeStorageAdapterWithPresign()));
 
     const result = await service.completeObjectCapture("tenant-1", {
       furnitureId: "tf-1",
       key: "object-capture/tenant-1/scan.usdz"
     });
 
-    // usdzUrl은 붙었지만, source는 아직 manual(GPU 콜백 전까지 기존 박스를 그대로 렌더).
+    // usdzUrl은 붙었지만, source는 아직 manual(워커 콜백 전까지 기존 박스를 그대로 렌더).
     assert.equal(result.source, "manual");
     assert.equal(result.usdzUrl, "https://cdn.example/object-capture/tenant-1/scan.usdz");
     assert.equal(result.meshJobState, "CONVERTING");
@@ -437,6 +453,129 @@ describe("TenantFurnitureService object-capture complete", () => {
         }),
       ForbiddenException
     );
+  });
+});
+
+describe("TenantFurnitureService.queueMeshConversion dispatch", () => {
+  function rowFixture(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "tf-1",
+      ownerTenantId: "tenant-1",
+      category: "chair",
+      label: null,
+      widthMm: 500,
+      depthMm: 500,
+      heightMm: 500,
+      source: "object-capture",
+      meshUrl: null,
+      usdzUrl: "https://cdn.example/object-capture/tenant-1/scan.usdz",
+      meshJobState: "CONVERTING",
+      createdAt: new Date("2026-07-19T00:00:00.000Z"),
+      ...overrides
+    };
+  }
+
+  it("dispatches through the injected dispatcher and stays CONVERTING on success", async () => {
+    const row = rowFixture();
+    const updates: Array<Record<string, unknown>> = [];
+    const dispatchedJobs: Array<Record<string, unknown>> = [];
+    const service = serviceWithFakes(
+      {
+        tenantFurniture: {
+          update: ({ data }: { data: Record<string, unknown> }) => {
+            updates.push(data);
+            Object.assign(row, data);
+            return Promise.resolve({ ...row });
+          }
+        }
+      },
+      fakeStorageAdapterWithPresign()
+    );
+    (service as any).meshConversionDispatcher = {
+      dispatch: async (job: Record<string, unknown>) => {
+        dispatchedJobs.push(job);
+      }
+    };
+
+    const result = await service.queueMeshConversion(row as any);
+
+    assert.equal(result.meshJobState, "CONVERTING");
+    // 성공 경로는 CONVERTING 1회만 쓴다 — 실패 시의 추가 FAILED 갱신이 없어야 한다.
+    assert.equal(updates.length, 1);
+    assert.equal(dispatchedJobs.length, 1);
+    assert.equal(dispatchedJobs[0].furnitureId, "tf-1");
+    assert.equal(dispatchedJobs[0].usdzUrl, row.usdzUrl);
+    assert.match(String(dispatchedJobs[0].glbUploadUrl), /^https:\/\/s3\.example\/put\/object-capture-glb\/tenant-1\//);
+    assert.match(String(dispatchedJobs[0].glbPublicUrl), /^https:\/\/cdn\.example\/object-capture-glb\/tenant-1\//);
+  });
+
+  it("falls back to FAILED when the dispatcher throws, without touching an existing meshUrl", async () => {
+    const row = rowFixture({ meshUrl: "https://cdn.example/glb/old.glb" });
+    const service = serviceWithFakes(
+      {
+        tenantFurniture: {
+          update: ({ data }: { data: Record<string, unknown> }) => {
+            Object.assign(row, data);
+            return Promise.resolve({ ...row });
+          }
+        }
+      },
+      fakeStorageAdapterWithPresign()
+    );
+    (service as any).meshConversionDispatcher = {
+      dispatch: async () => {
+        throw new Error("mesh-worker 연결 실패");
+      }
+    };
+
+    const result = await service.queueMeshConversion(row as any);
+
+    assert.equal(result.meshJobState, "FAILED");
+    assert.equal(result.meshUrl, "https://cdn.example/glb/old.glb");
+  });
+
+  it("falls back to FAILED when the storage adapter cannot presign an upload target (local dev, S3 off)", async () => {
+    const row = rowFixture();
+    const service = serviceWithFakes(
+      {
+        tenantFurniture: {
+          update: ({ data }: { data: Record<string, unknown> }) => {
+            Object.assign(row, data);
+            return Promise.resolve({ ...row });
+          }
+        }
+      },
+      { headObject: async () => ({ sizeBytes: 4096, mimeType: "model/vnd.usdz+zip" }) } // presignUpload 없음
+    );
+    (service as any).meshConversionDispatcher = {
+      dispatch: async () => assert.fail("presign 없이는 워커를 호출하면 안 됩니다.")
+    };
+
+    const result = await service.queueMeshConversion(row as any);
+
+    assert.equal(result.meshJobState, "FAILED");
+  });
+
+  it("falls back to FAILED when usdzUrl is missing", async () => {
+    const row = rowFixture({ usdzUrl: null });
+    const service = serviceWithFakes(
+      {
+        tenantFurniture: {
+          update: ({ data }: { data: Record<string, unknown> }) => {
+            Object.assign(row, data);
+            return Promise.resolve({ ...row });
+          }
+        }
+      },
+      fakeStorageAdapterWithPresign()
+    );
+    (service as any).meshConversionDispatcher = {
+      dispatch: async () => assert.fail("usdzUrl 없이는 워커를 호출하면 안 됩니다.")
+    };
+
+    const result = await service.queueMeshConversion(row as any);
+
+    assert.equal(result.meshJobState, "FAILED");
   });
 });
 
