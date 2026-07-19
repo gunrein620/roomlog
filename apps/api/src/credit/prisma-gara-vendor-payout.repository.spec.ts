@@ -159,6 +159,114 @@ describe("PrismaCreditCommandRepository.createGaraVendorPayout", () => {
       }
     },
   );
+
+  it(
+    "automatically debits a public Gara request at or below the manager policy limit",
+    { skip: !databaseUrl },
+    async () => {
+      const prisma = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: databaseUrl! }),
+      });
+      const suffix = Date.now().toString(36);
+      const managerId = `usr_gara_auto_${suffix}`;
+      const vendorId = `vendor_gara_auto_${suffix}`;
+      const managerVendorId = `manager_vendor_gara_auto_${suffix}`;
+      const creditAccountId = `credit_gara_auto_${suffix}`;
+      const repository = new PrismaCreditCommandRepository(
+        { client: prisma } as never,
+        { enqueue: async () => ({ eventId: "unused" }) } as never,
+      );
+      const candidate = repository as unknown as {
+        createPublicGaraVendorPayoutRequest(input: {
+          managerVendorId: string;
+          amount: number;
+          idempotencyKey: string;
+        }): Promise<{ status: string }>;
+      };
+
+      try {
+        await prisma.userAccount.create({
+          data: {
+            id: managerId,
+            email: `gara-auto-${suffix}@roomlog.test`,
+            passwordHash: "salt:hash",
+            name: "Gara 자동지급 관리자",
+            role: "LANDLORD",
+          },
+        });
+        await prisma.vendorProfile.create({
+          data: {
+            id: vendorId,
+            businessName: "Gara 자동지급 설비",
+            contactPerson: "가라 기사",
+            phone: `010-${suffix.slice(-4).padStart(4, "0")}-1000`,
+            serviceArea: "성동구",
+            trades: ["PLUMBING"],
+            serviceAreas: ["성동구"],
+            verificationStatus: "VERIFIED",
+          },
+        });
+        await prisma.managerVendor.create({
+          data: {
+            id: managerVendorId,
+            managerId,
+            vendorId,
+            status: "ACTIVE",
+            settlementAccountNumber: "110-999-000001",
+          },
+        });
+        await prisma.creditAccount.create({
+          data: { id: creditAccountId, managerId, balance: 10_000n },
+        });
+        await prisma.autoPayPolicy.create({
+          data: {
+            id: `auto_pay_gara_${suffix}`,
+            managerId,
+            mode: "AUTO_DEBIT_UNDER_LIMIT",
+            perRequestLimit: 5_000n,
+          },
+        });
+
+        const automatic = await candidate.createPublicGaraVendorPayoutRequest({
+          managerVendorId,
+          amount: 4_000,
+          idempotencyKey: `gara-auto-under-${suffix}`,
+        });
+        const awaitingApproval = await candidate.createPublicGaraVendorPayoutRequest({
+          managerVendorId,
+          amount: 5_001,
+          idempotencyKey: `gara-auto-over-${suffix}`,
+        });
+
+        assert.equal(automatic.status, "CREDIT_DEBITED");
+        assert.equal(awaitingApproval.status, "PENDING_APPROVAL");
+        assert.equal(
+          (await prisma.creditAccount.findUniqueOrThrow({ where: { id: creditAccountId } })).balance,
+          6_000n,
+        );
+        assert.equal(
+          await prisma.creditLedgerEntry.count({
+            where: { creditAccountId, type: "AUTO_DEBIT", referenceType: "GARA_VENDOR_PAYOUT_REQUEST" },
+          }),
+          1,
+        );
+      } finally {
+        await prisma.garaVendorPayoutRequest.deleteMany({ where: { managerId } });
+        await prisma.$executeRawUnsafe('ALTER TABLE "CreditLedgerEntry" DISABLE TRIGGER USER');
+        try {
+          await prisma.creditLedgerEntry.deleteMany({ where: { creditAccountId } });
+        } finally {
+          await prisma.$executeRawUnsafe('ALTER TABLE "CreditLedgerEntry" ENABLE TRIGGER USER');
+        }
+        await prisma.autoPayPolicy.deleteMany({ where: { managerId } });
+        await prisma.creditAccount.deleteMany({ where: { id: creditAccountId } });
+        await prisma.managerVendor.deleteMany({ where: { id: managerVendorId } });
+        await prisma.vendorProfile.deleteMany({ where: { id: vendorId } });
+        await prisma.userAccount.deleteMany({ where: { id: managerId } });
+        await prisma.$disconnect();
+      }
+    },
+  );
 });
 
 describe("PrismaCreditCommandRepository.finalizeTopup Gara payout", () => {

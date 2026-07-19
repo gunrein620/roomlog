@@ -497,9 +497,70 @@ export class PrismaCreditCommandRepository
         throw new BadRequestException("업체 계좌번호를 등록한 뒤 지급 요청을 만들어 주세요.");
       }
 
+      const payoutId = `gara-vendor-payout-${randomUUID()}`;
+      const account = await this.ensureAccountRows(tx, registration.managerId);
+      const policy = await tx.autoPayPolicy.findUniqueOrThrow({
+        where: { managerId: registration.managerId }
+      });
+      const shouldAutoDebit =
+        policy.mode === "AUTO_DEBIT_UNDER_LIMIT" &&
+        policy.perRequestLimit !== null &&
+        BigInt(amount) <= policy.perRequestLimit;
+
+      if (shouldAutoDebit) {
+        const now = new Date();
+        const debited = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          UPDATE "CreditAccount"
+          SET "balance" = "balance" - ${BigInt(amount)}, "version" = "version" + 1, "updatedAt" = ${now}
+          WHERE "id" = ${account.id} AND "balance" >= ${BigInt(amount)}
+          RETURNING "id"
+        `);
+        if (debited.length === 1) {
+          const accountAfter = await tx.creditAccount.findUniqueOrThrow({
+            where: { id: account.id }
+          });
+          const ledgerEntryId = `credit-ledger-${randomUUID()}`;
+          await tx.creditLedgerEntry.create({
+            data: {
+              id: ledgerEntryId,
+              creditAccountId: account.id,
+              type: "AUTO_DEBIT",
+              signedAmount: -BigInt(amount),
+              balanceAfter: accountAfter.balance,
+              referenceType: "GARA_VENDOR_PAYOUT_REQUEST",
+              referenceId: payoutId,
+              idempotencyKey: `gara-payout-auto:${idempotencyKey}`
+            }
+          });
+          const payout = await tx.garaVendorPayoutRequest.create({
+            data: {
+              id: payoutId,
+              managerId: registration.managerId,
+              managerVendorId: registration.id,
+              vendorId: registration.vendorId,
+              creditAccountId: account.id,
+              ledgerEntryId,
+              amount: BigInt(amount),
+              accountNumberSnapshot: accountNumber,
+              status: "CREDIT_DEBITED",
+              idempotencyKey,
+              payloadHash,
+              processedAt: now
+            }
+          });
+          return {
+            id: payout.id,
+            amount,
+            accountNumber: payout.accountNumberSnapshot,
+            status: payout.status,
+            createdAt: payout.createdAt.toISOString()
+          };
+        }
+      }
+
       const payout = await tx.garaVendorPayoutRequest.create({
         data: {
-          id: `gara-vendor-payout-${randomUUID()}`,
+          id: payoutId,
           managerId: registration.managerId,
           managerVendorId: registration.id,
           vendorId: registration.vendorId,
