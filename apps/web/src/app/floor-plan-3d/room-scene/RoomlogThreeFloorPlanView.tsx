@@ -504,12 +504,15 @@ function RoomOrbitControls({
   enabled = true,
   maxDistance = 42,
   minDistance = 5,
-  target
+  target,
+  zoomEnabled = true
 }: {
   enabled?: boolean;
   maxDistance?: number;
   minDistance?: number;
   target: [number, number, number];
+  /** false면 휠 줌 비활성 — 페이지 스크롤 흐름 속 뷰(상세 히어로)에서 휠을 뺏지 않게. */
+  zoomEnabled?: boolean;
 }) {
   const invalidate = useThree((state) => state.invalidate);
 
@@ -517,6 +520,7 @@ function RoomOrbitControls({
     <OrbitControls
       enableDamping
       enabled={enabled}
+      enableZoom={zoomEnabled}
       makeDefault
       maxDistance={maxDistance}
       maxPolarAngle={Math.PI / 2.05}
@@ -530,7 +534,15 @@ function RoomOrbitControls({
 
 // 방 크기에 맞춰 카메라 거리를 자동 계산 — 고정 카메라로는 작은 방이 점처럼,
 // 큰 방이 화면 밖으로 나가므로, 진입/방 크기 변경 시 전체가 보이는 거리로 재배치한다.
-function RoomCameraAutoFit({ bounds }: { bounds: ReturnType<typeof computeWallBoundsXZ> }) {
+function RoomCameraAutoFit({
+  bounds,
+  distanceScale = 1
+}: {
+  bounds: ReturnType<typeof computeWallBoundsXZ>;
+  /** 씬 그룹 스케일·여백 보정 배율 — 오토핏은 무스케일 벽 좌표로 계산하므로,
+   *  horizontalScale로 방을 키운 뷰(상세 3D)는 그만큼 곱해 줘야 방이 화면에 작게 뜬다. */
+  distanceScale?: number;
+}) {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
   // 벽을 조금 옮길 때마다 카메라가 튀지 않게, 0.5m 단위로 반올림한 크기가 바뀔 때만 재배치한다.
@@ -538,12 +550,12 @@ function RoomCameraAutoFit({ bounds }: { bounds: ReturnType<typeof computeWallBo
 
   useEffect(() => {
     const longSide = Math.max(bounds.width, bounds.height);
-    const distance = Math.min(40, Math.max(6, longSide * 1.5));
+    const distance = Math.min(40, Math.max(6, longSide * 1.5)) * distanceScale;
     camera.position.set(bounds.centerX + distance * 0.55, distance * 0.7, bounds.centerZ + distance * 0.85);
     camera.lookAt(bounds.centerX, 0, bounds.centerZ);
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boundsKey, camera, invalidate]);
+  }, [boundsKey, camera, distanceScale, invalidate]);
 
   return null;
 }
@@ -551,6 +563,7 @@ function RoomCameraAutoFit({ bounds }: { bounds: ReturnType<typeof computeWallBo
 export function RoomlogThreeFloorPlanView({
   cameraPosition = [14, 12, 18],
   controlsEnabled = true,
+  fitDistanceScale = 1,
   frameloop = "demand",
   furnitureData,
   furnitureVerticalScale = 1,
@@ -559,6 +572,7 @@ export function RoomlogThreeFloorPlanView({
   mitunetPlan,
   orbitMaxDistance = 42,
   orbitMinDistance = 5,
+  orbitZoomEnabled = true,
   onFloorPointerDown,
   onFloorPointerMove,
   onFurniturePointerDown,
@@ -570,6 +584,7 @@ export function RoomlogThreeFloorPlanView({
   onSelectedRotateRight,
   onWallPointerDown,
   pendingFurniture,
+  sceneBackground = "#626260",
   selectedFurnitureId,
   selectedWallId,
   wallsData
@@ -580,6 +595,8 @@ export function RoomlogThreeFloorPlanView({
   // 편집기는 "demand"(입력 시에만 렌더)로 효율적이지만, 읽기 전용 뷰어는
   // 드래그 전에도 방이 보여야 하므로 "always"를 넘겨 즉시·리사이즈 시 계속 렌더한다.
   frameloop?: "demand" | "always";
+  /** 카메라 오토핏 거리 배율 — 1보다 크면 방이 화면 중앙에 더 작게 뜬다(상세 3D 히어로). */
+  fitDistanceScale?: number;
   furnitureData: PlacedFurniture[];
   furnitureVerticalScale?: number;
   hideHint?: boolean;
@@ -587,6 +604,8 @@ export function RoomlogThreeFloorPlanView({
   mitunetPlan?: MitunetFloorPlan;
   orbitMaxDistance?: number;
   orbitMinDistance?: number;
+  /** 휠 줌 허용 여부 — 상세 히어로는 false(페이지 스크롤 우선). */
+  orbitZoomEnabled?: boolean;
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   // 가구 드래그 이동용 — 바닥 위 커서 이동을 컨테이너에 전달한다.
   onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
@@ -603,6 +622,8 @@ export function RoomlogThreeFloorPlanView({
   onSelectedRotateRight?: () => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
   pendingFurniture: PlacedFurniture | null;
+  /** 캔버스 배경색 — null이면 투명(뒤 CSS 배경이 비친다, 상세 3D 히어로의 밤하늘용). */
+  sceneBackground?: string | null;
   selectedFurnitureId: string | null;
   selectedWallId: string | number | null;
   wallsData: WheretoputWall3D[];
@@ -641,9 +662,12 @@ export function RoomlogThreeFloorPlanView({
       style={hasMitunetStyle ? { background: "linear-gradient(#a8cbe8, #cfe2f1 60%, #eef2f0)" } : undefined}
     >
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} shadows>
-        <RoomCameraAutoFit bounds={wallBounds} />
-        {/* mitunet 룩은 캔버스를 투명하게 두고 위의 CSS 그라데이션이 하늘 역할을 한다. */}
-        {hasMitunetStyle ? null : <color attach="background" args={["#626260"]} />}
+        {/* 상세 3D 히어로는 fitDistanceScale로 방을 화면에 더 작게 배치한다(bounds 오토핏 위에 접붙임). */}
+        <RoomCameraAutoFit bounds={wallBounds} distanceScale={fitDistanceScale} />
+        {/* 배경: mitunet 룩은 위 CSS 그라데이션이 하늘이라 색을 안 깐다. 비-mitunet은 sceneBackground를 쓰되
+            null(상세 3D 히어로)이면 투명하게 둬 히어로와 자연스럽게 겹치게 한다(기본 #626260 = 편집기 회색).
+            비-mitunet 조명(ambient 0.72 / directional 1.4)은 MitunetSceneLook의 inactive 분기가 제공한다. */}
+        {hasMitunetStyle ? null : sceneBackground ? <color attach="background" args={[sceneBackground]} /> : null}
         <MitunetSceneLook active={hasMitunetStyle} />
         <MitunetGtaoEffects active={hasMitunetStyle} />
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
@@ -737,6 +761,7 @@ export function RoomlogThreeFloorPlanView({
           maxDistance={orbitMaxDistance}
           minDistance={orbitMinDistance}
           target={[wallBounds.centerX * sceneHorizontalScale, 0, wallBounds.centerZ * sceneHorizontalScale]}
+          zoomEnabled={orbitZoomEnabled}
         />
       </Canvas>
       {hideHint ? null : <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>}

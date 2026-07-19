@@ -975,8 +975,6 @@ test("borrows mature Zigbang and Dabang product patterns for trust and map searc
     "평균 응답",
     "오늘 현장확인",
     "3D 투어 가능",
-    "어디에서 방을 찾을까요",
-    "통합검색",
     "최근 검색",
     "최근 검색어가 없습니다",
     "인기 지역",
@@ -1203,7 +1201,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
 test("shows a landlord my page with property registration fields and media actions", () => {
   for (const label of [
     "집주인 마이페이지",
-    "내 집 등록",
+    "매물등록",
     "매물명",
     "주소",
     "주소 검색",
@@ -1217,11 +1215,10 @@ test("shows a landlord my page with property registration fields and media actio
     "관리비",
     "전용면적",
     "층수",
-    "사진과 3D방 자료",
+    "사진·3D 자료",
     "사진 업로드",
-    "3D 도면 만들기",
-    "도면 JSON 업로드",
-    "영상/스플랫 접수",
+    "눌러서 3D 도면을 만들어요",
+    "3D 투어용 영상·캡처 파일을 끌어다 놓거나 눌러서 올려요",
     "등록 요약",
     "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
     "매물 등록하기"
@@ -1229,7 +1226,7 @@ test("shows a landlord my page with property registration fields and media actio
     assert.match(pageSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /owner-submit-summary/);
+  assert.match(pageSource, /owner-lane-attach/);
   assert.match(pageSource, /detailAddress/);
   assert.match(pageSource, /세부주소 없음/);
   assert.match(pageSource, /ownerForm/);
@@ -1240,6 +1237,10 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(pageSource, /submitOwnerListing/);
   assert.match(pageSource, /id="owner-registration-form"/);
   assert.doesNotMatch(pageSource, /업로드 버튼 대기|전용 업로드 영역|자료 대기/);
+  // 도면 JSON 업로드는 7라운드에서 가시 UI를 없애고 3D 도면 박스에 숨은 드롭으로 옮겼다(개발자 전용,
+  // 시각 피드백 없음) — "도면 JSON 업로드" 라벨 대신 실제 처리 함수가 여전히 배선돼 있는지로 검증한다.
+  assert.match(pageSource, /handleFloorPlanJsonUpload/);
+  assert.match(pageSource, /handleFloorPlanJsonDrop/);
   assert.match(cssSource, /\.owner-preview-card/);
   assert.match(cssSource, /\.owner-preview-actions/);
   assert.match(cssSource, /\.owner-preview-actions button/);
@@ -1492,7 +1493,7 @@ test("is configured as an installable PWA shell", () => {
   assert.match(layoutSource, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(layoutSource, /appleWebApp/);
   assert.match(layoutSource, /apple-touch-icon\.png/);
-  assert.match(layoutSource, /themeColor:\s*"#2f55ff"/);
+  assert.match(layoutSource, /themeColor:\s*"#20184a"/);
   assert.match(layoutSource, /PwaRegister/);
   assert.match(manifestSource, /display:\s*"standalone"/);
   assert.match(manifestSource, /start_url:\s*"\/"/);
@@ -1562,7 +1563,8 @@ test("links the landlord 3D floor plan action to the internal MitUNet page", () 
   assert.doesNotMatch(pageSource, /buildMitunetEditorUrl/);
   assert.doesNotMatch(pageSource, /window\.open/);
   assert.doesNotMatch(pageSource, /href="\/floor-plan-3d"/);
-  assert.match(pageSource, /3D 도면 만들기/);
+  // 진입은 빈 3D 박스 클릭 자체(내부 MitUNet 에디터로 이동) — 별도 "만들기" 버튼 없이 박스가 버튼이다.
+  assert.match(pageSource, /눌러서 3D 도면을 만들어요/);
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 

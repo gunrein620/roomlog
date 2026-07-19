@@ -73,7 +73,8 @@ export default function UnifiedLoginPage() {
 
   if (state.kind === "checking") {
     return (
-      <main className="app-canvas">
+      /* 확인 중에도 login-canvas — 밤하늘 배경 유지(라이트 플래시 방지) */
+      <main className="app-canvas login-canvas">
         <section className="auth-check-screen" aria-live="polite">
           <strong>로그인 확인 중</strong>
           <span>WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다.</span>
