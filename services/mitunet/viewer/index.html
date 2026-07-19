@@ -177,9 +177,7 @@
     pointer-events: auto;
   }
   #ui { flex: 0 0 auto; }
-  /* The landing screen uses the centered upload card; hide the legacy side
-     summary so its English MitUNet copy does not duplicate that entry point. */
-  body.upload-empty #ui { display: none; }
+  #landing-intro { display: none; }
   #editor-tools {
     flex: 0 1 auto;
     min-height: 0;
@@ -809,6 +807,122 @@
     background: var(--surface-low);
   }
   #upload-btn .upload-format-icons svg { width: 21px; height: 21px; color: var(--input-placeholder); stroke-width: 1.5; }
+  /* Landing entry card: retain the existing upload button and viewer controls,
+     but give the first screen one clear, Korean entry point. */
+  body.upload-empty #control-stack {
+    top: 40px;
+    bottom: auto;
+    left: 40px;
+    width: min(390px, calc(100vw - 80px));
+  }
+  body.upload-empty #ui {
+    display: block;
+    padding: 38px 40px 34px;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, .96);
+  }
+  body.upload-empty #ui > h1,
+  body.upload-empty #view-controls,
+  body.upload-empty #camera-view-controls,
+  body.upload-empty #upload-label,
+  body.upload-empty #stage-controls,
+  body.upload-empty #demo-controls,
+  body.upload-empty #status { display: none !important; }
+  body.upload-empty #landing-intro { display: block; }
+  .landing-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: #edf1ff;
+    box-shadow: inset 0 0 0 1px #c9d5f4;
+    color: #3656a6;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .08em;
+  }
+  .landing-kicker svg { width: 15px; height: 15px; }
+  .landing-title {
+    margin: 22px 0 16px;
+    color: var(--on-surface);
+    font-size: clamp(28px, 2.4vw, 36px);
+    font-weight: 800;
+    letter-spacing: -.055em;
+    line-height: 1.22;
+  }
+  .landing-title strong { color: var(--primary); }
+  .landing-description {
+    margin: 0;
+    color: var(--on-surface-variant);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.56;
+  }
+  body.upload-empty #ui #upload-btn {
+    position: static;
+    display: flex;
+    width: 100%;
+    min-height: 64px;
+    padding: 0 22px;
+    margin-top: 28px;
+    flex-direction: row;
+    justify-content: center;
+    gap: 10px;
+    transform: none;
+    border: 0;
+    border-radius: 14px;
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(87, 71, 207, .28);
+  }
+  body.upload-empty #upload-btn .upload-empty-icon {
+    width: 24px;
+    height: 24px;
+    margin: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  body.upload-empty #upload-btn .upload-empty-icon svg { width: 24px; height: 24px; }
+  body.upload-empty #upload-btn .upload-title,
+  body.upload-empty #upload-btn .upload-helper,
+  body.upload-empty #upload-btn .upload-format-icons { display: none; }
+  body.upload-empty #upload-btn .upload-cta {
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font-size: 17px;
+  }
+  #start-sample-btn {
+    display: none;
+    width: 100%;
+    min-height: 58px;
+    margin-top: 14px;
+    border: 1px solid var(--input-border);
+    background: #fff;
+    color: var(--on-surface);
+    font-size: 16px;
+  }
+  body.upload-empty #start-sample-btn { display: inline-flex; }
+  .landing-feature-row {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding-top: 24px;
+    margin-top: 38px;
+    border-top: 1px solid #eeeaf6;
+    color: var(--on-surface-variant);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  body.upload-empty .landing-feature-row { display: flex; }
+  .landing-feature-row svg { width: 22px; height: 22px; color: var(--primary); }
+  .landing-feature-row strong { color: var(--primary); }
   #furniture-panel { top: 96px; right: 28px; max-height: calc(100vh - 124px); }
 
   @media (max-width: 720px) {
@@ -841,6 +955,9 @@
     #editor-tools .navigation-grid,
     #editor-tools .action-grid { display: flex; overflow-x: auto; }
     body:not(.view-original):not(.view-furnishing) #upload-btn { width: calc(100vw - 32px); min-height: 38vh; }
+    body.upload-empty #control-stack { top: 16px; right: 16px; left: 16px; width: auto; }
+    body.upload-empty #ui { padding: 30px 28px; }
+    body.upload-empty #ui #upload-btn { width: 100%; min-height: 60px; }
     #view-controls { bottom: 16px; max-width: calc(100vw - 32px); overflow-x: auto; }
     #save-json-btn { right: 150px; }
     #connect-roomlog-btn { right: 16px; }
@@ -877,6 +994,12 @@
 <div id="ui">
   <h1>MitUNet Floorplan → 3D</h1>
 
+  <section id="landing-intro" aria-label="집우집주 3D 도면 생성">
+    <div class="landing-kicker"><i data-lucide="sparkles" aria-hidden="true"></i>집우집주 AI 3D 생성</div>
+    <h2 class="landing-title">도면 한 장이면,<br><strong>3D 공간</strong>이 됩니다</h2>
+    <p class="landing-description">AI가 평면도를 분석해 벽·문·창문을 인식하고, 바로 확인할 수 있는 3D 공간으로 만듭니다.</p>
+  </section>
+
   <div id="view-controls" hidden>
     <div class="label">View</div>
     <div class="segmented" id="view-switch" role="tablist" aria-label="Plan view">
@@ -902,7 +1025,7 @@
     <span class="upload-empty-icon" aria-hidden="true"><i data-lucide="cloud-upload"></i></span>
     <span class="upload-title">도면 이미지를 업로드하세요</span>
     <span class="upload-helper">PNG 또는 JPG를 선택하세요</span>
-    <span class="upload-cta">파일 찾기</span>
+    <span class="upload-cta">도면 올리기 (PNG·JPG)</span>
     <span class="upload-format-icons" aria-hidden="true">
       <span><i data-lucide="image"></i></span>
       <span><i data-lucide="ruler"></i></span>
@@ -910,6 +1033,14 @@
     </span>
     <i data-lucide="upload" aria-hidden="true"></i><span>Choose PNG or JPG…</span>
   </button>
+  <button class="btn with-icon" id="start-sample-btn" type="button">
+    <i data-lucide="sparkles" aria-hidden="true"></i>
+    <span>샘플로 시작</span>
+  </button>
+  <div class="landing-feature-row" aria-hidden="true">
+    <i data-lucide="scan-line" aria-hidden="true"></i>
+    <span>벽 · 문 · 창문 <strong>자동 인식</strong></span>
+  </div>
   <input type="file" id="file-input" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
 
   <button class="btn with-icon" id="save-json-btn" title="Save the converted 3D plan as JSON" hidden disabled>
@@ -2030,6 +2161,7 @@ const zoomOutButton = document.getElementById("zoom-out-btn");
 const fitViewButton = document.getElementById("fit-view-btn");
 const zoomInButton = document.getElementById("zoom-in-btn");
 const uploadButton = document.getElementById("upload-btn");
+const startSampleButton = document.getElementById("start-sample-btn");
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
 const furnishButton = document.getElementById("furnish-btn");
@@ -3572,6 +3704,14 @@ async function fetchAndLoad(url, init) {
   }
 }
 
+async function startLandingSample() {
+  const loaded = await fetchAndLoad("/viewer-assets/demos/1191.json");
+  if (!loaded) return;
+  currentSourceName = "sample-1191.json";
+  document.body.classList.remove("upload-empty");
+  setView("3d");
+}
+
 function wireReviewControls() {
   saveJsonButton.addEventListener("click", () => {
     try {
@@ -3688,6 +3828,7 @@ async function enableLiveMode() {
   updateEditorControls();
   const fileInput = document.getElementById("file-input");
   uploadButton.addEventListener("click", () => fileInput.click());
+  startSampleButton.addEventListener("click", startLandingSample);
   fileInput.addEventListener("change", () => {
     if (!fileInput.files.length) return;
     extractForReview(fileInput.files[0]);
