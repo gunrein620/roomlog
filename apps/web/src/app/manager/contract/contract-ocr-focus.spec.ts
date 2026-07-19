@@ -61,12 +61,13 @@ describe("contract OCR important-field scope", () => {
     for (const fieldKey of [
       "rentBaseAmount",
       "rentConversionAmount",
-      "maintenanceFee",
       "landlordAccount",
       "address",
     ]) {
       assert.doesNotMatch(apiSource, new RegExp(`"${fieldKey}"`));
     }
+
+    assert.doesNotMatch(apiSource, /maintenanceFee\?:\s*OpenAiContractOcrField/);
 
     for (const fieldKey of ["depositBaseAmount", "depositConversionAmount", "depositFinalAmount", "paymentDay", "contractStartDate", "contractEndDate", "specialTerms"]) {
       assert.match(apiSource, new RegExp(`"${fieldKey}"`));

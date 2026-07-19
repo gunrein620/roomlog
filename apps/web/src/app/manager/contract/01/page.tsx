@@ -375,7 +375,6 @@ function ManualCorrectionForm({
     <Card style={manualCardStyle}>
       <div style={manualHeaderStyle}>
         <div style={{ fontWeight: 900 }}>계약서 원문에서 중요한 부분만 고칩니다</div>
-        <p style={mutedBodyStyle}>납부일·주소는 매물 DB 값을 사용하고, 보증금·월 임대료·관리비·계약 기간·특약성 조항만 원문 기준으로 저장하세요.</p>
       </div>
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
