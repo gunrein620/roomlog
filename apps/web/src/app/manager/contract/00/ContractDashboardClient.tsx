@@ -116,23 +116,14 @@ export function ContractDashboardClient({
   }
 
   return (
-    <section className="manager-contract-dashboard" aria-labelledby="manager-contract-dashboard-title">
-      <div className="manager-contract-dashboard__hero">
-        <div className="manager-contract-dashboard__hero-copy">
-          <h2 id="manager-contract-dashboard-title">오늘 처리해야 할 계약만 먼저 보이는 검토 큐</h2>
-          <p>
-            전체 계약 표를 유지하되, 기한 만료·확인 필요·만료 예정 순으로 우선순위를 노출합니다.
-            관리자에게 중요한 것은 “어느 계약부터 열어야 하는지”입니다.
-          </p>
-        </div>
-        <div className="manager-contract-dashboard__hero-actions">
-          <button type="button" className="manager-contract-dashboard__secondary-action">
-            필터 저장
-          </button>
-          <Link className="manager-contract-dashboard__create-link" href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>
-            계약서 등록
-          </Link>
-        </div>
+    <section className="manager-contract-dashboard" aria-label="계약 검토 대시보드">
+      <div className="manager-contract-dashboard__hero-actions">
+        <button type="button" className="manager-contract-dashboard__secondary-action">
+          필터 저장
+        </button>
+        <Link className="manager-contract-dashboard__create-link" href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>
+          계약서 등록
+        </Link>
       </div>
 
       <div className="manager-contract-dashboard__metrics" aria-label="계약서 검토 요약">

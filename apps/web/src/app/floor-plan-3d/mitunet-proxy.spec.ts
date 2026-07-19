@@ -7,7 +7,7 @@ import {
 } from "./mitunet-proxy";
 import * as mitunetProxy from "./mitunet-proxy";
 
-test("uses a save-and-return action instead of the RoomLog connection copy", () => {
+test("keeps 3D plan saving available in the RoomLog flow", () => {
   const transformed = transformMitunetViewerHtml(`
     <button id="save-json-btn"><span>Save JSON</span></button>
     <button id="connect-roomlog-btn" title="Connect this 3D plan to RoomLog"><span>RoomLog에 연결</span></button>
@@ -17,7 +17,8 @@ test("uses a save-and-return action instead of the RoomLog connection copy", () 
   assert.match(transformed, /title="3D 도면을 저장하고 매물 등록으로 돌아가기"/);
   assert.match(transformed, /3D 도면 저장하기/);
   assert.doesNotMatch(transformed, /RoomLog에 연결/);
-  assert.match(transformed, /saveJsonButton\.hidden = !canSave \|\| Boolean\(roomLogContext\);/);
+  assert.match(transformed, /saveJsonButton\.hidden = !canSave;/);
+  assert.doesNotMatch(transformed, /saveJsonButton\.hidden = !canSave \|\| Boolean\(roomLogContext\);/);
 });
 
 test("rewrites relative demo sample paths to the mitunet-assets route", () => {

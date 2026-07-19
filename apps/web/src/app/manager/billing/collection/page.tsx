@@ -38,9 +38,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     <BillingShell title="청구·수납 관리" active={routes.collection}>
       <div className={styles.workspace}>
         <BillingWorkspaceHeader
-          eyebrow="수금 분석"
-          title="수금 현황"
-          description="선택 범위의 수금률과 수납 시점을 분석하고 원하는 기간의 실적 변화를 비교합니다."
           basePath="/manager/billing/collection"
           scope={data.scope}
           month={data.billingMonth}

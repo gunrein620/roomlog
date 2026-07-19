@@ -358,6 +358,10 @@ export class CreditService {
     return this.queryRepository.listPublicGaraVendors();
   }
 
+  async archivePublicGaraVendorRegistration(managerVendorId: string) {
+    return this.commandRepository.archivePublicGaraVendorRegistration({ managerVendorId });
+  }
+
   async getAccount(managerId: string) {
     await this.commandRepository.ensureAccount({ managerId });
     return this.queryRepository.getAccount(managerId);

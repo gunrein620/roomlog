@@ -8,9 +8,9 @@ import { buildBillingScopeHref, shiftBillingMonth } from "@/lib/billing-manager-
 import styles from "./billing-workspace.module.css";
 
 interface BillingWorkspaceHeaderProps {
-  eyebrow: string;
-  title: string;
-  description: string;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
   basePath: string;
   scope: ManagerBillingScope;
   month?: string;
@@ -31,6 +31,7 @@ export function BillingWorkspaceHeader({
   actionLabel,
 }: BillingWorkspaceHeaderProps) {
   const router = useRouter();
+  const hasHeading = Boolean(eyebrow || title || description);
 
   function navigate(next: { building?: string; month?: string }) {
     router.push(buildBillingScopeHref(basePath, next));
@@ -47,13 +48,17 @@ export function BillingWorkspaceHeader({
 
   return (
     <header className={styles.pageHeader}>
-      <div className={styles.pageHeading}>
-        <p className={styles.eyebrow}>{eyebrow}</p>
-        <h2 className={styles.pageTitle}>{title}</h2>
-        <p className={styles.pageDescription}>{description}</p>
-      </div>
+      {hasHeading ? (
+        <div className={styles.pageHeading}>
+          {eyebrow ? <p className={styles.eyebrow}>{eyebrow}</p> : null}
+          {title ? <h2 className={styles.pageTitle}>{title}</h2> : null}
+          {description ? <p className={styles.pageDescription}>{description}</p> : null}
+        </div>
+      ) : null}
 
-      <div className={styles.headerControls}>
+      <div
+        className={`${styles.headerControls}${hasHeading ? "" : ` ${styles.headerControlsEnd}`}`}
+      >
         <div className={styles.fieldGroup}>
           <label className={styles.fieldLabel} htmlFor="billing-building">
             건물

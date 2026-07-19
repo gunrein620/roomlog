@@ -56,3 +56,18 @@ test("Gara send button keeps its label on one line in a narrow table column", ()
 
   assert.match(styles, /\.sendButton\s*\{[\s\S]*?white-space:\s*nowrap;/);
 });
+
+test("Gara developer tool lets every listed registration be archived", () => {
+  const source = readFileSync(workspacePath, "utf8");
+  const apiSource = readFileSync(
+    path.join(process.cwd(), "src/lib/gara-credit-api.ts"),
+    "utf8",
+  );
+
+  assert.match(source, /archiveGaraVendorRegistration/);
+  assert.match(source, />삭제</);
+  assert.match(source, /onArchive\(vendor\.id\)/);
+  assert.match(source, /setVisibleVendors/);
+  assert.doesNotMatch(source, /archivableVendorIds/);
+  assert.match(apiSource, /\/api\/gara\/vendors\/\$\{encodeURIComponent\(managerVendorId\)\}/);
+});
