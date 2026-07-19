@@ -99,6 +99,25 @@ test("패널은 오른쪽 절반을 차지하는 고정 사이드 표면이다",
   assert.match(cssSource, /\.manager-ticket-panel__composer/);
 });
 
+test("상세 처리 화면 링크는 사진 액션과 같은 크기의 hover 가능한 버튼이다", () => {
+  const panelSource = readFileSync(panelPath, "utf8");
+  const cssSource = readFileSync(cssPath, "utf8");
+  const detailLinkBlock = cssSource.match(
+    /\.manager-ticket-panel__detail-link \{[^}]*\}/,
+  )?.[0];
+
+  assert.match(panelSource, /className="manager-ticket-panel__detail-link"/);
+  assert.ok(detailLinkBlock, ".manager-ticket-panel__detail-link 규칙이 있어야 한다");
+  assert.match(detailLinkBlock, /min-height: var\(--touch-target\)/);
+  assert.match(detailLinkBlock, /padding: 0 var\(--space-sm\)/);
+  assert.match(detailLinkBlock, /border: 1px solid var\(--border\)/);
+  assert.match(detailLinkBlock, /border-radius: var\(--radius-md\)/);
+  assert.match(
+    cssSource,
+    /\.manager-ticket-panel__detail-link:hover,[\s\S]*\.manager-ticket-panel__detail-link:focus-visible/,
+  );
+});
+
 test("진행 상태 토글은 접수·진행·완료 3레인이고 패널 상단 가운데에 놓인다", () => {
   const panelSource = readFileSync(panelPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");

@@ -207,6 +207,12 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(cssSource, /button:disabled/);
   assert.match(cssSource, /manager-defect-dashboard__detail-action/);
   assert.doesNotMatch(cssSource, /manager-defect-dashboard__more-menu-list/);
+  const detailActionRule = cssSource.match(
+    /\.manager-defect-dashboard__detail-action\s*\{([^}]*)\}/,
+  )?.[1] ?? "";
+  assert.match(detailActionRule, /padding:\s*var\(--space-xs\) var\(--space-sm\)/);
+  assert.match(detailActionRule, /border-radius:\s*var\(--radius-full\)/);
+  assert.doesNotMatch(detailActionRule, /min-height:\s*var\(--touch-target\)/);
   assert.doesNotMatch(
     cssSource,
     /manager-defect-dashboard__table tbody tr:nth-last-child\(-n \+ 3\)/,
