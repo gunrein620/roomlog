@@ -6,6 +6,12 @@ import { test } from "node:test";
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
 const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
 const tenantMyPageSource = readFileSync(new URL("./src/app/my/flows/TenantMyPage.tsx", import.meta.url), "utf8");
+const landlordMyPageSource = readFileSync(new URL("./src/app/my/flows/LandlordMyPage.tsx", import.meta.url), "utf8");
+const roomRendererSource = readFileSync(
+  new URL("./src/app/floor-plan-3d/room-scene/RoomlogThreeFloorPlanView.tsx", import.meta.url),
+  "utf8"
+);
+const listingTourSource = readFileSync(new URL("./src/app/_components/ListingTourRoom3D.tsx", import.meta.url), "utf8");
 const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const mobileRoleMenuSource = readFileSync(new URL("./src/app/_components/MobileRoleMenu.tsx", import.meta.url), "utf8");
 const spaSource = [
@@ -2190,6 +2196,34 @@ test("renders 3D conversion with the wheretoput React Three Fiber stack", () => 
   ]) {
     assert.match(`${floorPlanVisualSource}\n${webPackageSource}`, new RegExp(label));
   }
+});
+
+test("supports an opt-in camera fit for compact building previews", () => {
+  assert.match(roomRendererSource, /previewFit\?: boolean/);
+  assert.match(
+    roomRendererSource,
+    /<RoomCameraAutoFit bounds=\{wallBounds\} distanceScale=\{fitDistanceScale\} previewFit=\{previewFit\}/
+  );
+});
+
+test("renders editor-placed furniture in the owner summary preview", () => {
+  assert.match(
+    landlordMyPageSource,
+    /<FloorPlan3DPreview[\s\S]*?furnitureData=\{floorPlan3D\.furnitures as unknown as PlacedFurniture\[\]\}[\s\S]*?previewFit[\s\S]*?wallsData=/
+  );
+  assert.match(
+    globalsCssSource,
+    /\.summary-media-3d \.floor-plan-3d-preview\s*\{[\s\S]*?min-height:\s*0/
+  );
+});
+
+test("uses saved plan furniture as the editable tour starting layout", () => {
+  assert.match(
+    listingTourSource,
+    /setPlacedFurnitures\(\(savedFurnitures \?\? floorPlan\.furnitures\) as unknown as PlacedFurniture\[\]\)/
+  );
+  assert.match(listingTourSource, /window\.localStorage\.setItem\(floorPlanFurnitureStorageKey\(floorPlan\), payload\)/);
+  assert.match(listingTourSource, /reopenFurnitureDraft\(furniture\)/);
 });
 
 test("imports wheretoput-style upload and Roboflow 3D conversion controls", () => {

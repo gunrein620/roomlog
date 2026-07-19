@@ -6,6 +6,7 @@ import {
 import { extractRoomAreas, formatRoomArea } from "./room-areas.mjs";
 
 const INTERNAL_SIZE = 1024;
+export const DEFAULT_VIEWPORT_ZOOM = 0.88;
 const MIN_OPENING_LENGTH = 8;
 const OPENING_THICKNESS = 12;
 const HANDLE_SIZE = 10;
@@ -47,6 +48,10 @@ const clamp = (value, minimum, maximum) =>
 
 const pointerIdForEvent = event =>
   event.pointerId === undefined ? SYNTHETIC_POINTER_ID : event.pointerId;
+
+export function isEditableKeyboardTarget(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+}
 
 export function isPointInsideImage(point, width = INTERNAL_SIZE, height = INTERNAL_SIZE) {
   return point.x >= 0 && point.x <= width && point.y >= 0 && point.y <= height;
@@ -331,7 +336,7 @@ export class ReviewEditor {
       height: 1,
       fitScale: 1,
       scale: 1,
-      zoom: 1,
+      zoom: DEFAULT_VIEWPORT_ZOOM,
       offsetX: 0,
       offsetY: 0,
     };
@@ -571,8 +576,8 @@ export class ReviewEditor {
   }
 
   resetViewport() {
-    this.viewport.zoom = 1;
-    this.viewport.scale = this.viewport.fitScale;
+    this.viewport.zoom = DEFAULT_VIEWPORT_ZOOM;
+    this.viewport.scale = this.viewport.fitScale * DEFAULT_VIEWPORT_ZOOM;
     this.viewport.offsetX = (this.viewport.width - INTERNAL_SIZE * this.viewport.scale) / 2;
     this.viewport.offsetY = (this.viewport.height - INTERNAL_SIZE * this.viewport.scale) / 2;
   }
@@ -1200,7 +1205,7 @@ export class ReviewEditor {
   }
 
   handleKeyDown(event) {
-    if (!this.isActive()) return;
+    if (!this.isActive() || isEditableKeyboardTarget(event.target)) return;
     if (event.code === "Space") {
       this.spacePressed = true;
       event.preventDefault();

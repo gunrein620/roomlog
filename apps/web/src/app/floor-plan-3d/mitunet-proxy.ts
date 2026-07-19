@@ -62,8 +62,16 @@ export function applyRoomLogMitunetFormOptions(endpointPath: string, formData: F
   return formData;
 }
 
+// 뷰어는 route.ts가 raw HTML로 서빙해 Next 레이아웃(layout.tsx)을 거치지 않는다.
+// 그래서 본문 서체(Pretendard)가 로드되지 않으므로 여기서 직접 주입한다.
+// 버전은 apps/web/src/app/layout.tsx의 링크와 맞춰 둔다.
+const PRETENDARD_LINK_TAGS =
+  '<link rel="preconnect" href="https://cdn.jsdelivr.net" />' +
+  '<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />';
+
 export function transformMitunetViewerHtml(html: string) {
   return html
+    .replace("<title>", `${PRETENDARD_LINK_TAGS}<title>`)
     .replaceAll('"/viewer-assets/', '"/floor-plan-3d/mitunet-assets/')
     .replaceAll("'/viewer-assets/", "'/floor-plan-3d/mitunet-assets/")
     // 뷰어는 ./demos/…를 쓰지만 이 페이지는 /floor-plan-3d/mitunet(디렉토리 아님)에서

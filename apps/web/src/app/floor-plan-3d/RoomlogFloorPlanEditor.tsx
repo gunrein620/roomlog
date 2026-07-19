@@ -41,15 +41,17 @@ import {
 import { loadImage } from "./plan-extraction/wall-detector";
 import {
   catalogItemFootprint,
-  catalogKind,
   createFurnitureModel,
   describeFurnitureFit,
+  FURNITURE_CATEGORY_ORDER,
   judgeFurnitureFit,
   finalizeFurnitureDraft,
   FURNITURE_CATALOG,
+  furnitureCategoryLabel,
   furnitureImageUrl,
   isFurnitureCatalogItem,
   isLandlordOptionFurniture,
+  listFurnitureCategoryFilters,
   loadGlbDatasetCatalog,
   moveFurnitureDraftToPoint,
   normalizeCatalogItem,
@@ -131,23 +133,7 @@ function candidateTypeLabel(type: string) {
 const MAX_VISIBLE_PRINTED_DIMENSIONS = 24;
 const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
-const FURNITURE_CATEGORY_ORDER = [
-  "소파·의자",
-  "침실",
-  "테이블·책상",
-  "수납",
-  "주방·다이닝",
-  "욕실·세탁",
-  "조명",
-  "데코",
-  "야외",
-  "가전·전자"
-] as const;
 type FurnitureKindFilter = string;
-
-function furnitureCategoryLabel(item: FurnitureCatalogItem) {
-  return item.category?.trim() || catalogKind(item);
-}
 
 function distributeFurnitureCategories(items: FurnitureCatalogItem[]) {
   const buckets = new Map<string, FurnitureCatalogItem[]>();
@@ -1433,15 +1419,7 @@ export default function RoomlogFloorPlanEditor() {
       }, {}),
     [furnitureCatalog]
   );
-  const furnitureKindFilters = useMemo(() => {
-    const available = new Set(Object.keys(furnitureKindCounts));
-    const ordered = FURNITURE_CATEGORY_ORDER.filter((category) => available.has(category));
-    const remaining = [...available]
-      .filter((category) => !FURNITURE_CATEGORY_ORDER.includes(category as (typeof FURNITURE_CATEGORY_ORDER)[number]))
-      .sort((left, right) => left.localeCompare(right, "ko"));
-
-    return ["전체", ...ordered, ...remaining];
-  }, [furnitureKindCounts]);
+  const furnitureKindFilters = useMemo(() => listFurnitureCategoryFilters(furnitureCatalog), [furnitureCatalog]);
   const filteredFurnitureCatalog = useMemo(() => {
     const query = furnitureSearchQuery.trim().toLowerCase();
 

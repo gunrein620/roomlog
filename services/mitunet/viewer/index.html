@@ -25,18 +25,31 @@
     font-display: swap;
   }
   :root {
-    --surface: #f1eef9;
-    --surface-dim: #e8e3f3;
+    /* 팔레트는 RoomLog 메인(apps/web/src/app/globals.css)의 WOOZU 토큰과 값을 맞춘다.
+       이 뷰어는 프록시로 raw HTML을 서빙해 globals.css가 로드되지 않으므로 값을 복제한다. */
+    --surface: #faf8fc;            /* = --canvas */
+    --surface-dim: #efecfa;
     --surface-container-lowest: #ffffff;
-    --surface-low: #f5f2fb;
-    --surface-container: #efebf8;
-    --card: #ffffff;
-    --on-surface: #211c33;
-    --on-surface-variant: #6b6584;
-    --primary: #5747cf;
-    --primary-hover: #4a3bc0;
-    --primary-container: #e9e5ff;
-    --on-primary-container: #3a2ba8;
+    --surface-low: #faf8fc;
+    --surface-container: #efecfa;  /* = --blue-soft */
+    --card: #ffffff;               /* = --paper */
+    --on-surface: #20184a;         /* = --ink */
+    --on-surface-variant: #5a5478; /* = --muted */
+    --primary: #20184a;            /* = --blue */
+    --primary-hover: #17133a;      /* = --blue-dark */
+    /* .btn 바탕 — 캔버스와 같은 톤이라 면만으로는 구분이 안 된다.
+       메인 페이지와 같은 문법으로 --hairline 테두리가 경계를 잡는다. */
+    --primary-container: #efecfa;  /* = --blue-soft */
+    --on-primary-container: #20184a; /* = --ink */
+    /* 보라 램프 3단 — 전부 --blue-soft에서 --ink 쪽으로 내려가는 딥퍼플 축.
+       L1 일반 .btn 바탕 / L2 에디터 패널 버튼 바탕 / L3 두 경우 모두의 hover.
+       (L2가 따로 있는 이유: chip-bg #f0edf9와 L1은 명도차가 거의 없어 피드백이 사라진다) */
+    --hover-tint: #e4dff2;         /* L2 */
+    --hover-tint-strong: #d7d0e8;  /* L3 */
+    /* 코랄핑크 — 메인과 같은 규칙으로 핵심 전환 액션 한 곳(3D 도면 저장)에만 쓴다.
+       흰 글자는 대비가 모자라 메인처럼 짙은 먹색을 얹는다. */
+    --pink: #f2899d;               /* = globals.css --pink */
+    --on-pink: #0b0b12;
     --chip-bg: #f0edf9;
     --chip-on: #4c4570;
     --pastel-blue: #e1e6fb;
@@ -55,13 +68,13 @@
     --nav-on: #f4f1fd;
     --nav-grad: linear-gradient(135deg, #292153, #1e1840);
     --nav-border: rgba(160, 146, 255, 0.22);
-    --input-border: #e6e1f2;
-    --input-placeholder: #9a93b6;
+    --input-border: #ece8f4;       /* = --line */
+    --input-placeholder: #9a95b0;  /* = --subtle */
     --success: #1d7a55;
     --danger: #b42318;
     --warning: #a15c00;
-    --shadow: 0 24px 56px rgba(35, 27, 74, .09);
-    --shadow-soft: 0 14px 36px rgba(35, 27, 74, .05);
+    --shadow: 0 18px 44px rgba(26, 19, 48, .10);      /* = globals.css --shadow */
+    --shadow-soft: 0 8px 18px rgba(26, 19, 48, .08);
     --radius-sm: 10px;
     --radius: 14px;
     --radius-md: 20px;
@@ -77,9 +90,9 @@
     --window: var(--on-pastel-pink);
     --accent: var(--primary);
     --accent-hover: var(--primary-hover);
-    --accent-tint: rgba(87, 71, 207, .16);
+    --accent-tint: rgba(32, 24, 74, .16);
     --view-fade-ms: 220ms;
-    --font-sans: "NanumSquareRound", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --font-sans: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -118,13 +131,13 @@
       radial-gradient(1.1px 1.1px at 203px 109px, rgba(255,255,255,0.66), transparent 70%),
       radial-gradient(1.4px 1.4px at 90px 200px, rgba(255,246,232,0.85), transparent 70%),
       radial-gradient(0.9px 0.9px at 250px 40px, rgba(255,255,255,0.7), transparent 70%),
-      radial-gradient(1.1px 1.1px at 40px 260px, rgba(210,224,255,0.74), transparent 70%),
+      radial-gradient(1.1px 1.1px at 40px 260px, rgba(222,214,250,0.74), transparent 70%),
       radial-gradient(1px 1px at 300px 180px, rgba(255,255,255,0.74), transparent 70%),
       radial-gradient(1.2px 1.2px at 160px 300px, rgba(255,255,255,0.82), transparent 70%),
       radial-gradient(0.8px 0.8px at 210px 230px, rgba(255,255,255,0.6), transparent 70%),
       radial-gradient(2.5px 2.5px at 331px 87px, rgba(255,255,255,1), rgba(255,255,255,0.3) 45%, transparent 72%),
-      radial-gradient(2.1px 2.1px at 120px 360px, rgba(224,236,255,1), rgba(224,236,255,0.28) 45%, transparent 72%),
-      linear-gradient(#04060f, #101a38 55%, #26355e);
+      radial-gradient(2.1px 2.1px at 120px 360px, rgba(232,224,252,1), rgba(232,224,252,0.28) 45%, transparent 72%),
+      linear-gradient(#0d0a24, #17133a 55%, #2a1f52);
     background-size: 100% 100%, 160px 160px, 200px 200px, 240px 240px, 280px 280px, 300px 300px, 170px 170px, 220px 220px, 190px 190px, 260px 260px, 150px 150px, 520px 520px, 560px 560px, 100% 100%;
     background-repeat: no-repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat;
   }
@@ -141,14 +154,14 @@
       radial-gradient(1.1px 1.1px at 203px 109px, rgba(255,255,255,0.66), transparent 70%),
       radial-gradient(1.4px 1.4px at 90px 200px, rgba(255,246,232,0.85), transparent 70%),
       radial-gradient(0.9px 0.9px at 250px 40px, rgba(255,255,255,0.7), transparent 70%),
-      radial-gradient(1.1px 1.1px at 40px 260px, rgba(210,224,255,0.74), transparent 70%),
+      radial-gradient(1.1px 1.1px at 40px 260px, rgba(222,214,250,0.74), transparent 70%),
       radial-gradient(1px 1px at 300px 180px, rgba(255,255,255,0.74), transparent 70%),
       radial-gradient(1.2px 1.2px at 160px 300px, rgba(255,255,255,0.82), transparent 70%),
       radial-gradient(0.8px 0.8px at 210px 230px, rgba(255,255,255,0.6), transparent 70%),
       radial-gradient(2.5px 2.5px at 331px 87px, rgba(255,255,255,1), rgba(255,255,255,0.3) 45%, transparent 72%),
-      radial-gradient(2.1px 2.1px at 120px 360px, rgba(224,236,255,1), rgba(224,236,255,0.28) 45%, transparent 72%),
+      radial-gradient(2.1px 2.1px at 120px 360px, rgba(232,224,252,1), rgba(232,224,252,0.28) 45%, transparent 72%),
       radial-gradient(120% 80% at 50% 8%, rgba(58, 78, 140, .38), transparent 62%),
-      linear-gradient(#04060f, #101a38 55%, #26355e);
+      linear-gradient(#0d0a24, #17133a 55%, #2a1f52);
     background-size: 160px 160px, 200px 200px, 240px 240px, 280px 280px, 300px 300px, 170px 170px, 220px 220px, 190px 190px, 260px 260px, 150px 150px, 520px 520px, 560px 560px, 100% 100%, 100% 100%;
     background-repeat: repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat, no-repeat;
     transition: opacity 220ms ease;
@@ -292,27 +305,31 @@
     min-height: 38px;
     padding: 8px 12px;
     background: var(--primary-container);
-    border: 0;
+    border: 1px solid var(--hairline);
     border-radius: var(--radius-btn);
     cursor: pointer;
     color: var(--on-primary-container);
     transition: background .18s ease, color .18s ease, box-shadow .18s ease, transform .12s ease;
   }
-  .btn:hover { background: #ddd6ff; box-shadow: var(--shadow-soft); }
+  .btn:hover { background: var(--hover-tint-strong); box-shadow: var(--shadow-soft); }
   .btn:active { transform: translateY(1px); }
-  .btn.primary { background: var(--primary); color: #fff; border: 0; box-shadow: 0 8px 20px rgba(87, 71, 207, .32); }
-  .btn.primary:hover { background: var(--primary-hover); box-shadow: 0 10px 24px rgba(87, 71, 207, .38); }
+  .btn.primary { background: var(--primary); color: #fff; border: 0; box-shadow: 0 8px 20px rgba(32, 24, 74, .32); }
+  .btn.primary:hover { background: var(--primary-hover); box-shadow: 0 10px 24px rgba(32, 24, 74, .38); }
+  /* 핵심 전환 액션 한 곳만 코랄핑크 — 메인의 CTA 문법(핑크는 아껴 쓴다)을 따른다.
+     다른 .btn.primary는 딥퍼플로 남겨 이 버튼이 위계상 위로 올라오게 한다. */
+  #connect-roomlog-btn.primary { background: var(--pink); color: var(--on-pink); box-shadow: 0 8px 20px rgba(242, 137, 157, .38); }
+  #connect-roomlog-btn.primary:hover { background: #eb7189; box-shadow: 0 10px 24px rgba(242, 137, 157, .46); }
   .btn:disabled { opacity: 0.4; cursor: default; }
   .btn:focus-visible,
   .segment:focus-visible,
   .camera-preset:focus-visible,
-  .furniture-category-chip:focus-visible { outline: 3px solid rgba(87, 71, 207, .3); outline-offset: 2px; }
+  .furniture-category-chip:focus-visible { outline: 3px solid rgba(32, 24, 74, .3); outline-offset: 2px; }
   .btn svg, .btn [data-lucide] { width: 15px; height: 15px; flex: 0 0 15px; }
   .btn.with-icon { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 
   .segmented {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     padding: 4px;
     border: 0;
     border-radius: 999px;
@@ -343,9 +360,12 @@
     scrollbar-width: thin;
   }
   .camera-preset {
-    flex: 0 0 auto;
-    min-height: 34px;
-    padding: 7px 11px;
+    display: inline-grid;
+    flex: 0 0 38px;
+    width: 38px;
+    min-height: 38px;
+    place-items: center;
+    padding: 0;
     border: 0;
     border-radius: 999px;
     background: var(--chip-bg);
@@ -356,8 +376,9 @@
     cursor: pointer;
     transition: background .18s ease, color .18s ease, box-shadow .18s ease;
   }
-  .camera-preset:hover { background: var(--primary-container); color: var(--on-primary-container); }
-  .camera-preset.active { border: 0; background: var(--primary); color: #fff; box-shadow: 0 8px 20px rgba(87, 71, 207, .22); }
+  .camera-preset [data-lucide] { width: 18px; height: 18px; }
+  .camera-preset:hover { background: var(--hover-tint); color: var(--on-primary-container); }
+  .camera-preset.active { border: 0; background: var(--primary); color: #fff; box-shadow: 0 8px 20px rgba(32, 24, 74, .22); }
   .camera-preset:disabled { opacity: 0.4; cursor: default; }
 
   .tool-grid {
@@ -366,7 +387,7 @@
     gap: 6px;
   }
   .tool-grid .btn { width: 100%; min-width: 0; }
-  .tool-grid .btn.active { border: 0; background: var(--primary); color: #fff; box-shadow: 0 8px 20px rgba(87, 71, 207, .22); }
+  .tool-grid .btn.active { border: 0; background: var(--primary); color: #fff; box-shadow: 0 8px 20px rgba(32, 24, 74, .22); }
   .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .action-grid .btn { width: 100%; min-width: 0; }
   .navigation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
@@ -386,7 +407,7 @@
   .sample-select:focus-visible {
     outline: 0;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(87, 71, 207, .16);
+    box-shadow: 0 0 0 3px rgba(32, 24, 74, .16);
   }
 
   .brush-control { display: grid; grid-template-columns: auto minmax(0, 1fr) 30px; gap: 8px; align-items: center; }
@@ -427,7 +448,7 @@
   .scale-input-row input:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(87, 71, 207, .16);
+    box-shadow: 0 0 0 3px rgba(32, 24, 74, .16);
   }
   .scale-unit { color: var(--muted); font-size: 11px; }
   #clear-scale-btn { width: 36px; padding: 7px; }
@@ -516,6 +537,64 @@
     flex-direction: column;
   }
   body.view-furnishing #furniture-panel { pointer-events: auto; }
+  .furniture-panel-heading,
+  .camera-view-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .furniture-panel-heading { margin-bottom: 14px; }
+  .furniture-panel-heading .furniture-panel-title,
+  .camera-view-heading .label { margin: 0; }
+  .furniture-panel-close,
+  .furniture-panel-open {
+    display: inline-grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--chip-bg);
+    color: var(--chip-on);
+    cursor: pointer;
+  }
+  .furniture-panel-close:hover,
+  .furniture-panel-open:hover { background: var(--hover-tint); color: var(--on-primary-container); }
+  .furniture-panel-close svg,
+  .furniture-panel-close [data-lucide],
+  .furniture-panel-open svg,
+  .furniture-panel-open [data-lucide] { width: 16px; height: 16px; }
+  body.view-furnishing #furniture-panel {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-18px);
+    transition: transform .22s ease, opacity .18s ease, visibility 0s linear .22s;
+  }
+  body.view-furnishing #furniture-panel:not(.is-open) { pointer-events: none; }
+  body.view-furnishing #furniture-panel.is-open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition: transform .22s ease, opacity .18s ease;
+  }
+  body.view-furnishing #furniture-panel-open {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    display: inline-flex;
+    width: auto;
+    min-width: 104px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 12px;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    transform: translateX(-50%);
+  }
+  #furniture-panel-open span { font-size: 10px; font-weight: 800; }
   .furniture-panel-title {
     margin: 0 0 14px;
     font-size: 18px;
@@ -548,7 +627,7 @@
   }
   #furniture-search:focus {
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(87, 71, 207, .16);
+    box-shadow: 0 0 0 3px rgba(32, 24, 74, .16);
   }
   .furniture-category-chips {
     display: flex;
@@ -572,12 +651,12 @@
     cursor: pointer;
     transition: background .18s ease, color .18s ease, box-shadow .18s ease;
   }
-  .furniture-category-chip:hover { background: var(--primary-container); color: var(--on-primary-container); }
+  .furniture-category-chip:hover { background: var(--hover-tint); color: var(--on-primary-container); }
   .furniture-category-chip.active {
     border: 0;
     background: var(--primary);
     color: #fff;
-    box-shadow: 0 8px 20px rgba(87, 71, 207, .22);
+    box-shadow: 0 8px 20px rgba(32, 24, 74, .22);
   }
   #furniture-results {
     display: grid;
@@ -698,8 +777,8 @@
     color: var(--on-surface);
     cursor: pointer;
   }
-  .furniture-toolbar-button:hover { background: var(--primary-container); color: var(--on-primary-container); }
-  .furniture-toolbar-button:focus-visible { outline: 3px solid rgba(87, 71, 207, .3); outline-offset: 2px; }
+  .furniture-toolbar-button:hover { background: var(--hover-tint); color: var(--on-primary-container); }
+  .furniture-toolbar-button:focus-visible { outline: 3px solid rgba(32, 24, 74, .3); outline-offset: 2px; }
   .furniture-toolbar-button:disabled { opacity: 0.38; cursor: not-allowed; }
   .furniture-toolbar-button svg { width: 20px; height: 20px; }
   .furniture-toolbar-button.danger,
@@ -767,6 +846,19 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
+  @media (min-width: 721px) {
+    body.view-3d:not(.upload-empty) #ui {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      z-index: 20;
+      width: 312px;
+      padding: 12px 20px;
+    }
+    body.view-3d:not(.upload-empty) .camera-preset-row {
+      padding-bottom: 0;
+    }
+  }
   #save-json-btn,
   #connect-roomlog-btn {
     position: fixed;
@@ -818,7 +910,7 @@
     gap: 12px;
   }
   #editor-tools .btn {
-    border-radius: 20px;
+    border-radius: var(--radius-md);
     font-size: 14px;
     font-weight: 700;
   }
@@ -827,21 +919,22 @@
   #editor-tools .tool-grid .btn {
     min-height: 60px;
     padding: 12px 10px;
-    background: #e9e5ff;
+    background: var(--hover-tint);
   }
   #editor-tools .tool-grid .btn.active {
     background: var(--primary);
-    box-shadow: 0 10px 24px rgba(87, 71, 207, .3);
+    box-shadow: 0 10px 24px rgba(32, 24, 74, .3);
   }
   #editor-tools .navigation-grid .btn {
     min-height: 54px;
     padding: 12px;
-    background: #e9e5ff;
+    background: var(--hover-tint);
   }
   #editor-tools .action-grid .btn {
     min-height: 54px;
     padding: 12px 14px;
-    background: #ebe7ff;
+    /* 형제인 tool-grid·navigation-grid(L2)보다 한 단 옅게 두던 원래 관계를 L1으로 유지한다. */
+    background: var(--primary-container);
   }
   #editor-tools .btn:disabled {
     opacity: 1;
@@ -858,7 +951,7 @@
   #editor-tools .scale-input-row input {
     height: 50px;
     padding: 0 16px;
-    border-radius: 18px;
+    border-radius: var(--radius-md);
     background: #f5f2fb;
     font-size: 15px;
   }
@@ -866,7 +959,7 @@
   #editor-tools #apply-scale-btn,
   #editor-tools #clear-scale-btn {
     min-height: 50px;
-    border-radius: 18px;
+    border-radius: var(--radius-md);
   }
   #editor-tools #clear-scale-btn { width: 50px; padding: 12px; }
   #editor-tools .brush-control {
@@ -953,7 +1046,7 @@
     height: 88px;
     margin-bottom: 10px;
     place-items: center;
-    border-radius: 16px;
+    border-radius: var(--radius-btn);
     background: var(--surface-low);
     box-shadow: inset 0 0 0 1px var(--input-border), var(--shadow-soft);
   }
@@ -979,7 +1072,7 @@
     border-radius: var(--radius-btn);
     background: var(--primary);
     color: #fff;
-    box-shadow: 0 8px 20px rgba(87, 71, 207, .32);
+    box-shadow: 0 8px 20px rgba(32, 24, 74, .32);
     font-size: 15px;
     font-weight: 800;
   }
@@ -1034,9 +1127,9 @@
     min-height: 30px;
     padding: 0 14px;
     border-radius: 999px;
-    background: rgba(150, 176, 255, .12);
-    box-shadow: inset 0 0 0 1px rgba(168, 192, 255, .3);
-    color: #c3d4ff;
+    background: rgba(196, 180, 255, .12);
+    box-shadow: inset 0 0 0 1px rgba(196, 180, 255, .3);
+    color: #cbc3e8;
     font-size: 11px;
     font-weight: 800;
     letter-spacing: .08em;
@@ -1044,14 +1137,14 @@
   .landing-kicker svg { width: 15px; height: 15px; }
   .landing-title {
     margin: 26px 0 18px;
-    color: #f6f8ff;
+    color: #f4f1fd;
     font-size: clamp(34px, 4vw, 52px);
     font-weight: 800;
     letter-spacing: -.055em;
     line-height: 1.18;
-    text-shadow: 0 2px 24px rgba(4, 8, 22, .55);
+    text-shadow: 0 2px 24px rgba(13, 10, 36, .55);
   }
-  .landing-title strong { color: #a9bcff; }
+  .landing-title strong { color: var(--pink); }
   .landing-description {
     margin: 0 auto;
     max-width: 30em;
@@ -1077,7 +1170,7 @@
     border-radius: 999px;
     background: var(--primary);
     color: #fff;
-    box-shadow: 0 12px 30px rgba(87, 71, 207, .45);
+    box-shadow: 0 12px 30px rgba(32, 24, 74, .45);
   }
   body.upload-empty #upload-btn .upload-empty-icon {
     width: 24px;
@@ -1106,10 +1199,10 @@
     margin-top: 34px;
     margin-left: 10px;
     padding: 0 26px;
-    border: 1px solid rgba(178, 198, 255, .34);
+    border: 1px solid rgba(196, 180, 255, .34);
     border-radius: 999px;
-    background: rgba(146, 173, 255, .1);
-    color: #dce5ff;
+    background: rgba(196, 180, 255, .1);
+    color: #f4f1fd;
     font-size: 16px;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
@@ -1123,12 +1216,12 @@
       background 140ms ease, border-color 140ms ease;
   }
   body.upload-empty #ui #upload-btn:hover {
-    background: var(--primary-hover, #4a3cc4);
-    box-shadow: 0 14px 30px rgba(87, 71, 207, .34);
+    background: var(--primary-hover);
+    box-shadow: 0 14px 30px rgba(32, 24, 74, .34);
     transform: translateY(-1px);
   }
   body.upload-empty #ui #upload-btn:active {
-    box-shadow: 0 6px 16px rgba(87, 71, 207, .26);
+    box-shadow: 0 6px 16px rgba(32, 24, 74, .26);
     transform: translateY(0);
   }
   body.upload-empty #start-sample-btn:hover {
@@ -1148,34 +1241,34 @@
     gap: 10px;
     padding-top: 26px;
     margin-top: 40px;
-    border-top: 1px solid rgba(178, 198, 255, .16);
-    color: rgba(206, 218, 246, .72);
+    border-top: 1px solid rgba(196, 180, 255, .16);
+    color: rgba(214, 206, 240, .72);
     font-size: 13px;
     font-weight: 700;
   }
   body.upload-empty .landing-feature-row { display: flex; }
-  .landing-feature-row svg { width: 22px; height: 22px; color: #a9bcff; }
-  .landing-feature-row strong { color: #cfd9ff; }
+  .landing-feature-row svg { width: 22px; height: 22px; color: var(--pink); }
+  .landing-feature-row strong { color: #e6e0f7; }
   /* Original-plan editing stays out of the drawing: the rail keeps only the
      seven primary tools visible, while less frequent controls open beside it. */
   #editor-tools {
-    top: 56px;
+    top: 40px;
     bottom: auto;
     left: 20px;
-    width: 92px;
-    height: calc(100vh - 112px);
+    width: 72px;
+    height: calc(100vh - 80px);
     max-height: none;
     display: flex;
     flex-direction: column;
-    padding: 14px 10px;
+    padding: 8px 6px;
     overflow: visible;
-    border-radius: 14px;
+    border-radius: var(--radius);
     background: rgba(253, 251, 249, .98);
     box-shadow: 0 14px 32px rgba(38, 43, 62, .12);
   }
   #editor-tools .label {
     display: block;
-    margin: 0 0 12px;
+    margin: 0 0 8px;
     color: #727486;
     font-size: 10px;
     font-weight: 800;
@@ -1185,9 +1278,9 @@
   }
   #editor-tools .label::after {
     display: block;
-    width: 30px;
-    height: 4px;
-    margin: 8px auto 0;
+    width: 26px;
+    height: 3px;
+    margin: 6px auto 0;
     content: "";
     border-radius: 999px;
     background: #d8dbe5;
@@ -1199,16 +1292,16 @@
   }
   #editor-tools .tool-grid .btn {
     position: relative;
-    min-height: 66px;
-    padding: 7px 4px;
+    min-height: 48px;
+    padding: 4px 2px;
     flex-direction: column;
     justify-content: center;
-    gap: 5px;
-    border-radius: 11px;
+    gap: 3px;
+    border-radius: var(--radius-sm);
     background: transparent;
     box-shadow: none;
     color: #5c6170;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
   }
   #editor-tools .tool-grid .btn span {
@@ -1218,97 +1311,100 @@
     overflow: visible;
     clip: auto;
     color: inherit;
-    font-size: 11px;
+    font-size: 10px;
     line-height: 1;
   }
   #editor-tools .tool-grid .btn svg,
   #editor-tools .tool-grid .btn [data-lucide] {
-    width: 24px;
-    height: 24px;
-    flex-basis: 24px;
+    width: 19px;
+    height: 19px;
+    flex-basis: 19px;
     stroke-width: 1.9;
   }
+  /* 916번의 같은 선택자를 덮어쓰는 후순위 규칙이다. 다른 .active(--primary + 흰 글자)와
+     어긋나 있어 같은 문법으로 맞춘다. */
   #editor-tools .tool-grid .btn.active {
-    background: #e8e7ef;
-    box-shadow: inset 0 0 0 1px rgba(49, 91, 180, .05);
-    color: #315bb4;
+    background: var(--primary);
+    box-shadow: 0 10px 24px rgba(32, 24, 74, .3);
+    color: #fff;
   }
   #editor-tools .tool-grid .btn:hover:not(.active) {
-    background: #f4f3f5;
-    color: #343946;
+    /* 바탕이 L2이므로 hover는 다른 버튼과 같은 방향(어두워짐)으로 L3. */
+    background: var(--hover-tint-strong);
+    color: var(--on-primary-container);
   }
   #editor-tools .tool-grid .btn:nth-child(2),
   #editor-tools .tool-grid .btn:nth-child(4),
-  #editor-tools .tool-grid .btn:nth-child(6) { margin-bottom: 14px; }
+  #editor-tools .tool-grid .btn:nth-child(6) { margin-bottom: 6px; }
   #editor-tools .tool-grid .btn:nth-child(2)::after,
   #editor-tools .tool-grid .btn:nth-child(4)::after,
   #editor-tools .tool-grid .btn:nth-child(6)::after {
     position: absolute;
     right: 0;
-    bottom: -7px;
+    bottom: -3px;
     left: 0;
     width: 100%;
     height: 1px;
     content: "";
-    background: #ecebf0;
+    background: var(--hairline);
   }
   #editor-rail-navigation {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 7px;
-    padding-top: 12px;
+    gap: 5px;
+    padding-top: 6px;
     margin-top: 2px;
-    border-top: 1px solid #ecebf0;
+    border-top: 1px solid var(--hairline);
   }
   #editor-rail-navigation .btn {
-    min-height: 42px;
+    min-height: 34px;
     padding: 0;
-    border-radius: 10px;
-    background: #f0eef9;
+    border-radius: var(--radius-sm);
+    background: var(--primary-container);
     box-shadow: none;
-    color: #4d48bf;
+    color: var(--on-primary-container);
   }
-  #editor-rail-navigation .btn:hover { background: #e7e2fb; }
+  #editor-rail-navigation .btn:hover { background: var(--hover-tint); }
   #editor-rail-navigation .btn svg,
   #editor-rail-navigation .btn [data-lucide] {
-    width: 21px;
-    height: 21px;
+    width: 18px;
+    height: 18px;
     stroke-width: 1.9;
   }
   #editor-tools .editor-rail-divider { display: none; }
   #editor-tools .editor-rail-utility {
     width: 100%;
-    min-height: 46px;
+    min-height: 34px;
     padding: 0;
-    border-radius: 11px;
+    border-radius: var(--radius-sm);
     background: transparent;
     box-shadow: none;
     color: #626775;
   }
   #editor-tools .editor-rail-utility svg,
   #editor-tools .editor-rail-utility [data-lucide] {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
     stroke-width: 1.9;
   }
   #editor-tools #editor-more-btn { margin-top: auto; }
   #editor-tools .editor-rail-utility:hover,
   #editor-tools .editor-rail-utility.active {
-    background: #efedf6;
-    color: #315bb4;
+    background: var(--primary-container);
+    color: var(--on-primary-container);
   }
   #editor-context-panel {
-    position: fixed;
+    position: absolute;
     z-index: 24;
-    top: 232px;
-    left: 112px;
-    width: min(230px, calc(100vw - 132px));
-    padding: 12px 14px;
-    border-radius: 0 14px 14px 0;
+    top: 0;
+    left: 72px;
+    width: min(220px, calc(100vw - 88px));
+    height: var(--context-trigger-height, 48px);
+    padding: 6px;
+    border-radius: var(--radius-btn);
     background: rgba(255, 255, 255, .98);
     box-shadow: 14px 14px 30px rgba(35, 27, 74, .10);
   }
-  #editor-context-panel[data-context-tool="scale"] { top: 474px; }
   #editor-context-panel[hidden] { display: none !important; }
   #editor-context-panel .label {
     margin: 0 0 7px;
@@ -1319,28 +1415,34 @@
     text-transform: none;
   }
   #editor-context-panel .label::after { display: none; }
-  #editor-context-panel .scale-control { gap: 8px; margin: 0; }
-  #editor-context-panel .scale-summary { min-height: 18px; font-size: 11px; }
-  #editor-context-panel .scale-input-row { gap: 7px; }
+  #editor-context-panel[data-context-tool="wall"] .label { display: none; }
+  #editor-context-panel[data-context-tool="scale"] .scale-summary { display: none; }
+  #editor-context-panel .scale-control { gap: 0; margin: 0; }
+  #editor-context-panel .scale-input-row { gap: 4px; }
   #editor-context-panel .scale-input-row input {
-    height: 36px;
+    height: 32px;
     min-width: 0;
-    padding: 0 10px;
-    border-radius: 10px;
+    padding: 0 8px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-container);
     font-size: 12px;
   }
   #editor-context-panel .scale-unit { font-size: 11px; }
   #editor-context-panel #apply-scale-btn,
   #editor-context-panel #clear-scale-btn {
-    min-height: 36px;
-    padding: 0 10px;
-    border-radius: 10px;
+    min-height: 32px;
+    padding: 0 7px;
+    border-radius: var(--radius-sm);
     font-size: 12px;
   }
-  #editor-context-panel #clear-scale-btn { width: 36px; padding: 0; }
+  #editor-context-panel #clear-scale-btn { width: 32px; padding: 0; }
   #editor-context-panel .brush-control {
     grid-template-columns: auto minmax(0, 1fr) 24px;
-    gap: 7px;
+    height: 32px;
+    gap: 6px;
+    padding: 0 8px;
+    border-radius: 12px;
+    background: var(--surface-container);
   }
   #editor-context-panel .brush-control label,
   #editor-context-panel .brush-value { font-size: 11px; }
@@ -1353,7 +1455,7 @@
     max-height: calc(100vh - 112px);
     padding: 22px;
     overflow-y: auto;
-    border-radius: 18px;
+    border-radius: var(--radius-md);
     background: rgba(255, 255, 255, .98);
     box-shadow: 0 18px 44px rgba(35, 27, 74, .14);
   }
@@ -1374,13 +1476,13 @@
   #editor-utility-panel .scale-input-row input {
     height: 46px;
     padding: 0 13px;
-    border-radius: 14px;
+    border-radius: var(--radius);
     font-size: 14px;
   }
   #editor-utility-panel #apply-scale-btn,
   #editor-utility-panel #clear-scale-btn {
     min-height: 46px;
-    border-radius: 14px;
+    border-radius: var(--radius);
   }
   #editor-utility-panel #clear-scale-btn { width: 46px; }
   #editor-utility-panel .brush-control {
@@ -1390,9 +1492,9 @@
   #editor-utility-panel .brush-control label,
   #editor-utility-panel .brush-value { font-size: 13px; }
   #editor-utility-panel .navigation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  #editor-utility-panel .navigation-grid .btn { min-height: 48px; border-radius: 14px; background: #e9e5ff; }
+  #editor-utility-panel .navigation-grid .btn { min-height: 48px; border-radius: var(--radius); background: var(--hover-tint); }
   #editor-utility-panel .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #editor-utility-panel .action-grid .btn { min-height: 48px; padding: 10px; border-radius: 14px; background: #f0edfb; }
+  #editor-utility-panel .action-grid .btn { min-height: 48px; padding: 10px; border-radius: var(--radius); background: var(--primary-container); }
   #editor-utility-panel .legend { grid-template-columns: 1fr; gap: 7px; }
   #editor-utility-panel .legend-row { flex-direction: row; justify-content: flex-start; padding: 0 4px; border-radius: 0; background: transparent; }
   #editor-utility-panel .legend-row input { position: static; width: 18px; height: 18px; margin: 0; }
@@ -1403,41 +1505,83 @@
     right: 24px;
     bottom: 24px;
     display: none;
-    min-width: 178px;
-    padding: 10px 12px;
-    border-radius: 10px;
+    min-width: 152px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, .96);
     box-shadow: 0 12px 28px rgba(35, 27, 74, .12);
   }
   body.view-original #editor-class-legend { display: block; }
-  #editor-class-legend .legend { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  #editor-class-legend .legend { display: grid; grid-template-columns: 1fr; gap: 4px; }
   #editor-class-legend .legend-row {
     flex-direction: row;
     justify-content: flex-start;
-    min-height: 22px;
+    min-height: 20px;
     padding: 0;
     border-radius: 0;
     background: transparent;
   }
   #editor-class-legend .legend-row input {
     position: static;
-    width: 14px;
-    height: 14px;
-    margin: 0 7px 0 0;
+    width: 12px;
+    height: 12px;
+    margin: 0 6px 0 0;
   }
-  #editor-class-legend .swatch { width: 14px; height: 14px; margin-right: 6px; border-radius: 3px; }
+  #editor-class-legend .swatch { width: 12px; height: 12px; margin-right: 5px; border-radius: 3px; }
   #editor-class-legend .swatch.wall { background: #3a70d6; }
   #editor-class-legend .swatch.door { background: #e6ab1d; }
   #editor-class-legend .swatch.window { background: #e05357; }
   #editor-class-legend .legend-row > span:nth-of-type(2) {
     color: var(--ink);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0;
     text-transform: none;
   }
-  #editor-class-legend .legend-row .count { margin-left: auto; color: var(--muted); font-size: 12px; }
-  #furniture-panel { top: 96px; right: 28px; max-height: calc(100vh - 124px); }
+  #editor-class-legend .legend-row .count { margin-left: auto; color: var(--muted); font-size: 11px; }
+  @media (min-width: 721px) {
+    /* The catalog is an extension of the 3D controls, not a competing right rail. */
+    body.view-furnishing #furniture-panel {
+      top: 116px;
+      right: auto;
+      left: 24px;
+      width: 312px;
+      height: calc(100vh - 140px);
+      max-height: none;
+      padding: 12px;
+    }
+    body.view-furnishing .furniture-panel-heading { margin-bottom: 8px; }
+    body.view-furnishing .furniture-panel-title { font-size: 15px; }
+    body.view-furnishing #furniture-search { min-height: 32px; padding-block: 5px; }
+    body.view-furnishing .furniture-category-chips { gap: 6px; margin: 7px -2px; padding-bottom: 3px; }
+    body.view-furnishing .furniture-category-chip { min-height: 28px; padding: 5px 9px; font-size: 10px; }
+    body.view-furnishing #furniture-results {
+      grid-template-rows: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin: 0;
+      padding-right: 0;
+      overflow: hidden;
+    }
+    body.view-furnishing .furniture-card { min-height: 0; }
+    body.view-furnishing .furniture-card-swatch {
+      flex: 1 1 0;
+      min-height: 42px;
+      height: auto;
+    }
+    body.view-furnishing .furniture-card-details { padding: 4px 5px; }
+    body.view-furnishing .furniture-card-name {
+      margin: 0;
+      overflow: hidden;
+      font-size: 10px;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    body.view-furnishing .furniture-card-meta { font-size: 9px; line-height: 1.2; }
+    body.view-furnishing .furniture-card-size { display: none; }
+    body.view-furnishing #furniture-pagination { padding-top: 6px; }
+    body.view-furnishing #furniture-reset-btn { min-height: 32px; margin-top: 6px; padding-block: 6px; }
+  }
 
   @media (max-width: 720px) {
     #control-stack {
@@ -1541,15 +1685,18 @@
     <p class="landing-description">AI가 평면도를 분석해 벽·문·창문을 인식하고, 바로 확인할 수 있는 3D 공간으로 만듭니다.</p>
   </section>
 
-  <div id="camera-view-controls" hidden>
-    <div class="label">3D View</div>
+<div id="camera-view-controls" hidden>
+    <div class="camera-view-heading">
+      <div class="label">3D View</div>
+      <button id="furniture-panel-open" class="furniture-panel-open" type="button" hidden aria-label="가구 배치 열기" aria-controls="furniture-panel" aria-expanded="false" title="가구 배치 열기"><i data-lucide="armchair" aria-hidden="true"></i><span>가구 배치</span></button>
+    </div>
     <div class="camera-preset-row" role="toolbar" aria-label="3D 카메라 뷰">
-      <button class="camera-preset active" data-camera-view="perspective" type="button">입체</button>
-      <button class="camera-preset" data-camera-view="top" type="button">위</button>
-      <button class="camera-preset" data-camera-view="front" type="button">정면</button>
-      <button class="camera-preset" data-camera-view="left" type="button">왼쪽</button>
-      <button class="camera-preset" data-camera-view="right" type="button">오른쪽</button>
-      <button class="camera-preset" data-camera-view="auto" type="button" aria-pressed="false">자동 둘러보기</button>
+      <button class="camera-preset active" data-camera-view="perspective" type="button" aria-label="입체 보기" title="입체 보기"><i data-lucide="box" aria-hidden="true"></i></button>
+      <button class="camera-preset" data-camera-view="top" type="button" aria-label="위에서 보기" title="위에서 보기"><i data-lucide="panel-top" aria-hidden="true"></i></button>
+      <button class="camera-preset" data-camera-view="front" type="button" aria-label="정면 보기" title="정면 보기"><i data-lucide="monitor" aria-hidden="true"></i></button>
+      <button class="camera-preset" data-camera-view="left" type="button" aria-label="왼쪽에서 보기" title="왼쪽에서 보기"><i data-lucide="panel-left" aria-hidden="true"></i></button>
+      <button class="camera-preset" data-camera-view="right" type="button" aria-label="오른쪽에서 보기" title="오른쪽에서 보기"><i data-lucide="panel-right" aria-hidden="true"></i></button>
+      <button class="camera-preset" data-camera-view="auto" type="button" aria-pressed="false" aria-label="자동 둘러보기" title="자동 둘러보기"><i data-lucide="orbit" aria-hidden="true"></i></button>
     </div>
   </div>
 
@@ -1584,17 +1731,6 @@
     <i data-lucide="link" aria-hidden="true"></i><span>RoomLog에 연결</span>
   </button>
 
-  <div id="stage-controls">
-    <button class="btn primary with-icon" id="furnish-btn" hidden disabled>
-      <i data-lucide="armchair" aria-hidden="true"></i>
-      <span>다음: 가구 배치</span>
-    </button>
-    <button class="btn with-icon" id="structure-btn" hidden>
-      <i data-lucide="building-2" aria-hidden="true"></i>
-      <span>구조 확인</span>
-    </button>
-  </div>
-
   <div id="demo-controls" hidden>
     <div class="label">Sample</div>
     <select class="sample-select" id="demo-select" aria-label="Demo sample"></select>
@@ -1606,8 +1742,9 @@
 <div id="view-controls" hidden>
   <div class="label">View</div>
   <div class="segmented" id="view-switch" role="tablist" aria-label="Plan view">
-    <button class="segment active" data-view="original" role="tab" aria-selected="true" disabled>Show Original</button>
-    <button class="segment" data-view="3d" role="tab" aria-selected="false" disabled>Show 3D</button>
+    <button class="segment active" data-view="original" role="tab" aria-selected="true" disabled>2D</button>
+    <button class="segment" data-view="3d" role="tab" aria-selected="false" disabled>3D</button>
+    <button class="segment" id="furnish-btn" data-view="furnishing" role="tab" aria-selected="false" disabled>Floor</button>
   </div>
 </div>
 
@@ -1675,7 +1812,10 @@
 </div>
 
 <aside id="furniture-panel" hidden aria-label="가구 카탈로그">
-  <div class="furniture-panel-title">가구 배치</div>
+  <div class="furniture-panel-heading">
+    <div class="furniture-panel-title">가구 배치</div>
+    <button id="furniture-panel-close" class="furniture-panel-close" type="button" aria-label="가구 배치 접기" title="가구 배치 접기"><i data-lucide="chevron-up" aria-hidden="true"></i></button>
+  </div>
   <label class="furniture-search-wrap">
     <i data-lucide="search" aria-hidden="true"></i>
     <input id="furniture-search" type="search" placeholder="가구명, 카테고리 검색" autocomplete="off">
@@ -1784,7 +1924,8 @@ const CAMERA_TWEEN_MS = 600;
 const CAMERA_PRESET_TWEEN_MS = 700;
 const VIEW_FADE_MS     = 220;
 const EDGE_ANGLE_DEG   = 14;          // smaller -> more crease lines
-const FURNITURE_PAGE_SIZE = 4;
+const FURNITURE_PAGE_SIZE = 8;
+const FURNITURE_PANEL_SLIDE_MS = 220;
 
 const FURNITURE_CATEGORY_LABELS = {
   appliance: "가전",
@@ -1800,7 +1941,9 @@ const FURNITURE_CATEGORY_LABELS = {
 };
 
 // Palette
-const COLOR_BG     = 0x1b284b;  // night-sky fog: sits between the CSS sky's 55% (#101a38) and horizon (#26355e) stops
+// night-sky fog: sits between the CSS sky's 55% (#17133a) and horizon (#2a1f52) stops.
+// 두 스톱의 중간값이라는 원래 규칙은 유지한 채 색축만 파랑 → 보라로 옮겼다.
+const COLOR_BG     = 0x201946;
 // Dark night-lawn base: under the night sky the yard stays fairly dim (~74
 // luminance) so it doesn't glow brighter than the moonlit scene, while still
 // sitting clearly below the ~175 white walls. A deep, slightly cool green reads
@@ -1982,6 +2125,7 @@ const placedFurnitures = [];
 let furnitureCatalog = [];
 let furnitureCatalogPromise = null;
 let catalogOffset = 0;
+let furniturePanelCloseTimer = null;
 let pendingFurniture = null;
 let selectedFurniture = null;
 let furniturePlacementRequest = 0;
@@ -2723,8 +2867,9 @@ const startSampleButton = document.getElementById("start-sample-btn");
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
 const furnishButton = document.getElementById("furnish-btn");
-const structureButton = document.getElementById("structure-btn");
 const furniturePanel = document.getElementById("furniture-panel");
+const furniturePanelOpenButton = document.getElementById("furniture-panel-open");
+const furniturePanelCloseButton = document.getElementById("furniture-panel-close");
 const furnitureSearch = document.getElementById("furniture-search");
 const furnitureCategory = document.getElementById("furniture-category");
 const furnitureCategoryChips = document.getElementById("furniture-category-chips");
@@ -3758,12 +3903,22 @@ function updateCameraPresetControls() {
   updateCameraPresetButtons();
 }
 
+function positionEditorContextPanel(activeToolButton) {
+  if (!activeToolButton) return;
+  const rect = activeToolButton.getBoundingClientRect();
+  const toolbarRect = editorTools.getBoundingClientRect();
+  editorContextPanel.style.left = `${Math.round(rect.right - toolbarRect.left)}px`;
+  editorContextPanel.style.top = `${Math.round(rect.top - toolbarRect.top)}px`;
+  editorContextPanel.style.setProperty("--context-trigger-height", `${Math.round(rect.height)}px`);
+}
+
 function updateEditorControls() {
   const reviewDocument = reviewEditor?.document;
   const hasDocument = Boolean(reviewDocument);
   const hasSelection = Boolean(reviewEditor?.selectedId);
   const counts = openingCounts();
   const selectedTool = toolButtons.find(button => button.classList.contains("active"))?.dataset.tool;
+  const activeToolButton = toolButtons.find(button => button.dataset.tool === selectedTool);
   const shouldShowContext = hasDocument && (selectedTool === "wall" || selectedTool === "scale");
 
   editorContextPanel.hidden = !shouldShowContext;
@@ -3771,6 +3926,7 @@ function updateEditorControls() {
   brushControl.hidden = selectedTool !== "wall";
   brushLabel.hidden = selectedTool !== "wall";
   scaleControl.hidden = selectedTool !== "scale";
+  if (shouldShowContext) positionEditorContextPanel(activeToolButton);
 
   document.querySelectorAll("[data-count]").forEach(node => {
     node.textContent = counts[node.dataset.count] ?? 0;
@@ -3787,10 +3943,7 @@ function updateEditorControls() {
   uploadButton.disabled = inFlight;
   const canFurnish = Boolean(currentComposedPlan) && !reviewDocument?.needsCompose();
   const furnishing = currentView === "furnishing";
-  furnishButton.hidden = !canFurnish || currentView !== "3d";
-  furnishButton.disabled = !canFurnish || inFlight;
-  structureButton.hidden = !furnishing;
-  structureButton.disabled = inFlight;
+  furnishButton.hidden = false;
   const canSave = ["3d", "furnishing"].includes(currentView) &&
     Boolean(currentComposedPlan) &&
     !reviewDocument?.needsCompose();
@@ -3823,6 +3976,28 @@ function setFurnishingVisibility(furnishing) {
   document.body.classList.toggle("view-furnishing", furnishing);
 }
 
+function setFurniturePanelOpen(open) {
+  clearTimeout(furniturePanelCloseTimer);
+  furniturePanelCloseTimer = null;
+  const isFurnishing = currentView === "furnishing";
+  furniturePanelOpenButton.hidden = open || !isFurnishing;
+  furniturePanelOpenButton.setAttribute("aria-expanded", String(open && isFurnishing));
+  if (!isFurnishing) {
+    furniturePanel.classList.remove("is-open");
+    furniturePanel.hidden = true;
+    return;
+  }
+  if (open) {
+    furniturePanel.hidden = false;
+    requestAnimationFrame(() => furniturePanel.classList.add("is-open"));
+    return;
+  }
+  furniturePanel.classList.remove("is-open");
+  furniturePanelCloseTimer = window.setTimeout(() => {
+    if (!furniturePanel.classList.contains("is-open")) furniturePanel.hidden = true;
+  }, FURNITURE_PANEL_SLIDE_MS);
+}
+
 async function enterFurnishingStage() {
   const entering = currentView === "3d";
   let roomMaterialWarning = "";
@@ -3843,12 +4018,10 @@ async function enterFurnishingStage() {
     currentView = "furnishing";
     setCanvasViewState("furnishing");
     setFurnishingVisibility(true);
-    furniturePanel.hidden = false;
-    structureButton.hidden = false;
-    furnishButton.hidden = true;
+    setFurniturePanelOpen(true);
     controls.enabled = true;
     controls.enableRotate = true;
-    updateViewButtons("3d");
+    updateViewButtons("furnishing");
     updateEditorControls();
   }
   if (!furnitureCatalog.length || !furnitureCatalogPromise) {
@@ -3880,9 +4053,7 @@ function leaveFurnishingStage() {
   cancelFurnitureInteraction({ clearSelection: true, silent: true });
   currentView = "3d";
   setFurnishingVisibility(false);
-  furniturePanel.hidden = true;
-  structureButton.hidden = true;
-  furnishButton.hidden = false;
+  setFurniturePanelOpen(false);
   setCanvasViewState("3d");
   controls.enabled = true;
   controls.enableRotate = true;
@@ -3891,13 +4062,13 @@ function leaveFurnishingStage() {
   updateEditorControls();
 }
 
-furnishButton.addEventListener("click", enterFurnishingStage);
-structureButton.addEventListener("click", leaveFurnishingStage);
 cameraViewButtons.forEach(button => button.addEventListener("click", () => {
   const view = button.dataset.cameraView;
   if (view === "auto") toggleAutoOrbit();
   else void applyCameraPreset(view);
 }));
+furniturePanelOpenButton.addEventListener("click", () => setFurniturePanelOpen(true));
+furniturePanelCloseButton.addEventListener("click", () => setFurniturePanelOpen(false));
 furnitureSearch.addEventListener("input", () => {
   catalogOffset = 0;
   renderFurnitureCatalog();
@@ -4087,7 +4258,7 @@ function setView(view) {
     throw new RangeError(`Unknown plan view: ${view}`);
   }
   if (view === "furnishing") {
-    enterFurnishingStage();
+    showFloorView();
     return;
   }
   if (view === "original" && !reviewEditor?.document) return;
@@ -4096,7 +4267,7 @@ function setView(view) {
     cancelFurnitureInteraction({ clearSelection: true, silent: true });
     setFurnishingVisibility(false);
     furniturePanel.hidden = true;
-    structureButton.hidden = true;
+    furniturePanelOpenButton.hidden = true;
   }
 
   const showingReview = view === "original";
@@ -4281,6 +4452,15 @@ async function showThreeDimensionalView() {
   }
 }
 
+async function showFloorView() {
+  if (currentView === "furnishing") {
+    setFurniturePanelOpen(true);
+    return;
+  }
+  if (currentView === "original") await showThreeDimensionalView();
+  if (currentView === "3d") await enterFurnishingStage();
+}
+
 // Retained for static demo JSON callers; editable fields are not required.
 async function fetchAndLoad(url, init) {
   if (inFlight) return false;
@@ -4387,6 +4567,7 @@ function wireReviewControls() {
   }));
   viewButtons.forEach(button => button.addEventListener("click", () => {
     if (button.dataset.view === "original") showOriginalView();
+    else if (button.dataset.view === "furnishing") showFloorView();
     else showThreeDimensionalView();
   }));
   for (const eventName of ["pointerdown", "pointerup", "pointercancel"]) {

@@ -2,7 +2,7 @@
 
 // 내놓은 집(임대인) 등록 폼 — 사진 업로드, 3D 도면 연결, 매물 등록.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
-import type { ChangeEvent, DragEvent } from "react";
+import type { ChangeEvent, DragEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -359,6 +359,8 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   const [floorPlan3D, setFloorPlan3D] = useState<ListingFloorPlan3D | null>(null);
   const [tourSourceFile, setTourSourceFile] = useState<File | null>(null);
   const tourSourceInputRef = useRef<HTMLInputElement | null>(null);
+  const previewPointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const previewWasDraggedRef = useRef(false);
   // 사진/영상 패널이 드래그오버 중인지 — 패널 스코프 로컬 상태(문서 전역 드롭 동작은 건드리지 않는다).
   const [isPhotoDragOver, setIsPhotoDragOver] = useState(false);
   const [isTourDragOver, setIsTourDragOver] = useState(false);
@@ -719,6 +721,27 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
       window.location.href = editorPath;
     })();
   };
+
+  function handlePreviewCardPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!floorPlan3D) return;
+    previewPointerStartRef.current = { x: event.clientX, y: event.clientY };
+    previewWasDraggedRef.current = false;
+  }
+
+  function handlePreviewCardPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = previewPointerStartRef.current;
+    if (!start) return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) previewWasDraggedRef.current = true;
+  }
+
+  function handlePreviewCardClick() {
+    if (!floorPlan3D) return;
+    if (previewWasDraggedRef.current) {
+      previewWasDraggedRef.current = false;
+      return;
+    }
+    openMitunetEditor();
+  }
 
   // 에디터 탭에서 3D를 만들고 이 탭으로 돌아오면 "3D방 연결" 상태를 즉시 반영한다.
   useEffect(() => {
@@ -1196,19 +1219,32 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 도면 JSON은 카드 숨은 드롭으로만 지원(개발자용, dragover 시각 피드백은 일부러 없음). */}
             <div className="summary-media-col">
               <div
-                className={`summary-media-card summary-media-3d${floorPlan3D ? "" : " is-empty"}`}
+                className={`summary-media-card summary-media-3d${floorPlan3D ? " is-listing-preview" : " is-empty"}`}
                 aria-label="3D 도면 미리보기"
+                onClick={floorPlan3D ? handlePreviewCardClick : undefined}
                 onDragOver={handleFloorPlanJsonDragOver}
                 onDrop={handleFloorPlanJsonDrop}
+                onKeyDown={(event) => {
+                  if (!floorPlan3D || (event.key !== "Enter" && event.key !== " ")) return;
+                  event.preventDefault();
+                  openMitunetEditor();
+                }}
+                onPointerDown={handlePreviewCardPointerDown}
+                onPointerMove={handlePreviewCardPointerMove}
+                role={floorPlan3D ? "button" : undefined}
+                tabIndex={floorPlan3D ? 0 : undefined}
               >
                 {floorPlan3D ? (
                   <FloorPlan3DPreview
                     controlsEnabled
+                    fitDistanceScale={0.9}
                     frameloop="always"
                     furnitureData={floorPlan3D.furnitures as unknown as PlacedFurniture[]}
                     hideHint
+                    listingPreview
                     mitunetPlan={floorPlan3D.mitunet}
                     pendingFurniture={null}
+                    previewFit
                     selectedFurnitureId={null}
                     selectedWallId={null}
                     wallsData={floorPlan3D.walls3D as unknown as WheretoputWall3D[]}
@@ -1229,7 +1265,14 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               {/* floorPlan3D 기준(has3DRoom이 아니라) — 박스가 실제로 프리뷰를 그리고 있을 때만 재진입 버튼을 보여줘야
                   "복원 시 has3DRoom은 true인데 스냅샷이 없어 박스는 빈 상태"인 경우 버튼·빈 상태 안내가 동시에 뜨는 걸 막는다. */}
               {floorPlan3D ? (
-                <button type="button" className="summary-media-json-link" onClick={openMitunetEditor}>
+                <button
+                  type="button"
+                  className="summary-media-json-link"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openMitunetEditor();
+                  }}
+                >
                   <Box size={13} strokeWidth={2.2} aria-hidden="true" />
                   다시 열기 ↗
                 </button>

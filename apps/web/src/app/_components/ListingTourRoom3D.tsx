@@ -6,7 +6,10 @@ import {
   createFurnitureModel,
   finalizeFurnitureDraft,
   FURNITURE_CATALOG,
+  furnitureCategoryLabel,
   furnitureImageUrl,
+  listFurnitureCategoryFilters,
+  loadGlbDatasetCatalog,
   moveFurnitureDraftToPoint,
   reopenFurnitureDraft,
   rotateFurnitureQuarterTurn
@@ -90,6 +93,8 @@ export default function ListingTourRoom3D({
   // 데스크톱 첫인상엔 패널이 보여야 해서 열림 기본, 사용자가 토글로 제어한다.
   const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(true);
   const [catalogQuery, setCatalogQuery] = useState("");
+  const [furnitureCategoryFilter, setFurnitureCategoryFilter] = useState("전체");
+  const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
@@ -100,14 +105,47 @@ export default function ListingTourRoom3D({
   const pendingFurnitureOriginRef = useRef<PlacedFurniture | null>(null);
   // 집고 있는 가구가 사용자 위치를 한 번이라도 받았는지 — 첫 배치는 벽 통과 검사를 끈다.
   const pendingFurniturePlacedOnceRef = useRef(false);
+  const furnitureCategoryCounts = useMemo(
+    () =>
+      furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
+        const category = furnitureCategoryLabel(item);
+        counts[category] = (counts[category] ?? 0) + 1;
+        return counts;
+      }, {}),
+    [furnitureCatalog]
+  );
+  const furnitureCategoryFilters = useMemo(() => listFurnitureCategoryFilters(furnitureCatalog), [furnitureCatalog]);
   const filteredCatalog = useMemo(() => {
     const normalizedQuery = catalogQuery.trim().toLowerCase();
-    const catalog = normalizedQuery
-      ? FURNITURE_CATALOG.filter((item) => catalogSearchText(item).includes(normalizedQuery))
-      : FURNITURE_CATALOG;
+    const catalog = furnitureCatalog.filter((item) => {
+      const matchesCategory = furnitureCategoryFilter === "전체" || furnitureCategoryLabel(item) === furnitureCategoryFilter;
+      const matchesQuery = !normalizedQuery || catalogSearchText(item).includes(normalizedQuery);
+      return matchesCategory && matchesQuery;
+    });
 
     return catalog.slice(0, 12);
-  }, [catalogQuery]);
+  }, [catalogQuery, furnitureCatalog, furnitureCategoryFilter]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadFurnitureCatalog() {
+      try {
+        const datasetItems = await loadGlbDatasetCatalog();
+        if (!isActive || !datasetItems.length) return;
+        setFurnitureCatalog(datasetItems);
+      } catch {
+        // The bundled GLB catalog is unavailable only in fallback environments.
+        // Keep the existing basic catalog usable in that case.
+      }
+    }
+
+    void loadFurnitureCatalog();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     const savedFurnitures = readSavedFurnitures(floorPlan);
@@ -373,6 +411,21 @@ export default function ListingTourRoom3D({
                 type="search"
                 value={catalogQuery}
               />
+            </div>
+            <div className="listing-tour-furniture-category-tabs" role="tablist" aria-label="가구 카테고리">
+              {furnitureCategoryFilters.map((category) => (
+                <button
+                  aria-selected={furnitureCategoryFilter === category}
+                  className={furnitureCategoryFilter === category ? "active" : ""}
+                  key={category}
+                  onClick={() => setFurnitureCategoryFilter(category)}
+                  role="tab"
+                  type="button"
+                >
+                  {category}
+                  <small>{category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}</small>
+                </button>
+              ))}
             </div>
             <div className="listing-tour-furniture-grid">
               {filteredCatalog.map((item) => {

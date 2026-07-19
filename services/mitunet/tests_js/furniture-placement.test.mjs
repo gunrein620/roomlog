@@ -69,14 +69,15 @@ test("filters out manifest items missing catalog identity fields", () => {
   assert.deepEqual(items.map(item => item.fileName), ["oak-chair.glb"]);
 });
 
-test("excludes catalog items without a product thumbnail", () => {
+test("keeps catalog items without a product thumbnail", () => {
   const { thumbnailUrl: _thumbnailUrl, ...itemWithoutThumbnail } = manifest.items[1];
   const items = normalizeFurnitureCatalog({ items: [
     { ...manifest.items[0], thumbnailUrl: "https://images.example.com/oak-chair.jpg" },
     itemWithoutThumbnail,
   ] });
 
-  assert.deepEqual(items.map(item => item.fileName), ["oak-chair.glb"]);
+  assert.deepEqual(items.map(item => item.fileName), ["oak-chair.glb", "white-bed.glb"]);
+  assert.equal(items[1].thumbnailUrl, undefined);
 });
 
 test("cleans leading slashes from normalized asset paths", () => {

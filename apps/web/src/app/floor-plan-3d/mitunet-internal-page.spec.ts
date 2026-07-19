@@ -100,3 +100,145 @@ test("uses the original upload for room classification while retaining the 1024p
   );
   assert.match(viewerSource, /analysis_image_b64:\s*currentExtraction\?\.analysis_image_b64/);
 });
+
+test("renders the camera toolbar as labelled icon buttons without moving the editor tools", () => {
+  assert.match(
+    viewerSource,
+    /id="camera-view-controls"[\s\S]*?data-camera-view="perspective"[^>]*aria-label="입체 보기"[^>]*>[\s\S]*?data-lucide="box"/,
+  );
+  assert.match(
+    viewerSource,
+    /data-camera-view="front"[^>]*aria-label="정면 보기"[^>]*>[\s\S]*?data-lucide="monitor"/,
+  );
+  assert.match(
+    viewerSource,
+    /data-camera-view="auto"[^>]*aria-label="자동 둘러보기"[^>]*>[\s\S]*?data-lucide="orbit"/,
+  );
+  assert.match(
+    viewerSource,
+    /#control-stack\s*\{[\s\S]*?top:\s*104px;[\s\S]*?left:\s*120px;/,
+  );
+  assert.match(
+    viewerSource,
+    /body\.view-3d:not\(\.upload-empty\)\s+#ui\s*\{[\s\S]*?top:\s*24px;[\s\S]*?left:\s*24px;[\s\S]*?padding:\s*12px 20px;/,
+  );
+  assert.match(viewerSource, /body\.view-3d:not\(\.upload-empty\)\s+\.camera-preset-row\s*\{\s*padding-bottom:\s*0;/);
+});
+
+test("places the Floor action in the bottom view switch instead of the stage card", () => {
+  assert.match(
+    viewerSource,
+    /id="view-switch"[\s\S]*?<button class="segment" id="furnish-btn"[^>]*>Floor<\/button>/,
+  );
+  assert.match(viewerSource, /data-view="original"[^>]*>2D<\/button>/);
+  assert.match(viewerSource, /data-view="3d"[^>]*>3D<\/button>/);
+  assert.match(viewerSource, /\.segmented\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/);
+  assert.doesNotMatch(viewerSource, /다음:\s*가구 배치/);
+  assert.doesNotMatch(viewerSource, /id="structure-btn"/);
+  assert.doesNotMatch(viewerSource, /구조 확인/);
+  assert.match(viewerSource, /furnishButton\.hidden\s*=\s*false;/);
+  assert.match(viewerSource, /viewButtons\.forEach\(button => \{\s*button\.disabled = !hasDocument \|\| inFlight;/);
+  assert.match(
+    viewerSource,
+    /async function showFloorView\(\)\s*\{[\s\S]*?await showThreeDimensionalView\(\);[\s\S]*?await enterFurnishingStage\(\);/,
+  );
+  assert.match(viewerSource, /button\.dataset\.view === "furnishing"\) showFloorView\(\);/);
+});
+
+test("keeps the furniture catalog below the 3D toolbar with eight compact items per page", () => {
+  assert.match(viewerSource, /const FURNITURE_PAGE_SIZE = 8;/);
+  assert.match(
+    viewerSource,
+    /@media \(min-width: 721px\) \{[\s\S]*?body\.view-furnishing #furniture-panel\s*\{[\s\S]*?top:\s*116px;[\s\S]*?left:\s*24px;[\s\S]*?width:\s*312px;[\s\S]*?height:\s*calc\(100vh - 140px\);/,
+  );
+  assert.match(
+    viewerSource,
+    /body\.view-furnishing #furniture-results\s*\{[\s\S]*?grid-template-rows:\s*repeat\(4, minmax\(0, 1fr\)\);[\s\S]*?overflow:\s*hidden;/,
+  );
+  assert.match(
+    viewerSource,
+    /body\.view-furnishing \.furniture-card-swatch\s*\{[\s\S]*?flex:\s*1 1 0;[\s\S]*?min-height:\s*42px;/,
+  );
+});
+
+test("uses the furniture catalog as a slide drawer without leaving Floor", () => {
+  assert.match(
+    viewerSource,
+    /id="furniture-panel-open"[^>]*aria-label="가구 배치 열기"[^>]*>[\s\S]*?data-lucide="armchair"[\s\S]*?<span>가구 배치<\/span>/,
+  );
+  assert.match(
+    viewerSource,
+    /id="furniture-panel-close"[^>]*aria-label="가구 배치 접기"[^>]*>[\s\S]*?data-lucide="chevron-up"/,
+  );
+  assert.match(
+    viewerSource,
+    /body\.view-furnishing #furniture-panel\s*\{[\s\S]*?transform:\s*translateY\(-18px\);[\s\S]*?transition:\s*transform \.22s ease, opacity \.18s ease, visibility 0s linear \.22s;/,
+  );
+  assert.match(
+    viewerSource,
+    /body\.view-furnishing #furniture-panel\.is-open\s*\{[\s\S]*?visibility:\s*visible;[\s\S]*?transform:\s*translateY\(0\);/,
+  );
+  assert.match(
+    viewerSource,
+    /function setFurniturePanelOpen\(open\)\s*\{[\s\S]*?clearTimeout\(furniturePanelCloseTimer\);[\s\S]*?requestAnimationFrame\(\(\) => furniturePanel\.classList\.add\("is-open"\)\);[\s\S]*?furniturePanelCloseTimer = window\.setTimeout/,
+  );
+  assert.match(viewerSource, /furniturePanelCloseButton\.addEventListener\("click", \(\) => setFurniturePanelOpen\(false\)\);/);
+  assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => setFurniturePanelOpen\(true\)\);/);
+  assert.match(
+    viewerSource,
+    /async function showFloorView\(\)\s*\{[\s\S]*?if \(currentView === "furnishing"\) \{[\s\S]*?setFurniturePanelOpen\(true\);[\s\S]*?return;/,
+  );
+});
+
+test("keeps the original-plan tool rail compact within a short desktop viewport", () => {
+  assert.match(
+    viewerSource,
+    /#editor-tools\s*\{[\s\S]*?top:\s*40px;[\s\S]*?width:\s*72px;[\s\S]*?height:\s*calc\(100vh - 80px\);[\s\S]*?padding:\s*8px 6px;/,
+  );
+  assert.match(viewerSource, /#editor-tools\s*\{[\s\S]*?overflow:\s*visible;/);
+  assert.match(viewerSource, /#editor-tools \.tool-grid \.btn\s*\{[\s\S]*?min-height:\s*48px;/);
+  assert.match(viewerSource, /#editor-rail-navigation \.btn\s*\{[\s\S]*?min-height:\s*34px;/);
+  assert.match(viewerSource, /#editor-tools \.editor-rail-utility\s*\{[\s\S]*?min-height:\s*34px;/);
+});
+
+test("keeps the original-plan class legend compact", () => {
+  assert.match(
+    viewerSource,
+    /#editor-class-legend\s*\{[\s\S]*?min-width:\s*152px;[\s\S]*?padding:\s*8px 10px;/,
+  );
+  assert.match(viewerSource, /#editor-class-legend \.legend\s*\{[\s\S]*?gap:\s*4px;/);
+  assert.match(viewerSource, /#editor-class-legend \.legend-row\s*\{[\s\S]*?min-height:\s*20px;/);
+  assert.match(viewerSource, /#editor-class-legend \.legend-row input\s*\{[\s\S]*?width:\s*12px;[\s\S]*?height:\s*12px;/);
+  assert.match(viewerSource, /#editor-class-legend \.swatch\s*\{[\s\S]*?width:\s*12px;[\s\S]*?height:\s*12px;/);
+});
+
+test("anchors wall and scale context panels directly to their active rail button", () => {
+  assert.match(
+    viewerSource,
+    /function positionEditorContextPanel\(activeToolButton\)\s*\{[\s\S]*?activeToolButton\.getBoundingClientRect\(\)[\s\S]*?editorTools\.getBoundingClientRect\(\)[\s\S]*?editorContextPanel\.style\.left\s*=\s*`\$\{Math\.round\(rect\.right - toolbarRect\.left\)\}px`[\s\S]*?editorContextPanel\.style\.top\s*=\s*`\$\{Math\.round\(rect\.top - toolbarRect\.top\)\}px`/,
+  );
+  assert.match(viewerSource, /#editor-context-panel\s*\{\s*position:\s*absolute;/);
+  assert.match(
+    viewerSource,
+    /const activeToolButton = toolButtons\.find\(button => button\.dataset\.tool === selectedTool\);[\s\S]*?positionEditorContextPanel\(activeToolButton\);/,
+  );
+  assert.doesNotMatch(viewerSource, /#editor-context-panel\[data-context-tool="scale"\]\s*\{\s*top:/);
+});
+
+test("styles wall and scale context panels as compact rounded tool cards", () => {
+  assert.match(
+    viewerSource,
+    /#editor-context-panel\s*\{[\s\S]*?width:\s*min\(220px, calc\(100vw - 88px\)\);[\s\S]*?height:\s*var\(--context-trigger-height, 48px\);[\s\S]*?padding:\s*6px;/,
+  );
+  assert.match(
+    viewerSource,
+    /#editor-context-panel\[data-context-tool="wall"\] \.label\s*\{\s*display:\s*none;/,
+  );
+  assert.match(
+    viewerSource,
+    /#editor-context-panel\[data-context-tool="scale"\] \.scale-summary\s*\{\s*display:\s*none;/,
+  );
+  assert.match(viewerSource, /#editor-context-panel \.scale-input-row input\s*\{[\s\S]*?height:\s*32px;/);
+  assert.match(viewerSource, /#editor-context-panel \.brush-control\s*\{[\s\S]*?height:\s*32px;/);
+  assert.match(viewerSource, /#editor-context-panel\s*\{[\s\S]*?border-radius:\s*16px;/);
+});

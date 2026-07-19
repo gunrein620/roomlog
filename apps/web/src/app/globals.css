@@ -3739,6 +3739,17 @@ p {
   color: #f4f1ff;
 }
 
+.hero-stage .listing-tour-furniture-category-tabs button {
+  border-color: rgba(203, 191, 245, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ebe5ff;
+}
+
+.hero-stage .listing-tour-furniture-category-tabs button.active {
+  border-color: rgba(255, 128, 165, 0.8);
+  background: rgba(255, 128, 165, 0.18);
+}
+
 .hero-stage .listing-tour-furniture-hint {
   color: rgba(203, 191, 245, 0.6);
 }
@@ -5254,6 +5265,41 @@ p {
   font: inherit;
   font-size: 0.82rem;
   font-weight: 850;
+}
+
+.listing-tour-furniture-category-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.listing-tour-furniture-category-tabs button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #ece8f4;
+  border-radius: 999px;
+  background: #fff;
+  color: #596174;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.listing-tour-furniture-category-tabs button.active {
+  border-color: var(--blue);
+  background: rgba(32, 24, 74, 0.08);
+  color: var(--blue);
+}
+
+.listing-tour-furniture-category-tabs small {
+  color: inherit;
+  font-size: 0.66rem;
+  font-weight: 800;
 }
 
 .listing-tour-furniture-grid {
@@ -6833,6 +6879,11 @@ p {
 
 .summary-media-3d {
   background: #0f1420;
+}
+
+/* 등록 단계의 작은 3D 카드는 건물 바깥 바닥판만 숨기고 원래 렌더 배경은 유지한다. */
+.summary-media-3d.is-listing-preview .floor-plan-3d-preview {
+  cursor: pointer;
 }
 
 .summary-media-3d .floor-plan-3d-preview {

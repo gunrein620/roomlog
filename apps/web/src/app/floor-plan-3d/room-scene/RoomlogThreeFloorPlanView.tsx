@@ -277,10 +277,13 @@ function MitunetSceneLook({ active }: { active: boolean }) {
 
 function MitunetDecorativeFloor({
   layout,
-  plan
+  plan,
+  showGround = true
 }: {
   layout: MitunetSceneLayout;
   plan: MitunetFloorPlan;
+  /** 등록 미리보기에서는 건물 바깥의 콘크리트 판을 숨긴다. */
+  showGround?: boolean;
 }) {
   const ground = useMemo(() => calculateMitunetGroundBounds(layout.bounds), [layout]);
   const texturePlane = useMemo(() => calculateMitunetTexturePlane(plan, layout), [layout, plan]);
@@ -301,20 +304,22 @@ function MitunetDecorativeFloor({
 
   return (
     <>
-      <mesh
-        position={[ground.centerX, -0.01, ground.centerZ]}
-        raycast={() => null}
-        receiveShadow
-        rotation={[-Math.PI / 2, 0, 0]}
-      >
-        <planeGeometry args={[ground.width, ground.depth]} />
-        <meshStandardMaterial
-          color={0xffffff}
-          map={concreteTexture ?? undefined}
-          metalness={0}
-          roughness={0.96}
-        />
-      </mesh>
+      {showGround ? (
+        <mesh
+          position={[ground.centerX, -0.01, ground.centerZ]}
+          raycast={() => null}
+          receiveShadow
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[ground.width, ground.depth]} />
+          <meshStandardMaterial
+            color={0xffffff}
+            map={concreteTexture ?? undefined}
+            metalness={0}
+            roughness={0.96}
+          />
+        </mesh>
+      ) : null}
       {woodTexture ? (
         <mesh
           position={[texturePlane.centerX, 0.004, texturePlane.centerZ]}
@@ -536,26 +541,37 @@ function RoomOrbitControls({
 // 큰 방이 화면 밖으로 나가므로, 진입/방 크기 변경 시 전체가 보이는 거리로 재배치한다.
 function RoomCameraAutoFit({
   bounds,
-  distanceScale = 1
+  distanceScale = 1,
+  previewFit = false
 }: {
   bounds: ReturnType<typeof computeWallBoundsXZ>;
   /** 씬 그룹 스케일·여백 보정 배율 — 오토핏은 무스케일 벽 좌표로 계산하므로,
    *  horizontalScale로 방을 키운 뷰(상세 3D)는 그만큼 곱해 줘야 방이 화면에 작게 뜬다. */
   distanceScale?: number;
+  /** 카드 비율을 반영해 건물 전체가 보이도록 여유 거리를 더한다. */
+  previewFit?: boolean;
 }) {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
+  const size = useThree((state) => state.size);
   // 벽을 조금 옮길 때마다 카메라가 튀지 않게, 0.5m 단위로 반올림한 크기가 바뀔 때만 재배치한다.
-  const boundsKey = `${Math.round(bounds.centerX * 2)}:${Math.round(bounds.centerZ * 2)}:${Math.round(Math.max(bounds.width, bounds.height) * 2)}`;
+  const viewportAspect = size.width / Math.max(size.height, 1);
+  const boundsKey = `${Math.round(bounds.centerX * 2)}:${Math.round(bounds.centerZ * 2)}:${Math.round(Math.max(bounds.width, bounds.height) * 2)}:${Math.round(viewportAspect * 100)}`;
 
   useEffect(() => {
     const longSide = Math.max(bounds.width, bounds.height);
-    const distance = Math.min(40, Math.max(6, longSide * 1.5)) * distanceScale;
+    const defaultDistance = Math.min(40, Math.max(6, longSide * 1.5));
+    const verticalFov = THREE.MathUtils.degToRad(50);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * viewportAspect);
+    const limitingFov = Math.min(verticalFov, horizontalFov);
+    const buildingDiagonal = Math.hypot(bounds.width, bounds.height);
+    const previewDistance = buildingDiagonal / (2 * Math.tan(limitingFov / 2)) * 1.18;
+    const distance = (previewFit ? Math.max(defaultDistance, previewDistance) : defaultDistance) * distanceScale;
     camera.position.set(bounds.centerX + distance * 0.55, distance * 0.7, bounds.centerZ + distance * 0.85);
     camera.lookAt(bounds.centerX, 0, bounds.centerZ);
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boundsKey, camera, distanceScale, invalidate]);
+  }, [boundsKey, camera, distanceScale, invalidate, previewFit, viewportAspect]);
 
   return null;
 }
@@ -569,6 +585,7 @@ export function RoomlogThreeFloorPlanView({
   furnitureVerticalScale = 1,
   hideHint = false,
   horizontalScale = 1,
+  listingPreview = false,
   mitunetPlan,
   orbitMaxDistance = 42,
   orbitMinDistance = 5,
@@ -584,6 +601,7 @@ export function RoomlogThreeFloorPlanView({
   onSelectedRotateRight,
   onWallPointerDown,
   pendingFurniture,
+  previewFit = false,
   sceneBackground = "#626260",
   selectedFurnitureId,
   selectedWallId,
@@ -601,6 +619,8 @@ export function RoomlogThreeFloorPlanView({
   furnitureVerticalScale?: number;
   hideHint?: boolean;
   horizontalScale?: number;
+  /** 등록 카드 전용: 건물 바깥 장식과 카메라 조작을 숨긴다. */
+  listingPreview?: boolean;
   mitunetPlan?: MitunetFloorPlan;
   orbitMaxDistance?: number;
   orbitMinDistance?: number;
@@ -622,6 +642,8 @@ export function RoomlogThreeFloorPlanView({
   onSelectedRotateRight?: () => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
   pendingFurniture: PlacedFurniture | null;
+  /** 등록 카드 비율에 맞춰 건물 전체가 보이도록 카메라 거리를 계산한다. */
+  previewFit?: boolean;
   /** 캔버스 배경색 — null이면 투명(뒤 CSS 배경이 비친다, 상세 3D 히어로의 밤하늘용). */
   sceneBackground?: string | null;
   selectedFurnitureId: string | null;
@@ -655,7 +677,7 @@ export function RoomlogThreeFloorPlanView({
 
   return (
     <div
-      className="floor-plan-3d-preview"
+      className={`floor-plan-3d-preview${listingPreview ? " is-listing-preview" : ""}`}
       data-renderer="wheretoput 3D room renderer"
       // MitUNet 룩의 하늘은 CSS로 깐다 — scene.background에 텍스처를 넣으면
       // GTAOPass의 depth/normal 패스를 오염시켜 검은 사각형 아티팩트가 생긴다(뷰어와 동일 처리).
@@ -680,9 +702,9 @@ export function RoomlogThreeFloorPlanView({
         backgroundRepeat: "repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat",
       } : undefined}
     >
-      <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} shadows>
+      <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} gl={{ alpha: listingPreview }} shadows>
         {/* 상세 3D 히어로는 fitDistanceScale로 방을 화면에 더 작게 배치한다(bounds 오토핏 위에 접붙임). */}
-        <RoomCameraAutoFit bounds={wallBounds} distanceScale={fitDistanceScale} />
+        <RoomCameraAutoFit bounds={wallBounds} distanceScale={fitDistanceScale} previewFit={previewFit} />
         {/* 배경: mitunet 룩은 위 CSS 그라데이션이 하늘이라 색을 안 깐다. 비-mitunet은 sceneBackground를 쓰되
             null(상세 3D 히어로)이면 투명하게 둬 히어로와 자연스럽게 겹치게 한다(기본 #626260 = 편집기 회색).
             비-mitunet 조명(ambient 0.72 / directional 1.4)은 MitunetSceneLook의 inactive 분기가 제공한다. */}
@@ -691,7 +713,7 @@ export function RoomlogThreeFloorPlanView({
         <MitunetGtaoEffects active={hasMitunetStyle} />
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
           {mitunetLayout && mitunetPlan ? (
-            <MitunetDecorativeFloor layout={mitunetLayout} plan={mitunetPlan} />
+            <MitunetDecorativeFloor layout={mitunetLayout} plan={mitunetPlan} showGround={!listingPreview} />
           ) : null}
           <RoomFloor
             boundsOverride={mitunetLayout ? wallBounds : undefined}
@@ -774,7 +796,7 @@ export function RoomlogThreeFloorPlanView({
             </Html>
           ) : null}
         </group>
-        <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18 * sceneHorizontalScale} />
+        {listingPreview ? null : <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18 * sceneHorizontalScale} />}
         <RoomOrbitControls
           enabled={controlsEnabled}
           maxDistance={orbitMaxDistance}

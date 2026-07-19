@@ -5,6 +5,7 @@ import * as editorModule from "../viewer/review-editor.mjs";
 
 const {
   CLASS_COLORS,
+  DEFAULT_VIEWPORT_ZOOM,
   ReviewEditor,
   calibrationFromMeasurement,
   gridStepMillimeters,
@@ -44,6 +45,25 @@ test("two selected points and a real length calculate millimeters per pixel", ()
   assert.equal(calibration.pixelDistance, 500);
   assert.equal(calibration.actualMillimeters, 2500);
   assert.equal(calibration.millimetersPerPixel, 5);
+});
+
+test("editing a scale length keeps Backspace in the number input", () => {
+  const editor = Object.create(ReviewEditor.prototype);
+  let deleted = false;
+  let prevented = false;
+  editor.isActive = () => true;
+  editor.deleteSelected = () => { deleted = true; };
+
+  editor.handleKeyDown({
+    key: "Backspace",
+    target: {
+      closest: (selector) => selector.includes("input") ? {} : null,
+    },
+    preventDefault: () => { prevented = true; },
+  });
+
+  assert.equal(deleted, false);
+  assert.equal(prevented, false);
 });
 
 test("grid spacing stays legible as the review view zooms", () => {
@@ -296,7 +316,7 @@ test("zoom controls preserve the image point under the canvas center", () => {
     height: 300,
     fitScale: 0.25,
     scale: 0.25,
-    zoom: 1,
+    zoom: DEFAULT_VIEWPORT_ZOOM,
     offsetX: 72,
     offsetY: 22,
   };
@@ -306,12 +326,13 @@ test("zoom controls preserve the image point under the canvas center", () => {
   editor.zoomBy(2);
   const after = editor.screenToImage(200, 150);
 
-  assert.equal(editor.viewport.zoom, 2);
+  assert.equal(editor.viewport.zoom, DEFAULT_VIEWPORT_ZOOM * 2);
   assert.deepEqual(after, before);
 
   editor.fitViewport();
-  assert.equal(editor.viewport.zoom, 1);
-  assert.equal(editor.viewport.scale, editor.viewport.fitScale);
+  assert.equal(DEFAULT_VIEWPORT_ZOOM, 0.88);
+  assert.equal(editor.viewport.zoom, DEFAULT_VIEWPORT_ZOOM);
+  assert.equal(editor.viewport.scale, editor.viewport.fitScale * DEFAULT_VIEWPORT_ZOOM);
 });
 
 test("active pointer transactions block opening commands", () => {
