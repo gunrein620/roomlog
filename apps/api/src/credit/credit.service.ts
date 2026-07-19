@@ -330,6 +330,10 @@ export class CreditService {
     return this.queryRepository.getGaraTopupOrder(orderId);
   }
 
+  async listPublicGaraVendors() {
+    return this.queryRepository.listPublicGaraVendors();
+  }
+
   async getAccount(managerId: string) {
     await this.commandRepository.ensureAccount({ managerId });
     return this.queryRepository.getAccount(managerId);

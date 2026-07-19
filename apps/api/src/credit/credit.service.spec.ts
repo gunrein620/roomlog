@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { NotFoundException } from "@nestjs/common";
+import { NotFoundException, RequestMethod } from "@nestjs/common";
+import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { CreditController } from "./credit.controller";
 import { CreditService } from "./credit.service";
 
@@ -101,6 +102,57 @@ describe("CreditService.createGaraVendorCreditCheckout", () => {
     });
 
     assert.notEqual(first.customerKey, second.customerKey);
+  });
+});
+
+describe("public Gara vendor credits", () => {
+  const publicRows = [
+    {
+      id: "manager-vendor-1",
+      businessName: "Gara 설비",
+      phone: "02-1234-5678",
+      settlementAccountNumber: "110-123-456789",
+      linkedAccount: { name: "관리자", email: "manager@example.com" },
+      cumulativeCredit: 30_000
+    }
+  ];
+
+  it("delegates the unauthenticated list to the public query repository", async () => {
+    let calls = 0;
+    const service = new CreditService(
+      {} as never,
+      {
+        listPublicGaraVendors: async () => {
+          calls += 1;
+          return publicRows;
+        }
+      } as never,
+      {} as never,
+      { clientKey: "test-client-key", tokenSecret: "test-token-secret" }
+    );
+    const candidate = service as unknown as {
+      listPublicGaraVendors?: () => Promise<typeof publicRows>;
+    };
+
+    assert.equal(typeof candidate.listPublicGaraVendors, "function");
+    assert.equal(await candidate.listPublicGaraVendors?.(), publicRows);
+    assert.equal(calls, 1);
+  });
+
+  it("exposes GET /gara/vendors without an authorization parameter", async () => {
+    const controller = new CreditController({
+      listPublicGaraVendors: async () => publicRows
+    } as never);
+    const candidate = controller as unknown as {
+      listPublicGaraVendors?: () => Promise<typeof publicRows>;
+    };
+    const handler = candidate.listPublicGaraVendors;
+
+    assert.equal(typeof handler, "function");
+    assert.equal(Reflect.getMetadata(PATH_METADATA, handler as object), "gara/vendors");
+    assert.equal(Reflect.getMetadata(METHOD_METADATA, handler as object), RequestMethod.GET);
+    assert.equal((handler as Function).length, 0);
+    assert.equal(await handler?.call(controller), publicRows);
   });
 });
 

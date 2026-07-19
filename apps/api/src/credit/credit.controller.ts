@@ -126,6 +126,11 @@ function optionalPositiveInteger(value: string | undefined) {
 export class CreditController {
   constructor(private readonly credit: CreditService) {}
 
+  @Get("gara/vendors")
+  async listPublicGaraVendors() {
+    return this.credit.listPublicGaraVendors();
+  }
+
   @Post("gara/vendor-credit-checkouts")
   async createGaraVendorCreditCheckout(
     @Body() input: CreateGaraVendorCreditCheckoutInput

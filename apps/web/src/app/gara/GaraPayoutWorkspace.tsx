@@ -13,8 +13,10 @@ import {
   createGaraVendorCreditCheckout,
 } from "@/lib/gara-credit-api";
 import {
+  createTossWidgets,
   isTossPaymentsReady,
   requestManagerCardPayment,
+  tossPaymentMode,
   TOSS_PAYMENTS_SDK_URL,
 } from "@/lib/toss-payments";
 import styles from "./GaraPayoutWorkspace.module.css";
@@ -80,6 +82,9 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const accountNumber = vendor.settlementAccountNumber?.trim();
+  const widgetSuffix = useId().replace(/:/g, "");
+  const paymentMethodSelector = `#gara-payment-method-${widgetSuffix}`;
+  const agreementSelector = `#gara-payment-agreement-${widgetSuffix}`;
 
   async function beginCheckout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,12 +113,23 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
         amount,
         creationKey: crypto.randomUUID(),
       });
+      const widgets = tossPaymentMode(createdCheckout.clientKey) === "widget"
+        ? createTossWidgets(createdCheckout.clientKey, createdCheckout.customerKey)
+        : undefined;
+      if (widgets) {
+        await widgets.setAmount({ currency: "KRW", value: createdCheckout.order.amount });
+        await Promise.all([
+          widgets.renderPaymentMethods({ selector: paymentMethodSelector, variantKey: "DEFAULT" }),
+          widgets.renderAgreement({ selector: agreementSelector, variantKey: "AGREEMENT" }),
+        ]);
+      }
       await requestManagerCardPayment({
         ...createdCheckout,
         orderId: createdCheckout.order.orderId,
         amount: createdCheckout.order.amount,
         successUrl: `${window.location.origin}/gara/payment/success`,
         failUrl: `${window.location.origin}/gara/payment/fail`,
+        widgets: widgets,
       });
     } catch (checkoutError) {
       const message = errorMessage(
@@ -165,6 +181,8 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
               {error}
             </p>
           ) : null}
+          <div id={paymentMethodSelector.slice(1)} />
+          <div id={agreementSelector.slice(1)} />
         </form>
       </td>
       <td>

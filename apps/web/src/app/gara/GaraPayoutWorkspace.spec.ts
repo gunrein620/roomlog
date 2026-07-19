@@ -41,3 +41,13 @@ test("Gara cancels the created checkout when Toss launch fails", () => {
   assert.doesNotMatch(source, /createGaraPayoutAction/);
   assert.doesNotMatch(source, /useActionState/);
 });
+
+test("Gara prepares Toss widgets before requesting a widget-mode payment", () => {
+  const source = readFileSync(workspacePath, "utf8");
+
+  assert.match(source, /createTossWidgets/);
+  assert.match(source, /tossPaymentMode/);
+  assert.match(source, /renderPaymentMethods/);
+  assert.match(source, /renderAgreement/);
+  assert.match(source, /widgets:/);
+});

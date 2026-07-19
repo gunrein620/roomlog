@@ -1,9 +1,9 @@
 import type { ManagerCreditTopupOrderPublicView } from "@roomlog/types";
 import { redirect } from "next/navigation";
 import {
-  confirmGaraVendorCreditCheckout,
-  getGaraVendorCreditCheckout,
-} from "@/lib/gara-credit-api";
+  confirmGaraVendorCreditCheckoutServer,
+  getGaraVendorCreditCheckoutServer,
+} from "@/lib/gara-credit-server-api";
 
 type CreditTopupMarker = "approved" | "reconciliation_required" | "cancelled" | "failed";
 
@@ -55,16 +55,16 @@ export default async function GaraCreditCheckoutSuccessPage({
   if (!orderId) redirectWithoutOrder();
 
   if (!paymentKey || !Number.isSafeInteger(amount) || amount <= 0) {
-    const order = await getGaraVendorCreditCheckout(orderId).catch(() => null);
+    const order = await getGaraVendorCreditCheckoutServer(orderId).catch(() => null);
     if (!order) redirectWithoutOrder(orderId);
     redirectForOrder(order, markerForOrder(order));
   }
 
   let order: ManagerCreditTopupOrderPublicView;
   try {
-    order = await confirmGaraVendorCreditCheckout(orderId, { paymentKey, amount });
+    order = await confirmGaraVendorCreditCheckoutServer(orderId, { paymentKey, amount });
   } catch {
-    const stored = await getGaraVendorCreditCheckout(orderId).catch(() => null);
+    const stored = await getGaraVendorCreditCheckoutServer(orderId).catch(() => null);
     if (!stored) redirectWithoutOrder(orderId);
     redirectForOrder(stored, markerForOrder(stored));
   }
