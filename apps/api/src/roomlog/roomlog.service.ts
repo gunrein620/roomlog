@@ -6980,9 +6980,21 @@ export class RoomlogService implements OnModuleDestroy {
     let ticket = this.findTicket(ticketId);
     this.assertManagerCanAccessTicket(managerId, ticket);
     const messageText = input.messageText?.trim() ?? "";
+    if (input.attachmentUrls !== undefined && !Array.isArray(input.attachmentUrls)) {
+      throw new BadRequestException("첨부 사진 목록이 올바르지 않습니다.");
+    }
+    const attachmentUrls = [...new Set((input.attachmentUrls ?? []).map((url) => {
+      if (typeof url !== "string" || !url.trim()) {
+        throw new BadRequestException("첨부 사진 주소가 올바르지 않습니다.");
+      }
+      return url.trim();
+    }))];
 
-    if (!messageText) {
-      throw new BadRequestException("전송할 답변 내용이 필요합니다.");
+    if (attachmentUrls.length > 5) {
+      throw new BadRequestException("사진은 한 번에 최대 5장까지 보낼 수 있습니다.");
+    }
+    if (!messageText && attachmentUrls.length === 0) {
+      throw new BadRequestException("전송할 답변 내용 또는 사진이 필요합니다.");
     }
 
     if (input.action === "REQUEST_ADDITIONAL_INFO") {
@@ -7007,8 +7019,8 @@ export class RoomlogService implements OnModuleDestroy {
       ticket.complaintId,
       managerId,
       "LANDLORD",
-      messageText,
-      [],
+      messageText || "사진을 첨부했습니다.",
+      attachmentUrls,
       this.activeRepairIdForTicket(ticket.id)
     );
     this.persistStore();
