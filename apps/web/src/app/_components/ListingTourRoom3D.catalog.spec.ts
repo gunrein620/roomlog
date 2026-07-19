@@ -23,3 +23,26 @@ test("uses the same furniture categories as the 3D rendering editor", () => {
   assert.match(tourSource, /matchesCategory/);
   assert.match(tourSource, /listing-tour-furniture-category-tabs/);
 });
+
+test("opens the 500-item furniture editor directly from the listing tour button", () => {
+  assert.match(tourSource, /import \{ Armchair \} from "lucide-react"/);
+  assert.match(tourSource, /const \[furnitureLimit, setFurnitureLimit\] = useState\(30\)/);
+  assert.match(tourSource, /const visibleFurnitureCatalog = useMemo/);
+  assert.match(tourSource, /aria-label="가구 편집 열기"/);
+  assert.match(tourSource, /onClick=\{openFurnitureEditor\}/);
+  assert.match(tourSource, /<Armchair aria-hidden size=\{16\} strokeWidth=\{2\.4\} \/>/);
+  assert.match(tourSource, /가구 더 보기 \(\{visibleFurnitureCatalog\.length\}\/\{filteredCatalog\.length\}\)/);
+});
+
+test("connects both pending-furniture rotation directions to the listing tour", () => {
+  assert.match(tourSource, /function rotatePendingFurniture\(direction: -1 \| 1\)/);
+  assert.match(tourSource, /rotateFurnitureQuarterTurn\(pendingFurniture, direction\)/);
+  assert.match(tourSource, /onPendingRotate=\{rotatePendingFurniture\}/);
+});
+
+test("only enables pending deletion while an existing tour furniture item is being edited", () => {
+  assert.match(tourSource, /const \[isPendingFurnitureEditing, setIsPendingFurnitureEditing\] = useState\(false\)/);
+  assert.match(tourSource, /setIsPendingFurnitureEditing\(true\)/);
+  assert.match(tourSource, /pendingFurnitureCanBeDeleted=\{isPendingFurnitureEditing\}/);
+  assert.match(tourSource, /function deletePendingFurniture\(\)[\s\S]*?setIsPendingFurnitureEditing\(false\)/);
+});

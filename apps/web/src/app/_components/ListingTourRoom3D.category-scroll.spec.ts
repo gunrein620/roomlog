@@ -4,22 +4,31 @@ import { join } from "node:path";
 import test from "node:test";
 
 const globalsSource = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+const componentSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
 
-test("shows a visible horizontal scrollbar below the furniture category chips", () => {
+test("shows an always-visible custom horizontal control below the furniture category chips", () => {
   assert.match(
-    globalsSource,
-    /\.listing-tour-furniture-category-tabs\s*\{[^}]*overflow-x:\s*auto;[^}]*scrollbar-color:\s*#8e8e8e\s+#f2f2f2;[^}]*scrollbar-width:\s*thin;[^}]*\}/,
+    componentSource,
+    /aria-label="가구 카테고리 가로 스크롤"[\s\S]*className="listing-tour-furniture-category-scrollbar"[\s\S]*type="range"/,
+  );
+  assert.match(
+    componentSource,
+    /onScroll=\{handleFurnitureCategoryScroll\}/,
+  );
+  assert.match(
+    componentSource,
+    /onInput=\{handleFurnitureCategoryScrollChange\}/,
   );
   assert.match(
     globalsSource,
-    /\.listing-tour-furniture-category-tabs::-webkit-scrollbar\s*\{[^}]*height:\s*8px;[^}]*\}/,
+    /\.listing-tour-furniture-category-tabs\s*\{[^}]*overflow-x:\s*auto;[^}]*scrollbar-width:\s*none;[^}]*\}/,
   );
   assert.match(
     globalsSource,
-    /\.listing-tour-furniture-category-tabs::-webkit-scrollbar-track\s*\{[^}]*background:\s*#f2f2f2;[^}]*border-radius:\s*999px;[^}]*\}/,
+    /\.listing-tour-furniture-category-scrollbar::-webkit-slider-runnable-track\s*\{[^}]*height:\s*8px;[^}]*background:\s*#f2f2f2;[^}]*\}/,
   );
   assert.match(
     globalsSource,
-    /\.listing-tour-furniture-category-tabs::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*#8e8e8e;[^}]*border-radius:\s*999px;[^}]*\}/,
+    /\.listing-tour-furniture-category-scrollbar::-webkit-slider-thumb\s*\{[^}]*width:\s*64px;[^}]*background:\s*#8e8e8e;[^}]*\}/,
   );
 });

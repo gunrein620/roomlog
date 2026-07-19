@@ -1,6 +1,8 @@
 "use client";
 
 import type { ThreeEvent } from "@react-three/fiber";
+import { Armchair } from "lucide-react";
+import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createFurnitureModel,
@@ -94,6 +96,7 @@ export default function ListingTourRoom3D({
   const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(true);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [furnitureCategoryFilter, setFurnitureCategoryFilter] = useState("전체");
+  const [furnitureLimit, setFurnitureLimit] = useState(30);
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
@@ -101,10 +104,14 @@ export default function ListingTourRoom3D({
   const [saveMessage, setSaveMessage] = useState("가구 배치 편집을 열어 옵션 위치를 확인할 수 있습니다.");
   // 가구 드래그 이동 — 좌클릭을 누른 채 끌면 커서를 따라오고, 떼면 그 자리에 멈춘다(확정은 ✓).
   const [isFurnitureDragging, setIsFurnitureDragging] = useState(false);
+  // 카탈로그에서 새로 고른 가구가 아니라, 이미 배치된 가구를 다시 집어든 상태인지.
+  const [isPendingFurnitureEditing, setIsPendingFurnitureEditing] = useState(false);
   // 배치된 가구를 다시 집어들 때(재편집) 취소하면 되돌릴 원래 상태 + 원본 분류(source) 보존용.
   const pendingFurnitureOriginRef = useRef<PlacedFurniture | null>(null);
   // 집고 있는 가구가 사용자 위치를 한 번이라도 받았는지 — 첫 배치는 벽 통과 검사를 끈다.
   const pendingFurniturePlacedOnceRef = useRef(false);
+  const furnitureCategoryTabsRef = useRef<HTMLDivElement>(null);
+  const [furnitureCategoryScroll, setFurnitureCategoryScroll] = useState({ left: 0, max: 0 });
   const furnitureCategoryCounts = useMemo(
     () =>
       furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
@@ -123,8 +130,28 @@ export default function ListingTourRoom3D({
       return matchesCategory && matchesQuery;
     });
 
-    return catalog.slice(0, 12);
+    return catalog;
   }, [catalogQuery, furnitureCatalog, furnitureCategoryFilter]);
+  const visibleFurnitureCatalog = useMemo(() => filteredCatalog.slice(0, furnitureLimit), [filteredCatalog, furnitureLimit]);
+
+  useEffect(() => {
+    if (!isPlacementOpen) return;
+    const tabList = furnitureCategoryTabsRef.current;
+    if (!tabList) return;
+
+    const syncScroll = () => {
+      const max = Math.max(0, Math.round(tabList.scrollWidth - tabList.clientWidth));
+      const left = Math.max(0, Math.min(max, Math.round(tabList.scrollLeft)));
+      setFurnitureCategoryScroll((current) => (current.left === left && current.max === max ? current : { left, max }));
+    };
+
+    syncScroll();
+    const resizeObserver = new ResizeObserver(syncScroll);
+    resizeObserver.observe(tabList);
+    Array.from(tabList.children).forEach((child) => resizeObserver.observe(child));
+
+    return () => resizeObserver.disconnect();
+  }, [furnitureCategoryFilters, isPlacementOpen]);
 
   useEffect(() => {
     let isActive = true;
@@ -151,6 +178,7 @@ export default function ListingTourRoom3D({
     const savedFurnitures = readSavedFurnitures(floorPlan);
     setPlacedFurnitures((savedFurnitures ?? floorPlan.furnitures) as unknown as PlacedFurniture[]);
     setPendingFurniture(null);
+    setIsPendingFurnitureEditing(false);
     setSelectedFurnitureId(null);
     setSaveMessage(savedFurnitures ? "저장된 가구 배치를 불러왔습니다." : "가구 배치 편집을 열어 옵션 위치를 확인할 수 있습니다.");
   }, [floorPlan]);
@@ -175,6 +203,7 @@ export default function ListingTourRoom3D({
     const original = pendingFurnitureOriginRef.current;
     if (!original) return false;
     pendingFurnitureOriginRef.current = null;
+    setIsPendingFurnitureEditing(false);
     setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, original]);
     return true;
   }
@@ -183,10 +212,38 @@ export default function ListingTourRoom3D({
     return normalizeTourScenePoint(point, sceneHorizontalScale);
   }
 
+  function handleFurnitureCategoryScroll() {
+    const tabList = furnitureCategoryTabsRef.current;
+    if (!tabList) return;
+    const max = Math.max(0, Math.round(tabList.scrollWidth - tabList.clientWidth));
+    const left = Math.max(0, Math.min(max, Math.round(tabList.scrollLeft)));
+    setFurnitureCategoryScroll((current) => (current.left === left && current.max === max ? current : { left, max }));
+  }
+
+  function handleFurnitureCategoryScrollChange(event: FormEvent<HTMLInputElement>) {
+    const tabList = furnitureCategoryTabsRef.current;
+    if (!tabList) return;
+    const left = Number(event.currentTarget.value);
+    tabList.scrollLeft = left;
+    setFurnitureCategoryScroll((current) => ({ ...current, left }));
+  }
+
+  function openFurnitureEditor() {
+    setIsHeroPanelOpen(true);
+    setIsPlacementOpen(true);
+    setFurnitureLimit(30);
+  }
+
+  function closeFurnitureEditor() {
+    setIsPlacementOpen(false);
+    if (variant === "hero") setIsHeroPanelOpen(false);
+  }
+
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
     // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
     restorePendingFurnitureOrigin();
     pendingFurniturePlacedOnceRef.current = false;
+    setIsPendingFurnitureEditing(false);
     setPendingFurniture(createFurnitureModel(item));
     setSelectedFurnitureId(null);
     setIsPlacementOpen(true);
@@ -239,6 +296,7 @@ export default function ListingTourRoom3D({
     // 확정 표시(source)가 붙은 채로는 이동이 막히므로 초안 상태로 되돌려서 집는다.
     pendingFurnitureOriginRef.current = furniture;
     pendingFurniturePlacedOnceRef.current = true;
+    setIsPendingFurnitureEditing(true);
     setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
     setPendingFurniture(reopenFurnitureDraft(furniture));
     setSelectedFurnitureId(null);
@@ -251,6 +309,7 @@ export default function ListingTourRoom3D({
     // 재편집이면 원본 분류(source)를 보존한다 — 임대인 옵션 가구가 세입자 배치로 둔갑하지 않게.
     const origin = pendingFurnitureOriginRef.current;
     pendingFurnitureOriginRef.current = null;
+    setIsPendingFurnitureEditing(false);
     const finalized = finalizeFurnitureDraft(pendingFurniture, "resident");
     const nextFurniture = origin ? { ...finalized, source: origin.source } : finalized;
     setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
@@ -264,6 +323,7 @@ export default function ListingTourRoom3D({
     const targetName = pendingFurniture.name;
     const restored = restorePendingFurnitureOrigin();
     setPendingFurniture(null);
+    setIsPendingFurnitureEditing(false);
     setSelectedFurnitureId(null);
     setSaveMessage(restored ? `${targetName} 원래 자리로 되돌렸습니다.` : `${targetName} 배치를 취소했습니다.`);
   }
@@ -272,15 +332,16 @@ export default function ListingTourRoom3D({
     if (!pendingFurniture) return;
     const targetName = pendingFurniture.name;
     pendingFurnitureOriginRef.current = null;
+    setIsPendingFurnitureEditing(false);
     setPendingFurniture(null);
     setSelectedFurnitureId(null);
     setSaveMessage(`${targetName}을 삭제했습니다.`);
   }
 
-  function rotatePendingFurniture() {
+  function rotatePendingFurniture(direction: -1 | 1) {
     if (!pendingFurniture) return;
-    setPendingFurniture(rotateFurnitureQuarterTurn(pendingFurniture));
-    setSaveMessage("집고 있는 가구를 90도 회전했습니다.");
+    setPendingFurniture(rotateFurnitureQuarterTurn(pendingFurniture, direction));
+    setSaveMessage(`집고 있는 가구를 ${direction === -1 ? "왼쪽" : "오른쪽"}으로 90도 회전했습니다.`);
   }
 
   function saveFurnitureLayout() {
@@ -314,6 +375,7 @@ export default function ListingTourRoom3D({
   function resetFurnitureLayout() {
     window.localStorage.removeItem(floorPlanFurnitureStorageKey(floorPlan));
     pendingFurnitureOriginRef.current = null;
+    setIsPendingFurnitureEditing(false);
     setPlacedFurnitures(floorPlan.furnitures as unknown as PlacedFurniture[]);
     setPendingFurniture(null);
     setSelectedFurnitureId(null);
@@ -340,6 +402,7 @@ export default function ListingTourRoom3D({
         onFurniturePointerDown={handleFurniturePointerDown}
         onPendingCancel={cancelPendingFurniturePlacement}
         onPendingConfirm={confirmPendingFurniturePlacement}
+        pendingFurnitureCanBeDeleted={isPendingFurnitureEditing}
         onPendingDelete={deletePendingFurniture}
         onPendingRotate={rotatePendingFurniture}
         onWallPointerDown={handleWallPointerDown}
@@ -351,13 +414,14 @@ export default function ListingTourRoom3D({
 
       {variant === "hero" ? (
         <button
+          aria-expanded={isPlacementOpen}
+          aria-label="가구 편집 열기"
           className="hero-furniture-toggle"
           type="button"
-          aria-pressed={isHeroPanelOpen}
-          onClick={() => setIsHeroPanelOpen((isOpen) => !isOpen)}
+          onClick={openFurnitureEditor}
         >
-          <span className={isHeroPanelOpen ? "hero-furniture-toggle-dot on" : "hero-furniture-toggle-dot"} aria-hidden="true" />
-          가구 배치
+          <Armchair aria-hidden size={16} strokeWidth={2.4} />
+          가구 편집
         </button>
       ) : null}
 
@@ -371,8 +435,8 @@ export default function ListingTourRoom3D({
             </strong>
             <span>{saveMessage}</span>
           </div>
-          <button type="button" onClick={() => setIsPlacementOpen((isOpen) => !isOpen)}>
-            {isPlacementOpen ? "닫기" : "배치하기"}
+          <button type="button" onClick={isPlacementOpen ? closeFurnitureEditor : openFurnitureEditor}>
+            {isPlacementOpen ? "닫기" : "가구 편집"}
           </button>
         </div>
 
@@ -412,7 +476,13 @@ export default function ListingTourRoom3D({
                 value={catalogQuery}
               />
             </div>
-            <div className="listing-tour-furniture-category-tabs" role="tablist" aria-label="가구 카테고리">
+            <div
+              aria-label="가구 카테고리"
+              className="listing-tour-furniture-category-tabs"
+              onScroll={handleFurnitureCategoryScroll}
+              ref={furnitureCategoryTabsRef}
+              role="tablist"
+            >
               {furnitureCategoryFilters.map((category) => (
                 <button
                   aria-selected={furnitureCategoryFilter === category}
@@ -427,8 +497,20 @@ export default function ListingTourRoom3D({
                 </button>
               ))}
             </div>
+            {furnitureCategoryScroll.max > 0 ? (
+              <input
+                aria-label="가구 카테고리 가로 스크롤"
+                className="listing-tour-furniture-category-scrollbar"
+                max={furnitureCategoryScroll.max}
+                min={0}
+                onInput={handleFurnitureCategoryScrollChange}
+                step={1}
+                type="range"
+                value={furnitureCategoryScroll.left}
+              />
+            ) : null}
             <div className="listing-tour-furniture-grid">
-              {filteredCatalog.map((item) => {
+              {visibleFurnitureCatalog.map((item) => {
                 const imageUrl = furnitureImageUrl(item);
 
                 return (
@@ -457,6 +539,11 @@ export default function ListingTourRoom3D({
                 );
               })}
             </div>
+            {visibleFurnitureCatalog.length < filteredCatalog.length ? (
+              <button className="listing-tour-furniture-more" onClick={() => setFurnitureLimit((limit) => limit + 30)} type="button">
+                가구 더 보기 ({visibleFurnitureCatalog.length}/{filteredCatalog.length})
+              </button>
+            ) : null}
             <p className="listing-tour-furniture-hint">
               가구를 놓거나 배치된 가구를 클릭해 끌어서 옮기고, 가구 위 버튼으로 ✓확정·⟳회전·✕취소·🗑삭제하세요.
             </p>

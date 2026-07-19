@@ -595,12 +595,15 @@ export function RoomlogThreeFloorPlanView({
   onFurniturePointerDown,
   onPendingCancel,
   onPendingConfirm,
+  onPendingDelete,
+  onPendingRotate,
   onSelectedDelete,
   onSelectedMove,
   onSelectedRotateLeft,
   onSelectedRotateRight,
   onWallPointerDown,
   pendingFurniture,
+  pendingFurnitureCanBeDeleted,
   previewFit = false,
   sceneBackground = "#626260",
   selectedFurnitureId,
@@ -633,9 +636,10 @@ export function RoomlogThreeFloorPlanView({
   // 배치 중에는 취소/완료, 선택 중에는 이동/양방향 회전/삭제 버튼을 표시한다.
   onPendingCancel?: () => void;
   onPendingConfirm?: () => void;
-  // 읽기 전용 투어의 기존 호출부 호환용이며 편집 도구에는 표시하지 않는다.
+  /** 기존 가구를 재편집 중일 때만 배치 중 삭제 버튼을 노출한다. */
+  pendingFurnitureCanBeDeleted?: boolean;
   onPendingDelete?: () => void;
-  onPendingRotate?: () => void;
+  onPendingRotate?: (direction: -1 | 1) => void;
   onSelectedDelete?: () => void;
   onSelectedMove?: () => void;
   onSelectedRotateLeft?: () => void;
@@ -789,6 +793,21 @@ export function RoomlogThreeFloorPlanView({
                 <button aria-label="배치 취소" className="is-cancel" onClick={onPendingCancel} title="취소 (재편집이면 원위치)" type="button">
                   <X aria-hidden="true" />
                 </button>
+                {onPendingRotate ? (
+                  <>
+                    <button aria-label="왼쪽으로 90도 회전" onClick={() => onPendingRotate(-1)} title="왼쪽으로 90도 회전" type="button">
+                      <RotateCcw aria-hidden="true" />
+                    </button>
+                    <button aria-label="오른쪽으로 90도 회전" onClick={() => onPendingRotate(1)} title="오른쪽으로 90도 회전" type="button">
+                      <RotateCw aria-hidden="true" />
+                    </button>
+                  </>
+                ) : null}
+                {pendingFurnitureCanBeDeleted && onPendingDelete ? (
+                  <button aria-label="가구 삭제" className="is-delete" onClick={onPendingDelete} title="가구 삭제" type="button">
+                    <Trash2 aria-hidden="true" />
+                  </button>
+                ) : null}
                 <button aria-label="배치완료" className="is-confirm" onClick={onPendingConfirm} title="배치완료" type="button">
                   <Check aria-hidden="true" />
                 </button>
