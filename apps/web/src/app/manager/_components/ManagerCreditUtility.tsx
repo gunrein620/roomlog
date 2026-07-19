@@ -24,6 +24,7 @@ import {
   MANAGER_CREDIT_BALANCE_CHANGED_EVENT,
   OPEN_MANAGER_CREDIT_TOPUP_EVENT,
 } from "@/lib/vendor-credit-events";
+import { getRealtimeSocket } from "@/lib/realtime-client";
 import { launchTossPaymentOutsideDialog } from "./manager-credit-payment-dialog-transition";
 import styles from "./ManagerCreditUtility.module.css";
 
@@ -257,19 +258,44 @@ export function ManagerCreditUtility() {
   }, [loadAccount]);
 
   useEffect(() => {
-    const openFromWorkspace = () => openDialog();
-    const refreshFromWorkspace = () => void loadAccount();
+    const openFromWorkspace = (event?: unknown) => {
+      const amount = event instanceof CustomEvent
+        && typeof event.detail?.amount === "number"
+        && Number.isSafeInteger(event.detail.amount)
+        && event.detail.amount > 0
+        ? event.detail.amount
+        : undefined;
+      if (amount !== undefined) setAmountText(String(amount));
+      openDialog();
+    };
+    const refreshFromWorkspace = (event?: unknown) => {
+      const balance = event instanceof CustomEvent
+        && typeof event.detail?.balance === "number"
+        && Number.isSafeInteger(event.detail.balance)
+        && event.detail.balance >= 0
+        ? event.detail.balance
+        : undefined;
+      if (balance !== undefined) {
+        setAccount((current) => current ? { ...current, balance } : current);
+      }
+      void loadAccount();
+    };
+    const socket = getRealtimeSocket();
     window.addEventListener(OPEN_MANAGER_CREDIT_TOPUP_EVENT, openFromWorkspace);
     window.addEventListener(
       MANAGER_CREDIT_BALANCE_CHANGED_EVENT,
       refreshFromWorkspace,
     );
+    socket.on("manager:credit-updated", refreshFromWorkspace);
+    socket.on("connect", refreshFromWorkspace);
     return () => {
       window.removeEventListener(OPEN_MANAGER_CREDIT_TOPUP_EVENT, openFromWorkspace);
       window.removeEventListener(
         MANAGER_CREDIT_BALANCE_CHANGED_EVENT,
         refreshFromWorkspace,
       );
+      socket.off("manager:credit-updated", refreshFromWorkspace);
+      socket.off("connect", refreshFromWorkspace);
     };
   }, [loadAccount]);
 

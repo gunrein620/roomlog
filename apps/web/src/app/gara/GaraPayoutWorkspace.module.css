@@ -94,6 +94,7 @@
   background: var(--primary);
   font: inherit;
   font-weight: var(--fw-subtitle);
+  white-space: nowrap;
   cursor: pointer;
 }
 
