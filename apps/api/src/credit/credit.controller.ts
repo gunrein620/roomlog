@@ -154,9 +154,12 @@ export class CreditController {
 
   @Post("gara/vendor-payout-requests")
   async createPublicGaraVendorPayoutRequest(@Body() input: CreateGaraVendorPayoutInput) {
-    const request = await this.credit.createPublicGaraVendorPayoutRequest(input);
+    const result = await this.credit.createPublicGaraVendorPayoutRequest(input);
     this.realtime?.notifyGaraPayoutUpdated();
-    return request;
+    if (result.creditDebited) {
+      this.realtime?.notifyManagerCreditUpdated(result.managerId);
+    }
+    return result.request;
   }
 
   @Post("gara/socket-ticket")

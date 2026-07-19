@@ -476,11 +476,15 @@ export class PrismaCreditCommandRepository
           topupConflict("동일한 멱등성 키로 다른 Gara 지급 요청을 만들 수 없습니다.");
         }
         return {
-          id: existing.id,
-          amount: Number(existing.amount),
-          accountNumber: existing.accountNumberSnapshot,
-          status: existing.status,
-          createdAt: existing.createdAt.toISOString()
+          managerId: existing.managerId,
+          creditDebited: existing.status === "CREDIT_DEBITED",
+          request: {
+            id: existing.id,
+            amount: Number(existing.amount),
+            accountNumber: existing.accountNumberSnapshot,
+            status: existing.status,
+            createdAt: existing.createdAt.toISOString()
+          }
         };
       }
 
@@ -549,11 +553,15 @@ export class PrismaCreditCommandRepository
             }
           });
           return {
-            id: payout.id,
-            amount,
-            accountNumber: payout.accountNumberSnapshot,
-            status: payout.status,
-            createdAt: payout.createdAt.toISOString()
+            managerId: registration.managerId,
+            creditDebited: true,
+            request: {
+              id: payout.id,
+              amount,
+              accountNumber: payout.accountNumberSnapshot,
+              status: payout.status,
+              createdAt: payout.createdAt.toISOString()
+            }
           };
         }
       }
@@ -572,11 +580,15 @@ export class PrismaCreditCommandRepository
         }
       });
       return {
-        id: payout.id,
-        amount,
-        accountNumber: payout.accountNumberSnapshot,
-        status: payout.status,
-        createdAt: payout.createdAt.toISOString()
+        managerId: registration.managerId,
+        creditDebited: false,
+        request: {
+          id: payout.id,
+          amount,
+          accountNumber: payout.accountNumberSnapshot,
+          status: payout.status,
+          createdAt: payout.createdAt.toISOString()
+        }
       };
     });
   }
