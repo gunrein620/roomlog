@@ -277,4 +277,24 @@ describe("CreditController credit balance realtime updates", () => {
 
     assert.deepEqual(notifications, ["manager-1"]);
   });
+
+  it("notifies the manager after settling a Gara payout with credit", async () => {
+    const notifications: string[] = [];
+    const controller = new CreditController({
+      requireManager: async () => "manager-1",
+      settleGaraVendorPayout: async () => ({
+        request: { id: "gara-payout-1" },
+        account: { id: "account-1", balance: 9_000 },
+      }),
+    } as never, {
+      notifyManagerCreditUpdated: (managerId: string) => notifications.push(managerId),
+      notifyGaraPayoutUpdated: () => undefined,
+    } as never);
+
+    await controller.settleGaraVendorPayout("Bearer manager-token", "gara-payout-1", {
+      idempotencyKey: "settle-1",
+    });
+
+    assert.deepEqual(notifications, ["manager-1"]);
+  });
 });

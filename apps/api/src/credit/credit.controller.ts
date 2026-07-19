@@ -258,6 +258,7 @@ export class CreditController {
   ) {
     const managerId = await this.credit.requireManager(authorization);
     const result = await this.credit.settleGaraVendorPayout(managerId, payoutRequestId, input);
+    this.realtime?.notifyManagerCreditUpdated(managerId);
     this.realtime?.notifyGaraPayoutUpdated();
     return { request: result.request, account: publicAccount(result.account) };
   }
