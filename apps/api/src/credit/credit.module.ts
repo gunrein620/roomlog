@@ -60,6 +60,7 @@ function unavailableCommandRepository(): CreditCommandRepository {
     createGaraTopupOrder: unavailable,
     createGaraVendorPayout: unavailable,
     createPublicGaraVendorPayoutRequest: unavailable,
+    archivePublicGaraVendorRegistration: unavailable,
     settleGaraVendorPayout: unavailable,
     claimTopupConfirmation: unavailable,
     finalizeTopup: unavailable,

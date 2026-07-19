@@ -884,6 +884,7 @@ export type EnsureTradeContractDraftInput = {
   landlordName: string;
   depositKrw: number;
   monthlyRent: number;
+  maintenanceFee?: number;
 };
 
 export type ConnectAcceptedTradeContractInput = {
@@ -896,6 +897,7 @@ export type ConnectAcceptedTradeContractInput = {
   landlordName: string;
   depositKrw: number;
   monthlyRent: number;
+  maintenanceFee?: number;
   acceptedAt: string;
 };
 

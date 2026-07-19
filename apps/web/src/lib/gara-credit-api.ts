@@ -48,6 +48,13 @@ async function browserGaraCreditFetch<T>(
 const CHECKOUTS_PATH = "/api/gara/vendor-credit-checkouts";
 const PAYOUT_REQUESTS_PATH = "/api/gara/vendor-payout-requests";
 
+export function archiveGaraVendorRegistration(managerVendorId: string): Promise<unknown> {
+  return browserGaraCreditFetch(
+    `/api/gara/vendors/${encodeURIComponent(managerVendorId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function createGaraVendorPayoutRequest(
   input: CreateGaraVendorPayoutInput,
 ): Promise<GaraVendorPayoutRequestPublicView> {

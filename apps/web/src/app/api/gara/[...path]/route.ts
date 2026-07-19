@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiUrl } from "@/lib/api-url";
 import { garaUpstreamPath } from "./gara-path";
 
-type GaraMethod = "GET" | "POST" | "PATCH";
+type GaraMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 async function forward(
   request: Request,
@@ -54,4 +54,9 @@ export async function POST(request: Request, context: { params: Promise<{ path: 
 export async function PATCH(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   return forward(request, path, "PATCH");
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  const { path } = await context.params;
+  return forward(request, path, "DELETE");
 }

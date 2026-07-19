@@ -254,6 +254,38 @@ function repairDateLabel(iso?: string): string {
   return iso.slice(0, 10).replaceAll("-", ".");
 }
 
+// 세입자 이력은 내부 처리 단계를 노출하지 않고, 세 단계로 일관되게 안내한다.
+const TENANT_REPAIR_HISTORY_TICKET_STATUS: Partial<Record<string, string>> = {
+  RECEIVED: "접수",
+  REVIEWING: "접수",
+  ADDITIONAL_INFO_REQUESTED: "접수",
+  VENDOR_ASSIGNMENT_PENDING: "접수",
+  VENDOR_ASSIGNED: "접수",
+  ESTIMATE_REVIEW: "접수",
+  REPAIR_IN_PROGRESS: "진행중",
+  COMPLETION_REPORTED: "진행중",
+  COMPLETED: "완료",
+};
+
+const TENANT_REPAIR_HISTORY_DISPLAY_STATUS: Record<string, string> = {
+  "진행": "접수",
+  "접수됨": "접수",
+  "수리중": "진행중",
+  "수리 중": "진행중",
+  "완료": "완료",
+};
+
+function tenantRepairHistoryStatus(item: TenantComplaintResponse): string {
+  const ticketStatus = item.ticket?.status?.trim();
+  if (ticketStatus) {
+    const mappedTicketStatus = TENANT_REPAIR_HISTORY_TICKET_STATUS[ticketStatus];
+    if (mappedTicketStatus) return mappedTicketStatus;
+  }
+
+  const rawStatus = item.displayStatus?.trim() || item.status?.trim();
+  return rawStatus ? (TENANT_REPAIR_HISTORY_DISPLAY_STATUS[rawStatus] ?? rawStatus) : "접수";
+}
+
 function dateTimeLocalValue(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -315,7 +347,7 @@ function normalizeTenantRepairRequest(item: TenantComplaintResponse): TenantRepa
     createdAt: item.createdAt,
     sourceChannel: item.sourceChannel,
     attachments,
-    status: item.displayStatus ?? item.status ?? "접수됨",
+    status: tenantRepairHistoryStatus(item),
     date: repairDateLabel(item.createdAt)
   };
 }
@@ -1215,7 +1247,9 @@ export default function TenantMyPage({
         ? "공지사항을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요."
         : "임대인으로부터 전달된 새로운 소식이 없습니다.";
   const detailTicket = selectedComplaintDetail?.ticket;
-  const detailStatusLabel = selectedComplaintDetail?.displayStatus ?? selectedRepairRequest?.status ?? "";
+  const detailStatusLabel = selectedComplaintDetail
+    ? tenantRepairHistoryStatus(selectedComplaintDetail)
+    : selectedRepairRequest?.status ?? "";
   const detailMessages = (selectedComplaintDetail?.messages ?? []).filter(
     (message) =>
       (message.messageText ?? "").trim().length > 0 || (message.attachmentUrls?.length ?? 0) > 0
@@ -2198,9 +2232,8 @@ export default function TenantMyPage({
                         </div>
                       ) : null}
                       <div className="tenant-defect-chat-input">
-                        <label className="tenant-defect-chat-attach">
+                        <label className="tenant-defect-chat-attach" aria-label="사진 첨부">
                           <ImagePlus aria-hidden="true" />
-                          <span className="tenant-sr-only">사진 첨부</span>
                           <input type="file" accept="image/*" multiple onChange={handleComplaintChatImageChange} />
                         </label>
                         <input
@@ -2337,7 +2370,7 @@ export default function TenantMyPage({
               <div className="tenant-request-image-strip" aria-label="이미지 첨부">
                 <label className="tenant-request-image-input">
                   <ImagePlus size={24} strokeWidth={2.4} aria-hidden="true" />
-                  <span>이미지<br />(입력)</span>
+                  <span className="tenant-sr-only">이미지 첨부</span>
                   <input type="file" accept="image/*" multiple onChange={handleRequestImageChange} />
                 </label>
                 {requestImages.map((image) => (

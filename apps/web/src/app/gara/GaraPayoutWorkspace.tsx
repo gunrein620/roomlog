@@ -4,7 +4,10 @@ import type { FormEvent } from "react";
 import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GaraVendorCreditPublicView } from "@roomlog/types";
-import { createGaraVendorPayoutRequest } from "@/lib/gara-credit-api";
+import {
+  archiveGaraVendorRegistration,
+  createGaraVendorPayoutRequest,
+} from "@/lib/gara-credit-api";
 import { getGaraRealtimeSocket } from "@/lib/realtime-client";
 import styles from "./GaraPayoutWorkspace.module.css";
 
@@ -23,17 +26,24 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
+function GaraPayoutRow({
+  vendor,
+  onArchive,
+}: {
+  vendor: GaraVendorCreditPublicView;
+  onArchive: (registrationId: string) => void;
+}) {
   const formId = useId();
   const [amountText, setAmountText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const accountNumber = vendor.settlementAccountNumber?.trim();
 
   async function sendPayoutRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || archiving) return;
 
     setError(null);
     setFeedback(null);
@@ -63,6 +73,25 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
     }
   }
 
+  async function archiveRegistration() {
+    if (archiving) return;
+    if (!window.confirm(`${vendor.businessName} 업체를 삭제할까요? 업체관리에서도 함께 삭제됩니다.`)) {
+      return;
+    }
+
+    setError(null);
+    setFeedback(null);
+    setArchiving(true);
+    try {
+      await archiveGaraVendorRegistration(vendor.id);
+      onArchive(vendor.id);
+    } catch (archiveError) {
+      setError(errorMessage(archiveError, "업체를 삭제하지 못했습니다."));
+    } finally {
+      setArchiving(false);
+    }
+  }
+
   return (
     <tr>
       <td>{vendor.businessName}</td>
@@ -86,7 +115,7 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
             placeholder="금액 입력"
             value={amountText}
             onChange={(event) => setAmountText(event.target.value)}
-            disabled={busy || !accountNumber}
+            disabled={busy || archiving || !accountNumber}
             required
           />
           {feedback ? <p className={styles.feedback} role="status">{feedback}</p> : null}
@@ -98,11 +127,21 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
           className={styles.sendButton}
           type="submit"
           form={formId}
-          disabled={busy || !accountNumber}
+          disabled={busy || archiving || !accountNumber}
         >
           {busy ? "발송 중…" : "발송"}
         </button>
         {!accountNumber ? <span className={styles.hint}>계좌번호 필요</span> : null}
+      </td>
+      <td>
+        <button
+          className={styles.deleteButton}
+          type="button"
+          onClick={archiveRegistration}
+          disabled={busy || archiving}
+        >
+          {archiving ? "삭제 중…" : "삭제"}
+        </button>
       </td>
     </tr>
   );
@@ -110,6 +149,11 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
 
 export function GaraPayoutWorkspace({ vendors }: { vendors: GaraVendorCreditPublicView[] }) {
   const router = useRouter();
+  const [visibleVendors, setVisibleVendors] = useState(vendors);
+
+  useEffect(() => {
+    setVisibleVendors(vendors);
+  }, [vendors]);
 
   useEffect(() => {
     const socket = getGaraRealtimeSocket();
@@ -119,6 +163,11 @@ export function GaraPayoutWorkspace({ vendors }: { vendors: GaraVendorCreditPubl
       socket.off("gara:payout-updated", refresh);
     };
   }, [router]);
+
+  function removeArchivedVendor(registrationId: string) {
+    setVisibleVendors((current) => current.filter((vendor) => vendor.id !== registrationId));
+    router.refresh();
+  }
 
   return (
     <section className={styles.workspace}>
@@ -136,11 +185,18 @@ export function GaraPayoutWorkspace({ vendors }: { vendors: GaraVendorCreditPubl
               <th scope="col">잔액</th>
               <th scope="col">요청 금액</th>
               <th scope="col">발송</th>
+              <th scope="col">삭제</th>
             </tr>
           </thead>
-          <tbody>{vendors.map((vendor) => <GaraPayoutRow key={vendor.id} vendor={vendor} />)}</tbody>
+          <tbody>{visibleVendors.map((vendor) => (
+            <GaraPayoutRow
+              key={vendor.id}
+              vendor={vendor}
+              onArchive={removeArchivedVendor}
+            />
+          ))}</tbody>
         </table>
-        {vendors.length === 0 ? <p className={styles.empty}>등록된 업체가 없습니다.</p> : null}
+        {visibleVendors.length === 0 ? <p className={styles.empty}>등록된 업체가 없습니다.</p> : null}
       </div>
     </section>
   );

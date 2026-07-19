@@ -293,8 +293,7 @@ const notificationItems = [
 
 // 하드코딩 데모 지표/추천/체크리스트 상수들 제거 — 데모 컨셉 정리(4d1010a8 후속)
 
-const JUNGLE_CAMPUS_ADDRESS = "경기도 용인시 처인구 영문로 55";
-const JUNGLE_CAMPUS_CENTER = { lat: 37.2697301353189, lng: 127.207838838402 };
+const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 
 const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   source: "default",
@@ -306,7 +305,6 @@ const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   addressText: JUNGLE_CAMPUS_ADDRESS,
   description: `도로명 기준 · 반경 2.5km · ${JUNGLE_CAMPUS_ADDRESS}`
 };
-const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 const MAP_SEARCH_RADIUS_M = 2500;
 const MAP_SEARCH_RADIUS_BY_PRECISION: Record<MapQueryPrecision, number> = {
   neighborhood: MAP_SEARCH_RADIUS_M,

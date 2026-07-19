@@ -29,7 +29,7 @@ type SearchParams = Promise<{
 }>;
 type ManagerContractDetailResult = Awaited<ReturnType<typeof getManagerContractDetail>>;
 const DOCUMENT_ABSENT_VALUE = "문서에 없음";
-const IMPORTANT_CONTRACT_LABELS = ["보증금", "월세", "계약 시작일", "계약 종료일", "특약", "자동연장", "원상복구", "수선 책임"] as const;
+const IMPORTANT_CONTRACT_LABELS = ["보증금", "월세", "납부일", "계약 시작일", "계약 종료일", "특약", "자동연장", "원상복구", "수선 책임"] as const;
 type ImportantContractLabel = (typeof IMPORTANT_CONTRACT_LABELS)[number];
 const OPTIONAL_CONTRACT_CLAUSE_LABELS = ["특약", "자동연장", "원상복구", "수선 책임"] as const;
 
@@ -95,6 +95,7 @@ async function updateManualCorrectionAction(formData: FormData) {
       deposit: textValue(formData, "deposit"),
       monthlyRent: numberValue(formData, "monthlyRent"),
       maintenanceFee: numberValue(formData, "maintenanceFee"),
+      paymentDay: numberValue(formData, "paymentDay"),
       startDate,
       endDate,
       specialTerms: textValue(formData, "specialTerms"),
@@ -374,18 +375,16 @@ function ManualCorrectionForm({
     <Card style={manualCardStyle}>
       <div style={manualHeaderStyle}>
         <div style={{ fontWeight: 900 }}>계약서 원문에서 중요한 부분만 고칩니다</div>
-        <p style={mutedBodyStyle}>납부일·주소는 매물 DB 값을 사용하고, 보증금·월 임대료·관리비·계약 기간·특약성 조항만 원문 기준으로 저장하세요.</p>
       </div>
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
         <div style={correctionGroupGridStyle}>
-          <CorrectionGroup title="보증금·월 임대료·계약 기간" note="계약서에 적힌 보증금 구조와 월 단위 임대료, 계약 시작·종료일만 원문 기준으로 정리합니다.">
+          <CorrectionGroup title="보증금·월 임대료·관리비·계약 기간·납부일">
             <CorrectionField fieldId="contract-field-deposit" label="보증금">
               <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
             </CorrectionField>
             <div style={correctionSubsectionStyle}>
-              <strong>월 임대료·관리비·계약 기간</strong>
-              <span>월 임대료, 월 임차료, 차임처럼 계약서의 월 단위 임대료와 관리비, 계약 시작·종료일만 확인합니다.</span>
+              <strong>월 임대료·관리비·계약 기간·납부일</strong>
             </div>
             <div style={twoColumnFieldStyle}>
               <CorrectionField fieldId="contract-field-monthlyRent" label="월 임대료">
@@ -403,9 +402,12 @@ function ManualCorrectionForm({
                 <input id="contract-field-endDate" name="endDate" type="date" defaultValue={values.endDate} style={correctionInputStyle} />
               </CorrectionField>
             </div>
+            <CorrectionField fieldId="contract-field-paymentDay" label="납부일">
+              <input id="contract-field-paymentDay" name="paymentDay" type="number" inputMode="numeric" min={1} max={31} defaultValue={values.paymentDay} placeholder="예: 25" style={correctionInputStyle} />
+            </CorrectionField>
           </CorrectionGroup>
 
-          <CorrectionGroup title="특약·책임 조항" note="특약, 자동연장, 원상복구, 수선 책임처럼 분쟁 기준이 되는 조항만 원문 기준으로 정리합니다.">
+          <CorrectionGroup title="특약·책임 조항">
             <CorrectionField fieldId="contract-field-specialTerms" label="특약">
               <textarea id="contract-field-specialTerms" name="specialTerms" defaultValue={values.specialTerms} placeholder="예: 임대인·임차인 특약사항, 보증금 반환/공제 조건, 추가 약정" style={correctionTextareaStyle} />
             </CorrectionField>
@@ -433,12 +435,11 @@ function ManualCorrectionForm({
   );
 }
 
-function CorrectionGroup({ title, note, children }: { title: string; note: string; children: ReactNode }) {
+function CorrectionGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section style={correctionGroupStyle}>
       <div style={correctionGroupHeaderStyle}>
         <strong>{title}</strong>
-        <span style={correctionGroupNoteStyle}>{note}</span>
       </div>
       <div style={correctionGroupBodyStyle}>{children}</div>
     </section>
@@ -511,6 +512,7 @@ function buildValueRows(detail: ManagerContractDetailResult, sourceKind: OcrSour
   return [
     makeValueRow(detail, "보증금", manualInputValue(detail.manualValues.deposit), sourceKind),
     makeValueRow(detail, "월세", manualInputValue(detail.manualValues.rent), sourceKind),
+    makeValueRow(detail, "납부일", manualInputValue(detail.manualValues.paymentDay), sourceKind),
     makeValueRow(detail, "계약 시작일", manualInputValue(detail.manualValues.startDate), sourceKind),
     makeValueRow(detail, "계약 종료일", manualInputValue(detail.manualValues.endDate), sourceKind),
     makeValueRow(detail, "특약", manualInputValue(detail.manualValues.specialTerms), sourceKind),
@@ -678,6 +680,10 @@ function manualDefaults(
       moneyInputCandidate(storedManualValue(detail.manualValues.maintenanceFee)) ||
       moneyInputCandidate(valueRowFinalValue(valueRows, "관리비")) ||
       moneyInputCandidate(valueRowOcrValue(valueRows, "관리비")),
+    paymentDay:
+      paymentDayInputCandidate(storedManualValue(detail.manualValues.paymentDay)) ||
+      paymentDayInputCandidate(valueRowFinalValue(valueRows, "납부일")) ||
+      paymentDayInputCandidate(valueRowOcrValue(valueRows, "납부일")),
     startDate:
       dateInputCandidate(storedManualValue(detail.manualValues.startDate)) ||
       dateInputCandidate(valueRowFinalValue(valueRows, "계약 시작일")) ||
@@ -731,6 +737,12 @@ function moneyInputCandidate(value: string) {
   const digits = value.replace(/[^\d]/g, "");
   if (!digits) return "";
   return Number(digits).toLocaleString("ko-KR");
+}
+
+function paymentDayInputCandidate(value: string) {
+  const match = value.trim().match(/^(?:매월\s*)?(\d{1,2})(?:\s*일)?$/);
+  const day = match?.[1] ? Number(match[1]) : Number.NaN;
+  return Number.isInteger(day) && day >= 1 && day <= 31 ? String(day) : "";
 }
 
 function dateInputCandidate(value: string) {
@@ -1206,12 +1218,6 @@ const correctionGroupHeaderStyle = {
   display: "grid",
   gap: 4,
   color: "var(--on-surface)",
-} as const;
-
-const correctionGroupNoteStyle = {
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  lineHeight: "var(--lh-body)",
 } as const;
 
 const correctionGroupBodyStyle = {

@@ -74,6 +74,21 @@ function storedContract(service: RoomlogService, contractId: string) {
 }
 
 describe("trade contract billing bridge", () => {
+  it("stores a manually corrected payment day in the contract review extraction", () => {
+    const service = new RoomlogService();
+    const { contract } = createManagerDraft(service, "payment-day-review");
+
+    const updated = service.updateManagerContractManualValues(
+      "landlord-demo",
+      contract.id,
+      { paymentDay: 25 },
+    );
+    const paymentDay = updated.extraction.items.find((item) => item.label === "납부일");
+
+    assert.equal(paymentDay?.value, "매월 25일");
+    assert.equal(paymentDay?.evidence, "관리자 수동 입력");
+  });
+
   it("explains why each current-building room cannot create a bill", () => {
     const service = new RoomlogService();
     const withoutContract = createTradeRoom(service, "청구불가-계약없음");

@@ -30,7 +30,8 @@ const dialogStylesSource = existsSync(dialogStylesPath)
 
 test("manager vendor list opens registration in a modal instead of navigating", () => {
   assert.match(pageSource, /import \{ ManagerVendorRegistrationDialog \}/);
-  assert.match(pageSource, /actions=\{<ManagerVendorRegistrationDialog disabled=\{result\.source === "DEMO"\} \/>\}/);
+  assert.match(pageSource, /action=\{<ManagerVendorRegistrationDialog disabled=\{result\.source === "DEMO"\} \/>\}/);
+  assert.doesNotMatch(pageSource, /VendorScreenHeader/);
   assert.doesNotMatch(
     pageSource,
     /<LinkButton href=\{MANAGER_VENDOR_MGMT_PATHS\.search\}>업체 등록<\/LinkButton>/,
@@ -40,6 +41,13 @@ test("manager vendor list opens registration in a modal instead of navigating", 
 test("manager vendor list does not expose an archive control", () => {
   assert.doesNotMatch(pageSource, /ManagerVendorArchiveControl/);
   assert.doesNotMatch(pageSource, /renderManagement=/);
+});
+
+test("manager vendor list omits explanatory copy from the list header and count section", () => {
+  assert.doesNotMatch(pageSource, /운영팀이 검증한 업체 중 직접 등록한 협력업체와 진행 중인 작업을 관리합니다/);
+  assert.doesNotMatch(pageSource, /계정 연결과 운영 검증이 모두 완료된 업체만 하자 작업에 배정할 수 있습니다/);
+  assert.match(componentSource, /description\?: string/);
+  assert.match(componentSource, /\{description \? <p className=\{styles\.description\}>\{description\}<\/p> : null\}/);
 });
 
 test("manager vendor table does not expose account verification", () => {
