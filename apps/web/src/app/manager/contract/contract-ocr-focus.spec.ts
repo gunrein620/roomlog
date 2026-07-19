@@ -32,6 +32,12 @@ describe("contract OCR important-field scope", () => {
     }
 
     assert.doesNotMatch(pageSource, /기존 DB 계약값 불러오기/);
+    assert.match(pageSource, /월 임대료·관리비·계약 기간·납부일/);
+    assert.doesNotMatch(pageSource, /계약서에 적힌 보증금 구조와 월 단위 임대료/);
+    assert.doesNotMatch(pageSource, /분쟁 기준이 되는 조항만 원문 기준으로 정리합니다/);
+    assert.doesNotMatch(pageSource, /월 임대료, 월 임차료, 차임처럼/);
+    assert.match(pageSource, /paymentDay:\s*numberValue\(formData, "paymentDay"\)/);
+    assert.match(pageSource, /paymentDay:\s*paymentDayInputCandidate/);
   });
 
   it("shows absent optional clauses as not applicable rather than missing", () => {
@@ -53,19 +59,16 @@ describe("contract OCR important-field scope", () => {
     );
 
     for (const fieldKey of [
-      "contractStartDate",
-      "contractEndDate",
       "rentBaseAmount",
       "rentConversionAmount",
       "maintenanceFee",
-      "paymentDay",
       "landlordAccount",
       "address",
     ]) {
       assert.doesNotMatch(apiSource, new RegExp(`"${fieldKey}"`));
     }
 
-    for (const fieldKey of ["depositBaseAmount", "depositConversionAmount", "depositFinalAmount", "specialTerms"]) {
+    for (const fieldKey of ["depositBaseAmount", "depositConversionAmount", "depositFinalAmount", "paymentDay", "contractStartDate", "contractEndDate", "specialTerms"]) {
       assert.match(apiSource, new RegExp(`"${fieldKey}"`));
     }
   });

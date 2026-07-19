@@ -10,6 +10,7 @@ const fieldKeys = [
   "depositConversionAmount",
   "depositFinalAmount",
   "monthlyRentAmount",
+  "paymentDay",
   "contractStartDate",
   "contractEndDate",
   "specialTerms",
@@ -149,7 +150,13 @@ describe("Contract OCR eval fixtures", () => {
 
   it("accepts monthly-rent, contract-period, and special-term aliases", async () => {
     const result = await runContractOcrEval(
-      ocrFields({}),
+      ocrFields({
+        paymentDay: {
+          value: "매월 25일",
+          evidence: "매월 25일까지 납부한다",
+          needsCheck: false
+        }
+      }),
       [
         {
           label: "월세",
@@ -179,6 +186,8 @@ describe("Contract OCR eval fixtures", () => {
     );
 
     assert.equal(extractionValue(result, "월세")?.value, "650,000원");
+    assert.equal(extractionValue(result, "납부일")?.value, "매월 25일");
+    assert.equal(extractionValue(result, "납부일")?.needsCheck, false);
     assert.equal(extractionValue(result, "계약 시작일")?.value, "2025-05-01");
     assert.equal(extractionValue(result, "계약 종료일")?.value, "2027-04-30");
     assert.equal(extractionValue(result, "특약")?.value, "전대 및 양도는 임대인 사전 동의를 받는다.");

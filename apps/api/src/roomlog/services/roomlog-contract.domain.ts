@@ -91,6 +91,7 @@ type OpenAiContractOcrFields = {
   depositConversionAmount?: OpenAiContractOcrField;
   depositFinalAmount?: OpenAiContractOcrField;
   monthlyRentAmount?: OpenAiContractOcrField;
+  paymentDay?: OpenAiContractOcrField;
   contractStartDate?: OpenAiContractOcrField;
   contractEndDate?: OpenAiContractOcrField;
   specialTerms?: OpenAiContractOcrField;
@@ -103,6 +104,7 @@ const DOCUMENT_ABSENT_CONTRACT_VALUE = "문서에 없음";
 const IMPORTANT_CONTRACT_OCR_LABELS = new Set([
   "보증금",
   "월세",
+  "납부일",
   "계약 시작일",
   "계약 종료일",
   "특약",
@@ -797,6 +799,7 @@ export class RoomlogContractDomain {
       ],
       items: [
         missingItem("보증금", "money"),
+        missingItem("납부일", "term"),
         missingItem("특약", "responsibility"),
         missingItem("자동연장", "term"),
         missingItem("원상복구", "responsibility"),
@@ -876,11 +879,11 @@ export class RoomlogContractDomain {
         model,
         instructions: [
           "너는 한국 주택 임대차 계약서 OCR 검토 보조자다.",
-          "계약서 이미지나 PDF에서 보증금, 월세, 계약 시작일, 계약 종료일, 특약, 자동연장, 원상복구, 수선 책임처럼 원문 확인이 중요한 항목만 추출한다.",
+          "계약서 이미지나 PDF에서 보증금, 월세, 납부일, 계약 시작일, 계약 종료일, 특약, 자동연장, 원상복구, 수선 책임처럼 원문 확인이 중요한 항목만 추출한다.",
           "복합 금액은 한 문장으로 뭉치지 말고 기본 금액, 전환 금액, 최종 금액처럼 세부 필드로 나누어 판단한다.",
           "월세는 월 임대료, 월 임차료, 차임, 임대료, 월 납입액 같은 표현까지 같은 항목으로 본다.",
           "계약기간 또는 임대차기간 범위가 있으면 계약 시작일과 계약 종료일로 나누어 추출한다.",
-          "관리비, 납부일, 주소, 계좌처럼 DB에 이미 있는 매물 기본값은 추출 대상에서 제외한다.",
+          "관리비, 주소, 계좌처럼 DB에 이미 있는 매물 기본값은 추출 대상에서 제외한다.",
           "불확실하거나 원문 재확인이 필요한 항목은 needsCheck를 true로 둔다.",
           "특약, 자동연장, 원상복구, 수선 책임 조항이 원문에 명시되어 있지 않으면 value를 '문서에 없음', needsCheck를 false로 둔다.",
           "clauseSummary에는 특약, 자동연장, 원상복구, 수선 책임만 대상으로 대시보드에 바로 보여줄 60자 이내 한 줄 요약을 넣는다.",
@@ -1069,6 +1072,14 @@ export class RoomlogContractDomain {
         "월세",
         monthlyRent !== undefined ? `${monthlyRent.toLocaleString("ko-KR")}원` : undefined,
         "money"
+      );
+    }
+    if (input.paymentDay !== undefined) {
+      this.upsertExtractionItem(
+        extraction,
+        "납부일",
+        paymentDay !== undefined ? `매월 ${paymentDay}일` : undefined,
+        "term"
       );
     }
     if (input.startDate !== undefined) this.upsertExtractionItem(extraction, "계약 시작일", startDate, "term");
@@ -2394,11 +2405,12 @@ export class RoomlogContractDomain {
       `관리 호실: ${room.buildingName} ${this.displayUnitId(room)}`,
       `등록 DB 기본값: 주소 ${room.address}, 월세 ${this.currencyLabel(contract.monthlyRent) ?? "미등록"}, 관리비 ${this.currencyLabel(contract.maintenanceFee) ?? "미등록"}, 납부일 ${contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미등록"}, 계약기간 ${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`,
       `기존 추출값: ${knownItems}`,
-      "등록 DB 기본값은 비교 참고용이다. 관리비, 납부일, 주소, 계좌는 추출하지 말고, 보증금·월세·계약 시작일·계약 종료일·특약성 조항만 추출한다.",
+      "등록 DB 기본값은 비교 참고용이다. 관리비, 주소, 계좌는 추출하지 말고, 보증금·월세·납부일·계약 시작일·계약 종료일·특약성 조항만 추출한다.",
       "월세는 월세, 월 임대료, 월 임차료, 월 차임, 차임, 임대료, 월 납입액, 월 납부액, 매월 납입액처럼 월 단위로 반복 납부하는 임대료 표현을 모두 같은 항목으로 본다. 관리비나 보증금과 혼동하지 마.",
+      "납부일은 월세·차임의 매월 지급일을 1일부터 31일 사이 숫자로 추출한다. '매월 말일'은 31일로 정규화하고 보증금 지급일이나 계약금 지급일과 혼동하지 마.",
       "계약 시작일과 계약 종료일은 계약기간, 임대차기간, 계약 시작일, 계약 종료일, YYYY.MM.DD ~ YYYY.MM.DD 패턴에서 각각 추출하고 YYYY-MM-DD로 정규화한다.",
-      "권장 label은 보증금, 월세, 계약 시작일, 계약 종료일, 특약, 자동연장, 원상복구, 수선 책임이다.",
-      "fields에는 depositBaseAmount, depositConversionAmount, depositFinalAmount, monthlyRentAmount, contractStartDate, contractEndDate, specialTerms, autoRenewal, restorationDuty, repairDuty를 가능한 범위에서 채워줘.",
+      "권장 label은 보증금, 월세, 납부일, 계약 시작일, 계약 종료일, 특약, 자동연장, 원상복구, 수선 책임이다.",
+      "fields에는 depositBaseAmount, depositConversionAmount, depositFinalAmount, monthlyRentAmount, paymentDay, contractStartDate, contractEndDate, specialTerms, autoRenewal, restorationDuty, repairDuty를 가능한 범위에서 채워줘.",
       "clauseSummary에는 특약, 자동연장, 원상복구, 수선 책임을 합쳐 대시보드에 표시할 한 줄 요약을 넣어줘. 예: '특약: 미납 관리비·원상복구비 정산', '원상복구·수선 책임 확인 필요', '특약성 조항 없음'.",
       "보증금이 문서에 없거나 읽히지 않으면 추측하지 말고 value를 빈 문자열로 두고 needsCheck를 true로 둬.",
       "특약, 자동연장, 원상복구, 수선 책임이 원문에 명시되어 있지 않으면 value는 반드시 '문서에 없음', needsCheck는 false로 둬.",
@@ -2442,6 +2454,7 @@ export class RoomlogContractDomain {
       "depositConversionAmount",
       "depositFinalAmount",
       "monthlyRentAmount",
+      "paymentDay",
       "contractStartDate",
       "contractEndDate",
       "specialTerms",
@@ -2594,6 +2607,9 @@ export class RoomlogContractDomain {
 
     const monthlyRentAmount = field("monthlyRentAmount");
     addItem("월세", monthlyRentAmount?.value ?? "", "money", [monthlyRentAmount]);
+
+    const paymentDay = field("paymentDay");
+    addItem("납부일", paymentDay?.value ?? "", "term", [paymentDay]);
 
     const contractStartDate = field("contractStartDate");
     addItem(
