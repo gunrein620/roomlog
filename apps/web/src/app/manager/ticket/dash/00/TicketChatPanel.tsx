@@ -440,7 +440,12 @@ export function TicketChatPanel({
             </div>
           ) : null}
           <div className="manager-ticket-panel__composer-actions">
-            <Link href={ticketDashHref("01", ticket.id)}>상세 처리 화면</Link>
+            <Link
+              className="manager-ticket-panel__detail-link"
+              href={ticketDashHref("01", ticket.id)}
+            >
+              상세 처리 화면
+            </Link>
             <div>
               <label className="manager-ticket-panel__attach-button">
                 <ImagePlus aria-hidden="true" />
