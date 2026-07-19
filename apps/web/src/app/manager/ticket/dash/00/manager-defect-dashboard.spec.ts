@@ -9,10 +9,6 @@ const componentPath = join(
   root,
   "src/app/manager/ticket/dash/00/ManagerDefectDashboard.tsx",
 );
-const actionMenuPath = join(
-  root,
-  "src/app/manager/ticket/dash/00/TicketActionMenu.tsx",
-);
 const complaintDashboardPath = join(
   root,
   "src/app/manager/ticket/dash/00/ComplaintDashboard.tsx",
@@ -40,12 +36,14 @@ const sha256 = (source: string) => createHash("sha256").update(source).digest("h
 
 test("manager defect dashboard matches the approved body with the ticket sidebar tabs", () => {
   assert.equal(existsSync(componentPath), true, componentPath);
-  assert.equal(existsSync(actionMenuPath), true, actionMenuPath);
+  assert.equal(
+    existsSync(join(root, "src/app/manager/ticket/dash/00/TicketActionMenu.tsx")),
+    false,
+  );
   assert.equal(existsSync(complaintDashboardPath), true, complaintDashboardPath);
   assert.equal(existsSync(vendorAssignmentDialogPath), true, vendorAssignmentDialogPath);
 
   const componentSource = readFileSync(componentPath, "utf8");
-  const actionMenuSource = readFileSync(actionMenuPath, "utf8");
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
   const pageSource = readFileSync(pagePath, "utf8");
   assert.equal(existsSync(autoRefreshPath), true, autoRefreshPath);
@@ -125,27 +123,20 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(cssSource, /data-status="received"/);
   assert.match(cssSource, /data-status="processing"/);
   assert.match(cssSource, /data-status="resolved"/);
-  assert.match(actionMenuSource, /ticketDashHref\("01",\s*ticketId\)/);
-  assert.doesNotMatch(actionMenuSource, /ticketDashHref\("04",\s*ticketId\)/);
-  assert.doesNotMatch(actionMenuSource, /ticketDashHref\("05",\s*ticketId\)/);
-  assert.match(componentSource, /<TicketActionMenu/);
+  assert.match(componentSource, /ticketDashHref\("01",\s*row\.ticket\.id\)/);
+  assert.match(componentSource, /manager-defect-dashboard__detail-action/);
+  assert.match(componentSource, />상세<\/Link>/);
+  assert.doesNotMatch(componentSource, /TicketActionMenu/);
+  assert.doesNotMatch(componentSource, /EllipsisVertical/);
   assert.doesNotMatch(componentSource, /<details/);
   assert.doesNotMatch(componentSource, /<summary/);
-  assert.match(actionMenuSource, /createPortal/);
-  assert.match(actionMenuSource, /placeTicketActionMenu/);
-  assert.match(actionMenuSource, /aria-haspopup="menu"/);
-  assert.match(actionMenuSource, /aria-expanded=\{open\}/);
-  assert.match(actionMenuSource, /event\.key === "Escape"/);
-  assert.match(actionMenuSource, /pointerdown/);
-  assert.match(actionMenuSource, /addEventListener\("scroll"/);
-  assert.match(actionMenuSource, /addEventListener\("resize"/);
   assert.doesNotMatch(componentSource, /manager-defect-dashboard__primary-action/);
   assert.doesNotMatch(componentSource, />\s*정보입력\s*</);
   assert.doesNotMatch(componentSource, />\s*대리\s*접수\s*</);
   assert.doesNotMatch(componentSource, /ManagerProxyIntakeDialog/);
-  assert.match(actionMenuSource, /상세·정보입력/);
-  assert.doesNotMatch(actionMenuSource, /업체 선정·견적/);
-  assert.doesNotMatch(actionMenuSource, /결제·비용 승인/);
+  assert.doesNotMatch(componentSource, /상세·정보입력/);
+  assert.doesNotMatch(componentSource, /업체 선정·견적/);
+  assert.doesNotMatch(componentSource, /결제·비용 승인/);
   assert.doesNotMatch(componentSource, /박지훈/);
   assert.doesNotMatch(componentSource, /row\.isDemo/);
   assert.doesNotMatch(componentSource, /더미 작업 비활성/);
@@ -214,7 +205,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /const buildings/);
   assert.match(cssSource, /\/\* manager-defect-dashboard:start \*\//);
   assert.match(cssSource, /button:disabled/);
-  assert.match(cssSource, /manager-defect-dashboard__more-menu-list/);
+  assert.match(cssSource, /manager-defect-dashboard__detail-action/);
+  assert.doesNotMatch(cssSource, /manager-defect-dashboard__more-menu-list/);
   assert.doesNotMatch(
     cssSource,
     /manager-defect-dashboard__table tbody tr:nth-last-child\(-n \+ 3\)/,

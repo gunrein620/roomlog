@@ -120,6 +120,11 @@ export function ContractRegisterForm({
                 onChange={handleFileChange}
                 style={visuallyHiddenStyle}
               />
+              {pending && hasFile ? (
+                <span aria-hidden="true" className="contract-ocr-scan-overlay">
+                  <span className="contract-ocr-scanline" />
+                </span>
+              ) : null}
             </label>
 
             <div className="contract-register-upload-actions" style={uploadActionStyle}>
@@ -192,7 +197,7 @@ function isPdfFile(file: File) {
 }
 
 function pdfPreviewSrc(url: string) {
-  return url.includes("#") ? url : `${url}#toolbar=0&navpanes=0&view=FitH`;
+  return url.includes("#") ? url : `${url}#toolbar=0&navpanes=0&view=Fit`;
 }
 
 function OcrReadItem({
@@ -257,6 +262,7 @@ const dropzoneStyle = {
 } as const;
 
 const dropzonePreviewStyle = {
+  position: "relative",
   width: "100%",
   minHeight: 220,
   display: "grid",
@@ -280,9 +286,11 @@ const dropzoneHintStyle = {
   lineHeight: "var(--lh-body)",
 } as const;
 
+// 웹 전용 화면 — 계약서 한 장(A4 세로)이 통째로 보이도록 미리보기를 문서 비율로 키운다.
 const previewImageStyle = {
   width: "100%",
-  height: "100%",
+  height: "auto",
+  maxHeight: "none",
   objectFit: "contain",
   borderRadius: "var(--radius)",
   background: "var(--surface-container-lowest)",
@@ -290,8 +298,8 @@ const previewImageStyle = {
 
 const previewPdfStyle = {
   width: "100%",
-  minHeight: 320,
-  height: "100%",
+  aspectRatio: "210 / 297",
+  height: "auto",
   border: "1px solid var(--border)",
   borderRadius: "var(--radius)",
   background: "var(--surface-container-lowest)",

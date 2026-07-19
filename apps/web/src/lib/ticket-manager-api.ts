@@ -211,10 +211,10 @@ export async function getManagerTicketDetail(
 }
 
 export function managerTicketAttachmentUrls(ticket: TeamManagerTicket): string[] {
+  const [intakeMessage] = ticket.messages ?? [];
   return Array.from(
     new Set(
-      (ticket.messages ?? [])
-        .flatMap((message) => message.attachmentUrls ?? [])
+      (intakeMessage?.attachmentUrls ?? [])
         .map((url) => url.trim())
         .filter(Boolean)
     )

@@ -7435,9 +7435,94 @@ p {
   white-space: pre-wrap;
 }
 
+.tenant-defect-chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.tenant-defect-chat-attachments img {
+  width: calc(var(--touch-target) + var(--space-lg));
+  height: calc(var(--touch-target) + var(--space-lg));
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+.tenant-defect-chat-attachments a {
+  color: var(--blue);
+  font-size: var(--fs-caption);
+  overflow-wrap: anywhere;
+}
+
+.tenant-defect-chat-composer {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.tenant-defect-chat-selected {
+  display: flex;
+  gap: var(--space-sm);
+  overflow-x: auto;
+}
+
+.tenant-defect-chat-selected figure {
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(var(--touch-target) + var(--space-md));
+  height: calc(var(--touch-target) + var(--space-md));
+  margin: 0;
+}
+
+.tenant-defect-chat-selected img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+.tenant-defect-chat-selected button {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-xs);
+  width: calc(var(--touch-target) / 2);
+  height: calc(var(--touch-target) / 2);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.tenant-defect-chat-selected button svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
 .tenant-defect-chat-input {
   display: flex;
-  gap: 8px;
+  gap: var(--space-sm);
+}
+
+.tenant-defect-chat-attach {
+  flex: none;
+  width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--blue);
+}
+
+.tenant-defect-chat-attach input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .tenant-defect-chat-input input {

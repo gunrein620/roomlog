@@ -31,6 +31,8 @@ import {
   VendorWorkflowRepositoryError,
   type CompletionCommit,
   type DecisionCommit,
+  type VendorAssignmentNoticeRecord,
+  type VendorAssignmentResult,
   type VendorRepairMessageRecord,
   type VendorWorkflowRepository
 } from "../vendor-workflow.repository";
@@ -38,6 +40,7 @@ import {
 /** 저장소 직행으로 생성된 업체 메시지를 인메모리 스토어에 반영하는 선택 훅(RoomlogService가 구현). */
 export interface VendorRepairMessageStoreSync {
   ingestVendorRepairMessage?(record: VendorRepairMessageRecord): void;
+  ingestVendorAssignmentNotice?(record: VendorAssignmentNoticeRecord): void;
 }
 
 export interface AssignVendorInput {
@@ -170,7 +173,7 @@ export class RoomlogVendorWorkflowDomain {
     managerId: string,
     ticketId: string,
     input: AssignVendorInput
-  ): Promise<VendorJobDetail> {
+  ): Promise<VendorAssignmentResult> {
     const normalizedManagerId = normalizeIdentifier(
       managerId,
       "관리자 정보가 올바르지 않습니다."
@@ -187,12 +190,16 @@ export class RoomlogVendorWorkflowDomain {
     );
 
     try {
-      return await this.repository.assignVendor({
+      const result = await this.repository.assignVendor({
         managerId: normalizedManagerId,
         ticketId: normalizedTicketId,
         vendorId,
         requestNote
       });
+      if (result.assignmentNotice) {
+        this.vendorAccounts.ingestVendorAssignmentNotice?.(result.assignmentNotice);
+      }
+      return result;
     } catch (error) {
       translateWorkflowError(error);
     }

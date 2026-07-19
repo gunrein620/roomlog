@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ManagerVendorView } from "@roomlog/types";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
-import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
-import { TicketActionMenu } from "./TicketActionMenu";
+import { SelfRepairBadge, ticketDashHref } from "../../_components/ticket-manager-ui";
 import { VendorAssignmentDialog } from "./VendorAssignmentDialog";
 import { TicketChatPanel } from "./TicketChatPanel";
 import {
@@ -126,10 +126,10 @@ function DashboardRow({
       </td>
       <td onClick={(event) => event.stopPropagation()}>
         <div className="manager-defect-dashboard__action">
-          <TicketActionMenu
-            ticketId={row.ticket.id}
-            ticketTitle={row.ticket.title}
-          />
+          <Link
+            className="manager-defect-dashboard__detail-action"
+            href={ticketDashHref("01", row.ticket.id)}
+          >상세</Link>
         </div>
       </td>
     </tr>

@@ -12,6 +12,7 @@ import type {
 } from "@roomlog/types";
 import {
   notifyManagerCreditBalanceChanged,
+  openManagerCreditTopup,
 } from "@/lib/vendor-credit-events";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { repairPaymentRecovery } from "@/lib/repair-payment-recovery";
@@ -22,6 +23,7 @@ import {
   settleGaraPayoutAction,
   settleCreditPaymentAction,
   updateCreditPolicyAction,
+  type CreditInsufficientBalanceResult,
 } from "./actions";
 import styles from "./CreditWorkspace.module.css";
 import type {
@@ -107,6 +109,22 @@ function parsePositiveSafeInteger(value: string): number | null {
   if (!/^\d+$/.test(value.trim())) return null;
   const amount = Number(value);
   return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+}
+
+function extractCreditBalance(value: unknown): number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const balance = (value as { account?: { balance?: unknown } }).account?.balance;
+  return typeof balance === "number" && Number.isSafeInteger(balance) && balance >= 0
+    ? balance
+    : undefined;
+}
+
+function isCreditInsufficientBalanceResult(
+  value: unknown,
+): value is CreditInsufficientBalanceResult {
+  return Boolean(value)
+    && typeof value === "object"
+    && (value as { kind?: unknown }).kind === "INSUFFICIENT_CREDIT";
 }
 
 function ledgerReferenceLabel(referenceType: string): string {
@@ -287,8 +305,10 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
       void refreshWorkspace().catch(() => undefined);
     };
     socket.on("gara:payout-updated", refreshGaraPayouts);
+    socket.on("manager:credit-updated", refreshWorkspace);
     return () => {
       socket.off("gara:payout-updated", refreshGaraPayouts);
+      socket.off("manager:credit-updated", refreshWorkspace);
     };
   }, [refreshWorkspace]);
 
@@ -397,6 +417,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     key: string,
     successMessage: string,
     mutation: () => Promise<unknown>,
+    insufficientCreditTopupAmount?: number,
   ) {
     if (demoReadOnly) {
       publishFeedback({ kind: "error", text: "데모 데이터에서는 저장·지급 작업을 실행할 수 없습니다." });
@@ -406,8 +427,9 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     const feedbackToken = feedbackSequence.begin();
     markBusy(key, true);
     feedbackSequence.publish(feedbackToken, () => setFeedback(null));
+    let result: unknown;
     try {
-      await mutation();
+      result = await mutation();
     } catch (error) {
       feedbackSequence.publish(feedbackToken, () => {
         setFeedback({ kind: "error", text: messageFromError(error) });
@@ -416,7 +438,16 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
       return;
     }
 
-    notifyManagerCreditBalanceChanged();
+    if (isCreditInsufficientBalanceResult(result)) {
+      openManagerCreditTopup(insufficientCreditTopupAmount);
+      feedbackSequence.publish(feedbackToken, () => {
+        setFeedback({ kind: "error", text: "크레딧 잔액이 부족해 충전 창을 열었습니다." });
+      });
+      markBusy(key, false);
+      return;
+    }
+
+    notifyManagerCreditBalanceChanged(extractCreditBalance(result));
     try {
       await refreshWorkspace();
       feedbackSequence.publish(feedbackToken, () => {
@@ -463,6 +494,10 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
   ) {
     const key = `payment:${request.id}`;
     const busy = busyKeys.has(key);
+    const insufficientCreditTopupAmount = Math.max(
+      1,
+      request.amount - workspace.account.balance,
+    );
     const settlementPending = request.status === "PENDING_APPROVAL"
       || request.status === "INSUFFICIENT_CREDIT";
     const latestRepairOrder = request.latestRepairPaymentOrder;
@@ -581,7 +616,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
                       settleCreditPaymentAction(request.id, {
                         mode: "MANUAL_CREDIT",
                         idempotencyKey: crypto.randomUUID(),
-                      }));
+                      }), insufficientCreditTopupAmount);
                   }}
                 >
                   크레딧으로 지급
@@ -742,9 +777,15 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
             )}
           </div>
           <div className={styles.policyActions}>
-            <span>최근 저장 {formatDate(workspace.policy.updatedAt)}</span>
+            <span>
+              최근 저장 {formatDate(workspace.policy.updatedAt)}
+              {workspace.policy.mode === "AUTO_DEBIT_UNDER_LIMIT"
+                && typeof workspace.policy.perRequestLimit === "number"
+                ? ` · 저장된 금액 ${won(workspace.policy.perRequestLimit)}`
+                : " · 저장된 금액 없음"}
+            </span>
             <button className={styles.primaryButton} type="submit" disabled={busyKeys.has("policy") || demoReadOnly}>
-              {busyKeys.has("policy") ? "저장 중" : "정책 저장"}
+              {busyKeys.has("policy") ? "저장 중" : "저장"}
             </button>
           </div>
         </form>
@@ -763,28 +804,28 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
             {workspace.garaPayoutRequests.map((request) => {
               const pending = request.status === "PENDING_APPROVAL";
               const key = `gara-payout:${request.id}`;
+              const insufficientCreditTopupAmount = Math.max(
+                1,
+                request.amount - workspace.account.balance,
+              );
               return (
-                <article className={styles.paymentCard} key={request.id}>
+                <article className={`${styles.paymentCard} ${styles.garaPayoutCard}`} key={request.id}>
                   <div className={styles.requestMain}>
-                    <span className={styles.requestLabel}>{request.vendorName}</span>
-                    <strong>Gara 지급 요청 · {request.accountNumber}</strong>
-                    <div className={styles.requestMeta}>
-                      <span>요청일 {formatDate(request.createdAt)}</span>
-                      {request.processedAt ? <span>지급일 {formatDate(request.processedAt)}</span> : null}
-                    </div>
+                    <strong>{request.vendorName}</strong>
+                  </div>
+                  <div className={`${styles.requestMeta} ${styles.garaPayoutDates}`}>
+                    <span>요청일 {formatDate(request.createdAt)}</span>
+                    <span>지급일 {formatDate(request.processedAt)}</span>
                   </div>
                   <div className={styles.requestAmount}>
                     <strong>{won(request.amount)}</strong>
-                    <span className={pending ? styles.statusPending : styles.statusDone}>
-                      {pending ? "지급 승인 대기" : "크레딧 지급 완료"}
-                    </span>
                     {pending ? (
                       <button
                         className={styles.primaryButton}
                         type="button"
                         disabled={busyKeys.has(key) || demoReadOnly}
                         onClick={() => void runMutation(key, "Gara 업체 지급을 완료했습니다.", () =>
-                          settleGaraPayoutAction(request.id, crypto.randomUUID()))}
+                          settleGaraPayoutAction(request.id, crypto.randomUUID()), insufficientCreditTopupAmount)}
                       >
                         {busyKeys.has(key) ? "지급 중…" : "크레딧 지급"}
                       </button>

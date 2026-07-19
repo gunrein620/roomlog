@@ -94,6 +94,7 @@ async function updateManualCorrectionAction(formData: FormData) {
     await updateManagerContractManualValues(contractId, {
       deposit: textValue(formData, "deposit"),
       monthlyRent: numberValue(formData, "monthlyRent"),
+      maintenanceFee: numberValue(formData, "maintenanceFee"),
       startDate,
       endDate,
       specialTerms: textValue(formData, "specialTerms"),
@@ -373,7 +374,7 @@ function ManualCorrectionForm({
     <Card style={manualCardStyle}>
       <div style={manualHeaderStyle}>
         <div style={{ fontWeight: 900 }}>계약서 원문에서 중요한 부분만 고칩니다</div>
-        <p style={mutedBodyStyle}>관리비·납부일·주소는 매물 DB 값을 사용하고, 보증금·월 임대료·계약 기간·특약성 조항만 원문 기준으로 저장하세요.</p>
+        <p style={mutedBodyStyle}>납부일·주소는 매물 DB 값을 사용하고, 보증금·월 임대료·관리비·계약 기간·특약성 조항만 원문 기준으로 저장하세요.</p>
       </div>
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
@@ -383,12 +384,17 @@ function ManualCorrectionForm({
               <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
             </CorrectionField>
             <div style={correctionSubsectionStyle}>
-              <strong>월 임대료·계약 기간</strong>
-              <span>월 임대료, 월 임차료, 차임처럼 계약서의 월 단위 임대료와 계약 시작·종료일만 확인합니다.</span>
+              <strong>월 임대료·관리비·계약 기간</strong>
+              <span>월 임대료, 월 임차료, 차임처럼 계약서의 월 단위 임대료와 관리비, 계약 시작·종료일만 확인합니다.</span>
             </div>
-            <CorrectionField fieldId="contract-field-monthlyRent" label="월 임대료">
-              <input id="contract-field-monthlyRent" name="monthlyRent" type="text" inputMode="numeric" defaultValue={values.monthlyRent} placeholder="예: 650,000" style={correctionInputStyle} />
-            </CorrectionField>
+            <div style={twoColumnFieldStyle}>
+              <CorrectionField fieldId="contract-field-monthlyRent" label="월 임대료">
+                <input id="contract-field-monthlyRent" name="monthlyRent" type="text" inputMode="numeric" defaultValue={values.monthlyRent} placeholder="예: 650,000" style={correctionInputStyle} />
+              </CorrectionField>
+              <CorrectionField fieldId="contract-field-maintenanceFee" label="관리비">
+                <input id="contract-field-maintenanceFee" name="maintenanceFee" type="text" inputMode="numeric" defaultValue={values.maintenanceFee} placeholder="예: 70,000" style={correctionInputStyle} />
+              </CorrectionField>
+            </div>
             <div style={twoColumnFieldStyle}>
               <CorrectionField fieldId="contract-field-startDate" label="계약 시작일">
                 <input id="contract-field-startDate" name="startDate" type="date" defaultValue={values.startDate} style={correctionInputStyle} />
@@ -668,6 +674,10 @@ function manualDefaults(
       moneyInputCandidate(storedManualValue(detail.manualValues.rent)) ||
       moneyInputCandidate(valueRowFinalValue(valueRows, "월세")) ||
       moneyInputCandidate(valueRowOcrValue(valueRows, "월세")),
+    maintenanceFee:
+      moneyInputCandidate(storedManualValue(detail.manualValues.maintenanceFee)) ||
+      moneyInputCandidate(valueRowFinalValue(valueRows, "관리비")) ||
+      moneyInputCandidate(valueRowOcrValue(valueRows, "관리비")),
     startDate:
       dateInputCandidate(storedManualValue(detail.manualValues.startDate)) ||
       dateInputCandidate(valueRowFinalValue(valueRows, "계약 시작일")) ||
@@ -836,7 +846,7 @@ function ocrFailureInfo(highlights: string[]): OcrFailureInfo {
 }
 
 function pageNotice(sourceParam?: string) {
-  if (sourceParam === "manual-saved") return "수정한 보증금·월 임대료·계약 기간·특약 검토값을 저장했습니다.";
+  if (sourceParam === "manual-saved") return "수정한 보증금·월 임대료·관리비·계약 기간·특약 검토값을 저장했습니다.";
   if (sourceParam === "ocr-first") return "계약서 입력 후 OCR 분석을 실행했습니다. 보증금과 특약성 조항만 확인해 주세요.";
   return "";
 }

@@ -41,6 +41,7 @@ import {
 import { isVendorCompletionPrivateFileName } from "./vendor-completion-storage";
 import {
   VendorWorkflowRepositoryError,
+  type VendorAssignmentResult,
   type AssignVendorCommand,
   type CompletionCommit,
   type DecisionCommit,
@@ -546,7 +547,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
     await this.prisma.$disconnect();
   }
 
-  async assignVendor(command: AssignVendorCommand): Promise<VendorJobDetail> {
+  async assignVendor(command: AssignVendorCommand): Promise<VendorAssignmentResult> {
     const requestNote = command.requestNote.trim();
     if (!requestNote) {
       throw workflowError("INVALID_REQUEST", "업체에 전달할 요청 내용을 입력해 주세요.");
@@ -665,6 +666,25 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
           data: { status: "VENDOR_ASSIGNED" }
         });
 
+        const vendorName = candidate.businessName.trim() || "수리 업체";
+        const vendorPhone = candidate.phone?.trim();
+        const noticeText = vendorPhone
+          ? `배정 업체: ${vendorName}. 연락처는 ${vendorPhone}입니다. 해당 업체에 전화하여 방문 일정을 상의해 주세요.`
+          : `배정 업체: ${vendorName}. 해당 업체에 전화하여 방문 일정을 상의해 주세요.`;
+        const assignmentNotice = await tx.ticketMessage.create({
+          data: {
+            id: this.nextId("message"),
+            ticketId: ticket.id,
+            complaintId: ticket.complaintId,
+            repairId: repair.id,
+            senderUserId: command.managerId,
+            senderRole: "LANDLORD",
+            messageText: noticeText,
+            attachmentUrls: [],
+            createdAt: this.clock()
+          }
+        });
+
         const targetUserIds = [...new Set(candidate.accountLinks.map((link) => link.userId))];
         await this.domainEvents.enqueue(tx, {
           event: {
@@ -681,7 +701,21 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
           consumers: ["NOTIFICATION"]
         });
 
-        return await this.projectJob(tx, repair.id);
+        const job = await this.projectJob(tx, repair.id);
+        return {
+          ...job,
+          assignmentNotice: {
+            id: assignmentNotice.id,
+            ticketId: assignmentNotice.ticketId,
+            complaintId: ticket.complaintId,
+            repairId: repair.id,
+            senderUserId: command.managerId,
+            senderRole: "LANDLORD",
+            messageText: assignmentNotice.messageText,
+            attachmentUrls: [...assignmentNotice.attachmentUrls],
+            createdAt: assignmentNotice.createdAt.toISOString()
+          }
+        };
       }));
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
