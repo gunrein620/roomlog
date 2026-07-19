@@ -280,20 +280,6 @@ export const listingRoomTypes = ["원룸", "투룸", "오피스텔", "아파트"
 // 데모 매물 상세는 options가 없어 이 목록 전체를 폴백으로 보여준다.
 export const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
 
-export const safetyReportItems = [
-  { label: "등기 변동", value: "최근 변동 없음", status: "안전" },
-  { label: "보증금 비율", value: "권장 범위", status: "양호" },
-  { label: "대출·특약", value: "방문 시 확인", status: "확인" },
-  { label: "주변 치안", value: "야간 동선 양호", status: "양호" }
-];
-
-export const neighborhoodItems = [
-  { label: "편의점", value: "4곳" },
-  { label: "지하철", value: "도보 5분" },
-  { label: "치안센터", value: "1곳" },
-  { label: "공원", value: "650m" }
-];
-
 // 지도 탭 데모 매물 마커/패널 아이템 — NaverMapPreview의 폴백 마커로도 쓰인다.
 export const mapListings = [
   {
