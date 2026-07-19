@@ -860,13 +860,29 @@ export class RoomlogMessagingDomain {
 
   private recipientsForDraft(draft: MessagingAnnouncementDraft) {
     const targetRoomIds = new Set(draft.targetRoomIds);
+    const recipients = new Map<string, { tenant: UserAccount; room: Room }>();
 
-    return Object.entries(this.store.tenantRooms)
-      .filter(([, roomId]) => targetRoomIds.has(roomId))
-      .map(([tenantId, roomId]) => ({
+    for (const [tenantId, roomId] of Object.entries(this.store.tenantRooms)) {
+      if (!targetRoomIds.has(roomId)) continue;
+
+      recipients.set(`${tenantId}:${roomId}`, {
         tenant: this.findUser(tenantId),
         room: this.findRoom(roomId)
-      }));
+      });
+    }
+
+    for (const contract of this.store.contracts) {
+      if (!contract.tenantId) continue;
+      if (contract.lifecycle === "expired") continue;
+      if (!targetRoomIds.has(contract.roomId)) continue;
+
+      recipients.set(`${contract.tenantId}:${contract.roomId}`, {
+        tenant: this.findUser(contract.tenantId),
+        room: this.findRoom(contract.roomId)
+      });
+    }
+
+    return [...recipients.values()];
   }
 
   private findTenantDelivery(tenantId: string, announcementId: string) {
