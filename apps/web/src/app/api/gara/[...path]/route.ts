@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiUrl } from "@/lib/api-url";
+import { garaUpstreamPath } from "./gara-path";
 
 type GaraMethod = "GET" | "POST" | "PATCH";
 
@@ -8,8 +9,8 @@ async function forward(
   path: string[],
   method: GaraMethod,
 ) {
-  const upstreamPath = `gara/${path.join("/")}`;
-  if (!upstreamPath.startsWith("gara/")) {
+  const upstreamPath = garaUpstreamPath(path);
+  if (!upstreamPath) {
     return NextResponse.json({ message: "요청 경로가 올바르지 않습니다." }, { status: 404 });
   }
 
@@ -24,7 +25,7 @@ async function forward(
   try {
     const search = new URL(request.url).search;
     upstream = await fetch(
-      apiUrl(`/${upstreamPath}${search}`, { requestUrl: request.url }),
+      apiUrl(`${upstreamPath}${search}`, { requestUrl: request.url }),
       init,
     );
   } catch {
