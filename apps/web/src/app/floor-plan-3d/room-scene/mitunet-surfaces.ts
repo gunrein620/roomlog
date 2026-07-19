@@ -7,8 +7,13 @@ import type {
 import type { MitunetSceneLayout } from "./mitunet-geometry";
 
 export const MITUNET_RENDER_STYLE = {
-  background: 0xdce8f2,
-  concrete: 0x85878c,
+  // 밤하늘 안개색 — CSS 하늘의 55%(#101a38)와 지평선(#26355e) 스톱 사이 값.
+  // 뷰어 index.html의 COLOR_BG(0x1b284b)와 반드시 동일하게 유지(룩 패리티).
+  background: 0x1b284b,
+  // 어두운 밤 잔디 마당 베이스 — 뷰어 index.html의 COLOR_CONCRETE(0x3d5433)와 동일(룩 패리티).
+  // 밤하늘에서 잔디만 밝지 않도록 낮추되, 너무 어둡다는 피드백으로 휘도 ~74로 살짝 올림.
+  // (키 이름 concrete는 스펙 검사 식별자라 유지.)
+  concrete: 0x3d5433,
   glass: 0xdbe6ec,
   wallCap: 0x111111,
   wallSide: 0xffffff,

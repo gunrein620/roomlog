@@ -7,6 +7,10 @@ import {
 } from "./mitunet-surfaces";
 
 export function createConcreteTexture(worldWidth: number, worldDepth: number) {
+  // A calm night lawn: a dark green base with fine blade strokes in tightly
+  // related greens only (no brown, no broad mottled patches, no bright sunlit
+  // tips) so it reads as even turf under moonlight instead of a blotchy or
+  // daytime-bright surface. Kept in step with the viewer's createConcreteTexture().
   const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 256;
@@ -15,9 +19,36 @@ export function createConcreteTexture(worldWidth: number, worldDepth: number) {
 
   context.fillStyle = `#${MITUNET_RENDER_STYLE.concrete.toString(16).padStart(6, "0")}`;
   context.fillRect(0, 0, canvas.width, canvas.height);
-  for (let index = 0; index < 1400; index += 1) {
-    const shade = 120 + Math.floor(Math.random() * 40);
-    context.fillStyle = `rgba(${shade},${shade - 1},${shade - 4},0.30)`;
+  // Shadow blades (the bulk of the texture) — a touch darker than the base.
+  for (let index = 0; index < 2400; index += 1) {
+    const g = 58 + Math.floor(Math.random() * 32);
+    const r = 30 + Math.floor(Math.random() * 16);
+    const b = 28 + Math.floor(Math.random() * 14);
+    context.fillStyle = `rgba(${r},${g},${b},0.34)`;
+    context.fillRect(
+      Math.random() * canvas.width,
+      Math.random() * canvas.height,
+      1,
+      2 + Math.random() * 3
+    );
+  }
+  // Slightly lighter blades for gentle texture — still dim, still green.
+  for (let index = 0; index < 900; index += 1) {
+    const g = 92 + Math.floor(Math.random() * 28);
+    const r = 46 + Math.floor(Math.random() * 18);
+    const b = 40 + Math.floor(Math.random() * 14);
+    context.fillStyle = `rgba(${r},${g},${b},0.26)`;
+    context.fillRect(
+      Math.random() * canvas.width,
+      Math.random() * canvas.height,
+      1,
+      1 + Math.random() * 2
+    );
+  }
+  // Sparse cool moonlight glints so the lawn isn't perfectly flat.
+  for (let index = 0; index < 170; index += 1) {
+    const g = 118 + Math.floor(Math.random() * 26);
+    context.fillStyle = `rgba(72,${g},80,0.15)`;
     context.fillRect(
       Math.random() * canvas.width,
       Math.random() * canvas.height,
@@ -25,9 +56,6 @@ export function createConcreteTexture(worldWidth: number, worldDepth: number) {
       1
     );
   }
-  context.fillStyle = "rgba(0, 0, 0, 0.10)";
-  context.fillRect(0, 0, canvas.width, 2);
-  context.fillRect(0, 0, 2, canvas.height);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;

@@ -657,9 +657,28 @@ export function RoomlogThreeFloorPlanView({
     <div
       className="floor-plan-3d-preview"
       data-renderer="wheretoput 3D room renderer"
-      // MitUNet 룩의 하늘 그라데이션은 CSS로 깐다 — scene.background에 텍스처를 넣으면
+      // MitUNet 룩의 하늘은 CSS로 깐다 — scene.background에 텍스처를 넣으면
       // GTAOPass의 depth/normal 패스를 오염시켜 검은 사각형 아티팩트가 생긴다(뷰어와 동일 처리).
-      style={hasMitunetStyle ? { background: "linear-gradient(#a8cbe8, #cfe2f1 60%, #eef2f0)" } : undefined}
+      // 별 가득한 밤하늘: 타일링된 radial-gradient 별 레이어(타일 크기를 달리해 유사 난수 산포)
+      // + 딥네이비 그라데이션. 뷰어 canvas#scene CSS와 동일 값 유지(룩 패리티).
+      style={hasMitunetStyle ? {
+        background:
+          "radial-gradient(1.5px 1.5px at 18px 32px, rgba(255,255,255,0.98), transparent 70%), " +
+          "radial-gradient(1.1px 1.1px at 121px 74px, rgba(255,255,255,0.8), transparent 70%), " +
+          "radial-gradient(1.3px 1.3px at 67px 141px, rgba(214,226,255,0.92), transparent 70%), " +
+          "radial-gradient(1.1px 1.1px at 203px 109px, rgba(255,255,255,0.66), transparent 70%), " +
+          "radial-gradient(1.4px 1.4px at 90px 200px, rgba(255,246,232,0.85), transparent 70%), " +
+          "radial-gradient(0.9px 0.9px at 250px 40px, rgba(255,255,255,0.7), transparent 70%), " +
+          "radial-gradient(1.1px 1.1px at 40px 260px, rgba(210,224,255,0.74), transparent 70%), " +
+          "radial-gradient(1px 1px at 300px 180px, rgba(255,255,255,0.74), transparent 70%), " +
+          "radial-gradient(1.2px 1.2px at 160px 300px, rgba(255,255,255,0.82), transparent 70%), " +
+          "radial-gradient(0.8px 0.8px at 210px 230px, rgba(255,255,255,0.6), transparent 70%), " +
+          "radial-gradient(2.5px 2.5px at 331px 87px, rgba(255,255,255,1), rgba(255,255,255,0.3) 45%, transparent 72%), " +
+          "radial-gradient(2.1px 2.1px at 120px 360px, rgba(224,236,255,1), rgba(224,236,255,0.28) 45%, transparent 72%), " +
+          "linear-gradient(#04060f, #101a38 55%, #26355e)",
+        backgroundSize: "160px 160px, 200px 200px, 240px 240px, 280px 280px, 300px 300px, 170px 170px, 220px 220px, 190px 190px, 260px 260px, 150px 150px, 520px 520px, 560px 560px, 100% 100%",
+        backgroundRepeat: "repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat",
+      } : undefined}
     >
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} shadows>
         {/* 상세 3D 히어로는 fitDistanceScale로 방을 화면에 더 작게 배치한다(bounds 오토핏 위에 접붙임). */}
