@@ -24,6 +24,16 @@ test("manager listing surface renders list, empty, and error states without demo
   assert.doesNotMatch(boardSource, /demo/i);
 });
 
+test("manager listing empty state omits the new listing registration action", () => {
+  const emptyState = boardSource.slice(
+    boardSource.indexOf("{listings.length === 0 ? ("),
+    boardSource.indexOf(") : visibleListings.length === 0 ? (", boardSource.indexOf("{listings.length === 0 ? (")),
+  );
+
+  assert.match(emptyState, /등록된 매물이 없습니다/);
+  assert.doesNotMatch(emptyState, /새 매물 등록/);
+});
+
 test("manager listing page delegates interactive rows to the client board", () => {
   assert.match(pageSource, /import \{ ManagerListingBoard \}/);
   assert.match(pageSource, /<ManagerListingBoard initialListings=\{rows\} activeStatus=\{activeStatus\} \/>/);
