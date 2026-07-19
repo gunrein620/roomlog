@@ -4193,6 +4193,58 @@ html:has(.manager-workspace) {
   width: 100%;
 }
 
+/* 계약서 등록 — OCR 처리 중 문서 위를 훑는 스캔 레이저 오버레이 */
+.contract-ocr-scan-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  pointer-events: none;
+}
+
+.contract-ocr-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: var(--primary);
+  box-shadow: 0 0 14px 3px color-mix(in srgb, var(--primary) 55%, transparent);
+  animation: contract-ocr-scan 2.4s ease-in-out infinite;
+}
+
+.contract-ocr-scanline::after {
+  content: "";
+  position: absolute;
+  inset: 3px 0 auto;
+  height: 56px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--primary) 22%, transparent),
+    transparent
+  );
+}
+
+@keyframes contract-ocr-scan {
+  0% {
+    top: 0;
+  }
+  50% {
+    top: calc(100% - 3px);
+  }
+  100% {
+    top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contract-ocr-scanline {
+    animation: none;
+    top: 40%;
+  }
+}
+
 @media (min-width: 861px) {
   .contract-register-upload-grid {
     max-width: 980px;
