@@ -15,13 +15,19 @@ function tradeServiceWithTempStore() {
   return new TradeService(join(dir, "trade-store.json"));
 }
 
-function acceptContract(service: TradeService, title: string, detailAddress = "101호"): TradeContract {
+function acceptContract(
+  service: TradeService,
+  title: string,
+  detailAddress = "101호",
+  maintenanceFeeManwon?: number,
+): TradeContract {
   const listing = service.createListing(landlord, {
     title,
     roomType: "원룸",
     tradeType: "월세",
     depositManwon: 1000,
     monthlyRentManwon: 65,
+    ...(maintenanceFeeManwon !== undefined ? { maintenanceFeeManwon } : {}),
     location: `서울 서초구 ${title}길 1`,
     detailAddress
   });
@@ -35,6 +41,79 @@ function acceptContract(service: TradeService, title: string, detailAddress = "1
 }
 
 describe("TradeContractBillingBridge", () => {
+  it("carries the listing maintenance fee into the accepted contract draft", async () => {
+    const tradeService = tradeServiceWithTempStore();
+    const roomlogService = new RoomlogService({ seedDemoData: false });
+    const accepted = acceptContract(tradeService, "관리비연동빌라", "501호", 5);
+    const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
+
+    await bridge.ensure(accepted);
+
+    const detail = roomlogService.getManagerContractDetail(
+      landlord.id,
+      `ct_trade_${accepted.id}`,
+    );
+    assert.equal(detail.row.contract.maintenanceFee, 50_000);
+    assert.equal(detail.manualValues.maintenanceFee, "50,000원");
+  });
+
+  it("backfills a missing fee on an unverified legacy trade contract", async () => {
+    const tradeService = tradeServiceWithTempStore();
+    const roomlogService = new RoomlogService({ seedDemoData: false });
+    const accepted = acceptContract(tradeService, "기존관리비빌라", "502호", 5);
+    const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
+
+    roomlogService.connectAcceptedTradeContract({
+      tradeContractId: accepted.id,
+      listingTitle: accepted.listingTitle,
+      location: accepted.location,
+      roomNo: accepted.roomNo,
+      tenantId: accepted.tenantId,
+      landlordId: accepted.landlordId,
+      landlordName: accepted.landlordName,
+      depositKrw: accepted.depositManwon * 10_000,
+      monthlyRent: accepted.monthlyRentManwon * 10_000,
+      acceptedAt: accepted.respondedAt!,
+    });
+
+    await bridge.ensure(accepted);
+
+    const detail = roomlogService.getManagerContractDetail(
+      landlord.id,
+      `ct_trade_${accepted.id}`,
+    );
+    assert.equal(detail.row.contract.maintenanceFee, 50_000);
+    assert.equal(detail.manualValues.maintenanceFee, "50,000원");
+  });
+
+  it("does not overwrite a manually entered maintenance fee during legacy backfill", async () => {
+    const tradeService = tradeServiceWithTempStore();
+    const roomlogService = new RoomlogService({ seedDemoData: false });
+    const accepted = acceptContract(tradeService, "수동관리비빌라", "503호", 5);
+    const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
+    const legacy = roomlogService.connectAcceptedTradeContract({
+      tradeContractId: accepted.id,
+      listingTitle: accepted.listingTitle,
+      location: accepted.location,
+      roomNo: accepted.roomNo,
+      tenantId: accepted.tenantId,
+      landlordId: accepted.landlordId,
+      landlordName: accepted.landlordName,
+      depositKrw: accepted.depositManwon * 10_000,
+      monthlyRent: accepted.monthlyRentManwon * 10_000,
+      acceptedAt: accepted.respondedAt!,
+    });
+    roomlogService.updateManagerContractManualValues(landlord.id, legacy.id, {
+      maintenanceFee: 70_000,
+    });
+
+    await bridge.ensure(accepted);
+
+    const detail = roomlogService.getManagerContractDetail(landlord.id, legacy.id);
+    assert.equal(detail.row.contract.maintenanceFee, 70_000);
+    assert.equal(detail.manualValues.maintenanceFee, "70,000원");
+  });
+
   it("backfills one billing draft for an accepted contract idempotently", async () => {
     const tradeService = tradeServiceWithTempStore();
     const roomlogService = new RoomlogService({ seedDemoData: true });

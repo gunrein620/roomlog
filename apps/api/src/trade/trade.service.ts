@@ -103,6 +103,8 @@ export type TradeContract = {
   tradeType: TradeTradeType;
   depositManwon: number;
   monthlyRentManwon: number;
+  /** 계약 제안 시점의 관리비 스냅샷(만원). */
+  maintenanceFeeManwon?: number;
   location: string;
   roomNo?: string;
   proposedAt: string;
@@ -899,6 +901,9 @@ export class TradeService implements OnModuleDestroy {
       tradeType: listing.tradeType,
       depositManwon: listing.depositManwon,
       monthlyRentManwon: listing.monthlyRentManwon,
+      ...(listing.maintenanceFeeManwon !== undefined
+        ? { maintenanceFeeManwon: listing.maintenanceFeeManwon }
+        : {}),
       location: fullListingLocation(listing),
       ...(listing.detailAddress ? { roomNo: listing.detailAddress } : {}),
       proposedAt: new Date().toISOString()

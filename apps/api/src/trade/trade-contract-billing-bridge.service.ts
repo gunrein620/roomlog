@@ -85,6 +85,9 @@ export class TradeContractBillingBridge implements OnModuleInit {
       landlordName: contract.landlordName,
       depositKrw: this.toKrw(contract.depositManwon, "보증금"),
       monthlyRent: this.toKrw(contract.monthlyRentManwon, "월세"),
+      ...(contract.maintenanceFeeManwon !== undefined
+        ? { maintenanceFee: this.toKrw(contract.maintenanceFeeManwon, "관리비") }
+        : {}),
       acceptedAt: contract.respondedAt
     };
   }

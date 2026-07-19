@@ -48,6 +48,7 @@ type TradeAcceptanceMarker = {
 type AcceptedTradeContractPlan = {
   resolved: { room?: Room; unit: string; address: string };
   monthlyRent: number;
+  maintenanceFee?: number;
   depositKrw: number;
   acceptedAt: string;
   tradeContractId: string;
@@ -265,6 +266,7 @@ export class RoomlogContractDomain {
     const {
       resolved,
       monthlyRent,
+      maintenanceFee,
       depositKrw,
       acceptedAt,
       tradeContractId,
@@ -329,15 +331,26 @@ export class RoomlogContractDomain {
 
     if (deterministic) {
       const relationChanged = currentRoomId !== room.id;
-      if (!relationChanged) return this.presentContract(deterministic);
+      // 기존 거래 계약은 관리비가 없던 시절에 생성됐을 수 있다. 검증 전 DB 기본값만
+      // 한 번 보정하고, 수동 입력·확정된 계약값은 절대 덮어쓰지 않는다.
+      const backfillMaintenanceFee =
+        maintenanceFee !== undefined &&
+        deterministic.maintenanceFee === undefined &&
+        deterministic.valueSource === "unverified";
+      if (!relationChanged && !backfillMaintenanceFee) return this.presentContract(deterministic);
 
+      const hadMaintenanceFee = Object.prototype.hasOwnProperty.call(deterministic, "maintenanceFee");
+      const previousMaintenanceFee = deterministic.maintenanceFee;
       const previousAcceptedAt = deterministic.tradeAcceptedAt;
       deterministic.tradeAcceptedAt ??= acceptedAt;
+      if (backfillMaintenanceFee) deterministic.maintenanceFee = maintenanceFee;
       this.store.tenantRooms[input.tenantId] = room.id;
       try {
         this.persistStore();
       } catch (error) {
         deterministic.tradeAcceptedAt = previousAcceptedAt;
+        if (hadMaintenanceFee) deterministic.maintenanceFee = previousMaintenanceFee;
+        else delete deterministic.maintenanceFee;
         this.restoreTenantRoom(input.tenantId, currentRoomId);
         throw error;
       }
@@ -358,6 +371,7 @@ export class RoomlogContractDomain {
       deletion: "none",
       valueSource: "unverified",
       monthlyRent,
+      ...(maintenanceFee !== undefined ? { maintenanceFee } : {}),
       optionInventory: [],
       createdAt: acceptedAt,
       updatedAt: acceptedAt,
@@ -454,6 +468,9 @@ export class RoomlogContractDomain {
       throw new ForbiddenException("거래 계약 임대인의 호실만 계약으로 연결할 수 있습니다.");
     }
     const monthlyRent = this.requireNonNegativeInteger(input.monthlyRent, "월세");
+    const maintenanceFee = input.maintenanceFee === undefined
+      ? undefined
+      : this.requireNonNegativeInteger(input.maintenanceFee, "관리비");
     const depositKrw = this.requireNonNegativeInteger(input.depositKrw, "보증금");
 
     const contractId = `ct_trade_${input.tradeContractId}`;
@@ -495,6 +512,7 @@ export class RoomlogContractDomain {
       deletion: "none",
       valueSource: "unverified",
       monthlyRent,
+      ...(maintenanceFee !== undefined ? { maintenanceFee } : {}),
       optionInventory: [],
       createdAt,
       updatedAt: createdAt
@@ -1760,6 +1778,9 @@ export class RoomlogContractDomain {
     }
 
     const monthlyRent = this.requireNonNegativeInteger(input.monthlyRent, "월세");
+    const maintenanceFee = input.maintenanceFee === undefined
+      ? undefined
+      : this.requireNonNegativeInteger(input.maintenanceFee, "관리비");
     const depositKrw = this.requireNonNegativeInteger(input.depositKrw, "보증금");
     const acceptedAt = this.requireAcceptedEventTime(input.acceptedAt);
     const contractId = `ct_trade_${tradeContractId}`;
@@ -1844,6 +1865,7 @@ export class RoomlogContractDomain {
     return {
       resolved,
       monthlyRent,
+      maintenanceFee,
       depositKrw,
       acceptedAt,
       tradeContractId,
