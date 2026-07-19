@@ -37,6 +37,7 @@ export interface VendorCatalogSearchResult {
   catalog: VendorCatalogRecord;
   accountStatus: VendorAccountProjectionStatus;
   registrationStatus: ManagerVendorStatus | "UNREGISTERED";
+  registrationSource: "MANAGER_DIRECT" | "PLATFORM";
   canAssign: boolean;
   assignmentBlockReasons: Array<
     "UNVERIFIED" | "INACTIVE" | "ACCOUNT_UNLINKED" | "NOT_REGISTERED"

@@ -19,9 +19,7 @@ export function ConfirmAssignmentButton({
       type="submit"
       disabled={disabled}
       onClick={(event) => {
-        if (confirmMessage && !window.confirm(confirmMessage)) {
-          event.preventDefault();
-        }
+        if (confirmMessage && !window.confirm(confirmMessage)) event.preventDefault();
       }}
     >
       {children}

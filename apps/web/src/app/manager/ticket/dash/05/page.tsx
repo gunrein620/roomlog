@@ -115,7 +115,6 @@ export default async function CompletionDecisionPage({ searchParams }: { searchP
         </>
       ) : <EmptyState title="확인할 수리 작업이 없습니다" description="업체 배정 화면에서 실제 repair를 선택해 주세요." />}
       <div style={row}>
-        <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정·견적으로</LinkButton>
         <LinkButton href={ticketDashHref("01", ticket.id)} variant="ghost">티켓 상세로</LinkButton>
       </div>
     </div>
