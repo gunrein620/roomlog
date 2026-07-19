@@ -22,14 +22,14 @@ test("manager ticket detail keeps registered vendor assignment on the single det
 test("obsolete reply draft and vendor estimate routes are removed from manager navigation", () => {
   const ui = source("src/app/manager/ticket/_components/ticket-manager-ui.tsx");
   const nav = source("src/lib/ticket-manager-nav.ts");
-  const actionMenu = source("src/app/manager/ticket/dash/00/TicketActionMenu.tsx");
+  const dashboard = source("src/app/manager/ticket/dash/00/ManagerDefectDashboard.tsx");
   const detailDialog = source("src/app/manager/ticket/dash/00/TicketDetailDialog.tsx");
 
   assert.doesNotMatch(ui, /"03": "\/manager\/ticket\/dash\/03"/);
   assert.doesNotMatch(ui, /"04": "\/manager\/ticket\/dash\/04"/);
   assert.doesNotMatch(nav, /M-DASH-03/);
   assert.doesNotMatch(nav, /M-DASH-04/);
-  assert.doesNotMatch(actionMenu, /업체 선정·견적/);
+  assert.doesNotMatch(dashboard, /업체 선정·견적/);
   assert.doesNotMatch(detailDialog, /업체 선정·견적/);
 });
 
@@ -37,7 +37,7 @@ test("obsolete manager completion review route and every live link to it are rem
   const routeDirectory = path.join(webRoot, "src/app/manager/ticket/dash/05");
   const ui = source("src/app/manager/ticket/_components/ticket-manager-ui.tsx");
   const nav = source("src/lib/ticket-manager-nav.ts");
-  const actionMenu = source("src/app/manager/ticket/dash/00/TicketActionMenu.tsx");
+  const dashboard = source("src/app/manager/ticket/dash/00/ManagerDefectDashboard.tsx");
   const detailDialog = source("src/app/manager/ticket/dash/00/TicketDetailDialog.tsx");
   const mobilePayment = source("src/app/manager/ticket/call/04/page.tsx");
   const costDetail = source("src/app/manager/cost/03/page.tsx");
@@ -45,12 +45,12 @@ test("obsolete manager completion review route and every live link to it are rem
 
   assert.equal(fs.existsSync(path.join(routeDirectory, "page.tsx")), false);
   assert.equal(fs.existsSync(path.join(routeDirectory, "actions.ts")), false);
-  for (const liveSource of [ui, nav, actionMenu, detailDialog, mobilePayment, costDetail, creditWorkspace]) {
+  for (const liveSource of [ui, nav, dashboard, detailDialog, mobilePayment, costDetail, creditWorkspace]) {
     assert.doesNotMatch(
       liveSource,
       /\/manager\/ticket\/dash\/05|ticketDashHref\("05"|dashRoutes\["05"\]|M-DASH-05/,
     );
   }
-  assert.doesNotMatch(actionMenu, /결제·비용 승인/);
+  assert.doesNotMatch(dashboard, /결제·비용 승인/);
   assert.doesNotMatch(detailDialog, /결제·비용 승인/);
 });
