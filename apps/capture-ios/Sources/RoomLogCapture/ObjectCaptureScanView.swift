@@ -382,11 +382,17 @@ private struct ObjectCaptureCaptureScreen: View {
                     action: { session.startCapturing() }
                 )
 
+            // 완료 버튼을 userCompletedScanPass로 막지 않는다 — 세션이 voxel 통합에 실패하면
+            // ("Failed to run voxel integration pipeline in scanning mode!", 2026-07-20 실기 로그)
+            // 커버리지 판정이 영영 서지 않아 그 플래그가 false로 남고, 사용자가 촬영을 끝낼 방법이
+            // 사라진다(50장 찍고도 갇힘). 플래그는 라벨로만 쓰고 출구는 항상 열어 둔다.
             case .capturing:
                 instructionCard(
                     title: "천천히 한 바퀴 돌며 촬영 중",
-                    message: "촬영 \(session.numberOfShotsTaken)장 — 여러 각도에서 가구를 비춰 주세요.",
-                    actionTitle: session.userCompletedScanPass ? "스캔 완료" : nil,
+                    message: session.userCompletedScanPass
+                        ? "촬영 \(session.numberOfShotsTaken)장 — 한 바퀴 인식됨. 완료해도 좋습니다."
+                        : "촬영 \(session.numberOfShotsTaken)장 — 여러 각도에서 가구를 비춰 주세요.",
+                    actionTitle: session.userCompletedScanPass ? "스캔 완료" : "여기서 완료",
                     action: { session.finish() }
                 )
 
