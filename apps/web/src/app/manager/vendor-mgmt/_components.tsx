@@ -71,7 +71,7 @@ export function VendorScreenHeader({
 }: {
   eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   actions?: ReactNode;
   demo?: boolean;
 }) {
@@ -83,7 +83,7 @@ export function VendorScreenHeader({
           {demo ? <DemoDataBadge /> : null}
         </div>
         <h1 className={styles.title}>{title}</h1>
-        <p className={styles.description}>{description}</p>
+        {description ? <p className={styles.description}>{description}</p> : null}
       </div>
       {actions ? <div className={styles.actions}>{actions}</div> : null}
     </header>
