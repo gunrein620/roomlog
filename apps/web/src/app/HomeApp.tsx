@@ -262,7 +262,8 @@ const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   queryType: "neighborhood",
   precision: "neighborhood"
 };
-const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
+// (중복 선언 제거 — CURRENT_LOCATION_AREA_LABEL은 위 255행에 이미 있다. 머지 과정에서 두 번
+//  들어가 web 전체가 "defined multiple times"로 컴파일 실패하고 있었다. 2026-07-20 확인)
 const MAP_SEARCH_RADIUS_M = 2500;
 const MAP_SEARCH_RADIUS_BY_PRECISION: Record<MapQueryPrecision, number> = {
   neighborhood: MAP_SEARCH_RADIUS_M,
