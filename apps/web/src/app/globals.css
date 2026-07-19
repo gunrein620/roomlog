@@ -5271,8 +5271,23 @@ p {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 8px;
+  scrollbar-color: #8e8e8e #f2f2f2;
   scrollbar-width: thin;
+}
+
+.listing-tour-furniture-category-tabs::-webkit-scrollbar {
+  height: 8px;
+}
+
+.listing-tour-furniture-category-tabs::-webkit-scrollbar-track {
+  background: #f2f2f2;
+  border-radius: 999px;
+}
+
+.listing-tour-furniture-category-tabs::-webkit-scrollbar-thumb {
+  background: #8e8e8e;
+  border-radius: 999px;
 }
 
 .listing-tour-furniture-category-tabs button {
