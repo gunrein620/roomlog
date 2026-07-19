@@ -262,7 +262,6 @@ const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   queryType: "neighborhood",
   precision: "neighborhood"
 };
-const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 const MAP_SEARCH_RADIUS_M = 2500;
 const MAP_SEARCH_RADIUS_BY_PRECISION: Record<MapQueryPrecision, number> = {
   neighborhood: MAP_SEARCH_RADIUS_M,

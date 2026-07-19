@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -141,6 +142,15 @@ export class CreditController {
   @Get("gara/vendors")
   async listPublicGaraVendors() {
     return this.credit.listPublicGaraVendors();
+  }
+
+  @Delete("gara/vendors/:managerVendorId")
+  async archivePublicGaraVendorRegistration(
+    @Param("managerVendorId") managerVendorId: string
+  ) {
+    await this.credit.archivePublicGaraVendorRegistration(managerVendorId);
+    this.realtime?.notifyGaraPayoutUpdated();
+    return { archived: true };
   }
 
   @Post("gara/vendor-credit-checkouts")

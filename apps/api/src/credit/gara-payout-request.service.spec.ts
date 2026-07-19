@@ -6,6 +6,31 @@ import { CreditController } from "./credit.controller";
 import { CreditService } from "./credit.service";
 
 describe("public Gara payout requests", () => {
+  it("exposes an unauthenticated developer endpoint that archives a listed Gara registration", async () => {
+    let receivedRegistrationId: string | undefined;
+    let broadcasts = 0;
+    const controller = new CreditController({
+      archivePublicGaraVendorRegistration: async (managerVendorId: string) => {
+        receivedRegistrationId = managerVendorId;
+        return { managerId: "manager-1" };
+      }
+    } as never, {
+      notifyGaraPayoutUpdated: () => {
+        broadcasts += 1;
+      }
+    } as never);
+    const handler = (controller as unknown as {
+      archivePublicGaraVendorRegistration?: (managerVendorId: string) => Promise<unknown>;
+    }).archivePublicGaraVendorRegistration;
+
+    assert.equal(typeof handler, "function");
+    assert.equal(Reflect.getMetadata(PATH_METADATA, handler as object), "gara/vendors/:managerVendorId");
+    assert.equal(Reflect.getMetadata(METHOD_METADATA, handler as object), RequestMethod.DELETE);
+    await handler?.call(controller, "manager-vendor-1");
+    assert.equal(receivedRegistrationId, "manager-vendor-1");
+    assert.equal(broadcasts, 1);
+  });
+
   it("queues a request without an authenticated manager or a credit debit", async () => {
     let received: unknown;
     const command = {

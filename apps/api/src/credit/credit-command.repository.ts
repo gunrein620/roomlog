@@ -59,6 +59,10 @@ export type CreatePublicGaraVendorPayoutRequestResult = Readonly<{
   request: GaraVendorPayoutRequestPublicView;
 }>;
 
+export type ArchivePublicGaraVendorRegistrationCommand = Readonly<{
+  managerVendorId: string;
+}>;
+
 export type SettleGaraVendorPayoutCommand = Readonly<{
   managerId: string;
   payoutRequestId: string;
@@ -204,6 +208,9 @@ export interface CreditCommandRepository {
   createPublicGaraVendorPayoutRequest(
     input: CreatePublicGaraVendorPayoutRequestCommand
   ): Promise<CreatePublicGaraVendorPayoutRequestResult>;
+  archivePublicGaraVendorRegistration(
+    input: ArchivePublicGaraVendorRegistrationCommand
+  ): Promise<Readonly<{ managerId: string }>>;
   settleGaraVendorPayout(
     input: SettleGaraVendorPayoutCommand
   ): Promise<CreateGaraVendorPayoutResult>;
