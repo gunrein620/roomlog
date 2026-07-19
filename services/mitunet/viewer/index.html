@@ -128,6 +128,21 @@
     background-size: 100% 100%, 160px 160px, 200px 200px, 240px 240px, 280px 280px, 300px 300px, 170px 170px, 220px 220px, 190px 190px, 260px 260px, 150px 150px, 520px 520px, 560px 560px, 100% 100%;
     background-repeat: no-repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat;
   }
+  #workspace-empty-backdrop {
+    position: fixed;
+    inset: 72px 0 0;
+    z-index: 5;
+    opacity: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(180deg, rgba(1, 5, 15, .08), rgba(1, 7, 16, .18)),
+      url("assets/cosmic-night-landscape.png");
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    transition: opacity 220ms ease;
+  }
+  body.upload-empty #workspace-empty-backdrop { opacity: 1; }
   #review-canvas {
     background: var(--surface-dim);
   }
@@ -848,7 +863,7 @@
 }
 </script>
 </head>
-<body class="view-3d">
+<body class="view-3d upload-empty">
 
 <header id="workspace-header">
   <div id="workspace-brand" aria-label="RoomLog">RoomLog</div>
@@ -1009,6 +1024,7 @@
   </div>
 </div>
 
+<div id="workspace-empty-backdrop" aria-hidden="true"></div>
 <canvas id="scene"></canvas>
 <canvas id="review-canvas" aria-label="Floor plan recognition editor" aria-hidden="true"></canvas>
 
@@ -3460,6 +3476,7 @@ async function extractForReview(file) {
 
   try {
     await extractReviewFile(file);
+    document.body.classList.remove("upload-empty");
     return true;
   } catch (error) {
     setStatus(`Extraction failed: ${error.message}`, "error");
