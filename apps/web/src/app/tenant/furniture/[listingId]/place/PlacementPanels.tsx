@@ -43,7 +43,7 @@ export function PlacedFurniturePanel({
                 <div className={styles.cardTop}>
                   <div className={styles.placementTitle}>
                     <span className={styles.placementIndex}>{index + 1}</span>
-                    <FurniturePreview3D furniture={furniture} />
+                    <FurniturePreview3D furniture={furniture} rotationY={item.rotation} />
                     <div className={styles.headingBlock}>
                       <h3 className={styles.itemName}>{tenantFurnitureName(furniture)}</h3>
                       <p className={styles.itemMeta}>

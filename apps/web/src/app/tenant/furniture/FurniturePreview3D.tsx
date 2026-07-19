@@ -11,6 +11,7 @@ import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
 import { getFurnitureDimensions } from "@/app/floor-plan-3d/furniture-placement";
+import { anchorMeshOffset, checkMeshScaleSanity } from "./mesh-anchor";
 import styles from "./furniture.module.css";
 
 function dimensionsMeters(furniture: TenantFurniture) {
@@ -34,9 +35,8 @@ function BoxMesh({ furniture }: { furniture: TenantFurniture }) {
 function GlbMesh({ furniture }: { furniture: TenantFurniture }) {
   const gltf = useGLTF(furniture.meshUrl ?? "");
   const invalidate = useThree((state) => state.invalidate);
-  const { width, height, depth } = dimensionsMeters(furniture);
 
-  const { modelMinY, modelSize, scene } = useMemo(() => {
+  const { offset, scene } = useMemo(() => {
     const clonedScene = gltf.scene.clone(true);
     clonedScene.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
@@ -46,26 +46,27 @@ function GlbMesh({ furniture }: { furniture: TenantFurniture }) {
         child.material = child.material.clone();
       }
     });
+
+    // Object Capture 산출물은 이미 실측 미터라 리스케일하지 않는다(mesh-anchor.ts 참조).
+    // 여기서는 앵커(발자국 중심·바닥)만 런타임 bbox로 재보정한다.
     const box = new THREE.Box3().setFromObject(clonedScene);
-    const size = box.getSize(new THREE.Vector3());
+    const boundingBox = { min: box.min.toArray(), max: box.max.toArray() } as {
+      min: [number, number, number];
+      max: [number, number, number];
+    };
+    const warning = checkMeshScaleSanity(boundingBox, furniture.sizeMm);
+    if (warning) {
+      console.warn(`[tenant-furniture] ${warning} furnitureId=${furniture.id}`);
+    }
 
-    return { modelMinY: box.min.y, modelSize: size, scene: clonedScene };
-  }, [gltf.scene]);
-
-  const { modelOffsetY, scale } = useMemo(() => {
-    const actualWidth = Math.max(modelSize.x, 0.001);
-    const actualHeight = Math.max(modelSize.y, 0.001);
-    const actualDepth = Math.max(modelSize.z, 0.001);
-    const modelScale: [number, number, number] = [width / actualWidth, height / actualHeight, depth / actualDepth];
-
-    return { modelOffsetY: -modelMinY * modelScale[1], scale: modelScale };
-  }, [depth, height, modelMinY, modelSize.x, modelSize.y, modelSize.z, width]);
+    return { offset: anchorMeshOffset(boundingBox), scene: clonedScene };
+  }, [gltf.scene, furniture.id, furniture.sizeMm]);
 
   useEffect(() => {
     invalidate();
   }, [invalidate, scene]);
 
-  return <primitive object={scene} position={[0, modelOffsetY, 0]} scale={scale} />;
+  return <primitive object={scene} position={offset} />;
 }
 
 type BoundaryProps = { children: ReactNode; fallback: ReactNode };
@@ -102,7 +103,11 @@ function FurnitureMesh({ furniture }: { furniture: TenantFurniture }) {
   );
 }
 
-export function FurniturePreview3D({ furniture }: { furniture: TenantFurniture }) {
+/**
+ * @param rotationY 배치안의 yaw(라디안). 자동 추정하지 않는다 — TenantFurniturePlacementItem.rotation을
+ * 그대로 재사용해, 사용자가 "90° 회전" 버튼으로 돌린 자세를 미리보기에도 반영한다(기본 0).
+ */
+export function FurniturePreview3D({ furniture, rotationY = 0 }: { furniture: TenantFurniture; rotationY?: number }) {
   const { width, height, depth } = dimensionsMeters(furniture);
   const radius = Math.max(width, height, depth, 0.2);
   const cameraDistance = radius * 2.6;
@@ -117,7 +122,8 @@ export function FurniturePreview3D({ furniture }: { furniture: TenantFurniture }
       >
         <ambientLight intensity={0.75} />
         <directionalLight position={[radius * 2, radius * 3, radius * 2]} intensity={1.1} />
-        <group position={[0, -height / 2, 0]}>
+        {/* y 이동은 sizeMm 기준 카메라 프레이밍용 — GlbMesh 내부 앵커와 무관, 표시 전용. */}
+        <group position={[0, -height / 2, 0]} rotation={[0, rotationY, 0]}>
           <FurnitureMesh furniture={furniture} />
         </group>
       </Canvas>
