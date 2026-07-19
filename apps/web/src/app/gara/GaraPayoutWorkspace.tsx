@@ -1,82 +1,182 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ManagerVendorView } from "@roomlog/types";
+import Script from "next/script";
+import type {
+  GaraVendorCreditCheckout,
+  GaraVendorCreditPublicView,
+} from "@roomlog/types";
 import {
-  createGaraPayoutAction,
-  INITIAL_GARA_PAYOUT_MUTATION_STATE,
-} from "./actions";
+  cancelGaraVendorCreditCheckout,
+  createGaraVendorCreditCheckout,
+} from "@/lib/gara-credit-api";
+import {
+  isTossPaymentsReady,
+  requestManagerCardPayment,
+  TOSS_PAYMENTS_SDK_URL,
+} from "@/lib/toss-payments";
 import styles from "./GaraPayoutWorkspace.module.css";
 
-function won(value: number) {
-  return value.toLocaleString("ko-KR") + "원";
+type CallbackMarker =
+  | "approved"
+  | "reconciliation_required"
+  | "cancelled"
+  | "failed";
+
+function won(value: number): string {
+  return `${value.toLocaleString("ko-KR")}원`;
 }
 
-function GaraPayoutRow({
-  vendor,
-  balance,
-  demo,
-  onBalanceChanged,
-}: {
-  vendor: ManagerVendorView;
-  balance: number;
-  demo: boolean;
-  onBalanceChanged: (nextBalance: number) => void;
-}) {
-  const formRef = useRef<HTMLFormElement>(null);
-  const idempotencyKeyRef = useRef(globalThis.crypto.randomUUID());
-  const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    createGaraPayoutAction,
-    INITIAL_GARA_PAYOUT_MUTATION_STATE,
-  );
-  const accountNumber = vendor.settlementAccountNumber?.trim();
-  const disabled = demo || !accountNumber;
+function parsePositiveSafeInteger(value: string): number | null {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+}
 
-  useEffect(() => {
-    if (state.status !== "success") return;
-    formRef.current?.reset();
-    idempotencyKeyRef.current = globalThis.crypto.randomUUID();
-    onBalanceChanged(state.balance);
-    router.refresh();
-  }, [onBalanceChanged, router, state]);
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function callbackMessage(marker: CallbackMarker): string {
+  switch (marker) {
+    case "approved":
+      return "크레딧 충전과 업체 지급 요청이 완료됐습니다.";
+    case "reconciliation_required":
+      return "결제 승인을 확인 중입니다. 잠시 후 업체 잔액을 다시 확인해 주세요.";
+    case "cancelled":
+      return "결제가 취소됐습니다.";
+    case "failed":
+      return "결제를 완료하지 못했습니다. 업체 잔액을 확인해 주세요.";
+  }
+}
+
+function readCallbackMarker(): CallbackMarker | null {
+  const marker = new URLSearchParams(window.location.search).get("creditTopup");
+  return marker === "approved"
+    || marker === "reconciliation_required"
+    || marker === "cancelled"
+    || marker === "failed"
+    ? marker
+    : null;
+}
+
+function removeCallbackMarkers(): void {
+  const current = new URL(window.location.href);
+  current.searchParams.delete("creditTopup");
+  current.searchParams.delete("creditTopupOrderId");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${current.pathname}${current.search}${current.hash}`,
+  );
+}
+
+function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
+  const formId = useId();
+  const [amountText, setAmountText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const accountNumber = vendor.settlementAccountNumber?.trim();
+
+  async function beginCheckout(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+
+    setError(null);
+    const amount = parsePositiveSafeInteger(amountText);
+    if (amount === null) {
+      setError("요청 금액은 1원 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    if (!accountNumber) {
+      setError("정산 계좌가 등록된 업체만 지급할 수 있습니다.");
+      return;
+    }
+    if (!isTossPaymentsReady()) {
+      setError("Toss 결제 SDK를 불러온 뒤 다시 시도해 주세요.");
+      return;
+    }
+
+    setBusy(true);
+    let createdCheckout: GaraVendorCreditCheckout | null = null;
+    try {
+      createdCheckout = await createGaraVendorCreditCheckout({
+        managerVendorId: vendor.id,
+        amount,
+        creationKey: crypto.randomUUID(),
+      });
+      await requestManagerCardPayment({
+        ...createdCheckout,
+        orderId: createdCheckout.order.orderId,
+        amount: createdCheckout.order.amount,
+        successUrl: `${window.location.origin}/gara/payment/success`,
+        failUrl: `${window.location.origin}/gara/payment/fail`,
+      });
+    } catch (checkoutError) {
+      const message = errorMessage(
+        checkoutError,
+        "크레딧 결제를 시작하지 못했습니다.",
+      );
+      const cleanupFailed = createdCheckout
+        ? await cancelGaraVendorCreditCheckout(createdCheckout.order.orderId)
+          .then(() => false)
+          .catch(() => true)
+        : false;
+      setError(
+        cleanupFailed
+          ? `${message} 준비된 주문도 취소하지 못해 잠시 후 잔액을 다시 확인해 주세요.`
+          : message,
+      );
+      setBusy(false);
+    }
+  }
 
   return (
     <tr>
-      <td>{vendor.catalog.businessName}</td>
-      <td>{vendor.catalog.phone}</td>
-      <td>{accountNumber ?? "계좌번호 미등록"}</td>
-      <td className={styles.balance}>{won(balance)}</td>
+      <td>{vendor.businessName}</td>
+      <td>{vendor.phone}</td>
       <td>
-        <form ref={formRef} className={styles.requestForm} action={formAction}>
-          <input type="hidden" name="managerVendorId" value={vendor.id} />
-          <input type="hidden" name="idempotencyKey" value={idempotencyKeyRef.current} />
+        <span className={styles.accountLabel}>
+          <strong>{vendor.linkedAccount.name}</strong>
+          <span>{vendor.linkedAccount.email}</span>
+        </span>
+      </td>
+      <td>{accountNumber ?? "계좌번호 미등록"}</td>
+      <td className={styles.balance}>{won(vendor.cumulativeCredit)}</td>
+      <td>
+        <form id={formId} className={styles.requestForm} onSubmit={beginCheckout}>
           <input
-            aria-label={vendor.catalog.businessName + " 요청 금액"}
+            aria-label={`${vendor.businessName} 요청 금액`}
             className={styles.amountInput}
-            name="amount"
             type="text"
             inputMode="numeric"
             pattern="[0-9]+"
             placeholder="금액 입력"
-            disabled={disabled || pending}
+            value={amountText}
+            onChange={(event) => setAmountText(event.target.value)}
+            disabled={busy || !accountNumber}
             required
           />
-          {state.status === "error" ? <p className={styles.error} role="alert">{state.message}</p> : null}
-          {state.status === "success" ? <p className={styles.success} role="status">{state.message}</p> : null}
+          {error ? (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          ) : null}
         </form>
       </td>
       <td>
         <button
           className={styles.sendButton}
-          type="button"
-          disabled={disabled || pending}
-          onClick={() => formRef.current?.requestSubmit()}
+          type="submit"
+          form={formId}
+          disabled={busy || !accountNumber}
         >
-          {pending ? "요청 중…" : "발송"}
+          {busy ? "결제 요청 중…" : "결제"}
         </button>
-        {!accountNumber && <span className={styles.hint}>계좌번호 필요</span>}
+        {!accountNumber ? <span className={styles.hint}>계좌번호 필요</span> : null}
       </td>
     </tr>
   );
@@ -84,51 +184,53 @@ function GaraPayoutRow({
 
 export function GaraPayoutWorkspace({
   vendors,
-  initialBalance,
-  demo,
 }: {
-  vendors: ManagerVendorView[];
-  initialBalance: number;
-  demo: boolean;
+  vendors: GaraVendorCreditPublicView[];
 }) {
-  const [balance, setBalance] = useState(initialBalance);
+  const router = useRouter();
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const marker = readCallbackMarker();
+    if (!marker) return;
+    setFeedback(callbackMessage(marker));
+    removeCallbackMarkers();
+    router.refresh();
+  }, [router]);
 
   return (
-    <section className={styles.workspace}>
-      <div className={styles.summary}>
-        <div>
-          <span>관리자 크레딧 잔액</span>
-          <strong>{won(balance)}</strong>
+    <>
+      <Script src={TOSS_PAYMENTS_SDK_URL} strategy="afterInteractive" />
+      <section className={styles.workspace}>
+        {feedback ? (
+          <p className={styles.feedback} role="status">
+            {feedback}
+          </p>
+        ) : null}
+        <div className={styles.tableWrap}>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">업체명</th>
+                <th scope="col">전화번호</th>
+                <th scope="col">연결 계정</th>
+                <th scope="col">계좌번호</th>
+                <th scope="col">잔액</th>
+                <th scope="col">요청 금액</th>
+                <th scope="col">결제</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vendors.map((vendor) => (
+                <GaraPayoutRow key={vendor.id} vendor={vendor} />
+              ))}
+            </tbody>
+          </table>
+          {vendors.length === 0 ? (
+            <p className={styles.empty}>등록된 업체가 없습니다.</p>
+          ) : null}
         </div>
-        <p>발송하면 실제 계좌이체는 하지 않고, 크레딧 차감과 지급 요청 생성만 기록합니다.</p>
-      </div>
-      {demo && <p className={styles.notice}>API 연결 전 데모 데이터입니다. 발송은 실제 등록 업체에서만 가능합니다.</p>}
-      <div className={styles.tableWrap}>
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">업체명</th>
-              <th scope="col">전화번호</th>
-              <th scope="col">계좌번호</th>
-              <th scope="col">잔액</th>
-              <th scope="col">요청 금액</th>
-              <th scope="col">발송</th>
-            </tr>
-          </thead>
-          <tbody>
-            {vendors.map((vendor) => (
-              <GaraPayoutRow
-                key={vendor.id}
-                vendor={vendor}
-                balance={balance}
-                demo={demo}
-                onBalanceChanged={setBalance}
-              />
-            ))}
-          </tbody>
-        </table>
-        {vendors.length === 0 && <p className={styles.empty}>등록된 업체가 없습니다. 먼저 업체를 등록해 주세요.</p>}
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
