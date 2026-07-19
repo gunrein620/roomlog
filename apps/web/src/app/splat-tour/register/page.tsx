@@ -17,12 +17,25 @@ import {
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
 import { PICK_DRAG_THRESHOLD_PX, pointerTravelPx, rayPlaneIntersectionXZ } from "../register-pick";
-import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl, type SplatAsset } from "@/lib/splat-asset-api";
+import {
+  getSplatAsset,
+  previewAutoRegisterSplatAsset,
+  registerSplatAsset,
+  resolveAssetFileUrl,
+  type AutoRegisterPreviewResult,
+  type SplatAsset
+} from "@/lib/splat-asset-api";
 import { fetchOwnerListings, resolveRegisterPlanSource } from "@/lib/owner-tour-assets";
+import type { RoomPlanCaptureFloorPlan } from "@roomlog/types";
 
-// ③(b) 도면–splat 2점 정합 도구. 탑다운 정사영으로 splat 바닥 모서리 2곳을 클릭하고,
-// 오른쪽 도면에서 같은 모서리 2곳을 클릭하면 solveSimilarity가 닫힌해로 transform을
-// 계산한다. 미리보기(씬 주입)로 확인 후 저장(registerSplatAsset)한다.
+// ③(b) 도면–splat 정합 도구. 두 경로가 공존한다:
+// - 수동(기존): 탑다운 정사영으로 splat 바닥 모서리 2곳을 클릭하고, 오른쪽 도면에서 같은 모서리
+//   2곳을 클릭하면 solveSimilarity가 닫힌해로 transform을 계산한다.
+// - 자동(A4, 신규): 캡처 도면(RoomPlan, iOS)이 있으면 floor-plan-match 서버 매처가 소유자 도면과
+//   대조해 transform을 직접 계산한다("캡처 도면 JSON 업로드" — iOS 인테이크가 붙기 전까지의 임시
+//   진입점, 시임은 splat-asset-api.ts의 previewAutoRegisterSplatAsset 참조). 캡처 도면이 없으면
+//   자동 UI는 잠들어 있고(dormant) 기존 수동 흐름이 그대로 동작한다 — 이 경로는 무변경.
+// 미리보기(씬 주입)로 확인 후 저장(registerSplatAsset)한다.
 // 문서: docs/remote-3d-tour.md §4.
 
 const SPLAT_SRC = "/samples/room.spz";
@@ -37,6 +50,16 @@ type AssetBanner = {
   tone: "info" | "warning" | "error";
   message: string;
 };
+
+// 업로드된 캡처 도면 JSON의 최소 형태만 확인한다(frame + 비어있지 않은 walls[]) — 필드별 정밀 검증은
+// 서버 파서(parseCaptureFloorPlanInput)가 400으로 되돌려주므로 여기서 중복하지 않는다.
+function parseCaptureFloorPlanJson(value: unknown): RoomPlanCaptureFloorPlan | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.frame !== "arkit-metric") return null;
+  if (!Array.isArray(raw.walls) || raw.walls.length === 0) return null;
+  return raw as unknown as RoomPlanCaptureFloorPlan;
+}
 
 export default function Page() {
   const [splatPicks, setSplatPicks] = useState<Point2[]>([]);
@@ -57,6 +80,16 @@ export default function Page() {
   // 정합 저장 시 자산에 붙일 서버 도면 id. 서버 저장된 floorPlanDraft를 쓸 때만 값이 생긴다.
   // 업로드/플레이스홀더 도면은 서버 id가 없어 null → 이 경우 가구 연결은 만들어지지 않는다.
   const [planServerId, setPlanServerId] = useState<string | null>(null);
+
+  // A4 자동정합 — 캡처 도면(RoomPlan)이 로드되면 자동으로 서버 매처를 호출한다. 캡처 도면이
+  // 없으면(현재 기본값) 아래 상태는 전부 idle/null로 남아 수동 흐름에 영향을 주지 않는다.
+  const [captureFloorPlan, setCaptureFloorPlan] = useState<RoomPlanCaptureFloorPlan | null>(null);
+  const [captureMessage, setCaptureMessage] = useState("");
+  const [autoState, setAutoState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [autoResult, setAutoResult] = useState<AutoRegisterPreviewResult | null>(null);
+  const [autoError, setAutoError] = useState("");
+  // null = 자동 후보 미선택(수동 흐름이 effectiveTransform을 결정). 선택 즉시 미리보기에 주입된다.
+  const [selectedAutoIndex, setSelectedAutoIndex] = useState<number | null>(null);
 
   // 실도면: 도면 에디터 저장본(localStorage)이 있으면 자동 로드. 업로드가 오면 그쪽이 이긴다.
   useEffect(() => {
@@ -220,6 +253,70 @@ export default function Page() {
     }
   }, [splatPicks, planPicks, pickProfile]);
 
+  // 캡처 도면이 실리면(현재는 JSON 업로드, 나중엔 iOS 인테이크) 자산 id와 함께 서버 매처를 호출한다.
+  // composeWithPickViewTuning은 여기 적용하지 않는다 — 그건 "픽 화면에 보인(프로파일 튜닝된) splat 위에서
+  // 찍은 2점"을 원본 메시 기준으로 되돌리는 보정인데, 매처의 출력은 애초에 원본 메시 좌표계(ARKit 실측
+  // 미터, floor-plan-match.ts 전제)를 직접 겨냥하므로 이미 tuningFromTransform에 그대로 먹일 수 있는 절대
+  // transform이다 — 여기서 한 번 더 합성하면 이중 보정이 된다.
+  useEffect(() => {
+    if (!captureFloorPlan || !assetId.trim()) return;
+    let cancelled = false;
+    setAutoState("loading");
+    setAutoError("");
+    setAutoResult(null);
+    setSelectedAutoIndex(null);
+    previewAutoRegisterSplatAsset(assetId.trim(), captureFloorPlan)
+      .then((result) => {
+        if (cancelled) return;
+        setAutoResult(result);
+        setAutoState("done");
+        if (result.confidence === "auto") {
+          // 신뢰도 높음 — 최상위 후보를 즉시 미리보기에 주입해 "이대로 확정" 1탭만 남긴다.
+          setSelectedAutoIndex(0);
+          setPreview(true);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAutoState("error");
+        setAutoError(error instanceof Error ? error.message : "자동정합 프리뷰 실패");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [captureFloorPlan, assetId]);
+
+  // best + 대안 중 최대 2개 = 후보 최대 3개("ambiguous" 카드가 소비).
+  const autoCandidates = autoResult ? [autoResult.best, ...autoResult.alternatives.slice(0, 2)] : null;
+  const selectedAutoTransform =
+    autoCandidates && selectedAutoIndex !== null ? autoCandidates[selectedAutoIndex].transform : null;
+  // 자동 후보가 선택돼 있으면 그게 우선(수동 픽을 덮음). 선택 해제(수동 전환) 시 즉시 수동값으로 복귀.
+  const effectiveTransform = selectedAutoTransform ?? transform;
+
+  async function uploadCaptureFloorPlanJson(file: File) {
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const plan = parseCaptureFloorPlanJson(parsed);
+      if (!plan) {
+        setCaptureMessage('이 JSON에서 유효한 캡처 도면을 못 찾았습니다 (frame: "arkit-metric", walls[] 필요).');
+        return;
+      }
+      setCaptureFloorPlan(plan);
+      setCaptureMessage(`캡처 도면 로드 (벽 ${plan.walls.length}개, ${file.name})`);
+    } catch {
+      setCaptureMessage("JSON 파싱 실패 — 파일을 확인하세요.");
+    }
+  }
+
+  function chooseAutoCandidate(index: number) {
+    setSelectedAutoIndex(index);
+    setPreview(true);
+  }
+
+  function backToManual() {
+    setSelectedAutoIndex(null);
+  }
+
   function addPick(view: PickView, point: Point2) {
     const setter = view === "splat" ? setSplatPicks : setPlanPicks;
     setter((current) => (current.length >= 2 ? [point] : [...current, point]));
@@ -236,24 +333,29 @@ export default function Page() {
   }
 
   async function save() {
-    if (!transform) return;
+    if (!effectiveTransform) return;
     if (!assetId.trim()) {
       setSaveState("error");
       setSaveMessage("저장하려면 SplatAsset id가 필요합니다.");
       return;
     }
-    const pairs: RegistrationPointPair[] = [
-      { splat: splatPicks[0], plan: planPicks[0] },
-      { splat: splatPicks[1], plan: planPicks[1] }
-    ];
+    // 자동 후보가 선택돼 있으면 2점 픽 쌍은 애초에 존재하지 않는다(매처는 벽 폴리곤 전체를 쓴다) — 생략.
+    const usingAuto = selectedAutoTransform !== null;
+    const pairs: RegistrationPointPair[] | undefined = usingAuto
+      ? undefined
+      : [
+          { splat: splatPicks[0], plan: planPicks[0] },
+          { splat: splatPicks[1], plan: planPicks[1] }
+        ];
+    const floorPlanIdForSave = usingAuto ? (autoResult?.floorPlanId ?? undefined) : (planServerId ?? undefined);
     setSaveState("saving");
     setSaveMessage("");
     try {
-      // planServerId가 있으면(서버 저장된 도면으로 정합) 자산에 붙여 공개 뷰어가 그 가구를 받게 한다.
-      await registerSplatAsset(assetId.trim(), transform, pairs, planServerId ?? undefined);
+      // floorPlanIdForSave가 있으면(서버 저장된 도면으로 정합) 자산에 붙여 공개 뷰어가 그 가구를 받게 한다.
+      await registerSplatAsset(assetId.trim(), effectiveTransform, pairs, floorPlanIdForSave);
       setSaveState("saved");
       setSaveMessage(
-        planServerId
+        floorPlanIdForSave
           ? "정합 결과를 저장했습니다 (status: REGISTERED · 도면 가구 연결됨)."
           : "정합 결과를 저장했습니다 (status: REGISTERED)."
       );
@@ -277,6 +379,71 @@ export default function Page() {
 
       {assetBanner ? <div style={{ ...assetBannerStyle, ...assetBannerTone[assetBanner.tone] }}>{assetBanner.message}</div> : null}
 
+      <section style={autoPanel}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <label style={{ ...ghostBtn, cursor: "pointer", fontSize: 13 }}>
+            캡처 도면(RoomPlan) JSON 업로드
+            <input
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadCaptureFloorPlanJson(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <span style={muted}>
+            {captureMessage || "캡처 도면이 없으면 자동정합은 잠들어 있습니다 — 아래 수동 2점 정합을 그대로 쓰세요."}
+          </span>
+        </div>
+
+        {autoState === "loading" ? <div style={muted}>자동정합 계산 중…</div> : null}
+
+        {autoState === "error" ? (
+          <div style={{ ...muted, color: "#dc2626" }}>자동정합 프리뷰 실패 — {autoError} (수동 2점 정합은 그대로 쓸 수 있습니다)</div>
+        ) : null}
+
+        {autoResult && autoResult.confidence === "failed" ? (
+          <div style={{ ...muted, color: "#dc2626" }}>
+            자동정합 실패(신뢰도 낮음) — 아래에서 수동으로 2점을 찍어주세요.
+          </div>
+        ) : null}
+
+        {autoResult && autoResult.confidence !== "failed" && autoCandidates ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={muted}>
+              {autoResult.confidence === "auto"
+                ? "자동정합 신뢰도 높음 — 최상위 후보를 미리보기에 반영했습니다."
+                : `자동정합 신뢰도 애매함 — 후보 ${autoCandidates.length}개 중 하나를 골라주세요.`}
+            </span>
+            {autoResult.confidence === "ambiguous" ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {autoCandidates.map((candidate, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    style={{
+                      ...ghostBtn,
+                      ...(selectedAutoIndex === index ? autoCandidateSelected : {})
+                    }}
+                    onClick={() => chooseAutoCandidate(index)}
+                  >
+                    후보 {index + 1} (score {candidate.score.toFixed(3)})
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {selectedAutoTransform ? (
+              <button type="button" style={ghostBtn} onClick={backToManual}>
+                수동으로 전환
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
       <div style={panes}>
         <section style={pane}>
           <PaneTitle step="1" label="splat 탑다운 — 바닥 모서리 클릭" picks={splatPicks.length} />
@@ -297,7 +464,7 @@ export default function Page() {
               <SplatScene
                 defaultFitMode="native"
                 src={splatSrc}
-                transform={preview ? transform : null}
+                transform={preview ? effectiveTransform : null}
                 ceilingClipHeightMeters={ceilingCutOn ? ceilingHeight : null}
                 onLoaded={() => setSplatReady(true)}
                 onError={() => setSplatError(true)}
@@ -395,8 +562,12 @@ export default function Page() {
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button
             type="button"
-            style={{ ...primaryBtn, opacity: transform ? 1 : 0.45, cursor: transform ? "pointer" : "not-allowed" }}
-            disabled={!transform}
+            style={{
+              ...primaryBtn,
+              opacity: effectiveTransform ? 1 : 0.45,
+              cursor: effectiveTransform ? "pointer" : "not-allowed"
+            }}
+            disabled={!effectiveTransform}
             onClick={() => setPreview((v) => !v)}
           >
             {preview ? "미리보기 끄기" : "정합 미리보기"}
@@ -409,11 +580,15 @@ export default function Page() {
           />
           <button
             type="button"
-            style={{ ...primaryBtn, opacity: transform ? 1 : 0.45, cursor: transform ? "pointer" : "not-allowed" }}
-            disabled={!transform || saveState === "saving"}
+            style={{
+              ...primaryBtn,
+              opacity: effectiveTransform ? 1 : 0.45,
+              cursor: effectiveTransform ? "pointer" : "not-allowed"
+            }}
+            disabled={!effectiveTransform || saveState === "saving"}
             onClick={save}
           >
-            {saveState === "saving" ? "저장 중…" : "저장"}
+            {saveState === "saving" ? "저장 중…" : selectedAutoTransform ? "이대로 확정" : "저장"}
           </button>
           {saveMessage ? (
             <span style={{ ...muted, color: saveState === "error" ? "#dc2626" : "#16a34a" }}>
@@ -430,9 +605,9 @@ export default function Page() {
           ) : null}
         </div>
         <pre style={result}>
-          {transform
-            ? JSON.stringify(transform, null, 2)
-            : "// 양쪽에서 2점씩 클릭하면 SplatTransform이 계산됩니다."}
+          {effectiveTransform
+            ? JSON.stringify(effectiveTransform, null, 2)
+            : "// 양쪽에서 2점씩 클릭하거나 자동정합 후보를 고르면 SplatTransform이 나타납니다."}
         </pre>
       </footer>
     </div>
@@ -588,6 +763,20 @@ const planEmptyState: CSSProperties = {
   border: "1px dashed #cbd5e1",
   borderRadius: 8,
   background: "var(--surface, #f8fafc)"
+};
+const autoPanel: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  border: "1px solid #e2e8f0",
+  borderRadius: 8,
+  padding: "10px 12px",
+  background: "var(--surface, #f8fafc)"
+};
+const autoCandidateSelected: CSSProperties = {
+  background: "#0f172a",
+  color: "#fff",
+  borderColor: "#0f172a"
 };
 const assetBannerStyle: CSSProperties = {
   border: "1px solid",

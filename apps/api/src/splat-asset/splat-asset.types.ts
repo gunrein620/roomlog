@@ -1,5 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
 import type {
+  MetricOpening,
+  MetricWall,
+  RoomPlanCaptureFloorPlan,
   SplatIntakeCompleteRequest,
   SplatIntakePresignRequest
 } from "@roomlog/types";
@@ -153,6 +156,79 @@ export function parseTransform(value: unknown): SplatTransformInput {
     transform[key] = n;
   }
   return transform;
+}
+
+function parsePoint2(value: unknown, field: string): [number, number] {
+  if (!Array.isArray(value) || value.length !== 2) {
+    throw new BadRequestException(`${field}는 [x, z] 형태의 좌표여야 합니다.`);
+  }
+  const [x, z] = value.map((v) => Number(v));
+  if (!Number.isFinite(x) || !Number.isFinite(z)) {
+    throw new BadRequestException(`${field}는 유한한 숫자 2개여야 합니다.`);
+  }
+  return [x, z];
+}
+
+function parsePositiveNumber(value: unknown, field: string): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new BadRequestException(`${field}는 0보다 큰 숫자여야 합니다.`);
+  return n;
+}
+
+function parseMetricWall(value: unknown, index: number): MetricWall {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  return {
+    start: parsePoint2(raw.start, `walls[${index}].start`),
+    end: parsePoint2(raw.end, `walls[${index}].end`),
+    height: parsePositiveNumber(raw.height, `walls[${index}].height`),
+    thickness: parsePositiveNumber(raw.thickness, `walls[${index}].thickness`)
+  };
+}
+
+function parseMetricOpening(value: unknown, index: number): MetricOpening {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  const kind = raw.kind;
+  if (kind !== "door" && kind !== "window") {
+    throw new BadRequestException(`openings[${index}].kind는 door 또는 window여야 합니다.`);
+  }
+  return {
+    kind,
+    center: parsePoint2(raw.center, `openings[${index}].center`),
+    width: parsePositiveNumber(raw.width, `openings[${index}].width`),
+    height: parsePositiveNumber(raw.height, `openings[${index}].height`)
+  };
+}
+
+/**
+ * A4a — RoomPlan(iOS) 캡처 도면 계약(packages/types/src/roomplan-capture.ts) body 검증.
+ * 시임: 지금은 요청 body로 받지만, iOS 인테이크가 붙으면 asset의 저장된 roomplan.json에서
+ * 읽어오는 경로로 대체된다(auto-register-preview 엔드포인트가 그 시점의 유일한 소비처가 되도록
+ * 이 파서를 그대로 재사용할 수 있게 분리해뒀다).
+ */
+export function parseCaptureFloorPlanInput(body: unknown): RoomPlanCaptureFloorPlan {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  const captureFloorPlan = raw.captureFloorPlan;
+  if (typeof captureFloorPlan !== "object" || captureFloorPlan === null || Array.isArray(captureFloorPlan)) {
+    throw new BadRequestException("captureFloorPlan이 필요합니다.");
+  }
+  const plan = captureFloorPlan as Record<string, unknown>;
+  if (plan.frame !== "arkit-metric") {
+    throw new BadRequestException('captureFloorPlan.frame은 "arkit-metric"이어야 합니다.');
+  }
+  if (!Array.isArray(plan.walls) || plan.walls.length === 0) {
+    throw new BadRequestException("captureFloorPlan.walls는 비어 있지 않은 배열이어야 합니다.");
+  }
+
+  const openingsRaw = plan.openings;
+  if (openingsRaw !== undefined && !Array.isArray(openingsRaw)) {
+    throw new BadRequestException("captureFloorPlan.openings는 배열이어야 합니다.");
+  }
+
+  return {
+    frame: "arkit-metric",
+    walls: plan.walls.map((wall, index) => parseMetricWall(wall, index)),
+    openings: Array.isArray(openingsRaw) ? openingsRaw.map((opening, index) => parseMetricOpening(opening, index)) : []
+  };
 }
 
 export function parseRegisterInput(body: unknown): RegisterSplatAssetInput {

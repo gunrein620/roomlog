@@ -13,11 +13,19 @@ import {
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import type {
+  RoomPlanCaptureFloorPlan,
   SplatIntakeCompleteRequest,
   SplatIntakePresignRequest,
   SplatIntakePresignResponse
 } from "@roomlog/types";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
+import {
+  fromCaptureFloorPlan,
+  fromOwnerFloorPlan,
+  matchFloorPlans,
+  type MatchResult,
+  type OwnerWallLike
+} from "../roomlog/services/floor-plan-match";
 import { TradeService } from "../trade/trade.service";
 import {
   type CreateSplatAssetInput,
@@ -25,10 +33,17 @@ import {
   type RegisterSplatAssetInput,
   type UpdateSplatAssetFileInput
 } from "./splat-asset.types";
+import { extractJsonField, parseOwnerWalls3D } from "./owner-floor-plan-walls";
 
 export const SPLAT_ASSET_DATABASE_URL = "SPLAT_ASSET_DATABASE_URL";
 
 export type UploadedSplatAssetFile = { buffer: Buffer; originalname: string; mimetype: string };
+
+/** A4a — previewAutoRegister 응답. floorPlanId는 매칭에 쓴 도면이 서버 FloorPlan row일 때만 값을 갖는다
+ *  (TradeListing.floorPlan 스냅샷으로 정합했으면 null — register() 연결 대상이 아니므로). */
+export interface AutoRegisterPreviewResult extends MatchResult {
+  floorPlanId: string | null;
+}
 
 // 멀티파트(서버 경유) 한도 — multer가 파일 전체를 힙에 버퍼링하는 경로라 보수적으로 유지한다.
 const MAX_UPLOAD_BYTES = 800 * 1024 * 1024;
@@ -380,6 +395,69 @@ export class SplatAssetService {
         ...(floorPlanId ? { floorPlanId } : {})
       }
     });
+  }
+
+  /**
+   * A4a — 자산의 소유자 도면(walls3D) × RoomPlan 캡처 도면(body) 자동정합 프리뷰. PREVIEW ONLY(저장 안 함) —
+   * 확정은 web이 best/alternatives 중 고른 transform으로 기존 register()를 그대로 호출한다(2점 수동 정합과
+   * 동일 저장 경로를 공유해, 매물 소유권 게이트·floorPlanId 연결 로직을 중복하지 않는다).
+   * 시임: captureFloorPlan은 지금 요청 body로 받지만, 나중엔 자산에 저장된 roomplan.json(iOS 인테이크,
+   * 아직 미구현)에서 읽어오는 경로로 대체된다 — 그때도 이 메서드의 매칭 로직은 그대로 재사용된다.
+   */
+  async previewAutoRegister(id: string, captureFloorPlan: RoomPlanCaptureFloorPlan): Promise<AutoRegisterPreviewResult> {
+    const asset = await this.getById(id);
+    const owner = await this.resolveOwnerFloorPlanWalls(asset);
+    if (!owner) {
+      throw new BadRequestException("정합할 소유자 도면(벽)이 없습니다 — 먼저 매물에 도면을 등록하세요.");
+    }
+
+    const capture = fromCaptureFloorPlan(captureFloorPlan);
+    if (capture.segments.length === 0) {
+      throw new BadRequestException("captureFloorPlan에 유효한 벽이 없습니다.");
+    }
+
+    let result: MatchResult;
+    try {
+      result = matchFloorPlans(capture, fromOwnerFloorPlan(owner.walls));
+    } catch (error) {
+      // matchFloorPlans는 입력 벽이 없으면 RangeError를 던진다 — 검증 실패로 400 처리.
+      if (error instanceof RangeError) throw new BadRequestException(error.message);
+      throw error;
+    }
+
+    return { ...result, floorPlanId: owner.floorPlanId };
+  }
+
+  /**
+   * 자산에 연결된 소유자 도면 벽을 조회한다 — 우선순위: SplatAsset.floorPlanId가 있으면
+   * FloorPlan.room3d.walls, 없으면 SplatAsset.listingId의 TradeListing.floorPlan.walls3D 스냅샷.
+   * register 픽 화면의 resolveRegisterPlanSource(owner-tour-assets.ts)와 동일한 우선순위를
+   * 서버에서 재현한다. 벽이 하나도 없으면(둘 다 없거나 파싱 결과가 빈 배열) null.
+   */
+  private async resolveOwnerFloorPlanWalls(asset: {
+    floorPlanId: string | null;
+    listingId: string | null;
+  }): Promise<{ floorPlanId: string | null; walls: OwnerWallLike[] } | null> {
+    if (asset.floorPlanId) {
+      const plan = await this.getPrisma().floorPlan.findUnique({
+        where: { id: asset.floorPlanId },
+        select: { room3d: true }
+      });
+      const walls = parseOwnerWalls3D(extractJsonField(plan?.room3d, "walls"));
+      if (walls.length > 0) return { floorPlanId: asset.floorPlanId, walls };
+    }
+
+    if (asset.listingId) {
+      const listing = await this.getPrisma().tradeListing.findUnique({
+        where: { id: asset.listingId },
+        select: { floorPlan: true }
+      });
+      // 매물 스냅샷은 서버 FloorPlan row가 아니므로 floorPlanId는 null로 반환(register 연결 대상 아님).
+      const walls = parseOwnerWalls3D(extractJsonField(listing?.floorPlan, "walls3D"));
+      if (walls.length > 0) return { floorPlanId: null, walls };
+    }
+
+    return null;
   }
 
   /** 정합 body의 floorPlanId가 실재하는 도면일 때만 연결값으로 통과시킨다(FK 위반·오타 방어). */
