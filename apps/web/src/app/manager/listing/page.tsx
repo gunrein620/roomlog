@@ -47,7 +47,7 @@ export default async function ManagerListingPage({ searchParams }: { searchParam
         <header
           style={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             gap: "var(--space-lg)",
             alignItems: "flex-start",
             flexWrap: "wrap",

@@ -13,6 +13,12 @@ test("manager listing page keeps the manager shell and registration entry withou
   assert.match(pageSource, />새 매물 등록<\/Link>/);
   assert.doesNotMatch(pageSource, />등록한 매물<\/h1>/);
   assert.doesNotMatch(pageSource, /현재 노출 상태와 등록 정보를 한곳에서 확인합니다/);
+
+  const registrationHeader = pageSource.slice(
+    pageSource.indexOf("<header"),
+    pageSource.indexOf("</header>", pageSource.indexOf("<header")),
+  );
+  assert.match(registrationHeader, /justifyContent:\s*"flex-end"/);
 });
 
 test("manager listing surface renders list, empty, and error states without demo data", () => {
