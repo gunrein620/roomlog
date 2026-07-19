@@ -41,6 +41,12 @@ test("uses the RoomLog cosmic tokens for every floating viewer surface", async (
     "#view-controls {",
     "bottom: 28px;",
     "#upload-btn {",
+    "#upload-btn .upload-empty-icon",
+    "#upload-btn .upload-title",
+    "#upload-btn .upload-cta",
+    "#upload-btn > svg",
+    "#upload-btn .upload-format-icons svg",
+    "#upload-btn .upload-format-icons > span",
   ]) {
     assert.ok(css.includes(declaration), `missing architectural shell: ${declaration}`);
   }
@@ -53,6 +59,9 @@ test("keeps the existing viewer hooks and integration request paths intact", asy
     'id="workspace-header"',
     'id="workspace-brand"',
     'id="upload-btn"',
+    'class="upload-empty-icon"',
+    'class="upload-title"',
+    'class="upload-cta"',
     'id="demo-select"',
     'id="status"',
     'id="view-switch"',
