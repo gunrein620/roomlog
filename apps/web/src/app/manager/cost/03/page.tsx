@@ -53,7 +53,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     cost.type === "maintenance"
       ? MANAGER_COST_ROUTES["M-COST-04"]
       : cost.type === "repair" && cost.repairPayment === "unpaid"
-        ? "/manager/ticket/dash/05"
+        ? "/manager/vendor-mgmt/credit"
         : MANAGER_COST_ROUTES["M-COST-03"];
 
   return (

@@ -229,7 +229,6 @@ export function TicketDetailDialog({
 
         <footer className="manager-ticket-dialog__actions">
           <Link href={ticketDashHref("01", ticket.id)}>상세·정보입력</Link>
-          <Link href={ticketDashHref("05", ticket.id)}>결제·비용 승인</Link>
         </footer>
 
         {selectedAttachmentUrl && selectedPreviewUrl && (
