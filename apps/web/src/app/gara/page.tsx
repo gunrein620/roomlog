@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { getManagerCreditAccount } from "@/lib/vendor-credit-api";
-import { listManagerVendors } from "@/lib/vendor-mgmt-api";
-import { requireUser } from "@/lib/session";
+import type { GaraVendorCreditPublicView } from "@roomlog/types";
+import { serverFetch } from "@/lib/server-api";
 import { GaraPayoutWorkspace } from "./GaraPayoutWorkspace";
 
 export const metadata: Metadata = {
@@ -10,13 +9,12 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+async function listGaraVendorCredits() {
+  return serverFetch<GaraVendorCreditPublicView[]>("/gara/vendors");
+}
+
 export default async function GaraPage() {
-  await requireUser("LANDLORD", "/gara");
-  const [vendorsResult, creditResult] = await Promise.all([
-    listManagerVendors(),
-    getManagerCreditAccount(),
-  ]);
-  const vendors = vendorsResult.data.filter((vendor) => vendor.status === "ACTIVE");
+  const vendors = await listGaraVendorCredits();
 
   return (
     <main
@@ -26,11 +24,7 @@ export default async function GaraPage() {
         background: "var(--surface)",
       }}
     >
-      <GaraPayoutWorkspace
-        vendors={vendors}
-        initialBalance={creditResult.data.balance}
-        demo={vendorsResult.source === "DEMO" || creditResult.source === "DEMO"}
-      />
+      <GaraPayoutWorkspace vendors={vendors} />
     </main>
   );
 }

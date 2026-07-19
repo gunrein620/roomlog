@@ -13,11 +13,13 @@ import type {
 import {
   notifyManagerCreditBalanceChanged,
 } from "@/lib/vendor-credit-events";
+import { getRealtimeSocket } from "@/lib/realtime-client";
 import { repairPaymentRecovery } from "@/lib/repair-payment-recovery";
 import {
   cancelCreditPaymentAction,
   loadMoreCreditHistoryAction,
   refreshCreditWorkspaceAction,
+  settleGaraPayoutAction,
   settleCreditPaymentAction,
   updateCreditPolicyAction,
 } from "./actions";
@@ -227,6 +229,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
   const paymentRecordDialogRef = useRef<ManagerPaymentRecordDialogHandle>(null);
   const workspace = workspaceResult.data;
   const demoReadOnly = workspaceResult.source === "DEMO";
+  const payoutRequestCount = workspace.paymentRequests.length + workspace.garaPayoutRequests.length;
 
   const publishFeedback = useCallback((next: Feedback | null) => {
     feedbackSequence.publishNow(() => setFeedback(next));
@@ -277,6 +280,17 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
       setLimitText(String(workspace.policy.perRequestLimit));
     }
   }, [workspace.policy.mode, workspace.policy.perRequestLimit]);
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const refreshGaraPayouts = () => {
+      void refreshWorkspace().catch(() => undefined);
+    };
+    socket.on("gara:payout-updated", refreshGaraPayouts);
+    return () => {
+      socket.off("gara:payout-updated", refreshGaraPayouts);
+    };
+  }, [refreshWorkspace]);
 
   useEffect(() => {
     if (repairPaymentResultHandled.current) return;
@@ -753,10 +767,43 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
             <h2>업체 지급 요청</h2>
             <p>완료 검토와 승인 상태에 따라 허용된 지급·취소 작업만 표시합니다.</p>
           </div>
-          <span className={styles.countBadge}>{workspace.paymentRequests.length}건</span>
+          <span className={styles.countBadge}>{payoutRequestCount}건</span>
         </div>
-        {workspace.paymentRequests.length > 0 ? (
+        {payoutRequestCount > 0 ? (
           <div className={styles.paymentList} tabIndex={0} aria-label="업체 지급 요청 목록">
+            {workspace.garaPayoutRequests.map((request) => {
+              const pending = request.status === "PENDING_APPROVAL";
+              const key = `gara-payout:${request.id}`;
+              return (
+                <article className={styles.paymentCard} key={request.id}>
+                  <div className={styles.requestMain}>
+                    <span className={styles.requestLabel}>{request.vendorName}</span>
+                    <strong>Gara 지급 요청 · {request.accountNumber}</strong>
+                    <div className={styles.requestMeta}>
+                      <span>요청일 {formatDate(request.createdAt)}</span>
+                      {request.processedAt ? <span>지급일 {formatDate(request.processedAt)}</span> : null}
+                    </div>
+                  </div>
+                  <div className={styles.requestAmount}>
+                    <strong>{won(request.amount)}</strong>
+                    <span className={pending ? styles.statusPending : styles.statusDone}>
+                      {pending ? "지급 승인 대기" : "크레딧 지급 완료"}
+                    </span>
+                    {pending ? (
+                      <button
+                        className={styles.primaryButton}
+                        type="button"
+                        disabled={busyKeys.has(key) || demoReadOnly}
+                        onClick={() => void runMutation(key, "Gara 업체 지급을 완료했습니다.", () =>
+                          settleGaraPayoutAction(request.id, crypto.randomUUID()))}
+                      >
+                        {busyKeys.has(key) ? "지급 중…" : "크레딧 지급"}
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
             {workspace.paymentRequests.map((request, index) => (
               <article className={styles.paymentCard} key={request.id}>
                 <div className={styles.requestMain}>

@@ -12,6 +12,7 @@ import {
 import type {
   CancelVendorPaymentRequestInput,
   ConfirmManagerCreditTopupInput,
+  CreateGaraVendorCreditCheckoutInput,
   CreateGaraVendorPayoutInput,
   CreateManagerCreditTopupInput,
   ManagerCreditAccountView,
@@ -28,6 +29,8 @@ import type {
 } from "@roomlog/types";
 import { CreditService } from "./credit.service";
 import { publicRepairPaymentOrder } from "./repair-payment-order-public";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { issuePublicGaraSocketTicket } from "../realtime/socket-ticket";
 
 function publicTopupOrder(
   order: ManagerCreditTopupOrderView
@@ -82,6 +85,7 @@ function publicWorkspace(
     ),
     topupOrders: workspace.topupOrders.map(publicTopupOrder),
     paymentRequests: workspace.paymentRequests.map(publicPaymentRequest),
+    garaPayoutRequests: workspace.garaPayoutRequests,
     ...(workspace.nextLedgerCursor
       ? { nextLedgerCursor: encodeCursor("ledger", workspace.nextLedgerCursor) }
       : {}),
@@ -123,7 +127,68 @@ function optionalPositiveInteger(value: string | undefined) {
 
 @Controller()
 export class CreditController {
-  constructor(private readonly credit: CreditService) {}
+  constructor(
+    private readonly credit: CreditService,
+    private readonly realtime?: RealtimeGateway
+  ) {}
+
+  @Get("gara/vendors")
+  async listPublicGaraVendors() {
+    return this.credit.listPublicGaraVendors();
+  }
+
+  @Post("gara/vendor-credit-checkouts")
+  async createGaraVendorCreditCheckout(
+    @Body() input: CreateGaraVendorCreditCheckoutInput
+  ) {
+    const checkout =
+      await this.credit.createGaraVendorCreditCheckout(input);
+    return { ...checkout, order: publicTopupOrder(checkout.order) };
+  }
+
+  @Post("gara/vendor-payout-requests")
+  async createPublicGaraVendorPayoutRequest(@Body() input: CreateGaraVendorPayoutInput) {
+    const request = await this.credit.createPublicGaraVendorPayoutRequest(input);
+    this.realtime?.notifyGaraPayoutUpdated();
+    return request;
+  }
+
+  @Post("gara/socket-ticket")
+  issuePublicGaraSocketTicket() {
+    return { ticket: issuePublicGaraSocketTicket() };
+  }
+
+  @Get("gara/vendor-credit-checkouts/:orderId")
+  async getGaraVendorCreditCheckout(@Param("orderId") orderId: string) {
+    const garaOrder = await this.credit.getGaraTopupOrder(orderId);
+    return publicTopupOrder(
+      await this.credit.getTopupOrder(garaOrder.managerId, orderId)
+    );
+  }
+
+  @Post("gara/vendor-credit-checkouts/:orderId/confirm")
+  async confirmGaraVendorCreditCheckout(
+    @Param("orderId") orderId: string,
+    @Body() input: ConfirmManagerCreditTopupInput
+  ) {
+    const garaOrder = await this.credit.getGaraTopupOrder(orderId);
+    return publicTopupOrder(
+      await this.credit.confirmTopup(
+        garaOrder.managerId,
+        orderId,
+        input,
+        garaOrder.managerVendorId
+      )
+    );
+  }
+
+  @Post("gara/vendor-credit-checkouts/:orderId/cancel")
+  async cancelGaraVendorCreditCheckout(@Param("orderId") orderId: string) {
+    const garaOrder = await this.credit.getGaraTopupOrder(orderId);
+    return publicTopupOrder(
+      await this.credit.cancelTopup(garaOrder.managerId, orderId)
+    );
+  }
 
   @Get("manager/credits/account")
   async getAccount(@Headers("authorization") authorization?: string) {
@@ -176,6 +241,18 @@ export class CreditController {
   ) {
     const managerId = await this.credit.requireManager(authorization);
     const result = await this.credit.createGaraVendorPayout(managerId, input);
+    return { request: result.request, account: publicAccount(result.account) };
+  }
+
+  @Post("manager/gara/vendor-payout-requests/:payoutRequestId/settle")
+  async settleGaraVendorPayout(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("payoutRequestId") payoutRequestId: string,
+    @Body() input: { idempotencyKey: string }
+  ) {
+    const managerId = await this.credit.requireManager(authorization);
+    const result = await this.credit.settleGaraVendorPayout(managerId, payoutRequestId, input);
+    this.realtime?.notifyGaraPayoutUpdated();
     return { request: result.request, account: publicAccount(result.account) };
   }
 

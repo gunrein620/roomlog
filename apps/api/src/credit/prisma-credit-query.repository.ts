@@ -8,10 +8,13 @@ import type {
   CreditAccount,
   CreditLedgerEntry,
   CreditTopupOrder,
+  GaraVendorPayoutRequest,
   RepairPaymentOrder,
   VendorPaymentRequest
 } from "@prisma/client";
 import type {
+  GaraVendorCreditPublicView,
+  ManagerGaraVendorPayoutRequestPublicView,
   ManagerAutoPayPolicyView,
   ManagerCreditAccountView,
   ManagerCreditLedgerEntryView,
@@ -19,7 +22,10 @@ import type {
   ManagerVendorPaymentRequestView
 } from "@roomlog/types";
 import { CreditPrismaClient } from "./credit-prisma.client";
-import type { CreditQueryRepository } from "./credit-query.repository";
+import type {
+  CreditQueryRepository,
+  GaraTopupOrder
+} from "./credit-query.repository";
 import { mapRepairPaymentOrder } from "./prisma-repair-payment-order.repository";
 
 export function safeCreditNumber(value: bigint, field: string): number {
@@ -163,6 +169,20 @@ export function mapVendorPaymentRequest(
   };
 }
 
+export function mapGaraVendorPayoutRequest(
+  row: GaraVendorPayoutRequest & { vendor?: { businessName: string } }
+): ManagerGaraVendorPayoutRequestPublicView {
+  return {
+    id: row.id,
+    vendorName: row.vendor?.businessName ?? "업체",
+    amount: safeCreditNumber(row.amount, "GaraVendorPayoutRequest.amount"),
+    accountNumber: row.accountNumberSnapshot,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    ...(row.processedAt ? { processedAt: row.processedAt.toISOString() } : {})
+  };
+}
+
 @Injectable()
 export class PrismaCreditQueryRepository implements CreditQueryRepository {
   constructor(private readonly database: CreditPrismaClient) {}
@@ -199,6 +219,55 @@ export class PrismaCreditQueryRepository implements CreditQueryRepository {
     return mapCreditTopupOrder(row);
   }
 
+  async listPublicGaraVendors(): Promise<GaraVendorCreditPublicView[]> {
+    const rows = await this.database.client.managerVendor.findMany({
+      where: {
+        status: "ACTIVE",
+        vendor: { isActive: true }
+      },
+      select: {
+        id: true,
+        settlementAccountNumber: true,
+        manager: { select: { name: true, email: true } },
+        vendor: { select: { businessName: true, phone: true } },
+        garaVendorPayoutRequests: {
+          where: { status: "CREDIT_DEBITED" },
+          select: { amount: true }
+        }
+      },
+      orderBy: [{ vendor: { businessName: "asc" } }, { id: "asc" }]
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      businessName: row.vendor.businessName,
+      phone: row.vendor.phone,
+      ...(row.settlementAccountNumber === null
+        ? {}
+        : { settlementAccountNumber: row.settlementAccountNumber }),
+      linkedAccount: row.manager,
+      cumulativeCredit: row.garaVendorPayoutRequests.reduce(
+        (total, payout) =>
+          total + safeCreditNumber(payout.amount, "GaraVendorPayoutRequest.amount"),
+        0
+      )
+    }));
+  }
+
+  async getGaraTopupOrder(orderId: string): Promise<GaraTopupOrder> {
+    const row = await this.database.client.creditTopupOrder.findFirst({
+      where: { orderId, garaManagerVendorId: { not: null } }
+    });
+    if (!row || !row.garaManagerVendorId) {
+      throw new NotFoundException("Gara 크레딧 충전 주문을 찾을 수 없습니다.");
+    }
+    return {
+      managerId: row.managerId,
+      managerVendorId: row.garaManagerVendorId,
+      order: mapCreditTopupOrder(row)
+    };
+  }
+
   async getWorkspace(
     managerId: string,
     page: {
@@ -211,7 +280,7 @@ export class PrismaCreditQueryRepository implements CreditQueryRepository {
     const requestedLimit = page.limit ?? 30;
     const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 100);
 
-    const [account, policy, ledgerRows, topupOrders, paymentRequests] =
+    const [account, policy, ledgerRows, topupOrders, paymentRequests, garaPayoutRequests] =
       await Promise.all([
         this.database.client.creditAccount.findUnique({
           where: { managerId }
@@ -260,6 +329,11 @@ export class PrismaCreditQueryRepository implements CreditQueryRepository {
           ...(page.paymentCursor
             ? { cursor: { id: page.paymentCursor }, skip: 1 }
             : {})
+        }),
+        this.database.client.garaVendorPayoutRequest.findMany({
+          where: { managerId },
+          include: { vendor: { select: { businessName: true } } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         })
       ]);
 
@@ -281,6 +355,7 @@ export class PrismaCreditQueryRepository implements CreditQueryRepository {
       ledgerEntries: visibleLedger.map(mapLedgerEntry),
       topupOrders: visibleTopups.map(mapCreditTopupOrder),
       paymentRequests: visiblePayments.map(mapVendorPaymentRequest),
+      garaPayoutRequests: garaPayoutRequests.map(mapGaraVendorPayoutRequest),
       ...(hasNextLedger
         ? { nextLedgerCursor: visibleLedger[visibleLedger.length - 1]?.id }
         : {}),

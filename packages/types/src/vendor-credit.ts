@@ -29,8 +29,8 @@ export type AutoPayPolicyMode =
 
 export type VendorPaymentSettlementMode = "MANUAL_CREDIT" | "DIRECT";
 
-/** Gara에서 관리자 크레딧을 차감하고 생성하는 업체 지급 요청의 상태. */
-export type GaraVendorPayoutStatus = "CREDIT_DEBITED";
+/** Gara에서 생성되어 관리자 크레딧 화면에서 처리하는 업체 지급 요청의 상태. */
+export type GaraVendorPayoutStatus = "PENDING_APPROVAL" | "CREDIT_DEBITED";
 
 export interface CreateGaraVendorPayoutInput {
   managerVendorId: string;
@@ -49,6 +49,34 @@ export interface GaraVendorPayoutRequestPublicView {
 export interface CreateGaraVendorPayoutResult {
   request: GaraVendorPayoutRequestPublicView;
   account: ManagerCreditAccountPublicView;
+}
+
+export interface ManagerGaraVendorPayoutRequestPublicView
+  extends GaraVendorPayoutRequestPublicView {
+  vendorName: string;
+  processedAt?: string;
+}
+
+export interface GaraVendorCreditPublicView {
+  id: string;
+  businessName: string;
+  phone: string;
+  settlementAccountNumber?: string;
+  linkedAccount: { name: string; email: string };
+  cumulativeCredit: number;
+}
+
+export interface CreateGaraVendorCreditCheckoutInput {
+  managerVendorId: string;
+  amount: number;
+  creationKey: string;
+}
+
+export interface GaraVendorCreditCheckout {
+  order: ManagerCreditTopupOrderPublicView;
+  clientKey: string;
+  customerKey: string;
+  orderName: string;
 }
 
 export interface ManagerCreditAccountView {
@@ -120,6 +148,7 @@ export interface ManagerCreditWorkspace {
   ledgerEntries: ManagerCreditLedgerEntryView[];
   topupOrders: ManagerCreditTopupOrderView[];
   paymentRequests: ManagerVendorPaymentRequestView[];
+  garaPayoutRequests: ManagerGaraVendorPayoutRequestPublicView[];
   nextLedgerCursor?: string;
   nextTopupCursor?: string;
   nextPaymentCursor?: string;
@@ -164,6 +193,7 @@ export interface ManagerCreditWorkspacePublicView {
   ledgerEntries: ManagerCreditLedgerEntryPublicView[];
   topupOrders: ManagerCreditTopupOrderPublicView[];
   paymentRequests: ManagerVendorPaymentRequestPublicView[];
+  garaPayoutRequests: ManagerGaraVendorPayoutRequestPublicView[];
   nextLedgerCursor?: string;
   nextTopupCursor?: string;
   nextPaymentCursor?: string;

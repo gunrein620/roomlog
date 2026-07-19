@@ -63,6 +63,7 @@ export const DEMO_MANAGER_CREDIT_WORKSPACE: ManagerCreditWorkspace = {
       updatedAt: TOPPED_UP_AT,
     },
   ],
+  garaPayoutRequests: [],
   paymentRequests: [
     {
       id: "vendor-payment-demo-120000",
