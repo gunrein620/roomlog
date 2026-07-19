@@ -18,8 +18,20 @@ describe("manager workspace navigation", () => {
   it("contains every manager desktop domain entry", () => {
     assert.deepEqual(items.map((item) => item.id), [
       "dashboard", "listing", "contract", "billing", "ticket",
-      "messaging", "vendor", "report", "assistant",
+      "messaging", "vendor",
     ]);
+  });
+
+  it("removes the unused insight group from the permanent sidebar", () => {
+    assert.equal(MANAGER_NAV_GROUPS.some((group) => group.label === "인사이트"), false);
+    assert.deepEqual(getManagerNavState("/manager/report/00"), {
+      activeItemId: null,
+      activeChildHref: null,
+    });
+    assert.deepEqual(getManagerNavState("/manager/agent/realtime"), {
+      activeItemId: null,
+      activeChildHref: null,
+    });
   });
 
   it("removes the unused account settings group, route, and voice-home tab", () => {
@@ -106,14 +118,13 @@ describe("manager workspace navigation", () => {
       activeItemId: "listing",
       activeChildHref: "/manager/listing?status=contracted",
     });
-    assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: "assistant", activeChildHref: null });
+    assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: null, activeChildHref: null });
   });
 
   it("matches every contextual route to its parent only", () => {
     const cases = [
       ["/manager/contract/01?id=doc", "contract"], ["/manager/billing/bill-1", "billing"],
       ["/manager/messaging/04?id=thread", "messaging"], ["/manager/vendor-mgmt/02?id=vendor", "vendor"],
-      ["/manager/report/03?id=report", "report"],
     ] as const;
     for (const [pathname, activeItemId] of cases) {
       assert.deepEqual(getManagerNavState(pathname), { activeItemId, activeChildHref: null });

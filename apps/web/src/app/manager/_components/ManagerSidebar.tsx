@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  BarChart3,
-  Bot,
   Building2,
   ChevronDown,
   ContactRound,
@@ -38,8 +36,6 @@ const MANAGER_NAV_ICONS: Record<ManagerNavItemId, LucideIcon> = {
   messaging: MessageSquare,
   moveout: LogOut,
   vendor: ContactRound,
-  report: BarChart3,
-  assistant: Bot,
 };
 
 export interface ManagerSidebarProps {
