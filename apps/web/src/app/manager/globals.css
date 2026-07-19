@@ -3254,13 +3254,12 @@ html:has(.manager-workspace) {
 }
 
 .manager-defect-dashboard__detail-action {
-  min-height: var(--touch-target);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 var(--space-md);
+  padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--primary);
-  border-radius: var(--radius);
+  border-radius: var(--radius-full);
   color: var(--primary);
   background: transparent;
   text-decoration: none;
