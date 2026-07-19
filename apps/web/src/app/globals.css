@@ -14144,6 +14144,8 @@ p {
   color: var(--on-surface);
   background: var(--surface-container);
   line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .manager-ai-message--user {

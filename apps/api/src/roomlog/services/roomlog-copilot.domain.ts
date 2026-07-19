@@ -467,8 +467,15 @@ export class RoomlogCopilotDomain {
     return "요청을 처리했지만 답변 문장을 만들지 못했습니다. 다시 한 번 요청해주세요.";
   }
 
+  // 채팅 말풍선은 마크다운을 렌더링하지 않으므로, 모델이 실수로 쓴 문법 잔재를 걷어낸다.
   private cleanReply(content?: string | null) {
-    return typeof content === "string" ? content.trim().slice(0, 1200) : "";
+    if (typeof content !== "string") return "";
+
+    return content
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .trim()
+      .slice(0, 1200);
   }
 
   private stringValue(value: unknown) {

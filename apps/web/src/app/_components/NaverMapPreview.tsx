@@ -242,7 +242,7 @@ export function NaverMapPreview({
       : "";
   const addressKey = typeof address === "string" ? address.trim() : "";
 
-  const closeCenterInfoWindow = useCallback((maps?: NaverMapsNamespace) => {
+  const closeCenterInfoWindow = useCallback((maps?: NaverMapsApi) => {
     centerInfoWindowRef.current?.close();
     centerInfoWindowRef.current = null;
     removeMapListener(maps, centerInfoWindowListenerRef.current);
@@ -250,7 +250,7 @@ export function NaverMapPreview({
   }, []);
 
   const openCenterInfoWindow = useCallback((
-    maps: NaverMapsNamespace,
+    maps: NaverMapsApi,
     map: NaverMap,
     marker: NaverMarker,
     label: string,
