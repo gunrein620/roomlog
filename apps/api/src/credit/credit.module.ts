@@ -6,6 +6,7 @@ import {
   type OnModuleDestroy
 } from "@nestjs/common";
 import { DomainEventsModule } from "../domain-events/domain-events.module";
+import { RealtimeModule } from "../realtime/realtime.module";
 import {
   DOMAIN_EVENT_REPOSITORY,
   type DomainEventRepository
@@ -56,7 +57,10 @@ function unavailableCommandRepository(): CreditCommandRepository {
   return {
     ensureAccount: unavailable,
     createTopupOrder: unavailable,
+    createGaraTopupOrder: unavailable,
     createGaraVendorPayout: unavailable,
+    createPublicGaraVendorPayoutRequest: unavailable,
+    settleGaraVendorPayout: unavailable,
     claimTopupConfirmation: unavailable,
     finalizeTopup: unavailable,
     markTopupRejected: unavailable,
@@ -76,7 +80,9 @@ function unavailableQueryRepository(): CreditQueryRepository {
     assertManagerAccess: unavailable,
     getAccount: unavailable,
     getWorkspace: unavailable,
-    getTopupOrder: unavailable
+    getTopupOrder: unavailable,
+    listPublicGaraVendors: unavailable,
+    getGaraTopupOrder: unavailable
   };
 }
 
@@ -154,7 +160,7 @@ class CreditPersistenceLifecycle implements OnModuleDestroy {
 }
 
 @Module({
-  imports: [DomainEventsModule],
+  imports: [DomainEventsModule, RealtimeModule],
   controllers: [CreditController, RepairPaymentOrderController],
   providers: [
     {

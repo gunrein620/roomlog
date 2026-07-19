@@ -2522,8 +2522,12 @@ export class RoomlogService implements OnModuleDestroy {
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
     const bootStore = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
+    // 빈 DB에서 initialStore가 없으면 loadStore()가 데모 스냅샷을 만들지만,
+    // 이전에는 "변경 없음"으로 판단해 projector에 한 번도 기록하지 않았다.
+    // 초안 저장처럼 DB FK를 직접 쓰는 경로가 즉시 500으로 실패하므로, 첫 부팅도 저장한다.
     const shouldPersistDemoBackfill =
-      this.seedDemoData && this.hasDemoBackfillChanges(loadedStore, bootStore);
+      this.seedDemoData &&
+      (!options.initialStore || this.hasDemoBackfillChanges(loadedStore, bootStore));
     this.store = bootStore;
     this.auth = new RoomlogAuthDomain(
       this.store,

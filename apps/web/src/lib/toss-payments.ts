@@ -116,3 +116,15 @@ export async function requestManagerCardPayment(
     customerName: input.customerName ?? "집우집주 관리자",
   });
 }
+
+export type GaraCardPaymentRequest = TossPaymentRequest;
+
+/** Gara의 공개 업체 크레딧 충전은 관리자 세션과 독립된 Toss 결제 흐름을 쓴다. */
+export async function requestGaraCardPayment(
+  input: GaraCardPaymentRequest,
+): Promise<void> {
+  await requestTossPayment({
+    ...input,
+    customerName: input.customerName ?? "Gara 업체",
+  });
+}

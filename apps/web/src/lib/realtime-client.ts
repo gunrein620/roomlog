@@ -32,7 +32,19 @@ async function fetchTicket(): Promise<string | null> {
   }
 }
 
+async function fetchPublicGaraTicket(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/gara/socket-ticket", { method: "POST", cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { ticket?: string };
+    return data.ticket ?? null;
+  } catch {
+    return null;
+  }
+}
+
 let socket: Socket | null = null;
+let publicGaraSocket: Socket | null = null;
 
 export function getRealtimeSocket(): Socket {
   if (socket) return socket;
@@ -50,8 +62,26 @@ export function getRealtimeSocket(): Socket {
   return socket;
 }
 
+/** 로그인 없이 접근하는 Gara 화면용 소켓. Gara 지급 갱신 신호만 수신한다. */
+export function getGaraRealtimeSocket(): Socket {
+  if (publicGaraSocket) return publicGaraSocket;
+
+  publicGaraSocket = io(socketBaseUrl(), {
+    transports: ["websocket"],
+    auth: (setAuth) => {
+      void fetchPublicGaraTicket().then((ticket) => setAuth({ ticket: ticket ?? "" }));
+    },
+    reconnectionDelay: 2000,
+    reconnectionDelayMax: 15000
+  });
+
+  return publicGaraSocket;
+}
+
 /** 로그아웃/계정 전환 시 기존 연결을 버리고 다음 사용부터 새로 연결한다. */
 export function resetRealtimeSocket() {
   socket?.disconnect();
   socket = null;
+  publicGaraSocket?.disconnect();
+  publicGaraSocket = null;
 }

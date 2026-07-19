@@ -3,28 +3,9 @@
   gap: var(--space-lg);
 }
 
-.summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-lg);
-  padding: var(--space-lg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-container-lowest);
-}
-
-.summary > div {
-  display: grid;
-  gap: var(--space-xs);
-}
-
-.summary span,
-.summary p,
 .hint,
 .error,
-.success,
-.notice,
+.feedback,
 .empty {
   margin: 0;
   color: var(--on-surface-variant);
@@ -32,16 +13,11 @@
   line-height: var(--lh-body);
 }
 
-.summary strong {
-  color: var(--on-surface);
-  font-size: var(--fs-title);
-}
-
-.notice {
+.feedback {
   padding: var(--space-md);
   border-radius: var(--radius-sm);
-  color: var(--on-warning-container);
-  background: var(--warning-container);
+  color: var(--on-primary-container);
+  background: var(--primary-container);
 }
 
 .tableWrap {
@@ -53,7 +29,7 @@
 
 .tableWrap table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1120px;
   border-collapse: collapse;
 }
 
@@ -79,6 +55,17 @@
 
 .balance {
   font-weight: var(--fw-subtitle);
+}
+
+.accountLabel {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 180px;
+}
+
+.accountLabel span {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
 }
 
 .requestForm {
@@ -126,17 +113,6 @@
   color: var(--on-error-container);
 }
 
-.success {
-  color: var(--primary);
-}
-
 .empty {
   padding: var(--space-xl);
-}
-
-@media (max-width: 720px) {
-  .summary {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }
