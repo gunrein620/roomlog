@@ -19,11 +19,11 @@ import type { UserAccount, UserRole } from "../roomlog/roomlog.types";
 import { RoomlogService } from "../roomlog/roomlog.service";
 import { SplatAssetService, type UploadedSplatAssetFile } from "./splat-asset.service";
 import {
-  parseCaptureFloorPlanInput,
   parseCreateInput,
   parseIntakeCompleteInput,
   parseIntakeInput,
   parseIntakePresignInput,
+  parseOptionalCaptureFloorPlanInput,
   parseRegisterInput,
   parseUpdateFileInput
 } from "./splat-asset.types";
@@ -117,9 +117,11 @@ export class SplatAssetController {
   ) {
     // A4a — 도면 자동정합 프리뷰. 2점 수동 정합(PATCH :id/registration)과 동일하게 자산 소유자만
     // 조회할 수 있다. 저장은 안 하므로(PREVIEW ONLY) 확정은 web이 register()를 별도로 호출한다.
+    // captureFloorPlan은 보통 asset에 저장된 roomplan.json(intake/complete가 채움)을 서비스가 읽지만,
+    // body에 실려오면 override/fallback으로 그걸 우선한다(주로 테스트·구버전 클라 호환용).
     const user = this.requireRole(authorization, ["LANDLORD"]);
     await this.splatAssetService.assertAssetOwner(id, user.id);
-    return this.splatAssetService.previewAutoRegister(id, parseCaptureFloorPlanInput(body));
+    return this.splatAssetService.previewAutoRegister(id, parseOptionalCaptureFloorPlanInput(body));
   }
 
   @Patch(":id/file")

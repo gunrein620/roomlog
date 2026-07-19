@@ -28,6 +28,7 @@ import {
 } from "../roomlog/services/floor-plan-match";
 import { TradeService } from "../trade/trade.service";
 import {
+  parseCaptureFloorPlanValue,
   type CreateSplatAssetInput,
   type IntakeSplatAssetInput,
   type RegisterSplatAssetInput,
@@ -337,14 +338,15 @@ export class SplatAssetService {
     });
     if (existing) return existing;
 
-    return this.createIntakeAsset(input, classification, publicUrl, head.sizeBytes);
+    return this.createIntakeAsset(input, classification, publicUrl, head.sizeBytes, input.captureFloorPlan);
   }
 
   private async createIntakeAsset(
     input: IntakeSplatAssetInput,
     classification: IntakeFileClassification,
     storedUrl: string,
-    sizeBytes: number
+    sizeBytes: number,
+    captureFloorPlan?: RoomPlanCaptureFloorPlan
   ) {
     const roomId = `trade-${input.listingId}`;
     const roomTitle = input.title?.trim() || "직접등록 매물";
@@ -374,6 +376,8 @@ export class SplatAssetService {
         fileKind: classification.fileKind,
         sizeBytes,
         videoUrl: classification.kind === "splat" ? null : storedUrl,
+        // roomplan.json — intake/complete가 메타데이터로 동봉하면 여기 얹는다(A4 자동정합의 읽기 원천).
+        captureFloorPlan: captureFloorPlan ? (captureFloorPlan as unknown as Prisma.InputJsonValue) : undefined,
         status: classification.kind === "splat" ? "UPLOADED" : "PROCESSING",
         jobState: classification.kind === "splat" ? null : "QUEUED"
       }
@@ -398,17 +402,28 @@ export class SplatAssetService {
   }
 
   /**
-   * A4a — 자산의 소유자 도면(walls3D) × RoomPlan 캡처 도면(body) 자동정합 프리뷰. PREVIEW ONLY(저장 안 함) —
+   * A4a — 자산의 소유자 도면(walls3D) × RoomPlan 캡처 도면 자동정합 프리뷰. PREVIEW ONLY(저장 안 함) —
    * 확정은 web이 best/alternatives 중 고른 transform으로 기존 register()를 그대로 호출한다(2점 수동 정합과
    * 동일 저장 경로를 공유해, 매물 소유권 게이트·floorPlanId 연결 로직을 중복하지 않는다).
-   * 시임: captureFloorPlan은 지금 요청 body로 받지만, 나중엔 자산에 저장된 roomplan.json(iOS 인테이크,
-   * 아직 미구현)에서 읽어오는 경로로 대체된다 — 그때도 이 메서드의 매칭 로직은 그대로 재사용된다.
+   * captureFloorPlan 읽기 원천: 우선 자산에 저장된 roomplan.json(SplatAsset.captureFloorPlan — iOS
+   * intake/complete가 채움), captureFloorPlanOverride가 오면 그걸 우선한다(요청 body override — 테스트·
+   * 구버전 클라 호환용 fallback).
    */
-  async previewAutoRegister(id: string, captureFloorPlan: RoomPlanCaptureFloorPlan): Promise<AutoRegisterPreviewResult> {
+  async previewAutoRegister(
+    id: string,
+    captureFloorPlanOverride?: RoomPlanCaptureFloorPlan
+  ): Promise<AutoRegisterPreviewResult> {
     const asset = await this.getById(id);
     const owner = await this.resolveOwnerFloorPlanWalls(asset);
     if (!owner) {
       throw new BadRequestException("정합할 소유자 도면(벽)이 없습니다 — 먼저 매물에 도면을 등록하세요.");
+    }
+
+    const captureFloorPlan = captureFloorPlanOverride ?? this.resolveStoredCaptureFloorPlan(asset);
+    if (!captureFloorPlan) {
+      throw new BadRequestException(
+        "캡처 도면(roomplan.json)이 없습니다 — 앱에서 3D 스캔을 완료한 뒤 다시 시도하세요."
+      );
     }
 
     const capture = fromCaptureFloorPlan(captureFloorPlan);
@@ -458,6 +473,12 @@ export class SplatAssetService {
     }
 
     return null;
+  }
+
+  /** SplatAsset.captureFloorPlan(Json?)에 저장된 roomplan.json을 검증해 돌려준다. 없으면 null. */
+  private resolveStoredCaptureFloorPlan(asset: { captureFloorPlan: unknown }): RoomPlanCaptureFloorPlan | null {
+    if (asset.captureFloorPlan == null) return null;
+    return parseCaptureFloorPlanValue(asset.captureFloorPlan);
   }
 
   /** 정합 body의 floorPlanId가 실재하는 도면일 때만 연결값으로 통과시킨다(FK 위반·오타 방어). */

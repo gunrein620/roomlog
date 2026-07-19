@@ -1,6 +1,8 @@
 // splat-pipeline — 매물 업로드 → GPU 재구성 → spz 게시 파이프라인 계약 (web·api 공용)
 // 상태 의미는 prisma SplatAssetStatus / SplatReconstructionJobState enum과 1:1.
 
+import type { RoomPlanCaptureFloorPlan } from "./roomplan-capture";
+
 /** intake로 접수되는 원본 소스 종류. record3d-zip = 캡처앱 export(rgb/ + depth/ + metadata.json). */
 export type SplatSourceKind = "video" | "record3d-zip";
 
@@ -57,4 +59,7 @@ export interface SplatIntakeCompleteRequest {
   key: string;
   title?: string;
   address?: string;
+  /** RoomPlan(iOS) 캡처 도면 메타데이터(roomplan.json) — 있으면 SplatAsset에 저장되고
+   *  auto-register-preview가 그 자산의 자동정합 입력으로 읽는다(요청 body override는 fallback용). */
+  captureFloorPlan?: RoomPlanCaptureFloorPlan;
 }

@@ -124,9 +124,11 @@ export function parseIntakePresignInput(body: unknown): SplatIntakePresignReques
 export function parseIntakeCompleteInput(body: unknown): SplatIntakeCompleteRequest {
   const raw = (body ?? {}) as Record<string, unknown>;
   const intake = parseIntakeInput(raw);
+  const captureFloorPlan = parseOptionalCaptureFloorPlanInput(raw);
   return {
     ...intake,
-    key: requireNonEmptyString(raw.key, "key")
+    key: requireNonEmptyString(raw.key, "key"),
+    ...(captureFloorPlan ? { captureFloorPlan } : {})
   };
 }
 
@@ -200,18 +202,15 @@ function parseMetricOpening(value: unknown, index: number): MetricOpening {
 }
 
 /**
- * A4a — RoomPlan(iOS) 캡처 도면 계약(packages/types/src/roomplan-capture.ts) body 검증.
- * 시임: 지금은 요청 body로 받지만, iOS 인테이크가 붙으면 asset의 저장된 roomplan.json에서
- * 읽어오는 경로로 대체된다(auto-register-preview 엔드포인트가 그 시점의 유일한 소비처가 되도록
- * 이 파서를 그대로 재사용할 수 있게 분리해뒀다).
+ * A4a — RoomPlan(iOS) 캡처 도면 계약(packages/types/src/roomplan-capture.ts) 값 검증.
+ * asset.captureFloorPlan(저장된 roomplan.json)과 요청 body의 captureFloorPlan 둘 다 이 함수로
+ * 검증한다 — 저장 시점(complete)과 읽기 시점(auto-register-preview override) 양쪽의 유일한 소비처.
  */
-export function parseCaptureFloorPlanInput(body: unknown): RoomPlanCaptureFloorPlan {
-  const raw = (body ?? {}) as Record<string, unknown>;
-  const captureFloorPlan = raw.captureFloorPlan;
-  if (typeof captureFloorPlan !== "object" || captureFloorPlan === null || Array.isArray(captureFloorPlan)) {
+export function parseCaptureFloorPlanValue(value: unknown): RoomPlanCaptureFloorPlan {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new BadRequestException("captureFloorPlan이 필요합니다.");
   }
-  const plan = captureFloorPlan as Record<string, unknown>;
+  const plan = value as Record<string, unknown>;
   if (plan.frame !== "arkit-metric") {
     throw new BadRequestException('captureFloorPlan.frame은 "arkit-metric"이어야 합니다.');
   }
@@ -229,6 +228,19 @@ export function parseCaptureFloorPlanInput(body: unknown): RoomPlanCaptureFloorP
     walls: plan.walls.map((wall, index) => parseMetricWall(wall, index)),
     openings: Array.isArray(openingsRaw) ? openingsRaw.map((opening, index) => parseMetricOpening(opening, index)) : []
   };
+}
+
+/** body.captureFloorPlan 필수 검증 — auto-register-preview 스펙의 직접 단위테스트 대상. */
+export function parseCaptureFloorPlanInput(body: unknown): RoomPlanCaptureFloorPlan {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  return parseCaptureFloorPlanValue(raw.captureFloorPlan);
+}
+
+/** body.captureFloorPlan 있으면 검증, 없으면 undefined — intake/complete와 auto-register-preview override가 쓴다. */
+export function parseOptionalCaptureFloorPlanInput(body: unknown): RoomPlanCaptureFloorPlan | undefined {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  if (raw.captureFloorPlan == null) return undefined;
+  return parseCaptureFloorPlanValue(raw.captureFloorPlan);
 }
 
 export function parseRegisterInput(body: unknown): RegisterSplatAssetInput {

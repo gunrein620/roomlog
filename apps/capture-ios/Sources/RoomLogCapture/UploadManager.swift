@@ -57,6 +57,10 @@ private struct CompleteRequestBody: Encodable {
     let key: String
     let title: String?
     let address: String?
+    /// SplatIntakeCompleteRequest.captureFloorPlan(@roomlog/types) — 캡처 폴더의 roomplan.json을 그대로
+    /// 실어보낸다. 서버가 SplatAsset에 저장해두고 A4 자동정합이 읽는다. 없으면(RoomPlan 미지원 기기,
+    /// 정상 종료 전 취소 등) nil로 생략 — 메타데이터가 없다고 업로드 자체를 막지 않는다.
+    let captureFloorPlan: RoomPlanCapturePayload?
 }
 
 /// 캡처 zip을 매물에 접수한다. 두 경로:
@@ -256,7 +260,8 @@ final class UploadManager: NSObject, ObservableObject {
                 listingId: listing.id,
                 key: key,
                 title: listing.title.isEmpty ? nil : listing.title,
-                address: listing.location.isEmpty ? nil : listing.location
+                address: listing.location.isEmpty ? nil : listing.location,
+                captureFloorPlan: Self.readCaptureFloorPlan(for: context.capture)
             )
         )
 
@@ -348,6 +353,15 @@ final class UploadManager: NSObject, ObservableObject {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         guard let size = attributes[.size] as? Int else { throw UploadError.tempFile }
         return size
+    }
+
+    /// 캡처 폴더에 RoomPlanExporter가 써둔 roomplan.json을 읽어 그대로 복호화한다. 파일이 없거나
+    /// (RoomPlan 미지원 기기, 정상 종료 전 취소) 형식이 깨졌으면 nil — 메타데이터 누락이 업로드를
+    /// 막아선 안 되므로 여기서 에러를 던지지 않고 조용히 생략한다.
+    private static func readCaptureFloorPlan(for capture: CaptureSummary) -> RoomPlanCapturePayload? {
+        let url = capture.url.appendingPathComponent("roomplan.json", isDirectory: false)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(RoomPlanCapturePayload.self, from: data)
     }
 
     @MainActor

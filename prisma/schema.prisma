@@ -2231,6 +2231,7 @@ model SplatAsset {
   fileKind          String           @default("spz")
   sizeBytes         Int?
   videoUrl          String? // PROCESSING 접수 시 원본 소스(영상 또는 캡처 zip) 경로 — 종류는 fileKind로 구분
+  captureFloorPlan  Json? // RoomPlan(iOS) 캡처 도면(roomplan.json) — intake/complete가 저장, A4 자동정합이 읽는 원천
   status            SplatAssetStatus @default(UPLOADED)
   transform         Json? // SplatTransform (tour-types.ts). null이면 미정합
   registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용

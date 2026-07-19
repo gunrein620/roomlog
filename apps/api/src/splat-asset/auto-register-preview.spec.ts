@@ -6,6 +6,10 @@ import { SplatAssetController } from "./splat-asset.controller";
 import { SplatAssetService } from "./splat-asset.service";
 import { parseCaptureFloorPlanInput } from "./splat-asset.types";
 
+// A4b — captureFloorPlan은 이제 SplatAsset.captureFloorPlan(intake/complete가 저장한 roomplan.json)에서
+// 읽는 게 기본 경로다. previewAutoRegister의 두 번째 인자는 override(요청 body, 주로 테스트·구버전 클라
+// fallback)이고, 생략하면 asset에 저장된 값을 읽는다.
+
 // A4a 자동정합 프리뷰 — floor-plan-match.spec.ts와 같은 L자 방(90°/180° 회전 대칭 없음) 픽스처를 써서
 // 이 스펙은 SplatAssetService.previewAutoRegister의 배선(소유자 도면 조회 우선순위 · PREVIEW ONLY(저장 안
 // 함) · 400/403 게이트)을 검증한다. 매처 자체의 기하 정확도(yaw/translation 복원, ambiguous/failed 분류)는
@@ -146,6 +150,42 @@ describe("SplatAssetService.previewAutoRegister", () => {
       BadRequestException
     );
   });
+
+  it("reads captureFloorPlan from the asset when no override is passed", async () => {
+    const asset = { id: "asset-1", floorPlanId: "fp-1", listingId: null, captureFloorPlan: lShapeCapture() };
+    const service = serviceWithFakes({
+      splatAsset: { findUnique: async () => asset },
+      floorPlan: { findUnique: async () => ({ room3d: { walls: lShapeOwnerWalls() } }) }
+    });
+
+    const result = await service.previewAutoRegister("asset-1");
+
+    assert.equal(result.floorPlanId, "fp-1");
+    assert.notEqual(result.confidence, "failed");
+  });
+
+  it("prefers the override over the asset's stored captureFloorPlan when both are given", async () => {
+    const asset = { id: "asset-1", floorPlanId: "fp-1", listingId: null, captureFloorPlan: { frame: "arkit-metric", walls: [], openings: [] } };
+    const service = serviceWithFakes({
+      splatAsset: { findUnique: async () => asset },
+      floorPlan: { findUnique: async () => ({ room3d: { walls: lShapeOwnerWalls() } }) }
+    });
+
+    // asset.captureFloorPlan has no walls (would reject on its own) — the override must win.
+    const result = await service.previewAutoRegister("asset-1", lShapeCapture());
+
+    assert.notEqual(result.confidence, "failed");
+  });
+
+  it("rejects when neither an override nor a stored captureFloorPlan is available", async () => {
+    const asset = { id: "asset-1", floorPlanId: "fp-1", listingId: null, captureFloorPlan: null };
+    const service = serviceWithFakes({
+      splatAsset: { findUnique: async () => asset },
+      floorPlan: { findUnique: async () => ({ room3d: { walls: lShapeOwnerWalls() } }) }
+    });
+
+    await assert.rejects(() => service.previewAutoRegister("asset-1"), BadRequestException);
+  });
 });
 
 describe("parseCaptureFloorPlanInput", () => {
@@ -235,6 +275,13 @@ describe("SplatAssetController auto-register-preview authorization", () => {
     const result = await controller.autoRegisterPreview("Bearer landlord", "asset-1", {
       captureFloorPlan: lShapeCapture()
     });
+    assert.deepEqual(calls, ["assertAssetOwner", "previewAutoRegister"]);
+    assert.equal(result.confidence, "auto");
+  });
+
+  it("allows an empty body through — captureFloorPlan is now optional (asset is the default source)", async () => {
+    const { calls, controller } = controllerWith({ roles: ["LANDLORD"], owns: true });
+    const result = await controller.autoRegisterPreview("Bearer landlord", "asset-1", {});
     assert.deepEqual(calls, ["assertAssetOwner", "previewAutoRegister"]);
     assert.equal(result.confidence, "auto");
   });
