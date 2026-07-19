@@ -387,6 +387,11 @@
   padding: var(--space-md) var(--space-lg);
 }
 
+.garaPayoutCard {
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(150px, .5fr);
+  align-items: center;
+}
+
 .requestMain > strong,
 .requestAmount > strong {
   color: var(--on-surface);
@@ -403,6 +408,11 @@
   align-content: flex-start;
   flex-wrap: wrap;
   gap: var(--space-xs) var(--space-md);
+}
+
+.garaPayoutDates {
+  display: grid;
+  gap: var(--space-xs);
 }
 
 .requestControls {
@@ -567,6 +577,16 @@
     grid-template-columns: minmax(0, 1fr) minmax(150px, .4fr);
   }
 
+  .garaPayoutCard {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, .5fr);
+  }
+
+  .garaPayoutCard .requestAmount {
+    grid-column: 1 / -1;
+    justify-items: start;
+    text-align: left;
+  }
+
   .requestControls {
     grid-column: 1 / -1;
   }
@@ -591,6 +611,10 @@
 
   .requestControls,
   .paymentCard > .secondaryButton {
+    grid-column: auto;
+  }
+
+  .garaPayoutCard .requestAmount {
     grid-column: auto;
   }
 }

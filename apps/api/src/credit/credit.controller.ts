@@ -132,6 +132,12 @@ export class CreditController {
     private readonly realtime?: RealtimeGateway
   ) {}
 
+  private notifyApprovedTopup(managerId: string, order: ManagerCreditTopupOrderView) {
+    if (order.status === "APPROVED") {
+      this.realtime?.notifyManagerCreditUpdated(managerId);
+    }
+  }
+
   @Get("gara/vendors")
   async listPublicGaraVendors() {
     return this.credit.listPublicGaraVendors();
@@ -148,9 +154,12 @@ export class CreditController {
 
   @Post("gara/vendor-payout-requests")
   async createPublicGaraVendorPayoutRequest(@Body() input: CreateGaraVendorPayoutInput) {
-    const request = await this.credit.createPublicGaraVendorPayoutRequest(input);
+    const result = await this.credit.createPublicGaraVendorPayoutRequest(input);
     this.realtime?.notifyGaraPayoutUpdated();
-    return request;
+    if (result.creditDebited) {
+      this.realtime?.notifyManagerCreditUpdated(result.managerId);
+    }
+    return result.request;
   }
 
   @Post("gara/socket-ticket")
@@ -172,14 +181,14 @@ export class CreditController {
     @Body() input: ConfirmManagerCreditTopupInput
   ) {
     const garaOrder = await this.credit.getGaraTopupOrder(orderId);
-    return publicTopupOrder(
-      await this.credit.confirmTopup(
-        garaOrder.managerId,
-        orderId,
-        input,
-        garaOrder.managerVendorId
-      )
+    const order = await this.credit.confirmTopup(
+      garaOrder.managerId,
+      orderId,
+      input,
+      garaOrder.managerVendorId
     );
+    this.notifyApprovedTopup(garaOrder.managerId, order);
+    return publicTopupOrder(order);
   }
 
   @Post("gara/vendor-credit-checkouts/:orderId/cancel")
@@ -252,6 +261,7 @@ export class CreditController {
   ) {
     const managerId = await this.credit.requireManager(authorization);
     const result = await this.credit.settleGaraVendorPayout(managerId, payoutRequestId, input);
+    this.realtime?.notifyManagerCreditUpdated(managerId);
     this.realtime?.notifyGaraPayoutUpdated();
     return { request: result.request, account: publicAccount(result.account) };
   }
@@ -272,7 +282,9 @@ export class CreditController {
     @Body() input: ConfirmManagerCreditTopupInput
   ) {
     const managerId = await this.credit.requireManager(authorization);
-    return publicTopupOrder(await this.credit.confirmTopup(managerId, orderId, input));
+    const order = await this.credit.confirmTopup(managerId, orderId, input);
+    this.notifyApprovedTopup(managerId, order);
+    return publicTopupOrder(order);
   }
 
   @Post("manager/credits/topup-orders/:orderId/reconcile")
@@ -281,7 +293,9 @@ export class CreditController {
     @Param("orderId") orderId: string
   ) {
     const managerId = await this.credit.requireManager(authorization);
-    return publicTopupOrder(await this.credit.reconcileTopup(managerId, orderId));
+    const order = await this.credit.reconcileTopup(managerId, orderId);
+    this.notifyApprovedTopup(managerId, order);
+    return publicTopupOrder(order);
   }
 
   @Post("manager/credits/topup-orders/:orderId/cancel")

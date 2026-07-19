@@ -52,6 +52,13 @@ export type CreatePublicGaraVendorPayoutRequestCommand = Readonly<{
   idempotencyKey: string;
 }>;
 
+/** 공개 지급 API 응답에서는 제거하는, 실시간 알림 전용 내부 결과다. */
+export type CreatePublicGaraVendorPayoutRequestResult = Readonly<{
+  managerId: string;
+  creditDebited: boolean;
+  request: GaraVendorPayoutRequestPublicView;
+}>;
+
 export type SettleGaraVendorPayoutCommand = Readonly<{
   managerId: string;
   payoutRequestId: string;
@@ -196,7 +203,7 @@ export interface CreditCommandRepository {
   ): Promise<CreateGaraVendorPayoutResult>;
   createPublicGaraVendorPayoutRequest(
     input: CreatePublicGaraVendorPayoutRequestCommand
-  ): Promise<GaraVendorPayoutRequestPublicView>;
+  ): Promise<CreatePublicGaraVendorPayoutRequestResult>;
   settleGaraVendorPayout(
     input: SettleGaraVendorPayoutCommand
   ): Promise<CreateGaraVendorPayoutResult>;
