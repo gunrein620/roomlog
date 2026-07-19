@@ -142,7 +142,11 @@ struct ObjectCaptureScanView: View {
         imagesDirectory: URL,
         onProgress: @escaping (Double) -> Void
     ) async throws -> URL {
-        let outputURL = FileManager.default.temporaryDirectory
+        // USDZ는 임시폴더가 아니라 Documents에 남긴다 — Info.plist의 UIFileSharingEnabled 덕에
+        // Files 앱에 노출되므로, 서버 업로드가 막히는 환경(로컬 api·S3 비활성 등)에서도
+        // AirDrop으로 결과물을 꺼내 검증할 수 있다. 업로드 경로는 그대로 이 URL을 쓴다.
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let outputURL = documents
             .appendingPathComponent("object-capture-\(UUID().uuidString).usdz")
 
         let session = try PhotogrammetrySession(
