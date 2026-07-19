@@ -26,14 +26,16 @@ export const groupLabel: Record<ExtractionGroup, string> = {
 export function ContractShell({
   id,
   title,
+  context = "관리 중인 집 · 계약서",
   children,
 }: {
   id: ManagerContractScreenId;
   title: ReactNode;
+  context?: ReactNode;
   children: ReactNode;
 }) {
   void id;
-  return <ManagerAppShell title={title} context="관리 중인 집 · 계약서">{children}</ManagerAppShell>;
+  return <ManagerAppShell title={title} context={context}>{children}</ManagerAppShell>;
 }
 
 export function PageStack({ children }: { children: React.ReactNode }) {
