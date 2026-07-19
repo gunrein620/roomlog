@@ -19,6 +19,7 @@ import type { UserAccount, UserRole } from "../roomlog/roomlog.types";
 import { RoomlogService } from "../roomlog/roomlog.service";
 import { SplatAssetService, type UploadedSplatAssetFile } from "./splat-asset.service";
 import {
+  parseCaptureFloorPlanInput,
   parseCreateInput,
   parseIntakeCompleteInput,
   parseIntakeInput,
@@ -105,6 +106,20 @@ export class SplatAssetController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
     await this.splatAssetService.assertAssetOwner(id, user.id);
     return this.splatAssetService.register(id, parseRegisterInput(body));
+  }
+
+  @Post(":id/auto-register-preview")
+  @HttpCode(200)
+  async autoRegisterPreview(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id") id: string,
+    @Body() body: unknown
+  ) {
+    // A4a — 도면 자동정합 프리뷰. 2점 수동 정합(PATCH :id/registration)과 동일하게 자산 소유자만
+    // 조회할 수 있다. 저장은 안 하므로(PREVIEW ONLY) 확정은 web이 register()를 별도로 호출한다.
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    await this.splatAssetService.assertAssetOwner(id, user.id);
+    return this.splatAssetService.previewAutoRegister(id, parseCaptureFloorPlanInput(body));
   }
 
   @Patch(":id/file")

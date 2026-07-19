@@ -1,5 +1,6 @@
 import type { RegistrationPointPair, SplatTransform } from "@/app/splat-tour/tour-types";
 import type {
+  RoomPlanCaptureFloorPlan,
   SplatAssetStatus,
   SplatIntakeCompleteRequest,
   SplatIntakePresignRequest,
@@ -313,6 +314,38 @@ export async function registerSplatAsset(
     body: JSON.stringify({ transform, registrationPairs, ...(floorPlanId ? { floorPlanId } : {}) })
   });
   return asJson<SplatAsset>(response);
+}
+
+export interface AutoRegisterPreviewCandidate {
+  transform: SplatTransform;
+  score: number;
+}
+
+export interface AutoRegisterPreviewResult {
+  best: AutoRegisterPreviewCandidate;
+  /** best를 제외한 나머지 후보, score 오름차순(더 나은 것 먼저). */
+  alternatives: AutoRegisterPreviewCandidate[];
+  confidence: "auto" | "ambiguous" | "failed";
+  /** 매칭에 쓴 소유자 도면이 서버 FloorPlan row일 때만 값을 가짐(TradeListing 스냅샷 매칭이면 null). */
+  floorPlanId: string | null;
+}
+
+/**
+ * A4a — RoomPlan(iOS) 캡처 도면 × 자산에 연결된 소유자 도면(walls3D)의 서버 자동정합 프리뷰.
+ * PREVIEW ONLY(서버가 저장하지 않음) — 확정은 registerSplatAsset을 별도로 호출한다.
+ * 시임: captureFloorPlan은 지금 클라이언트가 넘기지만, iOS 인테이크가 붙으면 서버가 자산에 저장된
+ * roomplan.json에서 직접 읽는 경로로 대체될 수 있다(이 함수 시그니처는 그대로 유지될 가능성이 높다).
+ */
+export async function previewAutoRegisterSplatAsset(
+  id: string,
+  captureFloorPlan: RoomPlanCaptureFloorPlan
+): Promise<AutoRegisterPreviewResult> {
+  const response = await fetch(apiUrl(`/splat-assets/${encodeURIComponent(id)}/auto-register-preview`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ captureFloorPlan })
+  });
+  return asJson<AutoRegisterPreviewResult>(response);
 }
 
 export async function deleteSplatAsset(id: string): Promise<{ id: string; deleted: boolean }> {
