@@ -4,7 +4,6 @@ import {
   ErrorState,
   ManagerVendorTable,
   VendorPageStack,
-  VendorScreenHeader,
   VendorSection,
 } from "../_components";
 import { ManagerVendorRegistrationDialog } from "./ManagerVendorRegistrationDialog";
@@ -21,14 +20,9 @@ export default async function ManagerVendorsPage({ searchParams }: { searchParam
     const activeVendors = result.data.filter((vendor) => vendor.status === "ACTIVE");
     return (
       <VendorPageStack>
-        <VendorScreenHeader
-          eyebrow="협력업체"
-          title="내 업체"
-          demo={result.source === "DEMO"}
-          actions={<ManagerVendorRegistrationDialog disabled={result.source === "DEMO"} />}
-        />
         <VendorSection
           title={`${activeVendors.length}개 업체`}
+          action={<ManagerVendorRegistrationDialog disabled={result.source === "DEMO"} />}
         >
           {activeVendors.length > 0 ? (
             <ManagerVendorTable
@@ -43,7 +37,6 @@ export default async function ManagerVendorsPage({ searchParams }: { searchParam
   } catch (error) {
     return (
       <VendorPageStack>
-        <VendorScreenHeader eyebrow="협력업체" title="내 업체" description="등록한 업체를 불러옵니다." />
         <ErrorState message={error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요."} />
       </VendorPageStack>
     );

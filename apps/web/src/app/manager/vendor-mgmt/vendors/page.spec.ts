@@ -26,7 +26,8 @@ const dialogStylesSource = existsSync(dialogStylesPath)
 
 test("manager vendor list opens registration in a modal instead of navigating", () => {
   assert.match(pageSource, /import \{ ManagerVendorRegistrationDialog \}/);
-  assert.match(pageSource, /actions=\{<ManagerVendorRegistrationDialog disabled=\{result\.source === "DEMO"\} \/>\}/);
+  assert.match(pageSource, /action=\{<ManagerVendorRegistrationDialog disabled=\{result\.source === "DEMO"\} \/>\}/);
+  assert.doesNotMatch(pageSource, /VendorScreenHeader/);
   assert.doesNotMatch(
     pageSource,
     /<LinkButton href=\{MANAGER_VENDOR_MGMT_PATHS\.search\}>업체 등록<\/LinkButton>/,
