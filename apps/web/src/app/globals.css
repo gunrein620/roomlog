@@ -3845,17 +3845,30 @@ p {
 }
 
 /* ── 사진 라이트박스 — 스테이지 영역 안에서만, 절대 밖으로 넘치지 않게(flex 체인) ── */
+/* 라이트박스 무대 모드가 스테이지만 덮도록 position:relative를 모든 폭에서 보장한다
+   (데스크톱 전용이던 규칙 — 모바일 스택 레이아웃에서도 absolute 기준이 된다). */
+.detail-hero-stage {
+  position: relative;
+}
+
 .photo-lightbox-backdrop {
-  /* fixed 풀스크린 — absolute(스테이지 한정)면 큰 사진과 거의 같은 크기라 "확대"가 성립하지 않는다 */
-  position: fixed;
+  /* 기본은 무대(스테이지) 안에서만 커진다 — 부모 .detail-hero-stage(position:relative) 기준 absolute.
+     3D 히어로: 필름스트립 클릭 → 무대 크기, 헤더 확대 버튼으로 .is-fullscreen(풀스크린) 승격. */
+  position: absolute;
   inset: 0;
-  z-index: 120;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding: 16px 20px 20px;
   background: rgba(8, 6, 20, 0.86);
   backdrop-filter: blur(6px);
+}
+
+/* 확대 2단계(또는 도면 없는 사진 히어로) — 스테이지를 벗어나 화면 전체를 덮는다. */
+.photo-lightbox-backdrop.is-fullscreen {
+  position: fixed;
+  z-index: 120;
 }
 
 /* 사진이 스테이지를 거의 채운다 — 헤더(카운터·닫기)만 남기고 나머지는 이미지 */
@@ -3886,6 +3899,11 @@ p {
   font-weight: 600;
 }
 
+.photo-lightbox header .photo-lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .photo-lightbox header button {
   display: grid;
   place-items: center;
@@ -6729,6 +6747,8 @@ p {
   width: 100%;
   height: 100%;
   padding: 12px;
+  /* button으로도 쓰이므로(빈 상태 진입) 기본 버튼 배경을 지운다 */
+  background: none;
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 700;
@@ -6839,6 +6859,8 @@ p {
   justify-self: end;
   width: fit-content;
   margin-top: 2px;
+  /* button으로도 쓰이므로(다시 열기) 기본 버튼 배경을 지운다 */
+  background: none;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
@@ -7116,6 +7138,12 @@ p {
 
 .owner-step1-fields > label.owner-w-md {
   max-width: 360px;
+}
+
+/* 매물유형·거래유형처럼 select인 md 필드는 값이 짧아 답답해 보이므로 한 단계 넓힌다
+   (텍스트 입력인 건물명·세부주소는 360px 유지). */
+.owner-step1-fields > label.owner-w-md:has(> select) {
+  max-width: 480px;
 }
 
 .owner-step1-fields > label.owner-w-sm {

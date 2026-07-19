@@ -6,7 +6,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Box, Braces, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
+import { Box, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
 import type { PlacedFurniture, WheretoputWall3D } from "@/app/floor-plan-3d/room-model/types";
@@ -1197,8 +1197,10 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
             </div>
 
             <span className="owner-group-caption">3D 도면</span>
-            {/* 3D 패널 — 박스는 프리뷰/빈 상태 표시용이고, 진입은 아래 버튼(MitUNet 내부 에디터)으로 한다.
-                도면 JSON 숨은 드롭도 카드에서 계속 지원(개발자용, dragover 시각 피드백은 일부러 없음). */}
+            {/* 3D 패널 — 빈 박스 클릭 자체가 "3D 도면 만들기"(내부 MitUNet 에디터로 같은 탭 이동).
+                도면 있는 상태는 오빗 프리뷰라 박스를 클릭요소로 못 감싸서(드래그=카메라 조작),
+                박스 아래 작은 "다시 열기" 텍스트 버튼으로 에디터 재진입 경로만 남긴다.
+                도면 JSON은 카드 숨은 드롭으로만 지원(개발자용, dragover 시각 피드백은 일부러 없음). */}
             <div className="summary-media-col">
               <div
                 className={`summary-media-card summary-media-3d${floorPlan3D ? "" : " is-empty"}`}
@@ -1222,39 +1224,23 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                     onWallPointerDown={() => {}}
                   />
                 ) : (
-                  <div className="summary-media-empty">
+                  // 빈 박스 = 진입 버튼. openMitunetEditor가 폼 draft(localStorage)·사진(IndexedDB)을
+                  // 저장하고 같은 탭에서 내부 MitUNet 에디터로 이동하므로 새 탭이 필요 없다.
+                  <button type="button" className="summary-media-empty" onClick={openMitunetEditor}>
                     <Box size={22} aria-hidden="true" />
-                    <span>3D 도면을 만들면 여기에서 돌려볼 수 있어요</span>
-                  </div>
+                    <span>눌러서 3D 도면을 만들어요 ↗</span>
+                  </button>
                 )}
               </div>
 
-              {/* 미리보기 아래 2개 버튼 — 도면 만들기(에디터로 이동) / 도면 JSON 업로드 */}
-              <div className="summary-media-actions">
-                {/* 같은 RoomLog 탭에서 내부 MitUNet 페이지로 이동한다. 폼 draft는 localStorage,
-                    사진은 IndexedDB에 저장해 변환 완료 후 등록 화면으로 돌아와도 유지한다. */}
-                <button
-                  type="button"
-                  className="summary-media-btn"
-                  onClick={openMitunetEditor}
-                >
-                  <Box size={16} strokeWidth={2.2} aria-hidden="true" />
-                  {has3DRoom ? "새 3D 도면 만들기" : "3D 도면 만들기"}
+              {/* floorPlan3D 기준(has3DRoom이 아니라) — 박스가 실제로 프리뷰를 그리고 있을 때만 재진입 버튼을 보여줘야
+                  "복원 시 has3DRoom은 true인데 스냅샷이 없어 박스는 빈 상태"인 경우 버튼·빈 상태 안내가 동시에 뜨는 걸 막는다. */}
+              {floorPlan3D ? (
+                <button type="button" className="summary-media-json-link" onClick={openMitunetEditor}>
+                  <Box size={13} strokeWidth={2.2} aria-hidden="true" />
+                  다시 열기 ↗
                 </button>
-                <label className="summary-media-btn summary-media-btn--ghost">
-                  <Braces size={16} strokeWidth={2.2} aria-hidden="true" />
-                  도면 JSON 업로드
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    aria-label="도면 JSON 업로드"
-                    onChange={(event) => {
-                      handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                </label>
-              </div>
+              ) : null}
             </div>
 
             <span className="owner-group-caption">투어 영상</span>

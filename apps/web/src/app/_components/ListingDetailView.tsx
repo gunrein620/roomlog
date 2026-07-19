@@ -10,6 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Maximize2,
+  Minimize2,
   Play,
   Star,
   MapPinned,
@@ -58,6 +60,9 @@ export function ListingDetailView({
   // 무대 레이아웃 통합으로 갤러리 탭 상태는 사라짐 — 대표 사진은 첫 장, 나머지는 라이트박스가 담당.
   // 사진 라이트박스 — 3D 히어로에선 필름스트립 클릭, 사진 히어로에선 대표 사진 클릭으로 연다.
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // 라이트박스 확대 단계 — 3D 히어로에선 먼저 무대(스테이지) 크기로 열리고, 헤더의 확대를 누르면 풀스크린으로 승격.
+  // 사진 히어로(도면 없음)는 무대가 곧 큰 사진이라 처음부터 풀스크린으로 열고 이 토글을 노출하지 않는다.
+  const [lightboxFullscreen, setLightboxFullscreen] = useState(false);
   // 사진 히어로(도면 없음)의 큰 사진 인덱스 — 필름스트립·양옆 화살표가 이 자리에서 사진을 넘긴다(라이트박스 아님).
   const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
   // 3D 도면이 있으면 3D가 히어로(사진은 필름스트립), 없으면 기존 사진 갤러리가 히어로.
@@ -274,9 +279,17 @@ export function ListingDetailView({
         </div>
       )}
 
-      {/* 사진 라이트박스 — 화면 전체가 아니라 스테이지(히어로) 영역 안에서만 커진다(시안). */}
+      {/* 사진 라이트박스 — 3D 히어로에선 먼저 무대(스테이지) 크기로 열리고(부모 .detail-hero-stage 기준),
+          헤더 확대 버튼으로 풀스크린 승격. 사진 히어로(도면 없음)는 무대가 곧 큰 사진이라 처음부터 풀스크린. */}
       {lightboxIndex !== null ? (
-        <div className="photo-lightbox-backdrop" role="presentation" onClick={() => setLightboxIndex(null)}>
+        <div
+          className={`photo-lightbox-backdrop${!has3DHero || lightboxFullscreen ? " is-fullscreen" : ""}`}
+          role="presentation"
+          onClick={() => {
+            setLightboxIndex(null);
+            setLightboxFullscreen(false);
+          }}
+        >
           <div
             className="photo-lightbox"
             role="dialog"
@@ -284,12 +297,34 @@ export function ListingDetailView({
             aria-label={`${listing.title} 사진 크게 보기`}
             onClick={(event) => event.stopPropagation()}
           >
-            {/* 매물 이름은 헤더 오버레이에 이미 있다 — 카운터만 */}
+            {/* 매물 이름은 헤더 오버레이에 이미 있다 — 카운터 + (3D 히어로 한정) 무대↔풀스크린 확대 토글 */}
             <header>
               <strong>{lightboxIndex + 1} / {listing.gallery.length}</strong>
-              <button type="button" aria-label="사진 닫기" onClick={() => setLightboxIndex(null)}>
-                <X size={20} strokeWidth={2.6} />
-              </button>
+              <div className="photo-lightbox-actions">
+                {has3DHero ? (
+                  <button
+                    type="button"
+                    aria-label={lightboxFullscreen ? "무대 크기로 줄이기" : "전체화면으로 크게 보기"}
+                    onClick={() => setLightboxFullscreen((value) => !value)}
+                  >
+                    {lightboxFullscreen ? (
+                      <Minimize2 size={18} strokeWidth={2.6} />
+                    ) : (
+                      <Maximize2 size={18} strokeWidth={2.6} />
+                    )}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label="사진 닫기"
+                  onClick={() => {
+                    setLightboxIndex(null);
+                    setLightboxFullscreen(false);
+                  }}
+                >
+                  <X size={20} strokeWidth={2.6} />
+                </button>
+              </div>
             </header>
             <div className="photo-lightbox-stage">
               <Image

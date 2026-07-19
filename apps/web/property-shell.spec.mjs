@@ -1217,7 +1217,7 @@ test("shows a landlord my page with property registration fields and media actio
     "층수",
     "사진·3D 자료",
     "사진 업로드",
-    "3D 도면 만들기",
+    "눌러서 3D 도면을 만들어요",
     "3D 투어용 영상·캡처 파일을 끌어다 놓거나 눌러서 올려요",
     "등록 요약",
     "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
@@ -1563,7 +1563,8 @@ test("links the landlord 3D floor plan action to the internal MitUNet page", () 
   assert.doesNotMatch(pageSource, /buildMitunetEditorUrl/);
   assert.doesNotMatch(pageSource, /window\.open/);
   assert.doesNotMatch(pageSource, /href="\/floor-plan-3d"/);
-  assert.match(pageSource, /3D 도면 만들기/);
+  // 진입은 빈 3D 박스 클릭 자체(내부 MitUNet 에디터로 이동) — 별도 "만들기" 버튼 없이 박스가 버튼이다.
+  assert.match(pageSource, /눌러서 3D 도면을 만들어요/);
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 
