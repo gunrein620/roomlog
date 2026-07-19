@@ -369,7 +369,9 @@ export class RoomlogContractDomain {
     const extractionCount = this.store.contractExtractions.length;
     const privacyCount = this.store.contractPrivacies.length;
 
-    if (!resolved.room) this.store.rooms.push(room);
+    // room은 (건물명, 호수) fallback으로 기존 방이 재사용됐을 수 있다 — resolved.room만 보면
+    // 재사용 방을 같은 id로 한 번 더 push해 스토어에 중복 항목이 생긴다.
+    if (!this.store.rooms.some((item) => item.id === room.id)) this.store.rooms.push(room);
     this.store.contracts.push(contract);
     this.store.contractExtractions.push(extraction);
     this.store.contractPrivacies.push(privacy);
