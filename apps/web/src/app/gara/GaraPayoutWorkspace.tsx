@@ -1,9 +1,11 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { GaraVendorCreditPublicView } from "@roomlog/types";
 import { createGaraVendorPayoutRequest } from "@/lib/gara-credit-api";
+import { getGaraRealtimeSocket } from "@/lib/realtime-client";
 import styles from "./GaraPayoutWorkspace.module.css";
 
 function won(value: number): string {
@@ -107,6 +109,17 @@ function GaraPayoutRow({ vendor }: { vendor: GaraVendorCreditPublicView }) {
 }
 
 export function GaraPayoutWorkspace({ vendors }: { vendors: GaraVendorCreditPublicView[] }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const socket = getGaraRealtimeSocket();
+    const refresh = () => router.refresh();
+    socket.on("gara:payout-updated", refresh);
+    return () => {
+      socket.off("gara:payout-updated", refresh);
+    };
+  }, [router]);
+
   return (
     <section className={styles.workspace}>
       <p className={styles.feedback}>

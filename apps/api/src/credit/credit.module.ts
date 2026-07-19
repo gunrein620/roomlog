@@ -6,6 +6,7 @@ import {
   type OnModuleDestroy
 } from "@nestjs/common";
 import { DomainEventsModule } from "../domain-events/domain-events.module";
+import { RealtimeModule } from "../realtime/realtime.module";
 import {
   DOMAIN_EVENT_REPOSITORY,
   type DomainEventRepository
@@ -159,7 +160,7 @@ class CreditPersistenceLifecycle implements OnModuleDestroy {
 }
 
 @Module({
-  imports: [DomainEventsModule],
+  imports: [DomainEventsModule, RealtimeModule],
   controllers: [CreditController, RepairPaymentOrderController],
   providers: [
     {

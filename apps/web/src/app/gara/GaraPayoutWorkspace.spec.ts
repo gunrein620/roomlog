@@ -38,3 +38,11 @@ test("Gara never launches a Toss checkout or immediately debits credit", () => {
   assert.doesNotMatch(source, /createTossWidgets/);
   assert.doesNotMatch(source, /vendor-credit-checkouts/);
 });
+
+test("Gara refreshes its public credit view when a payout websocket event arrives", () => {
+  const source = readFileSync(workspacePath, "utf8");
+
+  assert.match(source, /getGaraRealtimeSocket/);
+  assert.match(source, /gara:payout-updated/);
+  assert.match(source, /router\.refresh\(\)/);
+});

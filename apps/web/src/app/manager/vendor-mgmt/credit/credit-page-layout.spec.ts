@@ -21,4 +21,8 @@ test("starts the credit page with payment policy instead of settlement overview"
   assert.doesNotMatch(workspaceSource, /topupOrders/);
   assert.match(workspaceSource, /자동결제 정책/);
   assert.match(workspaceSource, /업체 지급 요청/);
+  assert.match(workspaceSource, /garaPayoutRequests/);
+  assert.match(workspaceSource, /getRealtimeSocket/);
+  assert.match(workspaceSource, /gara:payout-updated/);
+  assert.doesNotMatch(workspaceSource, /<h2>Gara 업체 지급 요청<\/h2>/);
 });

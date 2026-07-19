@@ -29,6 +29,8 @@ import type {
 } from "@roomlog/types";
 import { CreditService } from "./credit.service";
 import { publicRepairPaymentOrder } from "./repair-payment-order-public";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { issuePublicGaraSocketTicket } from "../realtime/socket-ticket";
 
 function publicTopupOrder(
   order: ManagerCreditTopupOrderView
@@ -125,7 +127,10 @@ function optionalPositiveInteger(value: string | undefined) {
 
 @Controller()
 export class CreditController {
-  constructor(private readonly credit: CreditService) {}
+  constructor(
+    private readonly credit: CreditService,
+    private readonly realtime?: RealtimeGateway
+  ) {}
 
   @Get("gara/vendors")
   async listPublicGaraVendors() {
@@ -142,8 +147,15 @@ export class CreditController {
   }
 
   @Post("gara/vendor-payout-requests")
-  createPublicGaraVendorPayoutRequest(@Body() input: CreateGaraVendorPayoutInput) {
-    return this.credit.createPublicGaraVendorPayoutRequest(input);
+  async createPublicGaraVendorPayoutRequest(@Body() input: CreateGaraVendorPayoutInput) {
+    const request = await this.credit.createPublicGaraVendorPayoutRequest(input);
+    this.realtime?.notifyGaraPayoutUpdated();
+    return request;
+  }
+
+  @Post("gara/socket-ticket")
+  issuePublicGaraSocketTicket() {
+    return { ticket: issuePublicGaraSocketTicket() };
   }
 
   @Get("gara/vendor-credit-checkouts/:orderId")
@@ -240,6 +252,7 @@ export class CreditController {
   ) {
     const managerId = await this.credit.requireManager(authorization);
     const result = await this.credit.settleGaraVendorPayout(managerId, payoutRequestId, input);
+    this.realtime?.notifyGaraPayoutUpdated();
     return { request: result.request, account: publicAccount(result.account) };
   }
 

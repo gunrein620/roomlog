@@ -45,8 +45,13 @@ describe("public Gara payout requests", () => {
   });
 
   it("exposes an unauthenticated endpoint for sending the request", async () => {
+    let broadcasts = 0;
     const controller = new CreditController({
       createPublicGaraVendorPayoutRequest: async () => ({ id: "gara-payout-1" })
+    } as never, {
+      notifyGaraPayoutUpdated: () => {
+        broadcasts += 1;
+      }
     } as never);
     const handler = (controller as unknown as {
       createPublicGaraVendorPayoutRequest?: (input: unknown) => Promise<unknown>;
@@ -56,5 +61,7 @@ describe("public Gara payout requests", () => {
     assert.equal(Reflect.getMetadata(PATH_METADATA, handler as object), "gara/vendor-payout-requests");
     assert.equal(Reflect.getMetadata(METHOD_METADATA, handler as object), RequestMethod.POST);
     assert.equal((handler as Function).length, 1);
+    await handler?.call(controller, { managerVendorId: "manager-vendor-1", amount: 50_000 });
+    assert.equal(broadcasts, 1);
   });
 });
