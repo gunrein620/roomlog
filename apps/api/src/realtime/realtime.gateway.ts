@@ -62,4 +62,9 @@ export class RealtimeGateway implements OnGatewayConnection {
   notifyGaraPayoutUpdated() {
     this.server?.emit("gara:payout-updated", { kind: "payout" });
   }
+
+  /** 크레딧이 바뀐 관리인에게만 최신 잔액을 다시 읽으라는 신호를 보낸다. */
+  notifyManagerCreditUpdated(managerId: string) {
+    this.notifyUsers([managerId], "manager:credit-updated", { kind: "credit" });
+  }
 }

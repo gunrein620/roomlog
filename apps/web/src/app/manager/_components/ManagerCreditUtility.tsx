@@ -24,6 +24,7 @@ import {
   MANAGER_CREDIT_BALANCE_CHANGED_EVENT,
   OPEN_MANAGER_CREDIT_TOPUP_EVENT,
 } from "@/lib/vendor-credit-events";
+import { getRealtimeSocket } from "@/lib/realtime-client";
 import { launchTossPaymentOutsideDialog } from "./manager-credit-payment-dialog-transition";
 import styles from "./ManagerCreditUtility.module.css";
 
@@ -259,17 +260,20 @@ export function ManagerCreditUtility() {
   useEffect(() => {
     const openFromWorkspace = () => openDialog();
     const refreshFromWorkspace = () => void loadAccount();
+    const socket = getRealtimeSocket();
     window.addEventListener(OPEN_MANAGER_CREDIT_TOPUP_EVENT, openFromWorkspace);
     window.addEventListener(
       MANAGER_CREDIT_BALANCE_CHANGED_EVENT,
       refreshFromWorkspace,
     );
+    socket.on("manager:credit-updated", refreshFromWorkspace);
     return () => {
       window.removeEventListener(OPEN_MANAGER_CREDIT_TOPUP_EVENT, openFromWorkspace);
       window.removeEventListener(
         MANAGER_CREDIT_BALANCE_CHANGED_EVENT,
         refreshFromWorkspace,
       );
+      socket.off("manager:credit-updated", refreshFromWorkspace);
     };
   }, [loadAccount]);
 

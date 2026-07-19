@@ -28,6 +28,9 @@ test("starts the credit page with payment policy instead of settlement overview"
   assert.match(workspaceSource, /garaPayoutRequests/);
   assert.match(workspaceSource, /getRealtimeSocket/);
   assert.match(workspaceSource, /gara:payout-updated/);
+  assert.match(workspaceSource, /manager:credit-updated/);
+  assert.match(workspaceSource, /socket\.on\("manager:credit-updated", refreshWorkspace\)/);
+  assert.match(workspaceSource, /socket\.off\("manager:credit-updated", refreshWorkspace\)/);
   assert.doesNotMatch(workspaceSource, /<h2>Gara 업체 지급 요청<\/h2>/);
 });
 

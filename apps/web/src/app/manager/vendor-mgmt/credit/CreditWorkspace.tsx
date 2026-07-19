@@ -287,8 +287,10 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
       void refreshWorkspace().catch(() => undefined);
     };
     socket.on("gara:payout-updated", refreshGaraPayouts);
+    socket.on("manager:credit-updated", refreshWorkspace);
     return () => {
       socket.off("gara:payout-updated", refreshGaraPayouts);
+      socket.off("manager:credit-updated", refreshWorkspace);
     };
   }, [refreshWorkspace]);
 

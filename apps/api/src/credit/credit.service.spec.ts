@@ -259,3 +259,22 @@ describe("CreditController public Gara checkout", () => {
     assert.equal(confirmCalls, 0);
   });
 });
+
+describe("CreditController credit balance realtime updates", () => {
+  it("notifies only the credited manager after a successful top-up confirmation", async () => {
+    const notifications: string[] = [];
+    const controller = new CreditController({
+      requireManager: async () => "manager-1",
+      confirmTopup: async () => ({ ...readyOrder, status: "APPROVED" as const }),
+    } as never, {
+      notifyManagerCreditUpdated: (managerId: string) => notifications.push(managerId),
+    } as never);
+
+    await controller.confirmTopup("Bearer manager-token", "roomlog-credit-1", {
+      paymentKey: "payment-1",
+      amount: 10_000,
+    });
+
+    assert.deepEqual(notifications, ["manager-1"]);
+  });
+});
