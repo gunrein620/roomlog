@@ -8,7 +8,7 @@ import { MANAGER_VENDOR_MGMT_NAV, MANAGER_VENDOR_MGMT_PATHS } from "./vendor-mgm
 
 export type ManagerNavItemId =
   | "dashboard" | "listing" | "contract" | "billing" | "cost" | "ticket"
-  | "messaging" | "moveout" | "vendor" | "report" | "assistant" | "settings";
+  | "messaging" | "moveout" | "vendor" | "report" | "assistant";
 
 export type ManagerTicketView = "dashboard" | "management";
 export interface ManagerNavChild {
@@ -155,19 +155,6 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         href: MANAGER_CROSS.realtimeAgent,
         icon: "assistant",
         activePrefixes: ["/manager/agent"],
-        children: [],
-      },
-    ],
-  },
-  {
-    label: "계정",
-    items: [
-      {
-        id: "settings",
-        label: "설정",
-        href: MHOME_ROUTES["M-HOME-06"],
-        icon: "settings",
-        activePrefixes: [MHOME_ROUTES["M-HOME-06"]],
         children: [],
       },
     ],

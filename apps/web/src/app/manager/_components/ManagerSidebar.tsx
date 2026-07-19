@@ -14,7 +14,6 @@ import {
   LogOut,
   MessageSquare,
   Receipt,
-  Settings,
   WalletCards,
   Wrench,
   X,
@@ -41,7 +40,6 @@ const MANAGER_NAV_ICONS: Record<ManagerNavItemId, LucideIcon> = {
   vendor: ContactRound,
   report: BarChart3,
   assistant: Bot,
-  settings: Settings,
 };
 
 export interface ManagerSidebarProps {
