@@ -121,6 +121,8 @@
   --manager-sidebar-width: 256px;
   --manager-assistant-width: 320px;
   --manager-assistant-compact-width: 280px;
+  /* AI 비서 사이드패널(스플릿 뷰) — 화면 절반, 대형 모니터에선 상한 고정 */
+  --manager-assistant-panel-width: min(50vw, 760px);
   --manager-content-max: 1600px;
 
   /* --- stacking --- */
