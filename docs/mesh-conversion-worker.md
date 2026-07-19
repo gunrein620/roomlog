@@ -4,8 +4,10 @@
 C-2). 웹 뷰어(three.js)는 USDZ를 못 읽으므로 GLB로 변환해야 하고, 그 변환을 맡는 게 이 문서가 다루는
 `services/mesh-worker/`다.
 
-**상태(2026-07-20 작성)**: 코드는 완성됐지만 **실제 Blender에서 한 번도 실행해보지 못했다**(개발
-샌드박스에 Blender 미설치). 아래 "배포 전 반드시 확인" 섹션을 거치기 전엔 프로덕션에 올리지 말 것.
+**상태(2026-07-20)**: 코드 완성 + 단위검증 34/34 통과 + **컨테이너 이미지 빌드 성공 확인(654MB)**.
+다만 **Blender에서 실제 변환을 한 번도 성공시키지 못했다** — 실물 USDZ로 시도했으나 `docker run`이
+무응답이어서 결론을 못 냈다(아래 "검증 로그" 참고). 아래 "배포 전 반드시 확인" 섹션을 거치기 전엔
+프로덕션에 올리지 말 것.
 
 ---
 
@@ -93,7 +95,7 @@ GPU_* 계열과 동일하게 `.env.example`엔 올리지 않았다(둘 다 PROD_
 
 ## 배포 전 반드시 확인 (사람 손 TODO)
 
-- [ ] **Dockerfile 빌드가 실제로 성공하는가.** `docker build -f services/mesh-worker/Dockerfile -t mesh-worker:test .` — 이 문서 작성 시점에 로컬에서 빌드를 시도했다(아래 "검증 로그" 참고). apt 패키지 이름은 Debian 버전이 바뀌면 달라질 수 있다(`libgl1` 계열이 특히 자주 바뀜).
+- [x] **Dockerfile 빌드가 실제로 성공하는가.** ✅ **확인됨(2026-07-20).** `mesh-worker:test` 이미지 생성 완료, **654MB**. 빌드는 20분 이상 걸렸다(Blender tar.xz 다운로드·압축해제가 대부분) — 프로덕션 호스트에서 처음 올릴 때 이 시간을 예산에 넣을 것. apt 패키지 이름은 Debian 버전이 바뀌면 달라질 수 있다(`libgl1` 계열이 특히 자주 바뀜).
 - [ ] **Blender가 headless로 실제 실행되는가.** `docker run --rm mesh-worker:test /opt/blender/blender --background --version` — 공유 라이브러리 누락 시 `error while loading shared libraries` 로 죽는다. 하나씩 apt로 채워야 한다.
 - [ ] **usdz_to_glb.py의 Blender API가 설치된 버전과 맞는가.** `bpy.ops.wm.usd_import`/`export_scene.gltf`의 파라미터 이름은 Blender 마이너 버전 간 바뀐 적이 있다. 실제 Object Capture USDZ 샘플(캡처앱으로 뽑은 실물)로 한 번 돌려보고 GLB를 3D 뷰어로 열어 형태가 맞는지 확인할 것.
 - [ ] **스케일이 진짜 보존되는가.** `convert.mjs`의 `assertScalePreserved`(±5%)가 통과해도 그건 "Blender import 시점 bbox ↔ export 시점 bbox"가 서로 어긋나지 않았다는 것만 보장한다 — **원본 USDZ의 실측 미터와 일치하는지는 별도로 줄자 대조가 필요하다**(`docs/tenant-furniture-fit.md`의 2026-07-20 실기 검증 절차를 재사용). 첫 실제 변환 결과물을 `apps/web`의 가구 미리보기(`mesh-anchor.ts`가 소비하는 화면)에 띄워 눈으로도 확인할 것.
@@ -104,7 +106,16 @@ GPU_* 계열과 동일하게 `.env.example`엔 올리지 않았다(둘 다 PROD_
 
 - `apps/api`: `pnpm build:api` 통과, `node --test -r ts-node/register src/tenant-furniture/*.spec.ts` 34개 전부 통과(디스패치 성공/실패, presign 누락, usdzUrl 누락, 워커 미배선, HTTP 200/4xx/5xx/네트워크에러 케이스 포함).
 - `services/mesh-worker`: Node 문법 체크 통과, `gltf-bbox.mjs`를 합성 GLB JSON 청크로 단위 스모크(정상적으로 min/max 추출 확인), `server.mjs`를 Blender 없이 기동해 `/healthz`(503, blender missing)·`/convert`(시크릿 없음/오답 403·정상 시크릿인데 blender 없음 503) 응답 확인.
-- `services/mesh-worker/Dockerfile`: 이미지 빌드를 실제로 시도함 — 성공/실패 여부는 이 문서를 갱신한 커밋 메시지 또는 작업 보고를 확인. **Blender 자체의 headless 실행(usd_import/export_scene.gltf 호출)은 컨테이너 밖에서 검증할 방법이 없어 미검증으로 남아 있다.**
+- `services/mesh-worker/Dockerfile`: **이미지 빌드 성공 확인(2026-07-20, `mesh-worker:test` 654MB).**
+- **실물 변환 시도 — 미완(2026-07-20 새벽).** 실제 Object Capture USDZ(의자, 9.9MB, `docs/tenant-furniture-fit.md`의 실측 검증에 쓴 바로 그 파일)로 컨테이너 안에서 `usdz_to_glb.py`를 돌려 위 2·3·4번을 한꺼번에 닫으려 했으나 **결론을 내지 못했다**: `docker run`이 7분 넘게 stdout/stderr를 전혀 내지 않았다. 원인 미규명 — 유력 후보는 ① 좀비 빌드 프로세스가 데몬을 물고 있던 여파(`docker images`조차 120초 무응답이었다) ② **Docker Desktop 파일공유 경로 문제** — 마운트한 입력 경로가 `/private/tmp/...` 스크래치패드였는데 Docker Desktop이 공유 허용하지 않는 경로면 컨테이너가 정상 기동하지 못할 수 있다. **다음 시도 때는 입력을 레포 안(예: `services/mesh-worker/.tmp/`)에 두고 돌릴 것.** 재현 명령:
+  ```
+  docker run --rm -v <입력디렉토리>:/work \
+    -v $PWD/services/mesh-worker/blender:/blender:ro \
+    --entrypoint blender mesh-worker:test \
+    --background --factory-startup --python /blender/usdz_to_glb.py \
+    -- /work/in.usdz /work/out.glb /work/meta.json
+  ```
+  기대값: 산출 GLB의 bbox가 **0.727 × 0.806 × 0.775 m**(원본 USDZ extent)와 일치. 높이(Y)가 특히 신뢰할 수 있는 축이다 — X·Z는 촬영 볼륨에 잘려 있어 원본 자체가 과대추정이지만, **변환 전후 비교**이므로 세 축 모두 보존돼야 정상이다.
 
 ## 로컬에서 워커만 단독 실행해 찔러보기
 
