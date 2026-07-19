@@ -12,7 +12,6 @@ export const MANAGER_TICKET_ROUTES = {
   "M-DASH-00": "/manager/ticket/dash/00",
   "M-DASH-01": "/manager/ticket/dash/01",
   "M-DASH-02": "/manager/ticket/dash/02",
-  "M-DASH-05": "/manager/ticket/dash/05",
   "M-DASH-E0": "/manager/ticket/dash/e0",
   "M-CALL-00": "/manager/ticket/call/00",
   "M-CALL-01": "/manager/ticket/call/01",

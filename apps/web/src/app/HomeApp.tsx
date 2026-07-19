@@ -306,6 +306,7 @@ const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   queryType: "neighborhood",
   precision: "neighborhood"
 };
+const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 const MAP_SEARCH_RADIUS_M = 2500;
 const MAP_SEARCH_RADIUS_BY_PRECISION: Record<MapQueryPrecision, number> = {
   neighborhood: MAP_SEARCH_RADIUS_M,
@@ -1637,6 +1638,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         setMapSearchMatchedListingNos([]);
         setHasResolvedMapContext(true);
         setSelectedArea(CURRENT_LOCATION_AREA_LABEL);
+        setMapTopbarSearchValue("");
         setActiveMapResultTab("rooms");
         setMapLocationStatus("granted");
       },
@@ -1673,6 +1675,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
   const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
+  const mapTopbarDisplaySearchValue = mapTopbarInputValueForArea(mapTopbarSearchValue);
   const hasVisibleMapContext = hasResolvedMapContext && mapQueryStatus !== "fallback";
   const mapAreaTitle =
     hasResolvedMapContext || mapQueryStatus === "fallback" ? selectedAreaTitle : "";
@@ -2281,9 +2284,9 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   };
 
   const submitMapTopbarSearch = async () => {
-    const keyword = mapTopbarSearchValue.trim();
+    const keyword = mapTopbarDisplaySearchValue.trim();
     if (!keyword) {
-      setMapTopbarSearchValue(mapTopbarInputValueForArea(selectedArea));
+      setMapTopbarSearchValue("");
       return;
     }
 
@@ -2734,7 +2737,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <label>
               <Search size={20} strokeWidth={2.4} aria-hidden="true" />
               <input
-                value={mapTopbarSearchValue}
+                value={mapTopbarDisplaySearchValue}
                 onChange={(event) => setMapTopbarSearchValue(event.target.value)}
                 aria-label="지도 검색어"
                 placeholder="동네, 역, 주소 검색"

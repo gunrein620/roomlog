@@ -475,17 +475,6 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
       amount: request.amount,
     };
 
-    if (request.status === "WAITING_COMPLETION") {
-      return (
-        <Link
-          className={styles.secondaryButton}
-          href={`/manager/ticket/dash/05?id=${encodeURIComponent(request.ticketId ?? "")}&repairId=${encodeURIComponent(request.repairId)}`}
-        >
-          완료 검토 화면으로
-        </Link>
-      );
-    }
-
     if (!isCorrectionStatus(request.status)) return null;
 
     return (
