@@ -89,6 +89,22 @@ test("turns the empty landing screen into a guided left entry card", async () =>
   assert.match(css, /body\.upload-empty #ui #upload-btn\s*\{[\s\S]*?position:\s*static;/);
 });
 
+test("keeps the legacy upload controls off the loaded 3D workspace", async () => {
+  const html = await readFile(viewerPath, "utf8");
+  const css = readViewerStyle(html);
+
+  assert.doesNotMatch(css, /body:not\(\.view-original\):not\(\.view-furnishing\) #upload-btn/);
+  for (const selector of [
+    "body:not(.upload-empty) #ui > h1",
+    "body:not(.upload-empty) #upload-label",
+    "body:not(.upload-empty) #upload-btn",
+    "body:not(.upload-empty) #status",
+  ]) {
+    assert.ok(css.includes(selector), `missing loaded-workspace hide selector: ${selector}`);
+  }
+  assert.match(css, /body:not\(\.upload-empty\) \.landing-feature-row\s*\{\s*display:\s*none;/);
+});
+
 test("keeps the existing viewer hooks and integration request paths intact", async () => {
   const html = await readFile(viewerPath, "utf8");
 

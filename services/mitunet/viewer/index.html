@@ -178,6 +178,15 @@
   }
   #ui { flex: 0 0 auto; }
   #landing-intro { display: none; }
+  /* The landing card owns upload-only copy. Once a plan is open, keep the
+     workspace free of the legacy title, upload trigger, and status text. */
+  body:not(.upload-empty) #ui > h1,
+  body:not(.upload-empty) #upload-label,
+  body:not(.upload-empty) #upload-btn,
+  body:not(.upload-empty) #status,
+  body:not(.upload-empty) #landing-intro,
+  body:not(.upload-empty) #start-sample-btn,
+  body:not(.upload-empty) .landing-feature-row { display: none; }
   #editor-tools {
     flex: 0 1 auto;
     min-height: 0;
@@ -734,7 +743,7 @@
     box-shadow: var(--shadow);
   }
   #view-controls .label { display: none; }
-  body:not(.view-original):not(.view-furnishing) #upload-btn {
+  body.upload-empty #ui #upload-btn {
     position: fixed;
     top: 50%;
     left: 50%;
@@ -954,10 +963,9 @@
     #editor-tools .tool-grid,
     #editor-tools .navigation-grid,
     #editor-tools .action-grid { display: flex; overflow-x: auto; }
-    body:not(.view-original):not(.view-furnishing) #upload-btn { width: calc(100vw - 32px); min-height: 38vh; }
+    body.upload-empty #ui #upload-btn { width: 100%; min-height: 60px; }
     body.upload-empty #control-stack { top: 16px; right: 16px; left: 16px; width: auto; }
     body.upload-empty #ui { padding: 30px 28px; }
-    body.upload-empty #ui #upload-btn { width: 100%; min-height: 60px; }
     #view-controls { bottom: 16px; max-width: calc(100vw - 32px); overflow-x: auto; }
     #save-json-btn { right: 150px; }
     #connect-roomlog-btn { right: 16px; }
