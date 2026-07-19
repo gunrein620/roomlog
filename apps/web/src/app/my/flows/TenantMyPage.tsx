@@ -2232,9 +2232,8 @@ export default function TenantMyPage({
                         </div>
                       ) : null}
                       <div className="tenant-defect-chat-input">
-                        <label className="tenant-defect-chat-attach">
+                        <label className="tenant-defect-chat-attach" aria-label="사진 첨부">
                           <ImagePlus aria-hidden="true" />
-                          <span className="tenant-sr-only">사진 첨부</span>
                           <input type="file" accept="image/*" multiple onChange={handleComplaintChatImageChange} />
                         </label>
                         <input
