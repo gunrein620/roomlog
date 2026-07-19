@@ -347,6 +347,18 @@ describe("RoomlogVendorWorkflowDomain visit negotiation", () => {
           );
           assert.equal(reassigned.status, "REQUESTED");
           assert.notEqual(reassigned.repairId, fixture.repairId);
+          const assignmentNotices = await prisma.ticketMessage.findMany({
+            where: {
+              ticketId: fixture.ticketId,
+              repairId: reassigned.repairId,
+              senderRole: "LANDLORD",
+            },
+          });
+          assert.equal(assignmentNotices.length, 1);
+          assert.match(
+            assignmentNotices[0]?.messageText ?? "",
+            /배정 업체: 방문 일정 설비 .*연락처는 .*해당 업체에 전화하여 방문 일정을 상의해 주세요\./,
+          );
         },
       );
     },

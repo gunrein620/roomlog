@@ -10,7 +10,10 @@ import {
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
-import type { VendorRepairMessageRecord } from "./vendor-workflow.repository";
+import type {
+  VendorAssignmentNoticeRecord,
+  VendorRepairMessageRecord,
+} from "./vendor-workflow.repository";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -7346,6 +7349,16 @@ export class RoomlogService implements OnModuleDestroy {
    * (다음 persistStore 스냅샷은 같은 id upsert라 중복이 생기지 않는다.)
    */
   ingestVendorRepairMessage(record: VendorRepairMessageRecord) {
+    this.ingestWorkflowMessage(record);
+  }
+
+  ingestVendorAssignmentNotice(record: VendorAssignmentNoticeRecord) {
+    this.ingestWorkflowMessage(record);
+  }
+
+  private ingestWorkflowMessage(
+    record: VendorRepairMessageRecord | VendorAssignmentNoticeRecord
+  ) {
     const ticket = this.store.tickets.find((item) => item.id === record.ticketId);
     if (!ticket) return;
     if (this.store.messages.some((message) => message.id === record.id)) return;
