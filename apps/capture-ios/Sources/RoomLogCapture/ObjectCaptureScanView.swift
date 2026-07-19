@@ -328,7 +328,9 @@ private enum Flow: Equatable {
 /// (RoomScanView의 "스캔 완료" 버튼과 같은 패턴 — 자동으로 다음 단계로 넘기지 않는다).
 @available(iOS 17.0, *)
 private struct ObjectCaptureCaptureScreen: View {
-    @StateObject private var session = ObjectCaptureSession()
+    // ObjectCaptureSession은 Combine의 ObservableObject가 아니라 iOS 17 Observation 프레임워크의
+    // @Observable 클래스다 → @StateObject(Combine용)가 아닌 @State로 보유해야 SwiftUI가 추적한다.
+    @State private var session = ObjectCaptureSession()
     @State private var imagesDirectory: URL?
 
     let onCompleted: (URL) -> Void
@@ -404,10 +406,9 @@ private struct ObjectCaptureCaptureScreen: View {
         }
         imagesDirectory = directory
 
-        guard session.start(imagesDirectory: directory) else {
-            onFailed("캡처 세션을 시작하지 못했습니다.")
-            return
-        }
+        // start(imagesDirectory:)는 Bool이 아니라 Void를 반환한다 — 시작 실패는 반환값이 아니라
+        // 세션 상태(.failed)로 전달되므로, 아래 body의 switch가 그 경로를 이미 처리한다.
+        session.start(imagesDirectory: directory)
         session.startDetecting()
     }
 
