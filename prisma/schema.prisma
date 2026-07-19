@@ -59,6 +59,7 @@ enum ComplaintSourceChannel {
   REALTIME_CHAT
   VOICE_CHAT
   CALLBOT
+  MANAGER_PROXY
 }
 
 enum ComplaintStatus {
@@ -340,6 +341,11 @@ enum CreditLedgerEntryType {
   AUTO_DEBIT
   MANUAL_DEBIT
   REVERSAL
+}
+
+enum GaraVendorPayoutStatus {
+  PENDING_APPROVAL
+  CREDIT_DEBITED
 }
 
 enum CreditTopupOrderStatus {
@@ -628,6 +634,7 @@ model UserAccount {
   vendorAccountLinks         VendorAccountLink[]
   claimedVendorActivations   VendorActivation[]
   managerVendors             ManagerVendor[]            @relation("ManagerVendorManager")
+  createdVendorProfiles      VendorProfile[]            @relation("ManagerCreatedVendorProfiles")
   reviewedVendorEstimates    VendorEstimate[]           @relation("VendorEstimateReviewer")
   reviewedTenantVendorEstimates VendorEstimate[]        @relation("VendorEstimateTenantReviewer")
   repairCompletionDecisions  RepairCompletionDecision[] @relation("RepairCompletionManager")
@@ -642,6 +649,7 @@ model UserAccount {
   managerTicketReads         ManagerTicketRead[]
   creditAccount              CreditAccount?             @relation("ManagerCreditAccount")
   autoPayPolicy              AutoPayPolicy?             @relation("ManagerAutoPayPolicy")
+  garaVendorPayoutRequests   GaraVendorPayoutRequest[]
 
   @@index([role, status])
 }
@@ -873,6 +881,7 @@ model VendorProfile {
   verificationStatus VendorVerificationStatus @default(PENDING)
   isActive           Boolean                  @default(true)
   activeJobs         Int                      @default(0)
+  createdByManagerId String?
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
@@ -883,7 +892,12 @@ model VendorProfile {
   estimates         VendorEstimate[]
   completionReports VendorCompletionReport[]
   paymentRequests   VendorPaymentRequest[]
+  garaVendorPayoutRequests GaraVendorPayoutRequest[]
   domainEvents      DomainEventOutbox[]
+  createdByManager  UserAccount?             @relation("ManagerCreatedVendorProfiles", fields: [createdByManagerId], references: [id], onDelete: Restrict)
+
+  @@unique([createdByManagerId, phone])
+  @@index([createdByManagerId])
 }
 
 model VendorAccountLink {
@@ -922,10 +936,13 @@ model ManagerVendor {
   vendorId     String
   status       ManagerVendorStatus @default(ACTIVE)
   managerNote  String?
+  settlementAccountNumber String?
   registeredAt DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   manager      UserAccount         @relation("ManagerVendorManager", fields: [managerId], references: [id], onDelete: Restrict)
   vendor       VendorProfile       @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  garaVendorPayoutRequests GaraVendorPayoutRequest[]
+  garaTopupOrders CreditTopupOrder[] @relation("GaraTopupOrderRegistration")
 
   @@unique([managerId, vendorId])
   @@index([managerId, status])
@@ -1138,6 +1155,7 @@ model CreditAccount {
   manager       UserAccount         @relation("ManagerCreditAccount", fields: [managerId], references: [id], onDelete: Restrict)
   ledgerEntries CreditLedgerEntry[]
   topupOrders   CreditTopupOrder[]
+  garaVendorPayoutRequests GaraVendorPayoutRequest[]
 
   @@unique([id, managerId])
 }
@@ -1159,15 +1177,45 @@ model CreditLedgerEntry {
   reversedBy     CreditLedgerEntry?    @relation("CreditLedgerReversal")
   paymentRequest VendorPaymentRequest?
   paymentAttempt VendorPaymentAttempt?
+  garaVendorPayoutRequest GaraVendorPayoutRequest?
 
   @@index([creditAccountId, createdAt])
   @@index([referenceType, referenceId])
+}
+
+model GaraVendorPayoutRequest {
+  id                    String                 @id
+  managerId             String
+  managerVendorId       String
+  vendorId              String
+  creditAccountId       String?
+  ledgerEntryId         String?                @unique
+  topupOrderId          String?                @unique
+  amount                BigInt
+  accountNumberSnapshot String
+  status                GaraVendorPayoutStatus @default(PENDING_APPROVAL)
+  idempotencyKey        String                 @unique
+  payloadHash           String
+  createdAt             DateTime               @default(now())
+  processedAt           DateTime?
+
+  manager       UserAccount       @relation(fields: [managerId], references: [id], onDelete: Restrict)
+  managerVendor ManagerVendor     @relation(fields: [managerVendorId], references: [id], onDelete: Restrict)
+  vendor        VendorProfile     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  creditAccount CreditAccount?    @relation(fields: [creditAccountId], references: [id], onDelete: Restrict)
+  ledgerEntry   CreditLedgerEntry? @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+  topupOrder    CreditTopupOrder? @relation(fields: [topupOrderId], references: [id], onDelete: SetNull)
+
+  @@index([managerId, createdAt])
+  @@index([managerVendorId, createdAt])
+  @@index([vendorId, createdAt])
 }
 
 model CreditTopupOrder {
   id              String                 @id
   creditAccountId String
   managerId       String
+  garaManagerVendorId String?
   orderId         String                 @unique
   creationKey     String                 @unique
   payloadHash     String
@@ -1182,8 +1230,11 @@ model CreditTopupOrder {
   updatedAt       DateTime               @updatedAt
 
   creditAccount CreditAccount @relation(fields: [creditAccountId, managerId], references: [id, managerId], onDelete: Restrict)
+  garaManagerVendor ManagerVendor? @relation("GaraTopupOrderRegistration", fields: [garaManagerVendorId], references: [id], onDelete: Restrict)
+  garaVendorPayoutRequest GaraVendorPayoutRequest?
 
   @@index([managerId, status, updatedAt])
+  @@index([garaManagerVendorId, status])
 }
 
 model AutoPayPolicy {
@@ -1614,6 +1665,12 @@ model Ticket {
   priority           Int
   status             TicketStatus
   responsibilityHint String
+  responsibilityDecidedById String?
+  responsibilityDecidedAt DateTime?
+  responsibilityDecisionNote String?
+  directHandlingStartedAt DateTime?
+  directHandlingCompletedAt DateTime?
+  directHandlingNote String?
   aiSummary          String
   dueAt              DateTime?
   createdAt          DateTime               @default(now())
@@ -1692,6 +1749,7 @@ model RepairRequest {
   ticketId             String
   vendorId             String
   status               RepairStatus
+  tenantInitiated      Boolean           @default(false)
   title                String
   description          String
   estimateAmount       Int?

@@ -12,12 +12,19 @@ export interface VendorCatalogSearchFilters {
   isActive?: boolean;
 }
 
+export interface CreateManagerVendorInput {
+  businessName: string;
+  phone: string;
+  accountNumber: string;
+}
+
 export interface ManagerVendorView {
   id: string;
   managerId: string;
   vendorId: string;
   status: ManagerVendorStatus;
   managerNote?: string;
+  settlementAccountNumber?: string;
   registeredAt: string;
   catalog: VendorCatalogRecord;
   accountStatus: VendorAccountProjectionStatus;
@@ -30,6 +37,7 @@ export interface VendorCatalogSearchResult {
   catalog: VendorCatalogRecord;
   accountStatus: VendorAccountProjectionStatus;
   registrationStatus: ManagerVendorStatus | "UNREGISTERED";
+  registrationSource: "MANAGER_DIRECT" | "PLATFORM";
   canAssign: boolean;
   assignmentBlockReasons: Array<
     "UNVERIFIED" | "INACTIVE" | "ACCOUNT_UNLINKED" | "NOT_REGISTERED"
@@ -47,11 +55,24 @@ export interface ManagerVendorDetail {
   };
 }
 
-/** 관리자가 특정 하자 티켓에서 현재 진행 중인 업체 작업을 조회한 결과. */
-export interface ManagerVendorJobLookup {
-  vendor: ManagerVendorView;
-  job: VendorJobSummary;
+/** 등록 관계가 없는 세입자 연결 업체의 관리자용 공개 축약 뷰. */
+export interface ManagerVendorPublicView {
+  vendorId: string;
+  catalog: VendorCatalogRecord;
 }
+
+/** 관리자가 특정 하자 티켓에서 현재 진행 중인 업체 작업을 조회한 결과. */
+export type ManagerVendorJobLookup =
+  | {
+      partnership: "REGISTERED";
+      vendor: ManagerVendorView;
+      job: VendorJobSummary;
+    }
+  | {
+      partnership: "UNREGISTERED";
+      vendor: ManagerVendorPublicView;
+      job: VendorJobSummary;
+    };
 
 export interface ManagerVendorJobLookupResponse {
   data: ManagerVendorJobLookup | null;
@@ -145,7 +166,12 @@ export type VendorEstimateReviewInput =
       costBearer: "LANDLORD" | "TENANT" | "PENDING";
       note?: string;
     }
-  | { action: "REQUEST_REVISION" | "REJECT"; note: string };
+  | {
+      action: "REQUEST_REVISION";
+      note: string;
+      tenantAvailableTimes?: string;
+    }
+  | { action: "REJECT"; note: string };
 
 export type VendorPaymentRequestStatus =
   | "WAITING_COMPLETION"
@@ -241,6 +267,14 @@ export interface VendorJobPaymentView {
   processedAt?: string;
 }
 
+/** 업체 작업 화면에 공개 가능한 티켓 메시지. 내부 사용자·메시지 식별자는 포함하지 않는다. */
+export interface VendorJobMessageView {
+  senderRole: "TENANT" | "LANDLORD" | "VENDOR";
+  messageText: string;
+  attachmentUrls: string[];
+  createdAt: string;
+}
+
 /** 세입자 직접결제 대기 기록에는 클라이언트가 금액을 전달하지 않는다. */
 export interface RequestTenantDirectPaymentInput {
   idempotencyKey: string;
@@ -289,9 +323,11 @@ export interface VendorJobDetail extends VendorJobSummary {
   attachmentIds: string[];
   /** 임차인/관리자가 작업 요청에 첨부한 공개 가능한 하자 이미지 URL. */
   attachmentUrls?: string[];
+  tenantAvailableTimes?: string;
   scheduledAt?: string;
   estimates: VendorJobEstimateView[];
   completionReports: VendorCompletionReport[];
+  messages: VendorJobMessageView[];
 }
 
 export interface VendorVisitScheduleInput {

@@ -6,7 +6,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Box, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
+import { Box, Braces, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
 import type { PlacedFurniture, WheretoputWall3D } from "@/app/floor-plan-3d/room-model/types";
@@ -22,7 +22,7 @@ import {
   formatDraftSavedAt,
   initialOwnerListings,
   parseOwnerDraft,
-  serializeOwnerDraft
+  saveOwnerDraft
 } from "@/lib/owner-draft";
 import { listSplatAssetsByListing, requeueSplatAsset } from "@/lib/splat-asset-api";
 import { startTourUpload } from "@/lib/tour-upload-store";
@@ -31,6 +31,11 @@ import { getRealtimeSocket } from "@/lib/realtime-client";
 import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus } from "@roomlog/types";
 import { listingRoomTypes, optionItems } from "@/lib/listing-catalog";
 import { clearOwnerPhotos, loadOwnerPhotos, saveOwnerPhotos } from "@/lib/owner-photo-store";
+import {
+  buildRoomlogMitunetEditorPath,
+  normalizeMitunetPayload,
+  parseMitunetProjectJson
+} from "@/lib/mitunet-floor-plan";
 
 // 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
 let naverMapsLoadPromise: Promise<boolean> | null = null;
@@ -171,8 +176,15 @@ function readListingFloorPlanSnapshot(): ListingFloorPlan3D | null {
     const raw = window.localStorage.getItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ListingFloorPlan3D;
-    if (!parsed || !Array.isArray(parsed.walls3D) || parsed.walls3D.length === 0) return null;
-    return { walls3D: parsed.walls3D, furnitures: Array.isArray(parsed.furnitures) ? parsed.furnitures : [], name: parsed.name };
+    if (!parsed || !Array.isArray(parsed.walls3D)) return null;
+    const mitunet = normalizeMitunetPayload(parsed.mitunet);
+    if (parsed.walls3D.length === 0 && !mitunet) return null;
+    return {
+      walls3D: parsed.walls3D,
+      furnitures: Array.isArray(parsed.furnitures) ? parsed.furnitures : [],
+      name: parsed.name,
+      ...(mitunet ? { mitunet } : {})
+    };
   } catch {
     return null;
   }
@@ -322,7 +334,8 @@ function writeListingFloorPlanSnapshot(snapshot: ListingFloorPlan3D) {
       position: wall.position,
       rotation: wall.rotation
     })),
-    furnitures: snapshot.furnitures
+    furnitures: snapshot.furnitures,
+    mitunet: snapshot.mitunet
   };
   window.localStorage.setItem(LISTING_FLOOR_PLAN_STORAGE_KEY, JSON.stringify(storageSnapshot));
 }
@@ -421,6 +434,26 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
         parsed = JSON.parse(text);
       } catch {
         setOwnerToast("도면 JSON을 읽지 못했습니다. 파일 내용을 확인해 주세요.");
+        return;
+      }
+
+      const mitunet = parseMitunetProjectJson(parsed);
+      if (mitunet) {
+        const snapshot: ListingFloorPlan3D = {
+          name: mitunet.name,
+          walls3D: [],
+          furnitures: [],
+          mitunet
+        };
+        try {
+          writeListingFloorPlanSnapshot(snapshot);
+          setFloorPlan3D(snapshot);
+          setHas3DRoom(true);
+          setRegistrationStatus("작성 중");
+          setOwnerToast("MitUNet 3D 도면을 연결했습니다.");
+        } catch {
+          setOwnerToast("도면을 브라우저에 저장하지 못했습니다. 파일 용량을 확인해 주세요.");
+        }
         return;
       }
 
@@ -670,6 +703,24 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     setIsDraftLoaded(true);
   }, []);
 
+  const openMitunetEditor = () => {
+    const requestId = window.crypto.randomUUID();
+    const editorPath = buildRoomlogMitunetEditorPath(window.location.origin, requestId);
+    const savedAt = saveOwnerDraft(window.localStorage, {
+      ownerForm,
+      photoCount,
+      has3DRoom,
+      registrationStatus: "작성 중",
+      myListings
+    });
+    setDraftSavedAt(savedAt);
+    setRegistrationStatus("작성 중");
+    void (async () => {
+      if (photoFiles.length > 0) await saveOwnerPhotos(photoFiles);
+      window.location.href = editorPath;
+    })();
+  };
+
   // 에디터 탭에서 3D를 만들고 이 탭으로 돌아오면 "3D방 연결" 상태를 즉시 반영한다.
   useEffect(() => {
     const syncFloorPlanConnection = () => {
@@ -700,11 +751,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   useEffect(() => {
     if (!isDraftLoaded) return;
 
-    const savedAt = new Date().toISOString();
-    window.localStorage.setItem(
-      OWNER_DRAFT_STORAGE_KEY,
-      serializeOwnerDraft({ ownerForm, photoCount, has3DRoom, registrationStatus, myListings }, savedAt)
-    );
+    const savedAt = saveOwnerDraft(window.localStorage, { ownerForm, photoCount, has3DRoom, registrationStatus, myListings });
     setDraftSavedAt(savedAt);
   }, [isDraftLoaded, ownerForm, photoCount, has3DRoom, registrationStatus, myListings]);
   const submitOwnerListing = () => {
@@ -1150,11 +1197,8 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
             </div>
 
             <span className="owner-group-caption">3D 도면</span>
-            {/* 3D 패널 — 박스 단일 진입. 드롭 불가(정확히는 도면 JSON 숨은 드롭만 지원)라 solid 보더 유지,
-                dragover 시각 피드백도 일부러 안 넣는다(개발자 전용 숨은 기능, 무신호가 의도).
-                빈 상태는 박스 클릭 자체가 "3D 도면 만들기"(새 탭) — 아래 버튼 없음.
-                도면 있는 상태는 오빗 컨트롤 프리뷰라 박스를 링크로 못 감싸서(드래그=카메라 조작),
-                박스 아래 작은 텍스트 링크 "다시 열기"로 에디터 재진입 경로만 남긴다. */}
+            {/* 3D 패널 — 박스는 프리뷰/빈 상태 표시용이고, 진입은 아래 버튼(MitUNet 내부 에디터)으로 한다.
+                도면 JSON 숨은 드롭도 카드에서 계속 지원(개발자용, dragover 시각 피드백은 일부러 없음). */}
             <div className="summary-media-col">
               <div
                 className={`summary-media-card summary-media-3d${floorPlan3D ? "" : " is-empty"}`}
@@ -1168,6 +1212,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                     frameloop="always"
                     furnitureData={floorPlan3D.furnitures as unknown as PlacedFurniture[]}
                     hideHint
+                    mitunetPlan={floorPlan3D.mitunet}
                     pendingFurniture={null}
                     selectedFurnitureId={null}
                     selectedWallId={null}
@@ -1177,35 +1222,39 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                     onWallPointerDown={() => {}}
                   />
                 ) : (
-                  // 새 탭으로 연다 — 같은 탭 이동은 폼을 언마운트시켜 선택한 사진(File, 직렬화 불가)이 날아간다.
-                  // 에디터에서 저장 후 이 탭으로 돌아오면 focus/visibilitychange 동기화가 자동 연결한다.
-                  <a
-                    className="summary-media-empty"
-                    href="/floor-plan-3d"
-                    target="_blank"
-                    rel="noopener"
-                    onClick={() => setRegistrationStatus("작성 중")}
-                  >
+                  <div className="summary-media-empty">
                     <Box size={22} aria-hidden="true" />
-                    <span>눌러서 3D 도면을 만들어요 ↗</span>
-                  </a>
+                    <span>3D 도면을 만들면 여기에서 돌려볼 수 있어요</span>
+                  </div>
                 )}
               </div>
 
-              {/* floorPlan3D 기준(has3DRoom이 아니라) — 박스가 실제로 프리뷰를 그리고 있을 때만 재진입 링크를 보여줘야
-                  "복원 시 has3DRoom은 true인데 스냅샷이 없어 박스는 빈 상태"인 경우 링크·빈 상태 안내가 동시에 뜨는 걸 막는다. */}
-              {floorPlan3D ? (
-                <a
-                  className="summary-media-json-link"
-                  href="/floor-plan-3d"
-                  target="_blank"
-                  rel="noopener"
-                  onClick={() => setRegistrationStatus("작성 중")}
+              {/* 미리보기 아래 2개 버튼 — 도면 만들기(에디터로 이동) / 도면 JSON 업로드 */}
+              <div className="summary-media-actions">
+                {/* 같은 RoomLog 탭에서 내부 MitUNet 페이지로 이동한다. 폼 draft는 localStorage,
+                    사진은 IndexedDB에 저장해 변환 완료 후 등록 화면으로 돌아와도 유지한다. */}
+                <button
+                  type="button"
+                  className="summary-media-btn"
+                  onClick={openMitunetEditor}
                 >
-                  <Box size={13} strokeWidth={2.2} aria-hidden="true" />
-                  다시 열기 ↗
-                </a>
-              ) : null}
+                  <Box size={16} strokeWidth={2.2} aria-hidden="true" />
+                  {has3DRoom ? "새 3D 도면 만들기" : "3D 도면 만들기"}
+                </button>
+                <label className="summary-media-btn summary-media-btn--ghost">
+                  <Braces size={16} strokeWidth={2.2} aria-hidden="true" />
+                  도면 JSON 업로드
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    aria-label="도면 JSON 업로드"
+                    onChange={(event) => {
+                      handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </div>
             </div>
 
             <span className="owner-group-caption">투어 영상</span>

@@ -1,0 +1,11 @@
+[
+  { "tag": "refrigerator", "categoryKo": "냉장고", "limit": 17, "includePattern": "fridge|refrigerator|cooler", "excludePattern": "horror|logo|man|outdoor-kitchen|pizza-oven" },
+  { "tag": "washingmachine", "categoryKo": "세탁기", "limit": 6, "includePattern": "washing|washer|laundry" },
+  { "tag": "airconditioner", "categoryKo": "에어컨", "limit": 10, "includePattern": "air.?condition|cooler|ac.?unit" },
+  { "tag": "television", "categoryKo": "TV", "limit": 4, "includePattern": "television|tv", "excludePattern": "man|logo|dora|character|titan|british|movie|fashion|announcer|presenter|taxi" },
+  { "tag": "monitor", "categoryKo": "컴퓨터 모니터", "limit": 4, "includePattern": "monitor|computer", "excludePattern": "head|sentinel|listener|tire|character|man|handheld|nova" },
+  { "tag": "microwave", "categoryKo": "전자레인지", "limit": 3, "includePattern": "microwave" },
+  { "tag": "dryer", "categoryKo": "건조기", "limit": 1, "includePattern": "dryer|laundry", "excludePattern": "hair|scroll" },
+  { "tag": "dishwasher", "categoryKo": "식기세척기", "limit": 3, "includePattern": "dishwasher", "excludePattern": "rack" },
+  { "tag": "vacuum", "categoryKo": "청소기", "limit": 2, "includePattern": "robotic-vacuum|robot-vacuum|cordless-vacuum|stick-vacuum", "excludePattern": "head|street|backpack|crocodile" }
+]

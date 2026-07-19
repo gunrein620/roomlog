@@ -2,6 +2,7 @@ import type {
   ManagerAutoPayPolicyView,
   ManagerCreditAccountPublicView,
   ManagerCreditWorkspacePublicView,
+  ManagerGaraVendorPayoutRequestPublicView,
   ManagerVendorPaymentRequestPublicView,
 } from "@roomlog/types";
 import type { CreditReadResult } from "@/lib/vendor-credit-api";
@@ -38,6 +39,7 @@ export type CreditWorkspaceView = {
       | "latestRepairPaymentOrder"
     >
   >;
+  garaPayoutRequests: Array<ManagerGaraVendorPayoutRequestPublicView>;
   nextLedgerCursor?: string;
   nextTopupCursor?: string;
   nextPaymentCursor?: string;
@@ -99,6 +101,7 @@ export function toCreditWorkspaceView(
           ? { latestRepairPaymentOrder: request.latestRepairPaymentOrder }
           : {}),
       })),
+      garaPayoutRequests: data.garaPayoutRequests,
       ...(data.nextLedgerCursor ? { nextLedgerCursor: data.nextLedgerCursor } : {}),
       ...(data.nextTopupCursor ? { nextTopupCursor: data.nextTopupCursor } : {}),
       ...(data.nextPaymentCursor ? { nextPaymentCursor: data.nextPaymentCursor } : {}),

@@ -402,6 +402,7 @@ export const DEMO_VENDOR_SEARCH_RESULTS: VendorCatalogSearchResult[] =
       catalog,
       accountStatus,
       registrationStatus,
+      registrationSource: registration ? "MANAGER_DIRECT" : "PLATFORM",
       canAssign: assignmentBlockReasons.length === 0,
       assignmentBlockReasons,
     };

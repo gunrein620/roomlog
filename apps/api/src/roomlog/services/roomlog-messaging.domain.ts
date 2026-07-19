@@ -162,7 +162,7 @@ export class RoomlogMessagingDomain {
 
     this.persistStore();
 
-    return this.presentThread(thread);
+    return this.presentManagerThread(managerId, thread);
   }
 
   listTenantMessagingThreads(tenantId: string): MessagingThread[] {
@@ -242,7 +242,7 @@ export class RoomlogMessagingDomain {
       .filter((thread) => this.canManagerAccessRoom(managerId, thread.roomId))
       .filter((thread) => !context || thread.context === context)
       .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt))
-      .map((thread) => this.presentThread(thread));
+      .map((thread) => this.presentManagerThread(managerId, thread));
   }
 
   listManagerMessagingRecipients(managerId: string): ManagerMessagingRecipient[] {
@@ -301,7 +301,7 @@ export class RoomlogMessagingDomain {
         !thread.contextRef
     );
     if (existing) {
-      return this.presentThread(existing);
+      return this.presentManagerThread(managerId, existing);
     }
 
     const body = input.body?.trim();
@@ -324,7 +324,7 @@ export class RoomlogMessagingDomain {
   getManagerMessagingThread(managerId: string, threadId: string): MessagingThread {
     const thread = this.findManagerThread(managerId, threadId);
 
-    return this.presentThread(thread, true);
+    return this.presentManagerThread(managerId, thread, true);
   }
 
   markManagerMessagingThreadRead(managerId: string, threadId: string): MessagingThread {
@@ -332,7 +332,7 @@ export class RoomlogMessagingDomain {
     thread.managerUnreadCount = 0;
     this.persistStore();
 
-    return this.presentThread(thread, true);
+    return this.presentManagerThread(managerId, thread, true);
   }
 
   addManagerMessagingThreadMessage(
@@ -351,7 +351,7 @@ export class RoomlogMessagingDomain {
     });
     this.persistStore();
 
-    return this.presentThread(thread, true);
+    return this.presentManagerThread(managerId, thread, true);
   }
 
   deleteManagerMessagingThread(managerId: string, threadId: string) {
@@ -676,6 +676,31 @@ export class RoomlogMessagingDomain {
     };
   }
 
+  private presentManagerThread(
+    managerId: string,
+    thread: MessagingThread,
+    includeMessages = false
+  ): MessagingThread {
+    const presented = this.presentThread(thread, includeMessages);
+    const ticketId = thread.context === "defect" ? thread.contextRef?.trim() : undefined;
+    if (!ticketId) {
+      return presented;
+    }
+
+    const linkedTicket = this.store.tickets.find(
+      (ticket) => ticket.id === ticketId && ticket.roomId === thread.roomId
+    );
+    if (!linkedTicket) {
+      return presented;
+    }
+
+    const isManagerTicketUnread = !this.store.managerTicketReads?.some(
+      (read) => read.managerId === managerId && read.ticketId === linkedTicket.id
+    );
+
+    return { ...presented, isManagerTicketUnread };
+  }
+
   private senderUserIdFor(thread: MessagingThread, sender: MessagingMessageSender) {
     if (sender === "tenant") {
       return thread.tenantId;
@@ -835,13 +860,29 @@ export class RoomlogMessagingDomain {
 
   private recipientsForDraft(draft: MessagingAnnouncementDraft) {
     const targetRoomIds = new Set(draft.targetRoomIds);
+    const recipients = new Map<string, { tenant: UserAccount; room: Room }>();
 
-    return Object.entries(this.store.tenantRooms)
-      .filter(([, roomId]) => targetRoomIds.has(roomId))
-      .map(([tenantId, roomId]) => ({
+    for (const [tenantId, roomId] of Object.entries(this.store.tenantRooms)) {
+      if (!targetRoomIds.has(roomId)) continue;
+
+      recipients.set(`${tenantId}:${roomId}`, {
         tenant: this.findUser(tenantId),
         room: this.findRoom(roomId)
-      }));
+      });
+    }
+
+    for (const contract of this.store.contracts) {
+      if (!contract.tenantId) continue;
+      if (contract.lifecycle === "expired") continue;
+      if (!targetRoomIds.has(contract.roomId)) continue;
+
+      recipients.set(`${contract.tenantId}:${contract.roomId}`, {
+        tenant: this.findUser(contract.tenantId),
+        room: this.findRoom(contract.roomId)
+      });
+    }
+
+    return [...recipients.values()];
   }
 
   private findTenantDelivery(tenantId: string, announcementId: string) {

@@ -4,6 +4,7 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
 import type { TradeStoreProjector } from "./trade-store.projector";
+import { normalizeMitunetFloorPlan, type MitunetFloorPlan } from "./mitunet-floor-plan";
 
 /**
  * 거래(매물 직접등록 + 구매 문의 채팅) 도메인.
@@ -39,6 +40,7 @@ export type ListingFloorPlan = {
   walls3D: ListingFloorPlanWall[];
   furnitures: ListingFloorPlanFurniture[];
   name?: string;
+  mitunet?: MitunetFloorPlan;
 };
 
 export type TradeTradeType = "월세" | "반전세" | "전세" | "매매";
@@ -86,7 +88,7 @@ export type TradeListing = Omit<TradeListingInput, "images" | "options"> & {
  * 계약 — 채팅 스레드에서 집주인이 제안하고 문의자(예비 세입자)가 수락하는 2단계 handshake.
  * 수락 시점의 조건(거래유형/보증금/월세)을 스냅샷으로 고정한다. 실제 계약서/서명/입금은 스코프 밖.
  */
-export type TradeContractStatus = "proposed" | "accepted" | "declined" | "cancelled";
+export type TradeContractStatus = "proposed" | "accepted" | "declined" | "cancelled" | "terminated";
 
 export type TradeContract = {
   id: string;
@@ -105,6 +107,7 @@ export type TradeContract = {
   roomNo?: string;
   proposedAt: string;
   respondedAt?: string;
+  terminatedAt?: string;
 };
 
 export type TradeMessage = {
@@ -273,7 +276,8 @@ function normalizeFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan |
     });
   }
 
-  if (walls.length === 0) return undefined;
+  const mitunet = normalizeMitunetFloorPlan(input.mitunet);
+  if (walls.length === 0 && !mitunet) return undefined;
 
   const furnitures: ListingFloorPlanFurniture[] = [];
   for (const raw of Array.isArray(input.furnitures) ? input.furnitures : []) {
@@ -303,7 +307,14 @@ function normalizeFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan |
   }
 
   const name = typeof input.name === "string" ? input.name.slice(0, 120) : undefined;
-  return { walls3D: walls, furnitures, ...(name ? { name } : {}) };
+  return { walls3D: walls, furnitures, ...(name ? { name } : {}), ...(mitunet ? { mitunet } : {}) };
+}
+
+function normalizeSubmittedFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan | undefined {
+  if (input?.mitunet !== undefined && !normalizeMitunetFloorPlan(input.mitunet)) {
+    throw new BadRequestException("MitUNet 도면 형식이 올바르지 않습니다.");
+  }
+  return normalizeFloorPlan(input);
 }
 
 function extensionForUpload(mimeType: string, originalName: string): string {
@@ -588,6 +599,7 @@ export class TradeService implements OnModuleDestroy {
     const monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
     assertListingEssentials(input.title, tradeType, depositManwon, monthlyRentManwon);
     const detailAddress = normalizeDetailAddress(input.detailAddress);
+    const floorPlan = normalizeSubmittedFloorPlan(input.floorPlan);
     const buildingName = normalizeBuildingName(input.buildingName);
     const exclusiveAreaM2 = normalizePositiveNumber(input.exclusiveAreaM2, 10000);
     const floorInfo = normalizeFloorInfo(input.floorInfo);
@@ -612,7 +624,7 @@ export class TradeService implements OnModuleDestroy {
       options: normalizeOptions(input.options),
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
-      ...(normalizeFloorPlan(input.floorPlan) ? { floorPlan: normalizeFloorPlan(input.floorPlan) } : {}),
+      ...(floorPlan ? { floorPlan } : {}),
       status: "노출중",
       createdAt: new Date().toISOString()
     };
@@ -701,7 +713,7 @@ export class TradeService implements OnModuleDestroy {
       listing.lng = coords.lng;
     }
     // floorPlan 키가 오면 교체(null이면 연결 해제). 키 자체가 없으면 기존 도면 유지.
-    if (input.floorPlan !== undefined) listing.floorPlan = normalizeFloorPlan(input.floorPlan);
+    if (input.floorPlan !== undefined) listing.floorPlan = normalizeSubmittedFloorPlan(input.floorPlan);
 
     this.persist();
     this.projectListings();
@@ -954,6 +966,43 @@ export class TradeService implements OnModuleDestroy {
     this.pushMessage(thread, owner, "계약 제안을 취소했어요.");
     this.persist();
     return { contract, thread };
+  }
+
+  /**
+   * 계약 해지 — 집주인 전용, 체결(accepted)된 계약만. 매물은 다시 노출 상태로 돌아간다.
+   * 이미 해지된 계약이면 매물 노출 상태만 보정하고 그대로 반환(재시도 안전).
+   */
+  terminateContract(
+    owner: { id: string; name: string },
+    listingId: string
+  ): { contract: TradeContract; thread: TradeThread; listing: TradeListing } {
+    const listing = this.ownedListing(owner.id, listingId);
+    const contract = this.store.contracts
+      .filter(
+        (item) =>
+          item.listingId === listing.id &&
+          (item.status === "accepted" || item.status === "terminated")
+      )
+      .sort((a, b) => b.proposedAt.localeCompare(a.proposedAt))[0];
+    if (!contract) throw new BadRequestException("해지할 체결 계약이 없습니다.");
+    const thread = this.getThread(owner.id, contract.threadId);
+
+    if (contract.status === "terminated") {
+      if (listing.status !== "노출중") {
+        listing.status = "노출중";
+        this.persist();
+        this.projectListings();
+      }
+      return { contract, thread, listing };
+    }
+
+    contract.status = "terminated";
+    contract.terminatedAt = new Date().toISOString();
+    listing.status = "노출중";
+    this.pushMessage(thread, owner, "계약이 해지되었어요 — 매물이 다시 노출 상태로 전환됩니다.");
+    this.persist();
+    this.projectListings();
+    return { contract, thread, listing };
   }
 
   /** 내가 당사자인 계약 전부 — 집주인의 계약중인 집 탭, 세입자의 내 계약 조회 공용. */

@@ -17,7 +17,9 @@ import {
   StaticButton,
   captionStyle,
 } from "../_components";
+import { ContractComparisonTableClient } from "./ContractComparisonTableClient";
 import { ContractConfirmErrorFocus } from "./ContractConfirmErrorFocus";
+import { ContractDocumentPreviewClient } from "./ContractDocumentPreviewClient";
 
 type SearchParams = Promise<{
   id?: string;
@@ -27,7 +29,7 @@ type SearchParams = Promise<{
 }>;
 type ManagerContractDetailResult = Awaited<ReturnType<typeof getManagerContractDetail>>;
 const DOCUMENT_ABSENT_VALUE = "문서에 없음";
-const IMPORTANT_CONTRACT_LABELS = ["보증금", "특약", "자동연장", "원상복구", "수선 책임"] as const;
+const IMPORTANT_CONTRACT_LABELS = ["보증금", "월세", "계약 시작일", "계약 종료일", "특약", "자동연장", "원상복구", "수선 책임"] as const;
 type ImportantContractLabel = (typeof IMPORTANT_CONTRACT_LABELS)[number];
 const OPTIONAL_CONTRACT_CLAUSE_LABELS = ["특약", "자동연장", "원상복구", "수선 책임"] as const;
 
@@ -56,7 +58,7 @@ async function confirmContractAction(formData: FormData) {
   } catch (error) {
     const message = error instanceof ApiError && error.message.trim()
       ? error.message
-      : "계약을 확정하지 못했습니다. 보증금과 특약 조항을 확인한 뒤 다시 시도해 주세요.";
+      : "계약을 확정하지 못했습니다. 계약 핵심 항목을 확인한 뒤 다시 시도해 주세요.";
     failure = { message };
   }
 
@@ -81,10 +83,19 @@ async function updateManualCorrectionAction(formData: FormData) {
 
   const contractId = String(formData.get("contractId") ?? "");
   const detailUrl = `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`;
+  const startDate = dateValue(formData, "startDate");
+  const endDate = dateValue(formData, "endDate");
+
+  if (startDate && endDate && endDate < startDate) {
+    redirect(`${detailUrl}&error=${encodeURIComponent("계약 종료일은 시작일보다 빠를 수 없습니다.")}`);
+  }
 
   try {
     await updateManagerContractManualValues(contractId, {
       deposit: textValue(formData, "deposit"),
+      monthlyRent: numberValue(formData, "monthlyRent"),
+      startDate,
+      endDate,
       specialTerms: textValue(formData, "specialTerms"),
       autoRenewal: textValue(formData, "autoRenewal"),
       restorationDuty: textValue(formData, "restorationDuty"),
@@ -160,7 +171,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         ) : null}
 
         <div style={ocrWorkspaceStyle}>
-          <ContractDocumentPreview detail={detail} sourceLabel={source.label} />
+          <ContractDocumentPreview detail={detail} />
           <Card style={coreReviewCardStyle}>
             <div style={coreReviewHeaderStyle}>
               <div>
@@ -174,7 +185,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </div>
 
         <Section title="보증금·특약 수정">
-          <ManualCorrectionForm detail={detail} sourceKind={source.kind} />
+          <ManualCorrectionForm detail={detail} sourceKind={source.kind} valueRows={valueRows} />
         </Section>
 
         <Card style={footerCardStyle}>
@@ -204,14 +215,18 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
 function ContractDocumentPreview({
   detail,
-  sourceLabel,
 }: {
   detail: ManagerContractDetailResult;
-  sourceLabel: string;
 }) {
   const document = detail.currentDocument;
   const previewUrl = contractDocumentPreviewUrl(document);
   const previewKind = contractDocumentPreviewKind(document);
+  const highlightItems = contractReviewItems(detail.extraction.items).map((item) => ({
+    label: item.label,
+    value: item.value,
+    needsCheck: item.needsCheck,
+    regions: item.regions,
+  }));
 
   return (
     <Card style={documentPreviewCardStyle}>
@@ -220,50 +235,14 @@ function ContractDocumentPreview({
           <h2 style={coreReviewTitleStyle}>계약서 이미지</h2>
           <p style={coreReviewCaptionStyle}>{document?.fileName ?? `${detail.row.buildingName} ${detail.row.contract.unitId}호`}</p>
         </div>
-        <div style={documentChipRowStyle}>
-          <Badge emphasis>{sourceLabel}</Badge>
-          <Badge>{previewKind === "image" ? "이미지 원문" : "PDF 원문"}</Badge>
-        </div>
       </div>
-      <div style={documentFrameStyle}>
-        {previewUrl ? (
-          previewKind === "image" ? (
-            <img src={previewUrl} alt="계약서 원문 미리보기" style={documentImageStyle} />
-          ) : (
-            <iframe title="계약서 PDF 원문 미리보기" src={pdfPreviewSrc(previewUrl)} style={documentIframeStyle} />
-          )
-        ) : (
-          <ContractDocumentFallback tenantName={detail.row.tenantName} />
-        )}
-      </div>
+      <ContractDocumentPreviewClient
+        previewUrl={previewUrl}
+        previewKind={previewKind}
+        tenantName={detail.row.tenantName}
+        highlights={highlightItems}
+      />
     </Card>
-  );
-}
-
-function ContractDocumentFallback({ tenantName }: { tenantName: string }) {
-  return (
-    <div style={documentPageStyle} aria-label="계약서 원문 미리보기">
-      <div style={documentTitleStyle}>계약(해약) 사실확인원</div>
-      <div style={docLineMidStyle} />
-      <div style={docLineStyle} />
-      <div style={docLineShortStyle} />
-      <div style={depositHighlightStyle}>
-        <span>보증금 근거</span>
-      </div>
-      <div style={{ ...docLineStyle, marginTop: 88 }} />
-      <div style={docLineMidStyle} />
-      <div style={docLineShortStyle} />
-      <div style={clauseHighlightStyle}>
-        <span>특약성 조항 영역</span>
-      </div>
-      <div style={{ ...docLineStyle, marginTop: 92 }} />
-      <div style={docLineMidStyle} />
-      <div style={docLineStyle} />
-      <div style={documentMetaStyle}>
-        <strong>{tenantName}</strong>
-        <span>원문 파일 없음</span>
-      </div>
-    </div>
   );
 }
 
@@ -289,10 +268,6 @@ function contractDocumentPreviewKind(document: ManagerContractDetailResult["curr
   return /\.(png|jpe?g|webp|gif|bmp|avif)(\?|#|$)/i.test(value) ? "image" : "pdf";
 }
 
-function pdfPreviewSrc(url: string) {
-  return url.includes("#") ? url : `${url}#toolbar=1&navpanes=0&view=FitH`;
-}
-
 function encodeFilePath(value: string) {
   return value
     .replace(/^\/+/, "")
@@ -303,53 +278,7 @@ function encodeFilePath(value: string) {
 }
 
 function ComparisonTable({ rows }: { rows: ValueRow[] }) {
-  return (
-    <div style={coreReviewListStyle}>
-      {rows.map((row) => {
-        const hasDetails =
-          row.ocrDetails.length > 0 ||
-          row.dbDetails.length > 0 ||
-          row.validationMessages.length > 0 ||
-          Boolean(row.evidence?.trim());
-
-        return (
-          <article key={row.label} style={coreReviewItemStyle}>
-            <div style={coreReviewItemTopStyle}>
-              <span style={coreReviewItemTitleStyle}>{row.label}</span>
-              <div style={coreReviewStatusStyle}>
-                <Badge emphasis={row.statusEmphasis}>{row.status}</Badge>
-                {row.validationMessages.length ? (
-                  <span style={validationCountStyle}>검증 사유 {row.validationMessages.length}</span>
-                ) : null}
-              </div>
-            </div>
-            <div style={compareGridStyle}>
-              <div style={compareBoxStyle}>
-                <span style={compareLabelStyle}>OCR 요약</span>
-                <ValueText value={row.ocrValue} />
-              </div>
-              <div style={compareBoxStyle}>
-                <span style={compareLabelStyle}>저장값 요약</span>
-                <ValueText value={row.dbValue} />
-              </div>
-              <div style={compareBoxStrongStyle}>
-                <span style={compareLabelStyle}>최종값</span>
-                <ValueText value={row.finalValue} strong />
-                <span style={finalSourceStyle}>{row.finalSource}</span>
-              </div>
-            </div>
-            {row.evidence ? <div style={coreEvidenceStyle}>{row.evidence}</div> : null}
-            {hasDetails ? (
-              <details style={coreDetailsStyle}>
-                <summary style={coreDetailsSummaryStyle}>상세 보기</summary>
-                <RowDetailPanel row={row} />
-              </details>
-            ) : null}
-          </article>
-        );
-      })}
-    </div>
-  );
+  return <ContractComparisonTableClient rows={rows} />;
 }
 
 function RowDetailPanel({ row }: { row: ValueRow }) {
@@ -429,22 +358,45 @@ function ValueText({ value, strong = false }: { value: string; strong?: boolean 
   );
 }
 
-function ManualCorrectionForm({ detail, sourceKind }: { detail: ManagerContractDetailResult; sourceKind: OcrSourceKind }) {
-  const values = manualDefaults(detail, sourceKind);
+function ManualCorrectionForm({
+  detail,
+  sourceKind,
+  valueRows,
+}: {
+  detail: ManagerContractDetailResult;
+  sourceKind: OcrSourceKind;
+  valueRows: ValueRow[];
+}) {
+  const values = manualDefaults(detail, sourceKind, valueRows);
 
   return (
     <Card style={manualCardStyle}>
       <div style={manualHeaderStyle}>
         <div style={{ fontWeight: 900 }}>계약서 원문에서 중요한 부분만 고칩니다</div>
-        <p style={mutedBodyStyle}>월세·관리비·기간·납부일·주소는 매물 DB 값을 사용하고, 보증금과 특약성 조항만 원문 기준으로 저장하세요.</p>
+        <p style={mutedBodyStyle}>관리비·납부일·주소는 매물 DB 값을 사용하고, 보증금·월 임대료·계약 기간·특약성 조항만 원문 기준으로 저장하세요.</p>
       </div>
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
         <div style={correctionGroupGridStyle}>
-          <CorrectionGroup title="보증금" note="기본 보증금, 전환보증금, 최종 보증금처럼 계약서에 적힌 보증금 구조를 그대로 남깁니다.">
+          <CorrectionGroup title="보증금·월 임대료·계약 기간" note="계약서에 적힌 보증금 구조와 월 단위 임대료, 계약 시작·종료일만 원문 기준으로 정리합니다.">
             <CorrectionField fieldId="contract-field-deposit" label="보증금">
               <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
             </CorrectionField>
+            <div style={correctionSubsectionStyle}>
+              <strong>월 임대료·계약 기간</strong>
+              <span>월 임대료, 월 임차료, 차임처럼 계약서의 월 단위 임대료와 계약 시작·종료일만 확인합니다.</span>
+            </div>
+            <CorrectionField fieldId="contract-field-monthlyRent" label="월 임대료">
+              <input id="contract-field-monthlyRent" name="monthlyRent" type="text" inputMode="numeric" defaultValue={values.monthlyRent} placeholder="예: 650,000" style={correctionInputStyle} />
+            </CorrectionField>
+            <div style={twoColumnFieldStyle}>
+              <CorrectionField fieldId="contract-field-startDate" label="계약 시작일">
+                <input id="contract-field-startDate" name="startDate" type="date" defaultValue={values.startDate} style={correctionInputStyle} />
+              </CorrectionField>
+              <CorrectionField fieldId="contract-field-endDate" label="계약 종료일">
+                <input id="contract-field-endDate" name="endDate" type="date" defaultValue={values.endDate} style={correctionInputStyle} />
+              </CorrectionField>
+            </div>
           </CorrectionGroup>
 
           <CorrectionGroup title="특약·책임 조항" note="특약, 자동연장, 원상복구, 수선 책임처럼 분쟁 기준이 되는 조항만 원문 기준으로 정리합니다.">
@@ -531,7 +483,6 @@ type ValueRow = {
   ocrValue: string;
   dbValue: string;
   finalValue: string;
-  finalSource: string;
   status: string;
   statusEmphasis: boolean;
   evidence?: string;
@@ -552,57 +503,46 @@ type OcrFailureInfo = {
 
 function buildValueRows(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind): ValueRow[] {
   return [
-    makeValueRow(detail, "보증금", storedManualValue(detail, "보증금", detail.manualValues.deposit), sourceKind),
-    makeValueRow(detail, "특약", storedManualValue(detail, "특약", detail.manualValues.specialTerms), sourceKind),
-    makeValueRow(detail, "자동연장", "", sourceKind),
-    makeValueRow(detail, "원상복구", "", sourceKind),
-    makeValueRow(detail, "수선 책임", "", sourceKind),
+    makeValueRow(detail, "보증금", manualInputValue(detail.manualValues.deposit), sourceKind),
+    makeValueRow(detail, "월세", manualInputValue(detail.manualValues.rent), sourceKind),
+    makeValueRow(detail, "계약 시작일", manualInputValue(detail.manualValues.startDate), sourceKind),
+    makeValueRow(detail, "계약 종료일", manualInputValue(detail.manualValues.endDate), sourceKind),
+    makeValueRow(detail, "특약", manualInputValue(detail.manualValues.specialTerms), sourceKind),
+    makeValueRow(detail, "자동연장", manualInputValue(detail.manualValues.autoRenewal), sourceKind),
+    makeValueRow(detail, "원상복구", manualInputValue(detail.manualValues.restorationDuty), sourceKind),
+    makeValueRow(detail, "수선 책임", manualInputValue(detail.manualValues.repairDuty), sourceKind),
   ];
 }
 
 function makeValueRow(
   detail: ManagerContractDetailResult,
   label: string,
-  dbValue: string,
+  savedValue: string,
   sourceKind: OcrSourceKind,
 ): ValueRow {
   const item = detail.extraction.items.find((candidate) => candidate.label === label);
   const ocrFailed = sourceKind === "mock";
-  const normalizedDbValue = dbValue.trim();
+  const normalizedSavedValue = savedValue.trim();
   const rawItemValue = item?.value?.trim();
   const initialMissingOcrLeftover = Boolean(item && isMissingDisplayValue(rawItemValue) && !item.evidence?.trim());
   const inferredDocumentAbsent =
     sourceKind === "openai" &&
     isOptionalContractClauseLabel(label) &&
-    !normalizedDbValue &&
+    !normalizedSavedValue &&
     (!item || initialMissingOcrLeftover);
-  const rawOcrValue = inferredDocumentAbsent ? DOCUMENT_ABSENT_VALUE : rawItemValue || "미확인";
+  const rawOcrValue = inferredDocumentAbsent ? DOCUMENT_ABSENT_VALUE : rawItemValue || "해당 값 없음";
   const validationMessages = validationMessagesFromEvidence(ocrFailed ? undefined : item?.evidence);
   const hasUsableOcrValue = !isMissingDisplayValue(rawOcrValue);
-  const hasDbValue = Boolean(normalizedDbValue);
-  const shouldPreferDbValue = hasDbValue && (ocrFailed || Boolean(item?.needsCheck) || validationMessages.length > 0);
-  const finalRawValue = shouldPreferDbValue
-    ? normalizedDbValue
+  const hasSavedValue = Boolean(normalizedSavedValue);
+  const finalRawValue = hasSavedValue
+    ? normalizedSavedValue
     : hasUsableOcrValue
       ? rawOcrValue
-      : normalizedDbValue || "직접 입력 필요";
+      : "직접 입력 필요";
   const missingFinal = isMissingDisplayValue(finalRawValue) || finalRawValue === "직접 입력 필요";
   const documentAbsent = isDocumentAbsentValue(finalRawValue);
-  const finalSource = missingFinal
-    ? "직접 입력 필요"
-    : documentAbsent
-      ? "원문에 해당 조항 없음"
-    : shouldPreferDbValue
-      ? ocrFailed
-        ? "OCR 실패로 저장값 사용"
-        : "확인 필요 OCR 대신 저장값 사용"
-      : hasUsableOcrValue
-        ? "OCR값 사용"
-        : hasDbValue
-          ? "저장값 사용"
-          : "직접 입력 필요";
   const displayOcrValue = ocrFailed ? "OCR 실패 - 미추출" : summarizeContractValue(label, rawOcrValue);
-  const displayDbValue = normalizedDbValue ? summarizeContractValue(label, normalizedDbValue) : "없음";
+  const displayDbValue = hasSavedValue ? summarizeContractValue(label, normalizedSavedValue) : "없음";
   const displayFinalValue = summarizeContractValue(label, finalRawValue);
 
   return {
@@ -610,12 +550,11 @@ function makeValueRow(
     ocrValue: displayOcrValue,
     dbValue: displayDbValue,
     finalValue: displayFinalValue,
-    finalSource,
     status: documentAbsent ? "해당 없음" : missingFinal ? "부족" : ocrFailed ? "원문 확인" : item?.needsCheck ? "확인 필요" : "확인",
     statusEmphasis: !documentAbsent && (missingFinal || (!ocrFailed && Boolean(item?.needsCheck))),
     evidence: ocrFailed ? undefined : item?.evidence ?? (inferredDocumentAbsent ? "성공한 OCR에서 해당 조항을 찾지 못했습니다." : undefined),
     ocrDetails: ocrFailed ? [] : contractValueDetails(label, rawOcrValue),
-    dbDetails: contractValueDetails(label, normalizedDbValue),
+    dbDetails: contractValueDetails(label, normalizedSavedValue),
     validationMessages,
   };
 }
@@ -640,6 +579,11 @@ function summarizeContractValue(label: string, value: string) {
   if (label === "보증금") {
     return preferredMoneySummary(normalized, ["전환 후", "임대보증금", "보증금", "기본"]);
   }
+  if (label === "월세") {
+    return preferredMoneySummary(normalized, ["월 임대료", "월 임차료", "월 차임", "월 납입액", "월 납부액", "차임", "임대료", "월세"]);
+  }
+  if (label === "계약 시작일") return preferredDateSummary(normalized, "start");
+  if (label === "계약 종료일") return preferredDateSummary(normalized, "end");
 
   return normalized;
 }
@@ -655,12 +599,20 @@ function preferredMoneySummary(value: string, labels: string[]) {
   return value;
 }
 
+function preferredDateSummary(value: string, position: "start" | "end") {
+  const dates = extractDateValues(value);
+  if (dates.length === 0) return value;
+  return position === "start" ? dates[0] ?? value : dates[dates.length - 1] ?? value;
+}
+
 function contractValueDetails(label: string, value: string): ValueDetail[] {
   const normalized = value.trim();
   if (!normalized || isMissingDisplayValue(normalized) || normalized === "직접 입력 필요") return [];
   if (isDocumentAbsentValue(normalized)) return [{ label: "판정", value: "원문에 해당 조항 없음" }];
 
   if (label === "보증금") return moneyDetails(normalized, ["기본", "전환보증금", "전환 후", "임대보증금", "보증금"]);
+  if (label === "월세") return moneyDetails(normalized, ["월 임대료", "월 임차료", "월 차임", "월 납입액", "월 납부액", "차임", "임대료", "월세"]);
+  if (label === "계약 시작일" || label === "계약 종료일") return dateDetails(normalized);
   if (["특약", "자동연장", "원상복구", "수선 책임"].includes(label)) return [{ label: "조항 요약", value: normalized }];
 
   return [];
@@ -682,30 +634,79 @@ function moneyDetails(value: string, labels: string[]): ValueDetail[] {
   return amounts.map((amount, index) => ({ label: `후보 ${index + 1}`, value: amount }));
 }
 
+function dateDetails(value: string): ValueDetail[] {
+  return extractDateValues(value).map((date, index) => ({ label: `날짜 ${index + 1}`, value: date }));
+}
+
+function extractDateValues(value: string) {
+  return Array.from(value.matchAll(/\d{4}[./-]\d{1,2}[./-]\d{1,2}/g))
+    .map((match) => normalizeDateValue(match[0]))
+    .filter(Boolean) as string[];
+}
+
+function normalizeDateValue(value: string) {
+  const match = value.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+  if (!match) return undefined;
+
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function manualDefaults(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind) {
+function manualDefaults(
+  detail: ManagerContractDetailResult,
+  sourceKind: OcrSourceKind,
+  valueRows: ValueRow[],
+) {
   return {
     deposit:
-      storedManualValue(detail, "보증금", detail.manualValues.deposit) ||
+      storedManualValue(detail.manualValues.deposit) ||
       textInputCandidate(detail, "보증금", sourceKind),
+    monthlyRent:
+      moneyInputCandidate(storedManualValue(detail.manualValues.rent)) ||
+      moneyInputCandidate(valueRowFinalValue(valueRows, "월세")) ||
+      moneyInputCandidate(valueRowOcrValue(valueRows, "월세")),
+    startDate:
+      dateInputCandidate(storedManualValue(detail.manualValues.startDate)) ||
+      dateInputCandidate(valueRowFinalValue(valueRows, "계약 시작일")) ||
+      ocrDateInputCandidate(detail, "start", sourceKind),
+    endDate:
+      dateInputCandidate(storedManualValue(detail.manualValues.endDate)) ||
+      dateInputCandidate(valueRowFinalValue(valueRows, "계약 종료일")) ||
+      ocrDateInputCandidate(detail, "end", sourceKind),
     specialTerms:
-      storedManualValue(detail, "특약", detail.manualValues.specialTerms) ||
-      textInputCandidate(detail, "특약", sourceKind),
-    autoRenewal: textInputCandidate(detail, "자동연장", sourceKind),
-    restorationDuty: textInputCandidate(detail, "원상복구", sourceKind),
-    repairDuty: textInputCandidate(detail, "수선 책임", sourceKind),
+      storedManualValue(detail.manualValues.specialTerms) ||
+      textInputCandidate(detail, "특약", sourceKind) ||
+      "",
+    autoRenewal:
+      storedManualValue(detail.manualValues.autoRenewal) ||
+      textInputCandidate(detail, "자동연장", sourceKind),
+    restorationDuty:
+      storedManualValue(detail.manualValues.restorationDuty) ||
+      textInputCandidate(detail, "원상복구", sourceKind),
+    repairDuty:
+      storedManualValue(detail.manualValues.repairDuty) ||
+      textInputCandidate(detail, "수선 책임", sourceKind),
   };
+}
+
+function valueRowFinalValue(valueRows: ValueRow[], label: string) {
+  const value = valueRows.find((row) => row.label === label)?.finalValue ?? "";
+  return isMissingDisplayValue(value) || value === DOCUMENT_ABSENT_VALUE ? "" : value;
+}
+
+function valueRowOcrValue(valueRows: ValueRow[], label: string) {
+  const value = valueRows.find((row) => row.label === label)?.ocrValue ?? "";
+  return isMissingDisplayValue(value) || value === DOCUMENT_ABSENT_VALUE ? "" : value;
 }
 
 function extractionItem(detail: ManagerContractDetailResult, label: string) {
   return detail.extraction.items.find((item) => item.label === label);
 }
 
-function storedManualValue(detail: ManagerContractDetailResult, label: string, value?: string) {
-  if (isMockOnlyExtractionItem(extractionItem(detail, label))) return "";
+function storedManualValue(value?: string) {
   return manualInputValue(value);
 }
 
@@ -716,9 +717,40 @@ function textInputCandidate(detail: ManagerContractDetailResult, label: string, 
   return isMissingDisplayValue(value) ? "" : value;
 }
 
+function moneyInputCandidate(value: string) {
+  const digits = value.replace(/[^\d]/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("ko-KR");
+}
+
+function dateInputCandidate(value: string) {
+  return extractDateValues(value)[0] ?? "";
+}
+
+function ocrDateInputCandidate(
+  detail: ManagerContractDetailResult,
+  position: "start" | "end",
+  sourceKind: OcrSourceKind,
+) {
+  const directLabel = position === "start" ? "계약 시작일" : "계약 종료일";
+  const directDate = dateInputCandidate(textInputCandidate(detail, directLabel, sourceKind));
+  if (directDate) return directDate;
+
+  const periodDates = extractDateValues(textInputCandidate(detail, "계약 기간", sourceKind));
+  if (periodDates.length === 0) return "";
+  return position === "start" ? periodDates[0] ?? "" : periodDates[periodDates.length - 1] ?? "";
+}
+
 function isMissingDisplayValue(value?: string) {
   const normalized = value?.trim();
-  return !normalized || normalized === "미확인" || normalized === "원문 확인 필요" || normalized === "관리자 수동값 없음" || normalized === "없음";
+  return (
+    !normalized ||
+    normalized === "미확인" ||
+    normalized === "해당 값 없음" ||
+    normalized === "원문 확인 필요" ||
+    normalized === "관리자 수동값 없음" ||
+    normalized === "없음"
+  );
 }
 
 function isDocumentAbsentValue(value?: string) {
@@ -728,6 +760,16 @@ function isDocumentAbsentValue(value?: string) {
 
 function textValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
+}
+
+function numberValue(formData: FormData, name: string) {
+  const digits = textValue(formData, name).replace(/[^\d]/g, "");
+  if (!digits) return undefined;
+  return Number(digits);
+}
+
+function dateValue(formData: FormData, name: string) {
+  return normalizeDateValue(textValue(formData, name));
 }
 
 function manualInputValue(value?: string) {
@@ -794,7 +836,7 @@ function ocrFailureInfo(highlights: string[]): OcrFailureInfo {
 }
 
 function pageNotice(sourceParam?: string) {
-  if (sourceParam === "manual-saved") return "수정한 보증금·특약 검토값을 저장했습니다.";
+  if (sourceParam === "manual-saved") return "수정한 보증금·월 임대료·계약 기간·특약 검토값을 저장했습니다.";
   if (sourceParam === "ocr-first") return "계약서 입력 후 OCR 분석을 실행했습니다. 보증금과 특약성 조항만 확인해 주세요.";
   return "";
 }
@@ -822,112 +864,6 @@ const documentPreviewHeaderStyle = {
   alignItems: "flex-start",
   gap: "var(--space-md)",
   flexWrap: "wrap",
-} as const;
-
-const documentChipRowStyle = {
-  display: "flex",
-  gap: "var(--space-xs)",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-} as const;
-
-const documentFrameStyle = {
-  display: "grid",
-  minHeight: 560,
-} as const;
-
-const documentIframeStyle = {
-  width: "100%",
-  minHeight: 560,
-  height: "100%",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container-lowest)",
-} as const;
-
-const documentImageStyle = {
-  width: "100%",
-  minHeight: 560,
-  height: "100%",
-  objectFit: "contain",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container-lowest)",
-} as const;
-
-const documentPageStyle = {
-  position: "relative",
-  display: "grid",
-  alignContent: "start",
-  minHeight: 560,
-  overflow: "hidden",
-  padding: "32px",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container-lowest)",
-  boxShadow: "0 20px 44px rgba(15, 23, 42, 0.08)",
-} as const;
-
-const documentTitleStyle = {
-  margin: "4px 0 28px",
-  textAlign: "center",
-  color: "var(--on-surface)",
-  fontSize: "var(--fs-subtitle)",
-  fontWeight: 900,
-  lineHeight: "var(--lh-title)",
-} as const;
-
-const docLineStyle = {
-  height: 13,
-  margin: "14px 0",
-  borderRadius: 2,
-  background: "var(--surface-container-high)",
-} as const;
-
-const docLineMidStyle = {
-  ...docLineStyle,
-  width: "78%",
-} as const;
-
-const docLineShortStyle = {
-  ...docLineStyle,
-  width: "58%",
-} as const;
-
-const depositHighlightStyle = {
-  position: "absolute",
-  top: 214,
-  left: 58,
-  right: 58,
-  display: "flex",
-  alignItems: "center",
-  height: 48,
-  padding: "0 var(--space-sm)",
-  border: "2px solid var(--primary)",
-  borderRadius: "var(--radius-sm)",
-  color: "var(--primary)",
-  background: "rgba(92, 69, 217, 0.08)",
-  fontSize: "var(--fs-caption)",
-  fontWeight: 900,
-} as const;
-
-const clauseHighlightStyle = {
-  ...depositHighlightStyle,
-  top: 384,
-  borderColor: "#18a36d",
-  color: "#047857",
-  background: "rgba(18, 128, 92, 0.08)",
-} as const;
-
-const documentMetaStyle = {
-  position: "absolute",
-  right: 32,
-  bottom: 28,
-  display: "grid",
-  gap: 4,
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  textAlign: "right",
 } as const;
 
 const coreReviewCardStyle = {
@@ -1101,14 +1037,6 @@ const compareLabelStyle = {
   fontWeight: 900,
 } as const;
 
-const finalSourceStyle = {
-  width: "fit-content",
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  fontWeight: 800,
-  lineHeight: "var(--lh-caption)",
-} as const;
-
 const coreEvidenceStyle = {
   padding: "var(--space-sm)",
   borderRadius: "var(--radius-sm)",
@@ -1249,7 +1177,7 @@ const manualHeaderStyle = {
 
 const correctionGroupGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 460px), 1fr))",
   gap: "var(--space-md)",
   alignItems: "stretch",
 } as const;
@@ -1280,6 +1208,16 @@ const correctionGroupBodyStyle = {
   display: "grid",
   gap: "var(--space-md)",
   alignContent: "start",
+} as const;
+
+const correctionSubsectionStyle = {
+  display: "grid",
+  gap: 4,
+  paddingTop: "var(--space-sm)",
+  borderTop: "1px solid var(--border)",
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-body)",
+  lineHeight: "var(--lh-body)",
 } as const;
 
 const twoColumnFieldStyle = {

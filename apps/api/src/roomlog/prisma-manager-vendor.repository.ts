@@ -9,7 +9,9 @@ import {
   type VendorProfile
 } from "@prisma/client";
 import type {
+  CreateManagerVendorInput,
   ManagerVendorDetail,
+  ManagerVendorJobLookup,
   ManagerVendorView,
   VendorAccountProjectionStatus,
   VendorCatalogRecord,
@@ -23,9 +25,12 @@ import type {
 } from "@roomlog/types";
 import {
   ManagerVendorRepositoryError,
-  type ManagerVendorRepository
+  type ManagerVendorRepository,
+  type ManagerVendorRepositoryErrorCode
 } from "./manager-vendor.repository";
 import {
+  isDirectManagerVendor,
+  managerVendorAssignmentWhere,
   vendorAssignmentWhere,
   vendorServesAddress
 } from "./vendor-assignment-eligibility";
@@ -54,6 +59,7 @@ type CompletionProjection = Prisma.VendorCompletionReportGetPayload<{
 type PaymentProjection = Prisma.VendorPaymentRequestGetPayload<Record<string, never>>;
 const MANAGER_JOB_INCLUDE = {
   ticket: { include: { room: true } },
+  vendor: true,
   estimates: {
     include: { lineItems: true },
     orderBy: [{ version: "desc" as const }, { id: "desc" as const }]
@@ -87,7 +93,7 @@ const WAITING_PAYMENT_STATUSES = [
 ] as const;
 
 function repositoryError(
-  code: "INVALID_MANAGER" | "VENDOR_NOT_FOUND" | "RELATION_NOT_FOUND",
+  code: ManagerVendorRepositoryErrorCode,
   message: string
 ) {
   return new ManagerVendorRepositoryError(code, message);
@@ -117,17 +123,21 @@ function accountStatus(links: readonly VendorAccountLink[]): VendorAccountProjec
 function assignmentState(
   catalog: VendorCatalogRecord,
   account: VendorAccountProjectionStatus,
-  registration: "ACTIVE" | "ARCHIVED" | "UNREGISTERED"
+  registration: "ACTIVE" | "ARCHIVED" | "UNREGISTERED",
+  directRegistration = false,
 ) {
   const assignmentBlockReasons: VendorCatalogSearchResult["assignmentBlockReasons"] = [];
-  if (catalog.verificationStatus !== "VERIFIED") assignmentBlockReasons.push("UNVERIFIED");
+  if (!directRegistration && catalog.verificationStatus !== "VERIFIED") assignmentBlockReasons.push("UNVERIFIED");
   if (!catalog.isActive) assignmentBlockReasons.push("INACTIVE");
-  if (account !== "ACTIVE") assignmentBlockReasons.push("ACCOUNT_UNLINKED");
+  if (!directRegistration && account !== "ACTIVE") assignmentBlockReasons.push("ACCOUNT_UNLINKED");
   if (registration !== "ACTIVE") assignmentBlockReasons.push("NOT_REGISTERED");
   return { canAssign: assignmentBlockReasons.length === 0, assignmentBlockReasons };
 }
 
-function mapSearchResult(row: CatalogProjection): VendorCatalogSearchResult {
+function mapSearchResult(
+  row: CatalogProjection,
+  managerId?: string,
+): VendorCatalogSearchResult {
   const catalog = mapCatalog(row);
   const account = accountStatus(row.accountLinks);
   const registration = row.managerVendors[0]?.status ?? "UNREGISTERED";
@@ -135,7 +145,16 @@ function mapSearchResult(row: CatalogProjection): VendorCatalogSearchResult {
     catalog,
     accountStatus: account,
     registrationStatus: registration,
-    ...assignmentState(catalog, account, registration)
+    registrationSource:
+      managerId !== undefined && isDirectManagerVendor(row, managerId)
+        ? "MANAGER_DIRECT"
+        : "PLATFORM",
+    ...assignmentState(
+      catalog,
+      account,
+      registration,
+      managerId !== undefined && isDirectManagerVendor(row, managerId),
+    )
   };
 }
 
@@ -286,7 +305,8 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
 
   constructor(
     databaseUrl: string,
-    private readonly nextId: () => string = () => `mvd-${randomUUID()}`
+    private readonly nextId: () => string = () => `mvd-${randomUUID()}`,
+    private readonly nextVendorId: () => string = () => `ven-${randomUUID()}`
   ) {
     this.prisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: databaseUrl })
@@ -300,7 +320,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
   async searchCatalog(managerId: string, filters: VendorCatalogSearchFilters) {
     await this.assertValidManager(this.prisma, managerId);
     const rows = await this.catalogRows(this.prisma, managerId, filters);
-    return rows.map(mapSearchResult);
+    return rows.map((row) => mapSearchResult(row));
   }
 
   async searchAssignmentCandidates(
@@ -319,7 +339,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     const normalizedQuery = query?.trim();
     const rows = await this.prisma.vendorProfile.findMany({
       where: {
-        ...vendorAssignmentWhere(managerId),
+        ...managerVendorAssignmentWhere(managerId),
         ...(normalizedQuery
           ? { businessName: { contains: normalizedQuery, mode: "insensitive" } }
           : {})
@@ -336,7 +356,10 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       take: 25
     });
     const suggestedTrade = suggestedVendorTrade(ticket.category);
-    const candidates = rows.filter((vendor) => vendorServesAddress(vendor, ticket.room.address));
+    const candidates = rows.filter((vendor) =>
+      isDirectManagerVendor(vendor, managerId)
+      || vendorServesAddress(vendor, ticket.room.address),
+    );
     if (suggestedTrade) {
       candidates.sort((left, right) =>
         Number(vendorSupportsRequiredTrade(right.trades, suggestedTrade))
@@ -344,7 +367,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       );
     }
     return candidates
-      .map(mapSearchResult);
+      .map((vendor) => mapSearchResult(vendor, managerId));
   }
 
   async list(managerId: string, filters: VendorCatalogSearchFilters) {
@@ -352,7 +375,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     const rows = await this.prisma.managerVendor.findMany({
       where: {
         managerId,
-        vendor: this.operationalCatalogWhere(filters)
+        vendor: this.visibleCatalogWhere(managerId, filters)
       },
       include: { vendor: { include: { accountLinks: true } } },
       orderBy: [{ vendor: { businessName: "asc" } }, { vendorId: "asc" }]
@@ -405,7 +428,10 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     };
   }
 
-  async findJobByTicket(managerId: string, ticketId: string) {
+  async findJobByTicket(
+    managerId: string,
+    ticketId: string
+  ): Promise<ManagerVendorJobLookup | null> {
     await this.assertValidManager(this.prisma, managerId);
     const ownedTicket = { ticketId, ticket: { room: { landlordId: managerId } } };
     const active = await this.prisma.repairRequest.findFirst({
@@ -428,16 +454,29 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       managerId,
       repair.vendorId
     );
-    if (!relation) return null;
+    if (!relation) {
+      return {
+        partnership: "UNREGISTERED" as const,
+        vendor: {
+          vendorId: repair.vendorId,
+          catalog: mapCatalog(repair.vendor)
+        },
+        job: mapManagerJob(repair, managerId)
+      };
+    }
     const [vendor] = await this.projectViews(this.prisma, managerId, [relation]);
-    return { vendor, job: mapManagerJob(repair, managerId) };
+    return {
+      partnership: "REGISTERED" as const,
+      vendor,
+      job: mapManagerJob(repair, managerId)
+    };
   }
 
   async register(managerId: string, vendorId: string) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertValidManager(tx, managerId);
       const vendor = await tx.vendorProfile.findFirst({
-        where: { id: vendorId, ...vendorAssignmentWhere() },
+        where: { id: vendorId, createdByManagerId: null, ...vendorAssignmentWhere() },
         select: { id: true }
       });
       if (!vendor) throw repositoryError("VENDOR_NOT_FOUND", "Vendor catalog record was not found.");
@@ -450,11 +489,52 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     });
   }
 
+  async createManual(managerId: string, input: CreateManagerVendorInput) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.assertValidManager(tx, managerId);
+        const vendorId = this.nextVendorId();
+        await tx.vendorProfile.create({
+          data: {
+            id: vendorId,
+            businessName: input.businessName,
+            contactPerson: input.businessName,
+            phone: input.phone,
+            serviceArea: "",
+            trades: [],
+            serviceAreas: [],
+            verificationStatus: "PENDING",
+            isActive: true,
+            createdByManagerId: managerId,
+          },
+        });
+        await tx.managerVendor.create({
+          data: {
+            id: this.nextId(),
+            managerId,
+            vendorId,
+            status: "ACTIVE",
+            settlementAccountNumber: input.accountNumber,
+          },
+        });
+        return this.requireView(tx, managerId, vendorId);
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2002"
+      ) {
+        throw repositoryError("DUPLICATE_VENDOR", "Manager vendor phone already exists.");
+      }
+      throw error;
+    }
+  }
+
   async updateNote(managerId: string, vendorId: string, managerNote: string | null) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertValidManager(tx, managerId);
       const result = await tx.managerVendor.updateMany({
-        where: { managerId, vendorId, vendor: vendorAssignmentWhere() },
+        where: { managerId, vendorId, vendor: this.visibleCatalogWhere(managerId, {}) },
         data: { managerNote }
       });
       if (result.count !== 1) throw repositoryError("RELATION_NOT_FOUND", "Manager vendor relation was not found.");
@@ -466,7 +546,7 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     return this.prisma.$transaction(async (tx) => {
       await this.assertValidManager(tx, managerId);
       const result = await tx.managerVendor.updateMany({
-        where: { managerId, vendorId, vendor: vendorAssignmentWhere() },
+        where: { managerId, vendorId, vendor: this.visibleCatalogWhere(managerId, {}) },
         data: { status: "ARCHIVED" }
       });
       if (result.count !== 1) throw repositoryError("RELATION_NOT_FOUND", "Manager vendor relation was not found.");
@@ -513,6 +593,23 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
     return { ...this.catalogWhere(filters), ...vendorAssignmentWhere() };
   }
 
+  private visibleCatalogWhere(
+    managerId: string,
+    filters: VendorCatalogSearchFilters
+  ): Prisma.VendorProfileWhereInput {
+    return {
+      AND: [
+        this.catalogWhere(filters),
+        {
+          OR: [
+            vendorAssignmentWhere(),
+            { createdByManagerId: managerId },
+          ],
+        },
+      ],
+    };
+  }
+
   private matchesArrayFilters(vendor: VendorProfile, filters: VendorCatalogSearchFilters) {
     const trade = normalized(filters.trade);
     const area = normalized(filters.serviceArea);
@@ -524,7 +621,10 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
 
   private async catalogRows(db: DbClient, managerId: string, filters: VendorCatalogSearchFilters) {
     const rows = await db.vendorProfile.findMany({
-      where: this.operationalCatalogWhere(filters),
+      where: {
+        ...this.operationalCatalogWhere(filters),
+        createdByManagerId: null,
+      },
       include: {
         accountLinks: true,
         managerVendors: { where: { managerId } }
@@ -544,7 +644,11 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
 
   private async findVisibleRelation(db: DbClient, managerId: string, vendorId: string) {
     return db.managerVendor.findFirst({
-      where: { managerId, vendorId, vendor: vendorAssignmentWhere() },
+      where: {
+        managerId,
+        vendorId,
+        vendor: this.visibleCatalogWhere(managerId, {}),
+      },
       include: { vendor: { include: { accountLinks: true } } }
     });
   }
@@ -598,6 +702,9 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
         vendorId: row.vendorId,
         status: row.status,
         ...(row.managerNote === null ? {} : { managerNote: row.managerNote }),
+        ...(row.settlementAccountNumber === null
+          ? {}
+          : { settlementAccountNumber: row.settlementAccountNumber }),
         registeredAt: row.registeredAt.toISOString(),
         catalog: mapCatalog(row.vendor),
         accountStatus: accountStatus(row.vendor.accountLinks),

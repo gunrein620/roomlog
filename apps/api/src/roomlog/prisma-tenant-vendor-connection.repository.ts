@@ -179,7 +179,7 @@ export class PrismaTenantVendorConnectionRepository
           if (
             sameAttempt.ticketId !== ticket.id ||
             sameAttempt.vendorId !== candidate.id ||
-            !(await this.isTenantVendorRequest(tx, sameAttempt, complaint))
+            !this.isTenantVendorRequest(sameAttempt)
           ) {
             throw repositoryError(
               "ACTIVE_REPAIR_CONFLICT",
@@ -213,6 +213,7 @@ export class PrismaTenantVendorConnectionRepository
             ticketId: ticket.id,
             vendorId: candidate.id,
             status: "REQUESTED",
+            tenantInitiated: true,
             title: `${ticket.category} 처리 요청`,
             description,
             costBearer: "TENANT",
@@ -268,7 +269,7 @@ export class PrismaTenantVendorConnectionRepository
         !exactAttempt ||
         exactAttempt.ticketId !== complaint.ticket!.id ||
         exactAttempt.vendorId !== command.vendorId ||
-        !(await this.isTenantVendorRequest(this.prisma, exactAttempt, complaint))
+        !this.isTenantVendorRequest(exactAttempt)
       ) {
         throw repositoryError(
           "ACTIVE_REPAIR_CONFLICT",
@@ -328,6 +329,7 @@ export class PrismaTenantVendorConnectionRepository
               id: activeRepair.id,
               vendorId: activeRepair.vendorId,
               status: activeRepair.status,
+              tenantInitiated: activeRepair.tenantInitiated,
               title: activeRepair.title,
               description: activeRepair.description,
               ...(activeRepair.costBearer
@@ -390,28 +392,8 @@ export class PrismaTenantVendorConnectionRepository
     return complaint;
   }
 
-  private async isTenantVendorRequest(
-    db: DbClient,
-    repair: { id: string; vendorId: string },
-    complaint: ComplaintScope
-  ) {
-    const event = await db.domainEventOutbox.findUnique({
-      where: { eventKey: `vendor-job-assigned:${repair.id}` },
-      select: {
-        type: true,
-        actorUserId: true,
-        managerId: true,
-        vendorId: true,
-        repairId: true
-      }
-    });
-    return (
-      event?.type === "VENDOR_JOB_ASSIGNED" &&
-      event.actorUserId === complaint.tenantId &&
-      event.managerId === null &&
-      event.vendorId === repair.vendorId &&
-      event.repairId === repair.id
-    );
+  private isTenantVendorRequest(repair: { tenantInitiated: boolean }) {
+    return repair.tenantInitiated;
   }
 
   private assertTicketRequestable(status: string) {

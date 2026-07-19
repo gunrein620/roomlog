@@ -1,5 +1,6 @@
 import type {
   AutoPayPolicyMode,
+  GaraVendorPayoutRequestPublicView,
   ManagerAutoPayPolicyView,
   ManagerCreditAccountView,
   ManagerCreditTopupOrderView,
@@ -14,10 +15,47 @@ export type CreateTopupOrderCommand = Readonly<{
   amount: number;
   creationKey: string;
   returnPath: string;
+  garaManagerVendorId?: string;
 }>;
 
 export type CreateTopupOrderResult = Readonly<{
   order: ManagerCreditTopupOrderView;
+}>;
+
+export type CreateGaraTopupOrderCommand = Readonly<{
+  managerVendorId: string;
+  amount: number;
+  creationKey: string;
+  returnPath: "/gara";
+}>;
+
+export type CreateGaraTopupOrderResult = Readonly<{
+  managerId: string;
+  order: ManagerCreditTopupOrderView;
+}>;
+
+export type CreateGaraVendorPayoutCommand = Readonly<{
+  managerId: string;
+  managerVendorId: string;
+  amount: number;
+  idempotencyKey: string;
+}>;
+
+export type CreateGaraVendorPayoutResult = Readonly<{
+  request: GaraVendorPayoutRequestPublicView;
+  account: ManagerCreditAccountView;
+}>;
+
+export type CreatePublicGaraVendorPayoutRequestCommand = Readonly<{
+  managerVendorId: string;
+  amount: number;
+  idempotencyKey: string;
+}>;
+
+export type SettleGaraVendorPayoutCommand = Readonly<{
+  managerId: string;
+  payoutRequestId: string;
+  idempotencyKey: string;
 }>;
 
 export type ClaimTopupConfirmationCommand = Readonly<{
@@ -25,6 +63,7 @@ export type ClaimTopupConfirmationCommand = Readonly<{
   orderId: string;
   paymentKey: string;
   amount: number;
+  garaManagerVendorId?: string;
 }>;
 
 export type TopupConfirmationClaim =
@@ -40,6 +79,7 @@ export type FinalizeTopupCommand = Readonly<{
   managerId: string;
   orderId: string;
   payment: TossPaymentSnapshot;
+  garaManagerVendorId?: string;
 }>;
 
 export type FinalizeTopupResult = Readonly<{
@@ -148,6 +188,18 @@ export interface CreditCommandRepository {
   createTopupOrder(
     input: CreateTopupOrderCommand
   ): Promise<CreateTopupOrderResult>;
+  createGaraTopupOrder(
+    input: CreateGaraTopupOrderCommand
+  ): Promise<CreateGaraTopupOrderResult>;
+  createGaraVendorPayout(
+    input: CreateGaraVendorPayoutCommand
+  ): Promise<CreateGaraVendorPayoutResult>;
+  createPublicGaraVendorPayoutRequest(
+    input: CreatePublicGaraVendorPayoutRequestCommand
+  ): Promise<GaraVendorPayoutRequestPublicView>;
+  settleGaraVendorPayout(
+    input: SettleGaraVendorPayoutCommand
+  ): Promise<CreateGaraVendorPayoutResult>;
   claimTopupConfirmation(
     input: ClaimTopupConfirmationCommand
   ): Promise<TopupConfirmationClaim>;

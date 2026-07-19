@@ -212,6 +212,47 @@ describe("TradeService contract acceptance", () => {
   });
 });
 
+describe("TradeService contract termination", () => {
+  it("terminates an accepted contract, re-exposes the listing, and allows a new proposal", () => {
+    const service = serviceWithTempStore();
+    const { tenant, thread, accepted } = acceptContract(service);
+
+    const { contract, listing } = service.terminateContract(owner, accepted.listingId);
+
+    assert.equal(contract.status, "terminated");
+    assert.ok(contract.terminatedAt);
+    assert.equal(contract.respondedAt, accepted.respondedAt); // 수락 시각은 보존
+    assert.equal(listing.status, "노출중");
+    assert.ok(service.listPublicListings().some((item) => item.id === listing.id));
+    assert.equal(service.listAcceptedContracts().length, 0);
+
+    // 해지 뒤에는 같은 스레드에서 다시 제안할 수 있어야 한다.
+    const reproposed = service.proposeContract(owner, thread.id).contract;
+    assert.equal(reproposed.status, "proposed");
+    assert.notEqual(reproposed.id, contract.id);
+    void tenant;
+  });
+
+  it("is retry-safe: a second terminate call returns the same terminated contract", () => {
+    const service = serviceWithTempStore();
+    const { accepted } = acceptContract(service);
+
+    const first = service.terminateContract(owner, accepted.listingId);
+    const second = service.terminateContract(owner, accepted.listingId);
+
+    assert.equal(second.contract.id, first.contract.id);
+    assert.equal(second.contract.status, "terminated");
+    assert.equal(second.listing.status, "노출중");
+  });
+
+  it("rejects termination when there is no accepted contract", () => {
+    const service = serviceWithTempStore();
+    const listing = service.createListing(owner, input);
+
+    assert.throws(() => service.terminateContract(owner, listing.id), /해지할 체결 계약이 없습니다/);
+  });
+});
+
 describe("TradeService atomic file persistence", () => {
   it("rolls back a failed proposal and retries with one contract and one proposal message", () => {
     const { service, filePath } = serviceWithStorePath("roomlog-trade-proposal-rollback-");

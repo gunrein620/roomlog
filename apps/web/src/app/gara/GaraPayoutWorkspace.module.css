@@ -1,0 +1,118 @@
+.workspace {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.hint,
+.error,
+.feedback,
+.empty {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+
+.feedback {
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+}
+
+.tableWrap table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+}
+
+.tableWrap th,
+.tableWrap td {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border);
+  color: var(--on-surface);
+  text-align: left;
+  vertical-align: top;
+}
+
+.tableWrap th {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+  background: var(--surface-container);
+}
+
+.tableWrap tr:last-child td {
+  border-bottom: 0;
+}
+
+.balance {
+  font-weight: var(--fw-subtitle);
+}
+
+.accountLabel {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 180px;
+}
+
+.accountLabel span {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.requestForm {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.amountInput {
+  width: 160px;
+  min-height: var(--touch-target);
+  box-sizing: border-box;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-sm);
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  font: inherit;
+}
+
+.sendButton {
+  min-height: var(--touch-target);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-btn);
+  padding: 0 var(--space-lg);
+  color: var(--on-primary);
+  background: var(--primary);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.amountInput:focus-visible,
+.sendButton:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.amountInput:disabled,
+.sendButton:disabled {
+  cursor: not-allowed;
+  opacity: var(--disabled-opacity);
+}
+
+.error {
+  color: var(--on-error-container);
+}
+
+.empty {
+  padding: var(--space-xl);
+}

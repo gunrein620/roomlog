@@ -13,6 +13,7 @@ import {
   reconcileManagerCreditTopup,
   reverseVendorCreditPayment,
   settleVendorPaymentRequest,
+  settleGaraVendorPayout,
   updateManagerAutoPayPolicy,
   voidVendorDirectPayment,
 } from "@/lib/vendor-credit-api";
@@ -43,6 +44,10 @@ export async function settleCreditPaymentAction(
   input: SettleVendorPaymentRequestInput,
 ) {
   return settleVendorPaymentRequest(paymentRequestId, input);
+}
+
+export async function settleGaraPayoutAction(payoutRequestId: string, idempotencyKey: string) {
+  return settleGaraVendorPayout(payoutRequestId, { idempotencyKey });
 }
 
 export async function reverseCreditPaymentAction(

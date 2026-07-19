@@ -31,6 +31,15 @@ export type ContractValueSource = "confirmed" | "manual" | "unverified";
 /** OCR 추출 항목 그룹 — 돈/기간/책임 3그룹 접기 */
 export type ExtractionGroup = "money" | "term" | "responsibility";
 
+/** OCR source highlight coordinates. Page is 1-based; x/y/width/height are normalized 0..1. */
+export interface ExtractionRegion {
+  page?: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** 양면 단일 레코드 — 임차인(T-DOC) / 관리인(M-DOC) 공유. 홈 요약은 마스킹 */
 export interface Contract {
   id: string;
@@ -62,6 +71,7 @@ export interface ExtractionItem {
   needsCheck: boolean; // 확인 필요 (OCR 불확실)
   evidence?: string; // 근거 보기 — 원문 발췌
   masked?: boolean; // 민감정보 기본 마스킹(상세주소·계좌·연락처)
+  regions?: ExtractionRegion[];
 }
 
 /** 비적대 프레임 조항 안내 (T-DOC-03 참고 · 확정/책임 판단 아님) */

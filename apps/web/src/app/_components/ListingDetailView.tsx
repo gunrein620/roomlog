@@ -22,6 +22,7 @@ import {
   isRemotePhoto,
   listingMapAddress,
   optionItems,
+  shouldShow3DTourControls,
   TRADE_LISTING_NO_PREFIX,
   type Listing
 } from "@/lib/listing-catalog";
@@ -64,6 +65,8 @@ export function ListingDetailView({
   const activePhoto = listing.gallery[heroPhotoIndex] ?? listing.gallery[0];
   const listingBuildingRows = getListingBuildingRows(listing);
   const mapAddress = listingMapAddress(listing);
+  // 3D 도면이 실제로 연결된 매물에만 3D 진입점을 노출한다(없는 매물에 빈 시트를 띄우지 않음).
+  const has3DTour = shouldShow3DTourControls(listing);
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
   // 매물별 3D 게이트 대상은 직접등록(TRADE-) 매물뿐 — 정적(하드코딩) 매물은 기존 데모 링크를 그대로 둔다(곧 삭제 예정).
   const isTradeDirectListing = isDirectListing && listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX);
@@ -463,18 +466,19 @@ export function ListingDetailView({
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
         </button>
-        {/* 3D가 히어로인 매물은 시트 버튼이 중복 — 히어로로 스크롤하는 앵커로 바꾼다. */}
+        {/* 3D가 히어로인 매물은 시트 버튼이 중복 — 히어로로 스크롤하는 앵커로 바꾼다.
+            히어로가 아니면 dev의 게이트를 따라 3D 투어가 있을 때만 시트 버튼을 노출한다. */}
         {has3DHero ? (
           <a className="detail-contact-tour" href="#detail-3d-hero">
             <span>3D</span>
             <strong>도면 보기</strong>
           </a>
-        ) : (
+        ) : has3DTour ? (
           <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
             <span>3D</span>
             <strong>둘러보기</strong>
           </button>
-        )}
+        ) : null}
         {/* 1인칭 체험 — 매물별 정직 게이트.
             · 직접등록(TRADE-) + 대표 자산 있음 → 이 매물 전용 splat 투어(?asset=)
             · 직접등록 + 자산 없음/FAILED뿐 → 비활성 "준비 안 됨"(링크 아님, 없는 상태를 그대로 노출)
@@ -512,7 +516,7 @@ export function ListingDetailView({
         </button>
       </div>
 
-      {isTourSheetOpen ? (
+      {has3DTour && isTourSheetOpen ? (
         <div className="tour-sheet-backdrop" role="presentation" onClick={() => setIsTourSheetOpen(false)}>
           <section className="tour-sheet" role="dialog" aria-modal="true" aria-labelledby="tour-sheet-title" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-handle" aria-hidden="true" />

@@ -1,10 +1,17 @@
 import type {
+  GaraVendorCreditPublicView,
   ManagerCreditAccountView,
   ManagerCreditTopupOrderView,
   ManagerCreditWorkspace
 } from "@roomlog/types";
 
 export const CREDIT_QUERY_REPOSITORY = Symbol("CREDIT_QUERY_REPOSITORY");
+
+export type GaraTopupOrder = Readonly<{
+  managerId: string;
+  managerVendorId: string;
+  order: ManagerCreditTopupOrderView;
+}>;
 
 export interface CreditQueryRepository {
   assertManagerAccess(userId: string): Promise<void>;
@@ -22,4 +29,6 @@ export interface CreditQueryRepository {
     managerId: string,
     orderId: string
   ): Promise<ManagerCreditTopupOrderView>;
+  listPublicGaraVendors(): Promise<GaraVendorCreditPublicView[]>;
+  getGaraTopupOrder(orderId: string): Promise<GaraTopupOrder>;
 }

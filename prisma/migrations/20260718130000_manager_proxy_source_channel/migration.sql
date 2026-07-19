@@ -1,0 +1,1 @@
+ALTER TYPE "ComplaintSourceChannel" ADD VALUE 'MANAGER_PROXY';

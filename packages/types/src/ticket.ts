@@ -30,6 +30,68 @@ export type ResponsibilityVerdict =
   | "landlord_likely" // 임대인 책임 가능성
   | "unclear"; // 판단 어려움
 
+/** 관리자가 확정한 책임 주체. AI 가능성 값과 별도 축이다. */
+export type ResponsibilityDecisionValue = "TENANT" | "LANDLORD";
+
+export interface TicketResponsibilityDecision {
+  responsibility: ResponsibilityDecisionValue;
+  decidedById: string;
+  decidedAt: string;
+  note: string;
+}
+
+/** RepairRequest를 만들지 않는 관리자 직접 처리 진행 메타. */
+export interface TicketDirectHandling {
+  startedAt: string;
+  completedAt?: string;
+  note?: string;
+}
+
+/** 관리자 목록에 노출하는 세입자 주도 수리의 활성 진행 요약. */
+export interface TicketSelfRepairSummary {
+  active: true;
+  statusLabel: string;
+}
+
+/** 관리자 상세에서 사용하는 티켓 전체 대화의 공개 계약. */
+export interface TicketThreadMessage {
+  id: string;
+  repairId?: string;
+  senderRole: "TENANT" | "LANDLORD" | "VENDOR" | "AI_ASSISTANT" | "SYSTEM";
+  messageText: string;
+  attachmentUrls: string[];
+  createdAt: string;
+}
+
+/** 취소된 수리 요청의 최신 업체 거절 정보. 관리자 상세에서만 노출한다. */
+export interface TicketVendorDecline {
+  repairId: string;
+  reason: string;
+}
+
+export type TicketAiFeedbackTarget =
+  | "SUMMARY"
+  | "CATEGORY"
+  | "PRIORITY"
+  | "RESPONSIBILITY"
+  | "COMPLETION";
+
+export interface TicketAiFeedback {
+  id: string;
+  ticketId: string;
+  complaintId: string;
+  target: TicketAiFeedbackTarget;
+  targetLabel: string;
+  originalValue: string;
+  reason: string;
+  requestedAction?: string;
+  status: "OPEN" | "REVIEWED";
+  managerReviewNote?: string;
+  correctedValue?: string;
+  reviewedAt?: string;
+  createdAt: string;
+}
+
 /** 긴급도 1~4순위 (1=즉시) */
 export type Urgency = 1 | 2 | 3 | 4;
 
@@ -79,6 +141,57 @@ export interface ManagerTicketReplyInput {
   messageText?: string;
 }
 
+/**
+ * 관리인이 대화 패널에서 직접 넘기는 진행 레인 — 접수 | 진행 | 완료.
+ * 세부 상태(검토·추가정보·업체배정…)를 관리인 눈높이의 3단계로 접은 축이며,
+ * **수리(RepairStage)·결제 축은 건드리지 않는다**(티켓 상태 ≠ 수리 상태).
+ */
+export type ManagerTicketLane = "received" | "processing" | "resolved";
+
+export interface SetManagerTicketLaneInput {
+  lane: ManagerTicketLane;
+}
+
+export interface DecideTicketResponsibilityInput {
+  responsibility: ResponsibilityDecisionValue;
+  note: string;
+}
+
+export interface StartTicketDirectHandlingInput {
+  note?: string;
+}
+
+export interface CompleteTicketDirectHandlingInput {
+  note: string;
+  cost?: {
+    amount: number;
+    item?: string;
+  };
+}
+
+export interface CancelTicketDirectHandlingInput {
+  reason: string;
+}
+
+export interface SubmitTicketAiFeedbackInput {
+  target: TicketAiFeedbackTarget;
+  reason: string;
+  requestedAction?: string;
+  attachmentUrls?: string[];
+}
+
+export interface CreateDefectComplaintInput {
+  title: string;
+  description: string;
+  location: string;
+  roomId?: string;
+  clientRequestId?: string;
+  attachmentUrls?: string[];
+  occurredAt?: string;
+  availableTimes?: string;
+  urgency?: Urgency;
+}
+
 export interface ManagerReplyDraftResult {
   ticketId: string;
   complaintId: string;
@@ -114,6 +227,12 @@ export interface Ticket {
   disposition?: TicketDisposition;
   /** 반려/보류 사유 (관리인 기록). 자동 발송 금지 원칙에 따라 통보는 별도. */
   dispositionReason?: string;
+  /** 관리자 확정 메타. AI 책임 가능성 분석과 혼동하지 않는다. */
+  responsibilityDecision?: TicketResponsibilityDecision;
+  /** 관리자 직접 처리 메타. null/미지정이면 직접 처리 갈래가 아니다. */
+  directHandling?: TicketDirectHandling | null;
+  /** 관리자 표면에서만 오는 활성 자가수리 요약. */
+  selfRepair?: TicketSelfRepairSummary | null;
 }
 
 /**

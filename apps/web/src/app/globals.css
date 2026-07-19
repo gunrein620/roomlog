@@ -2284,10 +2284,22 @@ p {
 }
 
 .map-topbar > button {
+  flex: 0 0 auto;
   width: 54px;
   height: 50px;
   color: var(--blue);
   font-size: 0.78rem;
+}
+
+.map-topbar > .map-search-submit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.map-search-submit-label {
+  display: none;
 }
 
 .map-location-action-label {
@@ -8093,6 +8105,18 @@ p {
   font-weight: 500;
 }
 
+.tenant-vendor-workflow-note-form input[type="text"] {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: var(--fs-caption);
+}
+
 .tenant-vendor-note textarea,
 .tenant-vendor-workflow-note-form textarea {
   width: 100%;
@@ -8349,6 +8373,20 @@ p {
   font-weight: 800;
 }
 
+.tenant-manager-proxy-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-full);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
 @media (max-width: 640px) {
   .tenant-vendor-card {
     margin-left: 0;
@@ -8391,6 +8429,9 @@ p {
 .tenant-announcement-link {
   position: relative;
   z-index: 1;
+  /* ready 상태에선 링크가 카드의 유일한 그리드 자식 — 두 컬럼을 다 차지해야
+     아이콘·본문이 안쪽 그리드로 배치된다(안 그러면 auto 컬럼에 갇혀 세로 흐름). */
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -8637,7 +8678,14 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-md);
+}
+
+.tenant-section-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-md);
 }
 
 .tenant-section-head button {
@@ -8774,18 +8822,6 @@ p {
   color: var(--blue);
 }
 
-.tenant-request-detail-form .tenant-request-type-toggle button:disabled {
-  cursor: default;
-  opacity: 1;
-}
-
-.tenant-request-detail-meta-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
-  align-items: end;
-  gap: 24px;
-}
-
 .tenant-request-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 0.58fr);
@@ -8817,13 +8853,146 @@ p {
   min-height: 182px;
 }
 
-.tenant-request-detail-form input[readonly],
-.tenant-request-detail-form textarea[readonly] {
-  cursor: default;
+/* 민원/하자 상세 — 처리 상태·긴급도·진행 메시지 (세입자탭 본선 상세) */
+.tenant-request-urgency {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.tenant-request-detail-form .tenant-request-body-field textarea {
-  min-height: 320px;
+.tenant-request-urgency > span {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.tenant-request-urgency .tenant-request-type-toggle {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tenant-request-urgency .tenant-request-type-toggle button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.92rem;
+}
+
+.tenant-defect-progress,
+.tenant-defect-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, var(--muted));
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.tenant-defect-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tenant-defect-progress-head strong {
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.tenant-defect-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--blue);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.tenant-defect-messages > strong {
+  font-size: 0.94rem;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.tenant-defect-messages ul {
+  /* 한 줄 메시지 5개 기준 고정 높이. 이후 대화는 이 영역 안에서만 스크롤한다. */
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  margin: 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+  height: 292px;
+  overflow-y: auto;
+}
+
+.tenant-defect-messages li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, var(--muted));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--line) 24%, var(--paper));
+}
+
+.tenant-defect-messages li[data-sender="TENANT"] {
+  border-color: color-mix(in srgb, var(--blue) 30%, var(--line));
+  background: color-mix(in srgb, var(--blue-soft) 45%, var(--paper));
+}
+
+.tenant-defect-messages li.tenant-defect-message-empty {
+  margin-block: auto;
+  border-style: dashed;
+  background: var(--paper);
+  text-align: center;
+}
+
+.tenant-defect-messages li.tenant-defect-message-empty p {
+  color: var(--muted);
+}
+
+.tenant-defect-messages li span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.tenant-defect-messages li p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.tenant-defect-chat-input {
+  display: flex;
+  gap: 8px;
+}
+
+.tenant-defect-chat-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tenant-defect-chat-input button {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.tenant-defect-chat-input button:disabled {
+  opacity: 0.5;
 }
 
 .tenant-request-image-strip {
@@ -8939,15 +9108,6 @@ p {
 }
 
 @media (max-width: 640px) {
-  .tenant-request-detail-meta-row {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .tenant-request-detail-form .tenant-request-body-field textarea {
-    min-height: 220px;
-  }
-
   .tenant-request-row {
     grid-template-columns: 1fr;
   }
@@ -9755,6 +9915,11 @@ p {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 0 14px;
+}
+
+.search-sheet header.search-sheet-close-row {
+  justify-content: flex-end;
+  padding: 0 0 8px;
 }
 
 .search-sheet header span {
@@ -11098,7 +11263,7 @@ p {
   line-height: 1;
 }
 
-/* 3D 배치 대기 가구 머리 위 액션 버튼(✓ 확정 / ⟳ 회전 / ✕ 취소) */
+/* 3D 가구 머리 위 아이콘 액션 */
 .floor-plan-pending-actions {
   display: flex;
   gap: 6px;
@@ -11111,8 +11276,10 @@ p {
 }
 
 .floor-plan-pending-actions button {
-  width: 34px;
-  height: 34px;
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
   border: 0;
   border-radius: 50%;
   background: #eef2f9;
@@ -11121,6 +11288,17 @@ p {
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
+}
+
+.floor-plan-pending-actions button svg {
+  width: 19px;
+  height: 19px;
+  pointer-events: none;
+}
+
+.floor-plan-pending-actions button:focus-visible {
+  outline: 3px solid rgba(47, 85, 255, 0.42);
+  outline-offset: 2px;
 }
 
 .floor-plan-pending-actions button:hover {
@@ -11137,11 +11315,16 @@ p {
 }
 
 .floor-plan-pending-actions button.is-cancel {
-  color: #b91c1c;
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.floor-plan-pending-actions button.is-cancel:hover {
+  background: #b91c1c;
 }
 
 .floor-plan-pending-actions button.is-delete {
-  font-size: 0.85rem;
+  color: #dc2626;
 }
 
 /* 드로어 내부 섹션 — <details> 드롭다운. 제목(summary)을 클릭해 접고 펼친다 */
@@ -12582,11 +12765,28 @@ p {
 
   .map-topbar > button {
     width: 66px;
-    height: 60px;
+    height: auto;
+    min-height: 60px;
+    align-self: stretch;
     border-left: 1px solid var(--line);
     border-radius: 0;
     background: #ffffff;
     box-shadow: none;
+  }
+
+  .map-topbar > .map-search-submit-button {
+    width: auto;
+    min-width: 94px;
+    padding: 0 16px;
+  }
+
+  .map-search-submit-label {
+    display: inline-flex;
+    align-items: center;
+    color: var(--blue);
+    font-size: 0.78rem;
+    font-weight: 900;
+    white-space: nowrap;
   }
 
   .map-topbar > .map-location-action-button {
@@ -12606,7 +12806,9 @@ p {
   }
 
   .map-topbar > button:last-child {
-    width: 76px;
+    width: 80px;
+    min-height: 62px;
+    margin: -1px -1px -1px 0;
     background: var(--blue);
     color: #ffffff;
   }
@@ -13061,8 +13263,6 @@ p {
 
   .detail-info-section,
 .detail-info-pair,
-.safety-analysis-card,
-.detail-report-card,
 .detail-tour-banner,
 .detail-map-section {
     grid-column: 1 / -1;
@@ -15881,6 +16081,8 @@ p {
   color: var(--on-surface);
   background: var(--surface-container);
   line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .manager-ai-message--user {
@@ -16338,5 +16540,53 @@ p {
 
   .manager-assistant-action-card__button {
     width: 100%;
+  }
+}
+
+/* 세입자 민원/하자 이력 상세: 데스크톱은 오른쪽 사이드 패널, 모바일은 전체 화면 */
+.notification-sheet-backdrop.tenant-request-detail-backdrop {
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.notification-sheet.tenant-request-detail-panel {
+  width: min(50vw, 720px);
+  max-height: none;
+  height: 100dvh;
+  padding: 18px 24px 24px;
+  border-radius: 24px 0 0 24px;
+}
+
+.tenant-request-detail-panel .sheet-handle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .notification-sheet.tenant-request-detail-panel {
+    width: 100%;
+    height: 100dvh;
+    padding: 18px 18px 24px;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tenant-request-detail-panel .tenant-request-detail-form {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tenant-request-detail-panel .tenant-defect-messages {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tenant-defect-chat-input {
+    margin-top: auto;
+    padding-top: 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    background: var(--paper);
   }
 }

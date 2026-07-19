@@ -1,6 +1,8 @@
 import type {
   CancelVendorPaymentRequestInput,
   ConfirmManagerCreditTopupInput,
+  CreateGaraVendorPayoutInput,
+  CreateGaraVendorPayoutResult,
   ConfirmRepairPaymentOrderInput,
   CreateManagerCreditTopupInput,
   CreateRepairPaymentOrderInput,
@@ -55,6 +57,25 @@ export function getManagerCreditAccount(): Promise<CreditReadResult<ManagerCredi
   return readCreditData(
     () => serverFetch<ManagerCreditAccountPublicView>("/manager/credits/account"),
     DEMO_MANAGER_CREDIT_ACCOUNT,
+  );
+}
+
+export function createGaraVendorPayout(
+  input: CreateGaraVendorPayoutInput,
+): Promise<CreateGaraVendorPayoutResult> {
+  return serverFetch<CreateGaraVendorPayoutResult>("/manager/gara/vendor-payout-requests", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function settleGaraVendorPayout(
+  payoutRequestId: string,
+  input: Readonly<{ idempotencyKey: string }>,
+): Promise<CreateGaraVendorPayoutResult> {
+  return serverFetch<CreateGaraVendorPayoutResult>(
+    `/manager/gara/vendor-payout-requests/${encodeURIComponent(payoutRequestId)}/settle`,
+    { method: "POST", body: JSON.stringify(input) },
   );
 }
 

@@ -2,8 +2,10 @@ import type { DunningGuard } from "./payment";
 
 export type ManagerAgentCommandName =
   | "ticket.query"
+  | "ticket.summary"
   | "billing.summary"
   | "billing.send_dunning"
+  | "credit.balance"
   | "messaging.list_threads"
   | "messaging.draft_reply"
   | "messaging.send_reply";
@@ -19,7 +21,7 @@ export interface ManagerAgentCommandInput {
 
 export interface ManagerAgentCommandResult {
   status: "executed" | "draft_only" | "blocked";
-  domain: "ticket" | "billing" | "messaging" | "system";
+  domain: "ticket" | "billing" | "credit" | "messaging" | "system";
   summary: string;
   data?: unknown;
   navigation?: {

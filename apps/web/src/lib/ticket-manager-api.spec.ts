@@ -2,12 +2,13 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import {
   getManagerTicketDetail,
+  listManagerProxyIntakeRooms,
   listManagerTicketRows,
   managerTicketAttachmentUrls,
   managerTicketByIdOrNull,
 } from "./ticket-manager-api";
 import type { TeamManagerTicket } from "./manager-mapping";
-import { ApiError } from "./server-api";
+import { ApiError, ApiPayloadError } from "./server-api";
 
 const ticket = {
   messages: [
@@ -53,6 +54,41 @@ describe("manager ticket attachment mapping", () => {
 });
 
 describe("manager ticket row loading", () => {
+  it("preserves the manager unread state on dashboard rows", async () => {
+    const [row] = await listManagerTicketRows(async () => [
+      { ...detailTicket, isManagerUnread: true },
+    ]);
+
+    assert.equal(row?.isManagerUnread, true);
+  });
+
+  it("places a newly assigned vendor ticket ahead of older dashboard rows", async () => {
+    const rows = await listManagerTicketRows(async () => [
+      detailTicket,
+      {
+        ...detailTicket,
+        id: "ticket-newly-assigned",
+        complaintId: "complaint-newly-assigned",
+        complaint: {
+          ...detailTicket.complaint,
+          updatedAt: "2026-07-19T09:00:00+09:00",
+        },
+        assignedVendor: { businessName: "테스트1" },
+        repairs: [{
+          id: "repair-newly-assigned",
+          ticketId: "ticket-newly-assigned",
+          status: "REQUESTED",
+        }],
+      },
+    ]);
+
+    assert.deepEqual(rows.map((row) => row.ticket.id), [
+      "ticket-newly-assigned",
+      "ticket-1",
+    ]);
+    assert.equal(rows[0]?.repair?.vendorName, "테스트1");
+  });
+
   it("propagates API failures instead of returning an empty dashboard", async () => {
     const failure = new Error("manager tickets unavailable");
 
@@ -66,6 +102,48 @@ describe("manager ticket row loading", () => {
 
   it("keeps an actual empty API response as an empty dashboard", async () => {
     assert.deepEqual(await listManagerTicketRows(async () => []), []);
+  });
+});
+
+describe("manager proxy-intake room loading", () => {
+  it("uses demo rooms only for a fetch transport TypeError", async () => {
+    const cause = Object.assign(new Error("connect refused"), { code: "ECONNREFUSED" });
+    const rooms = await listManagerProxyIntakeRooms(async () => {
+      throw new TypeError("fetch failed", { cause });
+    });
+
+    assert.ok(rooms.length > 0);
+    assert.equal(rooms.some((room) => room.roomId === "room-301"), true);
+  });
+
+  it("rethrows HTTP and malformed-payload API errors", async () => {
+    const apiFailure = new ApiError(500, "proxy-intake rooms unavailable");
+    const payloadFailure = new ApiPayloadError(
+      "INVALID_JSON",
+      "/manager/proxy-intake/rooms",
+      "GET",
+      200,
+    );
+
+    for (const failure of [apiFailure, payloadFailure]) {
+      await assert.rejects(
+        () => listManagerProxyIntakeRooms(async () => {
+          throw failure;
+        }),
+        (error) => error === failure,
+      );
+    }
+  });
+
+  it("does not hide arbitrary loader bugs behind demo data", async () => {
+    for (const failure of [new Error("mapping bug"), new TypeError("mapping bug")]) {
+      await assert.rejects(
+        () => listManagerProxyIntakeRooms(async () => {
+          throw failure;
+        }),
+        (error) => error === failure,
+      );
+    }
   });
 });
 

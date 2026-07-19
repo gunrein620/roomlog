@@ -35,12 +35,19 @@ export default async function CompletionDecisionPage({ searchParams }: { searchP
     : null;
   const latestCompletion = selected?.job.latestCompletion;
   const demo = workflowResult.source === "DEMO";
-  const canDecide = selected?.job.status === "COMPLETION_REPORTED" && !demo;
+  const readOnly = selected?.partnership === "UNREGISTERED";
+  const canDecide = selected?.job.status === "COMPLETION_REPORTED" && !demo && !readOnly;
 
   return (
     <div style={pageStack}>
       <TicketHeader ticket={ticket} title="수리 완료 확인" />
       {demo ? <Badge emphasis>데모 데이터</Badge> : null}
+      {readOnly ? (
+        <Card role="status" style={{ display: "grid", gap: "var(--space-sm)" }}>
+          <Badge emphasis>세입자가 연결한 플랫폼 업체 — 조회 전용</Badge>
+          <div style={muted}>업체의 완료 보고와 현재 진행 상태만 확인할 수 있습니다.</div>
+        </Card>
+      ) : null}
       {selected ? (
         <>
           <Card style={{ display: "grid", gap: "var(--space-md)" }}>
@@ -93,7 +100,9 @@ export default async function CompletionDecisionPage({ searchParams }: { searchP
                   </ManagerMutationForm>
                 </div> : (
                   <div style={muted}>
-                    {demo
+                    {readOnly
+                      ? "세입자가 연결한 업체의 완료 진행을 조회하고 있습니다."
+                      : demo
                       ? "데모 데이터는 읽기 전용입니다."
                       : selected.job.status === "COMPLETED"
                         ? "완료 보고가 승인되어 지급 절차로 넘어갔습니다."
@@ -106,7 +115,6 @@ export default async function CompletionDecisionPage({ searchParams }: { searchP
         </>
       ) : <EmptyState title="확인할 수리 작업이 없습니다" description="업체 배정 화면에서 실제 repair를 선택해 주세요." />}
       <div style={row}>
-        <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정·견적으로</LinkButton>
         <LinkButton href={ticketDashHref("01", ticket.id)} variant="ghost">티켓 상세로</LinkButton>
       </div>
     </div>

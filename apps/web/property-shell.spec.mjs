@@ -6,6 +6,7 @@ import { test } from "node:test";
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
 const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
 const tenantMyPageSource = readFileSync(new URL("./src/app/my/flows/TenantMyPage.tsx", import.meta.url), "utf8");
+const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const mobileRoleMenuSource = readFileSync(new URL("./src/app/_components/MobileRoleMenu.tsx", import.meta.url), "utf8");
 const spaSource = [
   homeAppSource,
@@ -41,8 +42,8 @@ test("tenant complaint modal persists, restores, and clears the authenticated ro
   assert.match(tenantMyPageSource, /deleteTenantComplaintDraft\(selectedTenantRoomId\)/);
   assert.match(tenantMyPageSource, /mergeTenantComplaintDraftImageUrls\(requestImages, uploadedUrls\)/);
   assert.match(tenantMyPageSource, /roomId:\s*selectedTenantRoomId/);
-  assert.match(tenantMyPageSource, /requestDraftLoadGuardRef\.current\.isCurrent\(loadToken\)/);
-  assert.match(tenantMyPageSource, /setRequestDraft\(EMPTY_REQUEST_DRAFT\);[\s\S]*?clearRequestImages\(\);[\s\S]*?loadTenantComplaintDraft/);
+  assert.match(tenantMyPageSource, /setSavedRequestDraft\(saved\)/);
+  assert.match(tenantMyPageSource, /setSavedRequestDraft\(null\)/);
   assert.match(tenantMyPageSource, /serializeTenantComplaintDraftOccurredAt\(requestDraft\.occurredAt\)/);
   assert.match(tenantMyPageSource, /requestDraftMutationGuardRef\.current\.tryBegin\("submit"\)/);
   assert.match(tenantMyPageSource, /clientRequestId:\s*requestSubmissionId/);
@@ -53,6 +54,17 @@ test("tenant complaint modal persists, restores, and clears the authenticated ro
     tenantMyPageSource,
     /const handleRequestDraftSave = \(\) => \{[\s\S]*?showToast\("민원\/하자 요청이 임시 저장되었습니다\."\);\n  \};/
   );
+});
+
+test("tenant complaint history exposes a saved draft separately from a blank new request", () => {
+  assert.match(tenantMyPageSource, /savedRequestDraft/);
+  assert.match(tenantMyPageSource, /const openNewRequestSheet = \(\) =>/);
+  assert.match(tenantMyPageSource, /const openSavedRequestSheet = \(\) =>/);
+  assert.match(
+    tenantMyPageSource,
+    /savedRequestDraft \? \([\s\S]*?>\s*임시 저장\s*<\/[\s\S]*?신규 요청하기/
+  );
+  assert.match(globalsCssSource, /\.tenant-section-actions\s*\{/);
 });
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
@@ -76,7 +88,6 @@ const floorPlanModel = {
   ...(await import("./src/app/floor-plan-3d/plan-extraction/wall-detection.mjs"))
 };
 const dimensionLayout = await import("./src/app/floor-plan-3d/plan-extraction/dimension-layout.mjs");
-const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const webPackageSource = readFileSync(new URL("./package.json", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
 const floorPlanVisualSource = `${floorPlanRouteSource}\n${globalsCssSource}`;
@@ -964,8 +975,6 @@ test("borrows mature Zigbang and Dabang product patterns for trust and map searc
     "평균 응답",
     "오늘 현장확인",
     "3D 투어 가능",
-    "어디에서 방을 찾을까요",
-    "통합검색",
     "최근 검색",
     "최근 검색어가 없습니다",
     "인기 지역",
@@ -1208,7 +1217,7 @@ test("shows a landlord my page with property registration fields and media actio
     "층수",
     "사진·3D 자료",
     "사진 업로드",
-    "눌러서 3D 도면을 만들어요",
+    "3D 도면 만들기",
     "3D 투어용 영상·캡처 파일을 끌어다 놓거나 눌러서 올려요",
     "등록 요약",
     "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
@@ -1521,6 +1530,7 @@ test("keeps local development free from stale service worker caches", () => {
   assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/_next\/"\)/);
   // 회귀 방지: API 응답은 서비스워커 캐시-우선에서 제외돼야 최신 매물이 즉시 보인다.
   assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/api\/"\)/);
+  assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/floor-plan-3d\/furniture-assets\/"\)/);
   assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
   assert.match(serviceWorkerSource, /new URL\(request\.url\)/);
   assert.match(nextConfigSource, /allowedDevOrigins:\s*\[\s*"127\.0\.0\.1"\s*\]/);
@@ -1546,10 +1556,14 @@ test("removes obvious mockup copy from the visible product shell", () => {
   assert.doesNotMatch(pageSource, /<code>NEXT_PUBLIC_NAVER_MAP_CLIENT_ID<\/code>/);
 });
 
-test("links the landlord 3D floor plan action to the dedicated creation page", () => {
-  assert.match(pageSource, /href="\/floor-plan-3d"/);
-  // 7라운드부터 빈 상태는 버튼이 아니라 박스 자체가 진입 링크(카피: "눌러서 3D 도면을 만들어요 ↗")
-  assert.match(pageSource, /3D 도면을 만들어요/);
+test("links the landlord 3D floor plan action to the internal MitUNet page", () => {
+  assert.match(pageSource, /buildRoomlogMitunetEditorPath/);
+  assert.match(pageSource, /window\.location\.href = editorPath/);
+  assert.doesNotMatch(pageSource, /NEXT_PUBLIC_MITUNET_EDITOR_URL/);
+  assert.doesNotMatch(pageSource, /buildMitunetEditorUrl/);
+  assert.doesNotMatch(pageSource, /window\.open/);
+  assert.doesNotMatch(pageSource, /href="\/floor-plan-3d"/);
+  assert.match(pageSource, /3D 도면 만들기/);
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 

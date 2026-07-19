@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { RoomlogService } from "./roomlog.service";
 import { RoomlogController } from "./roomlog.controller";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -489,6 +490,16 @@ function createReportTestService() {
   } as any);
 }
 
+function createDirectHandlingTestTicket(service: RoomlogService, title: string) {
+  return service.createComplaint("tenant-demo", {
+    title,
+    description: "관리자가 현장에서 직접 확인하고 처리할 수 있는 하자입니다.",
+    location: "현관 수납장",
+    occurredAt: "2026-07-17T09:00:00.000Z",
+    availableTimes: "오늘 오후"
+  });
+}
+
 describe("RoomlogService", () => {
   it("seeds manager billing dummy rows across every billing management list", () => {
     const service = new RoomlogService();
@@ -774,14 +785,14 @@ describe("RoomlogService", () => {
     }
   });
 
-  it("lets the manager realtime agent report ticket query results by defect keyword", () => {
+  it("lets the manager realtime agent report ticket query results by defect keyword", async () => {
     const service = new RoomlogService();
 
-    const airconResult = service.runManagerAgentCommand("landlord-demo", {
+    const airconResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "ticket.query",
       text: "에어컨 티켓 조회해서 결과 보고해줘"
     });
-    const sinkResult = service.runManagerAgentCommand("landlord-demo", {
+    const sinkResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "ticket.query",
       text: "세면대 누수 티켓 조회해서 결과 보고해줘"
     });
@@ -1358,7 +1369,7 @@ describe("RoomlogService", () => {
       return new Response(
         JSON.stringify({
           output_text:
-            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"거실","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]}]}'
+            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"공간 1","roomType":"BATHROOM","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]}]}'
         }),
         { headers: { "Content-Type": "application/json" }, status: 200 }
       );
@@ -1368,20 +1379,28 @@ describe("RoomlogService", () => {
       const result = await service.analyzeFloorPlanWithAi({
         analysisMode: "room-structure",
         imageDataUrl: "data:image/png;base64,Zm9v",
-        model: "openai/floor-plan-vision"
+        model: "openai/floor-plan-vision",
+        prompt:
+          "도면에 표시된 모든 실내 공간의 이름과 닫힌 polygon을 반환하세요. 현관 polygon이 열린 거실 영역으로 확장되지 않도록 하고, 연결된 열린 영역의 15% 이내로 제안하세요. 도면 치수를 확인할 수 있으면 현관 polygon을 6m² 이내로 제안하세요."
       });
 
-      assert.match(String(capturedBody?.instructions), /방 구조 분석기/);
+      assert.match(String(capturedBody?.instructions), /Roomlog의 도면 방 구조 분석기/);
+      assert.match(String(capturedBody?.instructions), /solid-filled, double-line-hollow, hatched, gray-fill/);
+      assert.match(String(capturedBody?.instructions), /noiseFlags/);
       assert.match(String(capturedBody?.instructions), /0~1000 정규화 좌표/);
       assert.equal((capturedBody?.text as any)?.format?.type, "json_schema");
       assert.equal((capturedBody?.text as any)?.format?.strict, true);
       assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.planStyle?.type, "string");
+      assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.rooms?.items?.properties?.roomType?.type, "string");
       assert.match(JSON.stringify(capturedBody), /"detail":"high"/);
+      assert.match(JSON.stringify(capturedBody?.input), /연결된 열린 영역의 15% 이내/);
+      assert.match(JSON.stringify(capturedBody?.input), /6m² 이내/);
       assert.equal(result.analysisMode, "room-structure");
       assert.equal(result.status, "ready");
       assert.equal(result.planStyle, "double-line-hollow");
       assert.equal(result.noiseFlags?.decorativeHatching, true);
-      assert.equal(result.rooms?.[0].label, "거실");
+      assert.equal(result.rooms?.[0].label, "공간 1");
+      assert.equal((result.rooms?.[0] as { roomType?: string } | undefined)?.roomType, "BATHROOM");
       assert.equal(result.rooms?.[0].polygon[2].x, 560);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1389,6 +1408,53 @@ describe("RoomlogService", () => {
       else delete process.env.OPENAI_API_KEY;
       if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
       else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("uses the Terra no-reasoning defaults for room structure analysis", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFloorPlanEffort = process.env.OPENAI_FLOOR_PLAN_EFFORT;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    delete process.env.OPENAI_CHAT_MODEL;
+    delete process.env.OPENAI_FLOOR_PLAN_EFFORT;
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"방 구조를 분석했습니다.","planStyle":"single-line","noiseFlags":{"decorativeHatching":false,"watermark":false},"rooms":[]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      await service.analyzeFloorPlanWithAi({
+        analysisMode: "room-structure",
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      assert.equal(capturedBody?.model, "gpt-5.6-terra");
+      assert.deepEqual(capturedBody?.reasoning, { effort: "none" });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+      if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      else delete process.env.OPENAI_CHAT_MODEL;
+      if (originalFloorPlanEffort) process.env.OPENAI_FLOOR_PLAN_EFFORT = originalFloorPlanEffort;
+      else delete process.env.OPENAI_FLOOR_PLAN_EFFORT;
     }
   });
 
@@ -3811,6 +3877,736 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("creates manager proxy intake for the linked tenant with analysis, manager message, merged urgency, and dual visibility", async () => {
+    const service = new RoomlogService();
+
+    const managerMoreUrgent = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "tenant-demo",
+      title: "거실 벽지 얼룩 확인",
+      description: "거실 벽지에 작은 얼룩이 생겨 확인을 요청받았습니다.",
+      location: "거실 벽면",
+      occurredAt: "2026-07-18T09:00:00.000Z",
+      availableTimes: "평일 오후 7시 이후",
+      urgency: 2,
+      reportedVia: "phone",
+      attachmentUrls: ["/uploads/proxy-wall-stain.jpg"]
+    });
+    const aiMoreUrgent = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "multi-demo",
+      title: "천장에서 물이 계속 떨어져요",
+      description: "거실 천장에서 물이 계속 떨어져 즉시 확인이 필요합니다.",
+      location: "거실 천장",
+      urgency: 4,
+      reportedVia: "text"
+    });
+
+    assert.equal(managerMoreUrgent.complaint.tenantId, "tenant-demo");
+    assert.equal(managerMoreUrgent.complaint.sourceChannel, "MANAGER_PROXY");
+    assert.equal(managerMoreUrgent.complaint.occurredAt, "2026-07-18T09:00:00.000Z");
+    assert.equal(managerMoreUrgent.complaint.availableTimes, "평일 오후 7시 이후");
+    assert.equal(managerMoreUrgent.ticket.tenantId, "tenant-demo");
+    assert.equal(managerMoreUrgent.ticket.sourceChannel, "MANAGER_PROXY");
+    assert.equal(managerMoreUrgent.ticket.priority, 2);
+    assert.equal(managerMoreUrgent.analysis.priority, 2);
+    assert.equal(
+      managerMoreUrgent.analysis.reasons?.includes("신고 지정 긴급도 2순위 반영"),
+      true
+    );
+    assert.equal(typeof managerMoreUrgent.analysis.category, "string");
+    assert.ok(managerMoreUrgent.analysis.category.length > 0);
+    assert.ok(managerMoreUrgent.analysis.summary.length > 0);
+    assert.equal(aiMoreUrgent.complaint.tenantId, "multi-demo");
+    assert.equal(aiMoreUrgent.complaint.occurredAt, undefined);
+    assert.equal(aiMoreUrgent.complaint.availableTimes, undefined);
+    assert.equal(aiMoreUrgent.ticket.tenantId, "multi-demo");
+    assert.equal(aiMoreUrgent.ticket.priority, 1);
+    assert.equal(aiMoreUrgent.analysis.priority, 1);
+
+    const managerDetail = service.getTicketDetailForManager(
+      "landlord-demo",
+      managerMoreUrgent.ticket.id
+    );
+    assert.equal(managerDetail.messages.length, 1);
+    const initialMessage = managerDetail.messages[0];
+    assert.ok(initialMessage, "expected an initial message");
+    assert.equal(initialMessage.senderRole, "LANDLORD");
+    assert.equal(initialMessage.senderUserId, "landlord-demo");
+    assert.match(initialMessage.messageText, /관리자 대리 접수/);
+    assert.match(initialMessage.messageText, /전화/);
+    assert.match(initialMessage.messageText, /거실 벽지에 작은 얼룩/);
+    assert.deepEqual(initialMessage.attachmentUrls, ["/uploads/proxy-wall-stain.jpg"]);
+    assert.equal(managerDetail.analysis.priority, 2);
+    assert.equal(managerDetail.analysis.category, managerMoreUrgent.analysis.category);
+    assert.equal(
+      managerDetail.history.find((entry) => entry.toStatus === "RECEIVED")?.note,
+      "관리자 대리 접수"
+    );
+
+    const textDetail = service.getTicketDetailForManager(
+      "landlord-demo",
+      aiMoreUrgent.ticket.id
+    );
+    assert.equal(textDetail.messages.length, 1);
+    const textInitialMessage = textDetail.messages[0];
+    assert.ok(textInitialMessage, "expected an initial text intake message");
+    assert.equal(textInitialMessage.senderRole, "LANDLORD");
+    assert.equal(textInitialMessage.senderUserId, "landlord-demo");
+    assert.match(textInitialMessage.messageText, /관리자 대리 접수/);
+    assert.match(textInitialMessage.messageText, /문자/);
+
+    const managerListItem = service
+      .listTicketsForManager("landlord-demo")
+      .find((ticket) => ticket.id === managerMoreUrgent.ticket.id);
+    assert.ok(managerListItem);
+    assert.equal(managerListItem.tenantId, "tenant-demo");
+    assert.equal(managerListItem.sourceChannel, "MANAGER_PROXY");
+
+    const tenantListItem = service
+      .listTenantComplaints("tenant-demo")
+      .find((complaint) => complaint.id === managerMoreUrgent.complaint.id);
+    assert.ok(tenantListItem);
+    assert.equal(tenantListItem.tenantId, "tenant-demo");
+    assert.equal(tenantListItem.sourceChannel, "MANAGER_PROXY");
+    assert.equal(
+      service
+        .listTenantComplaints("multi-demo")
+        .some((complaint) => complaint.id === aiMoreUrgent.complaint.id),
+      true
+    );
+  });
+
+  it("requires an explicit tenant for a room linked to multiple tenants", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-301",
+          title: "복수 세입자 호실 하자",
+          description: "연결된 세입자가 두 명인 호실에서 접수했습니다.",
+          location: "거실",
+          reportedVia: "phone"
+        }),
+      (error: unknown) =>
+        error instanceof BadRequestException && error.message === "세입자를 선택해 주세요"
+    );
+  });
+
+  it("auto-assigns the only linked tenant when tenantId is omitted", async () => {
+    const service = new RoomlogService();
+
+    const created = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-302",
+      title: "욕실 환풍기 점검",
+      description: "욕실 환풍기가 작동하지 않아 점검을 요청받았습니다.",
+      location: "욕실 천장",
+      reportedVia: "in_person"
+    });
+
+    assert.equal(created.complaint.tenantId, "tenant-billing-302");
+    assert.equal(created.ticket.tenantId, "tenant-billing-302");
+    assert.equal(created.complaint.roomId, "room-302");
+  });
+
+  it("rejects a tenantId that is not linked to the selected room", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-302",
+          tenantId: "tenant-demo",
+          title: "잘못 선택한 세입자",
+          description: "다른 호실에 연결된 세입자를 선택한 요청입니다.",
+          location: "현관",
+          reportedVia: "text"
+        }),
+      (error: unknown) =>
+        error instanceof BadRequestException &&
+        /호실.*세입자|세입자.*연결/u.test(error.message)
+    );
+  });
+
+  it("lists only managed proxy-intake rooms with minimal linked-tenant identity", () => {
+    const service = new RoomlogService();
+
+    const rooms = service.listManagerProxyIntakeRooms("landlord-demo");
+    const sharedRoom = rooms.find((room) => room.roomId === "room-301");
+    const singleTenantRoom = rooms.find((room) => room.roomId === "room-302");
+    const emptyRoom = rooms.find((room) => room.roomId === "room-601");
+
+    assert.ok(sharedRoom);
+    assert.equal(sharedRoom.buildingName, "정글빌라");
+    assert.equal(sharedRoom.unitLabel, "301호");
+    assert.equal(sharedRoom.hasTenant, true);
+    assert.deepEqual(
+      [...sharedRoom.tenants].sort((left, right) =>
+        left.tenantId.localeCompare(right.tenantId)
+      ),
+      [
+        { tenantId: "multi-demo", name: "정겸직" },
+        { tenantId: "tenant-demo", name: "김민수" }
+      ]
+    );
+
+    assert.ok(singleTenantRoom);
+    assert.equal(singleTenantRoom.hasTenant, true);
+    assert.deepEqual(singleTenantRoom.tenants, [
+      { tenantId: "tenant-billing-302", name: "김하윤" }
+    ]);
+
+    assert.ok(emptyRoom);
+    assert.equal(emptyRoom.hasTenant, false);
+    assert.deepEqual(emptyRoom.tenants, []);
+    assert.equal(rooms.some((room) => room.roomId === "room-402"), false);
+
+    for (const room of rooms) {
+      assert.equal(room.hasTenant, room.tenants.length > 0);
+      assert.equal(Object.hasOwn(room, "address"), false);
+      for (const tenant of room.tenants) {
+        assert.deepEqual(Object.keys(tenant).sort(), ["name", "tenantId"]);
+      }
+    }
+  });
+
+  it("validates proxy-intake text fields, urgency, and reportedVia", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const [field, expectedMessage] of [
+      ["title", /제목/u],
+      ["description", /내용|설명/u],
+      ["location", /위치/u]
+    ] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake("landlord-demo", {
+            ...validInput,
+            [field]: "   "
+          }),
+        (error: unknown) =>
+          error instanceof BadRequestException && expectedMessage.test(error.message)
+      );
+    }
+
+    for (const urgency of [0, 5, 1.5, "1"] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            {
+              ...validInput,
+              urgency
+            } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && /긴급도/u.test(error.message)
+      );
+    }
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake(
+          "landlord-demo",
+          {
+            ...validInput,
+            reportedVia: "fax"
+          } as any
+        ),
+      (error: unknown) =>
+        error instanceof BadRequestException && /접수 경로/u.test(error.message)
+    );
+  });
+
+  it("rejects non-string proxy-intake identity and text fields with a 400", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const [field, value, expectedMessage] of [
+      ["roomId", 302, /호실/u],
+      ["tenantId", { id: "tenant-billing-302" }, /세입자/u],
+      ["title", ["주방 수전 점검"], /제목/u],
+      ["description", 123, /내용|설명/u],
+      ["location", { label: "주방" }, /위치/u]
+    ] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            { ...validInput, [field]: value } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && expectedMessage.test(error.message)
+      );
+    }
+  });
+
+  it("rejects a non-string proxy-intake clientRequestId with a 400", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake(
+          "landlord-demo",
+          {
+            roomId: "room-302",
+            title: "주방 수전 점검",
+            description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+            location: "주방 싱크대",
+            reportedVia: "phone",
+            clientRequestId: 123
+          } as any
+        ),
+      (error: unknown) =>
+        error instanceof BadRequestException && /접수 요청 식별자/u.test(error.message)
+    );
+  });
+
+  it("deduplicates proxy-intake retries by resolved tenant and request fingerprint", async () => {
+    const service = new RoomlogService();
+    const input = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const,
+      clientRequestId: "proxy-intake-retry-1"
+    };
+
+    const first = await service.createManagerProxyIntake("landlord-demo", input);
+    const retried = await service.createManagerProxyIntake("landlord-demo", input);
+
+    assert.equal(retried.complaint.id, first.complaint.id);
+    assert.equal(retried.ticket.id, first.ticket.id);
+    assert.deepEqual(retried.analysis, first.analysis);
+    assert.equal(
+      service
+        .listTenantComplaints("tenant-billing-302")
+        .filter((complaint) => complaint.id === first.complaint.id).length,
+      1
+    );
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          ...input,
+          reportedVia: "text"
+        }),
+      (error: unknown) =>
+        error instanceof ConflictException && /변경된 내용/u.test(error.message)
+    );
+  });
+
+  it("scopes proxy-intake idempotency keys to the resolved tenant", async () => {
+    const service = new RoomlogService();
+    const input = {
+      roomId: "room-301",
+      title: "공용 거실 천장 점검",
+      description: "거실 천장에 얼룩이 보여 확인이 필요합니다.",
+      location: "거실 천장",
+      reportedVia: "in_person" as const,
+      clientRequestId: "proxy-intake-shared-room-1"
+    };
+
+    const firstTenant = await service.createManagerProxyIntake("landlord-demo", {
+      ...input,
+      tenantId: "tenant-demo"
+    });
+    const secondTenant = await service.createManagerProxyIntake("landlord-demo", {
+      ...input,
+      tenantId: "multi-demo"
+    });
+
+    assert.notEqual(secondTenant.complaint.id, firstTenant.complaint.id);
+    assert.notEqual(secondTenant.ticket.id, firstTenant.ticket.id);
+    assert.equal(firstTenant.complaint.tenantId, "tenant-demo");
+    assert.equal(secondTenant.complaint.tenantId, "multi-demo");
+  });
+
+  it("compensates a failed unkeyed proxy aggregate after a queued stale snapshot persists", async () => {
+    let releaseFirstFailure!: () => void;
+    let markFirstAttemptStarted!: () => void;
+    const firstFailureGate = new Promise<void>((resolve) => {
+      releaseFirstFailure = resolve;
+    });
+    const firstAttemptStarted = new Promise<void>((resolve) => {
+      markFirstAttemptStarted = resolve;
+    });
+    let persistenceAttempts = 0;
+    let failedIds:
+      | { complaintId: string; ticketId: string; historyIds: string[]; messageIds: string[] }
+      | undefined;
+    const persistedComplaintIds = new Set<string>();
+    const persistedTicketIds = new Set<string>();
+    const persistedHistoryIds = new Set<string>();
+    const persistedMessageIds = new Set<string>();
+    const compensationCalls: Array<NonNullable<typeof failedIds>> = [];
+    const projector = {
+      async persist(snapshot: any) {
+        const complaint = snapshot.complaints.find(
+          (item: any) => item.title === "내구성 실패 무키 대리접수"
+        );
+        if (complaint) {
+          persistenceAttempts += 1;
+          const ticket = snapshot.tickets.find((item: any) => item.id === complaint.ticketId);
+          failedIds ??= {
+            complaintId: complaint.id,
+            ticketId: ticket.id,
+            historyIds: snapshot.history
+              .filter((item: any) => item.ticketId === ticket.id)
+              .map((item: any) => item.id),
+            messageIds: snapshot.messages
+              .filter((item: any) => item.ticketId === ticket.id)
+              .map((item: any) => item.id)
+          };
+        }
+        if (complaint && persistenceAttempts === 1) {
+          markFirstAttemptStarted();
+          await firstFailureGate;
+          throw new Error("proxy persistence failed once");
+        }
+        for (const item of snapshot.complaints) persistedComplaintIds.add(item.id);
+        for (const item of snapshot.tickets) persistedTicketIds.add(item.id);
+        for (const item of snapshot.history) persistedHistoryIds.add(item.id);
+        for (const item of snapshot.messages) persistedMessageIds.add(item.id);
+      },
+      async removeComplaintAggregate(ids: NonNullable<typeof failedIds>) {
+        compensationCalls.push(ids);
+        persistedComplaintIds.delete(ids.complaintId);
+        persistedTicketIds.delete(ids.ticketId);
+        for (const historyId of ids.historyIds) persistedHistoryIds.delete(historyId);
+        for (const messageId of ids.messageIds) persistedMessageIds.delete(messageId);
+      }
+    };
+    const service = new RoomlogService({ storeProjector: projector as any });
+    const input = {
+      roomId: "room-302",
+      title: "내구성 실패 무키 대리접수",
+      description: "첫 저장 실패 뒤 aggregate가 남지 않아야 합니다.",
+      location: "302호 주방",
+      reportedVia: "phone" as const
+    };
+
+    const failedIntake = service.createManagerProxyIntake("landlord-demo", input);
+    await firstAttemptStarted;
+    const unrelated = service.createComplaint("tenant-demo", {
+      title: "대리접수 실패와 무관한 후속 민원",
+      description: "실패한 저장 뒤 큐에 들어간 별도 민원입니다.",
+      location: "301호 현관"
+    });
+    releaseFirstFailure();
+
+    await assert.rejects(
+      async () => failedIntake,
+      /proxy persistence failed once/
+    );
+    assert.ok(failedIds);
+    assert.deepEqual(compensationCalls, [failedIds]);
+    const store = (service as any).store;
+    assert.equal(store.complaints.some((item: any) => item.id === failedIds!.complaintId), false);
+    assert.equal(store.tickets.some((item: any) => item.id === failedIds!.ticketId), false);
+    assert.equal(Object.hasOwn(store.analyses, failedIds.ticketId), false);
+    assert.equal(
+      store.history.some((item: any) => failedIds!.historyIds.includes(item.id)),
+      false
+    );
+    assert.equal(
+      store.messages.some((item: any) => failedIds!.messageIds.includes(item.id)),
+      false
+    );
+    assert.equal(persistedComplaintIds.has(failedIds.complaintId), false);
+    assert.equal(persistedTicketIds.has(failedIds.ticketId), false);
+    assert.equal(failedIds.historyIds.some((id) => persistedHistoryIds.has(id)), false);
+    assert.equal(failedIds.messageIds.some((id) => persistedMessageIds.has(id)), false);
+    assert.equal(persistedComplaintIds.has(unrelated.complaint.id), true);
+    assert.equal(persistedTicketIds.has(unrelated.ticket.id), true);
+    assert.equal(persistenceAttempts, 2);
+  });
+
+  it("surfaces an explicit safety error when failed unkeyed persistence cannot compensate", async () => {
+    const service = new RoomlogService({
+      storeProjector: {
+        async persist(snapshot: any) {
+          if (
+            snapshot.complaints.some(
+              (item: any) => item.title === "보상 기능 없는 대리접수"
+            )
+          ) {
+            throw new Error("unsafe projector failure");
+          }
+        }
+      } as any
+    });
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-302",
+          title: "보상 기능 없는 대리접수",
+          description: "프로젝터가 보상 기능을 제공하지 않는 실패입니다.",
+          location: "302호 욕실",
+          reportedVia: "phone"
+        }),
+      /안전하게 보상할 수 없습니다/u
+    );
+  });
+
+  it("rejects non-string and invalid proxy-intake occurredAt values with a 400", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const occurredAt of [
+      123,
+      "not-a-date",
+      "2026-02-30",
+      "1",
+      "2026"
+    ] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            { ...validInput, occurredAt } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && /발생 시점|날짜/u.test(error.message)
+      );
+    }
+  });
+
+  it("accepts and preserves a valid full ISO proxy-intake occurredAt with an offset", async () => {
+    const service = new RoomlogService();
+    const occurredAt = "2026-07-18T18:00:00+09:00";
+
+    const created = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      occurredAt,
+      reportedVia: "phone"
+    });
+
+    assert.equal(created.complaint.occurredAt, occurredAt);
+  });
+
+  it("rejects non-string and blank proxy-intake availableTimes values with a 400", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const availableTimes of [123, "   "] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            { ...validInput, availableTimes } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && /방문 가능 시간/u.test(error.message)
+      );
+    }
+  });
+
+  it("accepts the other reportedVia value and labels its initial manager message", async () => {
+    const service = new RoomlogService();
+
+    const created = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-302",
+      title: "기타 경로로 받은 하자",
+      description: "관리자가 기타 경로로 전달받은 하자 내용입니다.",
+      location: "현관",
+      reportedVia: "other"
+    });
+    const detail = service.getTicketDetailForManager("landlord-demo", created.ticket.id);
+
+    assert.equal(created.complaint.sourceChannel, "MANAGER_PROXY");
+    assert.equal(detail.messages.length, 1);
+    assert.equal(detail.messages[0].senderRole, "LANDLORD");
+    assert.equal(detail.messages[0].senderUserId, "landlord-demo");
+    assert.match(detail.messages[0].messageText, /관리자 대리 접수/);
+    assert.match(detail.messages[0].messageText, /기타/);
+  });
+
+  it("rejects manager proxy intake for a room outside the manager scope", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-402",
+          title: "외부 호실 대리 접수",
+          description: "담당하지 않는 호실의 하자를 대신 등록하려고 합니다.",
+          location: "현관",
+          reportedVia: "in_person"
+        }),
+      (error: unknown) => error instanceof ForbiddenException && /담당 호실/.test(error.message)
+    );
+  });
+
+  it("rejects manager proxy intake when the managed room has no linked tenant", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-601",
+          title: "빈 호실 대리 접수",
+          description: "세입자가 연결되지 않은 호실의 하자입니다.",
+          location: "주방",
+          reportedVia: "phone"
+        }),
+      (error: unknown) =>
+        error instanceof BadRequestException &&
+        error.message === "연결된 세입자가 없는 호실입니다"
+    );
+  });
+
+  it("keeps manager responsibility updates aligned with the ticket analysis", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "세면대 배수구 이물질 막힘",
+      description: "사용 중 흘려보낸 이물질 때문에 세면대 물이 내려가지 않습니다.",
+      location: "욕실 세면대",
+      availableTimes: "평일 저녁"
+    });
+
+    const updated = service.updateTicket("landlord-demo", created.ticket.id, {
+      responsibilityHint: "임차인 책임 가능성"
+    });
+
+    assert.equal(updated.responsibilityHint, "임차인 책임 가능성");
+    assert.equal(updated.analysis.responsibilityHint, "임차인 책임 가능성");
+  });
+
+  it("finalizes responsibility with synchronized hints, reviewed feedback, and a tenant-visible message", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "세면대 배수구 막힘",
+      description: "사용 중 세면대 물이 내려가지 않아 확인이 필요합니다.",
+      location: "욕실 세면대"
+    });
+    const responsibilityFeedback = service.submitTenantAiFeedback(
+      "tenant-demo",
+      created.complaint.id,
+      {
+        target: "RESPONSIBILITY",
+        reason: "입주 전부터 배수가 느렸으므로 임차인 책임으로 보기 어렵습니다."
+      }
+    );
+    const priorityFeedback = service.submitTenantAiFeedback("tenant-demo", created.complaint.id, {
+      target: "PRIORITY",
+      reason: "물이 전혀 내려가지 않아 빠른 확인이 필요합니다."
+    });
+
+    assert.throws(
+      () =>
+        service.decideTicketResponsibility("landlord-demo", created.ticket.id, {
+          responsibility: "TENANT",
+          note: "   "
+        }),
+      /사유/
+    );
+
+    const decided = service.decideTicketResponsibility("landlord-demo", created.ticket.id, {
+      responsibility: "TENANT",
+      note: "배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+    });
+
+    assert.equal(decided.responsibilityHint, "임차인 책임 가능성");
+    assert.equal(decided.analysis.responsibilityHint, "임차인 책임 가능성");
+    assert.deepEqual(decided.responsibilityDecision, {
+      responsibility: "TENANT",
+      decidedById: "landlord-demo",
+      decidedAt: decided.responsibilityDecidedAt,
+      note: "배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+    });
+    const reviewed = decided.aiFeedback.find(
+      (feedback) => feedback.id === responsibilityFeedback.id
+    );
+    const stillOpen = decided.aiFeedback.find((feedback) => feedback.id === priorityFeedback.id);
+    assert.equal(reviewed?.status, "REVIEWED");
+    assert.equal(
+      reviewed?.managerReviewNote,
+      "배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+    );
+    assert.equal(stillOpen?.status, "OPEN");
+    assert.equal(
+      decided.messages.some(
+        (message) =>
+          message.senderRole === "LANDLORD" &&
+          message.messageText ===
+            "책임 판단 확정: 임차인 책임 — 배수구에서 임차인 사용 중 유입된 이물질이 확인되었습니다."
+      ),
+      true
+    );
+  });
+
+  it("uses the more urgent priority between AI analysis and tenant input", () => {
+    const service = new RoomlogService();
+
+    const tenantMoreUrgent = service.createComplaint("tenant-demo", {
+      title: "벽지 얼룩 확인",
+      description: "침실 벽지에 작은 얼룩이 생겨 확인을 요청합니다.",
+      location: "침실 벽면",
+      urgency: 2
+    });
+    const aiMoreUrgent = service.createComplaint("tenant-demo", {
+      title: "천장에서 물이 계속 떨어져요",
+      description: "거실 천장에서 물이 계속 떨어져 즉시 확인이 필요합니다.",
+      location: "거실 천장",
+      urgency: 3
+    });
+
+    assert.equal(tenantMoreUrgent.ticket.priority, 2);
+    assert.equal(tenantMoreUrgent.analysis.priority, 2);
+    assert.equal(
+      tenantMoreUrgent.analysis.reasons?.includes("신고 지정 긴급도 2순위 반영"),
+      true
+    );
+    assert.equal(aiMoreUrgent.ticket.priority, 1);
+    assert.equal(aiMoreUrgent.analysis.priority, 1);
+    assert.equal(
+      aiMoreUrgent.analysis.reasons?.includes("신고 지정 긴급도 3순위 반영"),
+      true
+    );
+    assert.throws(
+      () =>
+        service.createComplaint("tenant-demo", {
+          title: "긴급도 오류",
+          description: "잘못된 긴급도 값 검증",
+          location: "침실",
+          urgency: 5
+        } as any),
+      /1부터 4/
+    );
+  });
+
   it("tracks manager ticket reads only after the manager opens the ticket", () => {
     const service = new RoomlogService();
     const created = service.createComplaint("tenant-demo", {
@@ -3838,6 +4634,46 @@ describe("RoomlogService", () => {
     const readAgain = service.markManagerTicketRead("landlord-demo", created.ticket.id);
     assert.equal(readAgain.isManagerUnread, false);
     assert.ok(readAgain.managerReadAt);
+  });
+
+  it("projects linked ticket unread state into manager messaging threads", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "소통 허브 미확인 배지",
+      description: "욕실 환풍기가 작동하지 않습니다.",
+      location: "301호 욕실",
+    });
+    service.createTenantMessagingThread("tenant-demo", {
+      context: "defect",
+      contextRef: created.ticket.id,
+      contextLabel: created.ticket.title,
+      body: "접수한 민원 상태를 확인해주세요.",
+    });
+    const beforeRead = service
+      .listManagerMessagingThreads("landlord-demo")
+      .find((thread) => thread.contextRef === created.ticket.id);
+
+    assert.ok(beforeRead);
+    assert.equal(beforeRead.isManagerTicketUnread, true);
+    assert.equal(
+      service.getManagerMessagingThread("landlord-demo", beforeRead.id)
+        .isManagerTicketUnread,
+      true,
+    );
+
+    service.markManagerTicketRead("landlord-demo", created.ticket.id);
+
+    assert.equal(
+      service
+        .listManagerMessagingThreads("landlord-demo")
+        .find((thread) => thread.id === beforeRead.id)?.isManagerTicketUnread,
+      false,
+    );
+    assert.equal(
+      service.getManagerMessagingThread("landlord-demo", beforeRead.id)
+        .isManagerTicketUnread,
+      false,
+    );
   });
 
   it("does not let another manager mark an out-of-scope ticket read", () => {
@@ -4825,9 +5661,20 @@ describe("RoomlogService", () => {
         vendorId: "vendor-demo",
         requestNote: "긴급 점검 부탁드립니다."
       });
+      const managerProxy = await service.createManagerProxyIntake("landlord-demo", {
+        roomId: "room-301",
+        tenantId: "tenant-demo",
+        title: "전화 대리 접수 누수",
+        description: "세입자가 전화로 거실 천장 누수를 알려왔습니다.",
+        location: "거실 천장",
+        reportedVia: "phone"
+      });
 
       const callbotResult = service.queryManagerAssistant("landlord-demo", {
         question: "콜봇으로 접수된 미처리 민원만 보여줘"
+      });
+      const managerProxyResult = service.queryManagerAssistant("landlord-demo", {
+        question: "대리 접수된 미처리 민원만 보여줘"
       });
       const urgentResult = service.queryManagerAssistant("landlord-demo", {
         question: "긴급도 1순위 민원 중 아직 업체 배정 안 된 건 보여줘"
@@ -4840,6 +5687,17 @@ describe("RoomlogService", () => {
       assert.equal(callbotResult.filters.includes("상태: 미처리"), true);
       assert.match(callbotResult.answer, /콜봇/);
       assert.match(callbotResult.answer, /1건/);
+
+      assert.equal(managerProxyResult.matchedTickets.length, 1);
+      assert.equal(managerProxyResult.matchedTickets[0].ticketId, managerProxy.ticket.id);
+      assert.equal(managerProxyResult.matchedTickets[0].sourceChannel, "MANAGER_PROXY");
+      assert.equal(
+        managerProxyResult.filters.includes("접수 채널: 관리자 대리 접수"),
+        true
+      );
+      assert.equal(managerProxyResult.filters.includes("상태: 미처리"), true);
+      assert.match(managerProxyResult.answer, /관리자 대리 접수/);
+      assert.match(managerProxyResult.answer, /1건/);
 
       assert.equal(
         urgentResult.matchedTickets.some((ticket) => ticket.ticketId === unassignedUrgent.ticket.id),
@@ -4986,23 +5844,23 @@ describe("RoomlogService", () => {
 
   it("runs manager agent commands through a narrow server allowlist", async () => {
     const service = new RoomlogService();
-    const ticketResult = service.runManagerAgentCommand("landlord-demo", {
+    const ticketResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "ticket.query",
       text: "긴급도 1순위 민원 중 아직 업체 배정 안 된 건 보여줘"
     });
-    const billingResult = service.runManagerAgentCommand("landlord-demo", {
+    const billingResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.summary",
       text: "이번 달 수납 현황 알려줘"
     });
-    const draftResult = service.runManagerAgentCommand("landlord-demo", {
+    const draftResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "messaging.draft_reply",
       text: "사진을 더 요청하는 답장 초안 만들어줘"
     });
-    const dunningResult = service.runManagerAgentCommand("landlord-demo", {
+    const dunningResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       text: "411호 미납 독촉 바로 보내줘"
     });
-    const guardedDunningResult = service.runManagerAgentCommand("landlord-demo", {
+    const guardedDunningResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       billId: "bill-demo-guarded",
       text: "301호 확인중 청구 독촉 보내줘"
@@ -5035,11 +5893,85 @@ describe("RoomlogService", () => {
     assert.equal(guardedDunningResult.navigation, undefined);
   });
 
+  it("summarizes total ticket counts for the manager agent", async () => {
+    const service = new RoomlogService();
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.summary",
+      text: "총 티켓은 몇개야?"
+    });
+    const data = result.data as {
+      total: number;
+      open: number;
+      completed: number;
+    };
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "ticket");
+    assert.match(result.summary, /전체 티켓 \d+건/);
+    assert.equal(data.total >= data.open, true);
+    assert.equal(result.navigation?.href, "/manager/ticket/dash/00");
+  });
+
+  it("keeps completed tickets in ticket.query results when the question asks for all tickets", async () => {
+    const service = new RoomlogService();
+
+    const allResult = await service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.query",
+      text: "전체 티켓 보여줘"
+    });
+    const defaultResult = await service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.query",
+      text: "티켓 보여줘"
+    });
+    const allData = allResult.data as { filters: string[]; matchedTickets: unknown[] };
+    const defaultData = defaultResult.data as { filters: string[]; matchedTickets: unknown[] };
+
+    assert.equal(allResult.status, "executed");
+    assert.deepEqual(allData.filters, ["범위: 전체"]);
+    assert.deepEqual(defaultData.filters, ["상태: 미처리"]);
+    assert.equal(allData.matchedTickets.length >= defaultData.matchedTickets.length, true);
+  });
+
+  it("answers manager credit balance through the injected credit service", async () => {
+    const service = new RoomlogService(
+      {},
+      {
+        getAccount: async (managerId: string) => {
+          assert.equal(managerId, "landlord-demo");
+          return { id: "acct-1", balance: 125000, updatedAt: "2026-07-19T00:00:00.000Z" };
+        }
+      } as never
+    );
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "credit.balance",
+      text: "현재 내 크레딧이 얼마지?"
+    });
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "credit");
+    assert.match(result.summary, /125,000원/);
+    assert.equal(result.navigation?.href, "/manager/vendor-mgmt/credit");
+  });
+
+  it("blocks credit balance queries when the credit service is unavailable", async () => {
+    const service = new RoomlogService();
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "credit.balance"
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.domain, "credit");
+    assert.match(result.summary, /크레딧/);
+  });
+
   it("sends a manager realtime message into the tenant-visible messaging thread", async () => {
     const service = new RoomlogService();
     const body = "오늘 오후 4시에 공용 현관등 점검을 진행하겠습니다.";
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "messaging.send_reply",
       threadId: "mth_demo_general",
       body
@@ -5059,7 +5991,7 @@ describe("RoomlogService", () => {
   it("records realtime dunning sends in the tenant-visible payment thread", async () => {
     const service = new RoomlogService();
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       text: "411호 연체 독촉 메시지 바로 보내줘"
     });
@@ -5083,7 +6015,7 @@ describe("RoomlogService", () => {
   it("blocks guarded dunning requests before creating a tenant-visible payment thread", async () => {
     const service = new RoomlogService();
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       text: "302호 독촉 메시지 보내"
     });
@@ -5101,7 +6033,7 @@ describe("RoomlogService", () => {
   it("blocks realtime manager messages that look like payment dunning", async () => {
     const service = new RoomlogService();
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "messaging.send_reply",
       threadId: "mth_demo_general",
       body: "301호 미납 독촉 메시지 보내줘"
@@ -5320,6 +6252,12 @@ describe("RoomlogService", () => {
     assert.equal(complaint.ticket.category, "누수");
     assert.equal(complaint.ticket.priority, 1);
     assert.equal(complaint.analysis.responsibilityHint, "임대인 책임 가능성");
+    assert.equal(
+      service
+        .getTicketDetailForManager("landlord-demo", complaint.ticket.id)
+        .history.find((entry) => entry.toStatus === "RECEIVED")?.note,
+      "임차인 신고 접수"
+    );
   });
 
   it("surfaces repeated same-room issue context in manager ticket analysis", () => {
@@ -5459,6 +6397,338 @@ describe("RoomlogService", () => {
       ),
       true
     );
+  });
+
+  it("runs direct handling through tenant confirmation without creating a repair", async () => {
+    const service = new RoomlogService();
+    const { complaint, ticket } = createDirectHandlingTestTicket(
+      service,
+      "현관 수납장 경첩 직접 처리"
+    );
+    const store = (service as any).store;
+
+    const started = await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "관리자가 교체용 경첩을 가지고 방문합니다."
+    });
+
+    assert.equal(started.status, "REPAIR_IN_PROGRESS");
+    assert.ok(started.directHandling?.startedAt);
+    assert.equal(started.directHandling?.completedAt, undefined);
+    assert.equal(started.directHandling?.note, "관리자가 교체용 경첩을 가지고 방문합니다.");
+    assert.equal(
+      started.messages.some(
+        (message: any) =>
+          message.messageText.includes("관리자가 직접 처리를 시작했습니다") &&
+          message.messageText.includes("교체용 경첩")
+      ),
+      true
+    );
+    assert.equal(store.repairs.filter((repair: any) => repair.ticketId === ticket.id).length, 0);
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-demo", ticket.id, {
+          note: "중복 시작 시도"
+        }),
+      /이미.*직접 처리|직접 처리.*진행/
+    );
+
+    const reported = await service.completeDirectHandling("landlord-demo", ticket.id, {
+      note: "경첩을 교체하고 문이 정상적으로 닫히는 것을 확인했습니다.",
+      cost: {
+        amount: 18000,
+        item: "수납장 경첩"
+      }
+    });
+
+    assert.equal(reported.status, "COMPLETION_REPORTED");
+    assert.ok(reported.directHandling?.completedAt);
+    assert.equal(
+      reported.messages.some(
+        (message: any) =>
+          message.messageText.includes("관리자가 처리 완료를 보고했습니다") &&
+          message.messageText.includes("정상적으로 닫히는 것")
+      ),
+      true
+    );
+    await assert.rejects(
+      async () =>
+        service.cancelDirectHandling("landlord-demo", ticket.id, {
+          reason: "완료 보고 뒤 취소 시도"
+        }),
+      /완료.*(취소|보고)|취소.*(상태|없)/
+    );
+
+    const directCosts = store.costs.filter(
+      (cost: any) => cost.unitId === ticket.roomId && cost.item === "수납장 경첩"
+    );
+    assert.equal(directCosts.length, 1);
+    assert.equal(directCosts[0].managerId, "landlord-demo");
+    assert.equal(directCosts[0].amount, 18000);
+    assert.equal(directCosts[0].type, "repair");
+    assert.equal(directCosts[0].scope, "unit");
+    assert.equal(directCosts[0].status, "draft");
+    assert.equal(directCosts[0].verified, false);
+
+    const confirmed = service.confirmTenantCompletion("tenant-demo", complaint.id, {
+      note: "문이 잘 닫힙니다."
+    });
+
+    assert.equal(confirmed.ticket.status, "COMPLETED");
+    assert.equal(confirmed.complaint.displayStatus, "완료");
+    assert.equal(confirmed.ticket.repairs.length, 0);
+    assert.equal(store.repairs.filter((repair: any) => repair.ticketId === ticket.id).length, 0);
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-demo", ticket.id, {
+          note: "완료 티켓 재시작 시도"
+        }),
+      /처리할 수 없는 티켓 상태|직접 처리.*상태/
+    );
+  });
+
+  it("rejects direct handling when the ticket has an active repair", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "업체 수리 진행 중 직접 처리 충돌"
+    );
+    const repair = service.assignVendor("landlord-demo", ticket.id, {
+      vendorId: "vendor-demo",
+      requestNote: "업체에서 경첩 상태를 확인해주세요."
+    });
+    assert.equal(repair.status, "REQUESTED");
+    assert.equal(service.getTicket(ticket.id)?.status, "VENDOR_ASSIGNED");
+    const messageCount = service.getTicketDetail(ticket.id).messages.length;
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-other", ticket.id, {
+          note: "관리 범위 밖 시작 시도"
+        }),
+      /담당 호실|접근/
+    );
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-demo", ticket.id, {
+          note: "관리자가 직접 처리로 전환합니다."
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ConflictException);
+        assert.equal(error.getStatus(), 409);
+        assert.match(error.message, /활성.*수리|수리.*진행|업체.*수리/);
+        return true;
+      }
+    );
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "VENDOR_ASSIGNED");
+    assert.equal(unchanged.directHandling, null);
+    assert.equal(unchanged.messages.length, messageCount);
+  });
+
+  it("rejects direct completion for a vendor repair ticket", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "업체 수리 티켓 직접 완료 보고 차단"
+    );
+    const storedTicket = service.getTicket(ticket.id);
+    assert.ok(storedTicket);
+    storedTicket.status = "REPAIR_IN_PROGRESS";
+
+    assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+    const store = (service as any).store;
+    const messageCount = service.getTicketDetail(ticket.id).messages.length;
+    await assert.rejects(
+      async () =>
+        service.completeDirectHandling("landlord-demo", ticket.id, {
+          note: "업체 수리를 관리자 직접 처리로 완료하려고 합니다."
+        }),
+      /직접 처리.*(시작|진행)|직접 처리 중/
+    );
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "REPAIR_IN_PROGRESS");
+    assert.equal(unchanged.directHandling, null);
+    assert.equal(unchanged.messages.length, messageCount);
+    assert.equal(store.costs.filter((cost: any) => cost.unitId === ticket.roomId).length, 0);
+  });
+
+  it("rejects a blank direct completion note without mutating the ticket", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "직접 처리 완료 메모 필수"
+    );
+    await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "현장 확인을 시작합니다."
+    });
+
+    await assert.rejects(
+      async () =>
+        service.completeDirectHandling("landlord-demo", ticket.id, {
+          note: "   "
+        }),
+      /완료.*(내용|메모)|내용.*입력|메모.*입력/
+    );
+
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "REPAIR_IN_PROGRESS");
+    assert.equal(unchanged.directHandling?.completedAt, undefined);
+  });
+
+  it("rejects invalid or PostgreSQL-unsafe direct completion costs without creating a draft", async () => {
+    for (const amount of [0, -1000, 1.5, 2_147_483_648, Number.MAX_SAFE_INTEGER + 1]) {
+      const service = new RoomlogService();
+      const { ticket } = createDirectHandlingTestTicket(
+        service,
+        `직접 처리 비용 검증 ${amount}`
+      );
+      const store = (service as any).store;
+      await service.startDirectHandling("landlord-demo", ticket.id, {
+        note: "현장 확인을 시작합니다."
+      });
+
+      await assert.rejects(
+        async () =>
+          service.completeDirectHandling("landlord-demo", ticket.id, {
+            note: "현장 조치를 완료했습니다.",
+            cost: { amount }
+          }),
+        /비용|금액|양수|1원/
+      );
+      assert.equal(store.costs.filter((cost: any) => cost.unitId === ticket.roomId).length, 0);
+      assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+    }
+  });
+
+  it("rejects every defined non-record direct completion cost before mutation", async () => {
+    for (const cost of [null, 0, false, "", [], {}, new Date()] as unknown[]) {
+      const service = new RoomlogService();
+      const { ticket } = createDirectHandlingTestTicket(
+        service,
+        `직접 처리 비용 객체 검증 ${String(cost)}`
+      );
+      const store = (service as any).store;
+      await service.startDirectHandling("landlord-demo", ticket.id, {
+        note: "현장 확인을 시작합니다."
+      });
+      const messageCount = service.getTicketDetail(ticket.id).messages.length;
+
+      await assert.rejects(
+        async () =>
+          service.completeDirectHandling("landlord-demo", ticket.id, {
+            note: "현장 조치를 완료했습니다.",
+            cost
+          } as any),
+        (error: unknown) => {
+          assert.ok(error instanceof BadRequestException);
+          assert.equal(error.getStatus(), 400);
+          return true;
+        }
+      );
+      assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+      assert.equal(service.getTicketDetail(ticket.id).messages.length, messageCount);
+      assert.equal(store.costs.filter((item: any) => item.unitId === ticket.roomId).length, 0);
+    }
+  });
+
+  it("rejects an inherited direct completion cost amount without mutation", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "직접 처리 비용 상속 속성 검증"
+    );
+    const store = (service as any).store;
+    await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "현장 확인을 시작합니다."
+    });
+    const messageCount = service.getTicketDetail(ticket.id).messages.length;
+    const inheritedAmountCost = new Proxy(Object.create({ amount: 18_000 }), {
+      getPrototypeOf: () => Object.prototype
+    });
+
+    assert.equal(Object.hasOwn(inheritedAmountCost, "amount"), false);
+    await assert.rejects(
+      async () =>
+        service.completeDirectHandling("landlord-demo", ticket.id, {
+          note: "현장 조치를 완료했습니다.",
+          cost: inheritedAmountCost
+        } as any),
+      (error: unknown) => {
+        assert.ok(error instanceof BadRequestException);
+        assert.equal(error.getStatus(), 400);
+        return true;
+      }
+    );
+
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "REPAIR_IN_PROGRESS");
+    assert.equal(unchanged.directHandling?.completedAt, undefined);
+    assert.equal(unchanged.messages.length, messageCount);
+    assert.equal(store.costs.filter((item: any) => item.unitId === ticket.roomId).length, 0);
+  });
+
+  it("cancels direct handling back to reviewing and clears its metadata", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "직접 처리 시작 취소"
+    );
+    await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "관리자가 부품을 준비해 방문합니다."
+    });
+
+    await assert.rejects(
+      async () =>
+        service.cancelDirectHandling("landlord-demo", ticket.id, {
+          reason: "   "
+        }),
+      /취소.*사유|사유.*입력/
+    );
+    assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+
+    const cancelled = await service.cancelDirectHandling("landlord-demo", ticket.id, {
+      reason: "현장 확인 결과 전문 업체 점검이 필요합니다."
+    });
+
+    assert.equal(cancelled.status, "REVIEWING");
+    assert.equal(cancelled.directHandling, null);
+    assert.equal(cancelled.directHandlingStartedAt, undefined);
+    assert.equal(cancelled.directHandlingCompletedAt, undefined);
+    assert.equal(cancelled.directHandlingNote, undefined);
+    assert.equal(
+      cancelled.messages.some(
+        (message: any) =>
+          message.messageText.includes("직접 처리를 취소했습니다") &&
+          message.messageText.includes("전문 업체 점검")
+      ),
+      true
+    );
+  });
+
+  it("presents active tenant-initiated repair status to the managing landlord", () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "세입자 자가수리 관리자 목록 표시"
+    );
+    const repair = service.assignVendor("landlord-demo", ticket.id, {
+      vendorId: "vendor-demo",
+      requestNote: "세입자가 연결한 업체의 진행 상태를 표시합니다."
+    });
+    repair.tenantInitiated = true;
+
+    const active = service
+      .listTicketsForManager("landlord-demo")
+      .find((item) => item.id === ticket.id);
+    assert.deepEqual(active?.selfRepair, {
+      active: true,
+      statusLabel: "견적 요청"
+    });
+
+    repair.status = "COMPLETED";
+    const closed = service
+      .listTicketsForManager("landlord-demo")
+      .find((item) => item.id === ticket.id);
+    assert.equal(closed?.selfRepair, null);
   });
 
   it("moves a ticket through vendor assignment and completion approval", () => {

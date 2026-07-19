@@ -61,8 +61,7 @@ export default async function Page() {
           </summary>
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
             <LinkButton href={callRoutes["02"]} variant="secondary" fullWidth>추가 사진 요청</LinkButton>
-            <LinkButton href={dashRoutes["03"]} variant="secondary" fullWidth>거절 · 초안 검토 의무</LinkButton>
-            <div style={muted}>거절과 고위험 세입자안내는 웹 근거 확인 후 통보 초안을 검토합니다.</div>
+            <div style={muted}>추가 확인이 필요하면 사진을 요청하고 전화로 안내합니다.</div>
           </div>
         </details>
       </Card>

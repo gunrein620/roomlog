@@ -43,7 +43,9 @@ async function forward(
     );
   }
 
-  return NextResponse.json(data);
+  // 업스트림이 빈 바디(예: vendor-workflow의 null)를 주면 undefined가 되는데,
+  // NextResponse.json(undefined)는 500을 던지므로 null로 정규화한다.
+  return NextResponse.json(data ?? null);
 }
 
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {

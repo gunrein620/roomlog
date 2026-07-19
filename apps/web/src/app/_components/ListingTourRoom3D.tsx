@@ -14,6 +14,11 @@ import {
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
 import { LISTING_TOUR_FURNITURE_LATEST_KEY } from "../splat-tour/splat-furniture";
+import {
+  normalizeTourScenePoint,
+  resolveTourSceneScale
+} from "../floor-plan-3d/room-scene/mitunet-geometry";
+import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 
 export type ListingFloorPlanWall = {
   id: string;
@@ -41,6 +46,7 @@ export type ListingFloorPlan3D = {
   walls3D: ListingFloorPlanWall[];
   furnitures: ListingFloorPlanFurniture[];
   name?: string;
+  mitunet?: MitunetFloorPlan;
 };
 
 const TOUR_HORIZONTAL_SCALE = 1.85;
@@ -78,6 +84,7 @@ export default function ListingTourRoom3D({
   variant?: "sheet" | "hero";
 }) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
+  const sceneHorizontalScale = resolveTourSceneScale(floorPlan.mitunet, TOUR_HORIZONTAL_SCALE);
   const [isPlacementOpen, setIsPlacementOpen] = useState(false);
   // hero 패널 접기 — 시안의 우상단 "가구 배치" 토글. 모바일에선 도면이 좁아 기본 접힘이 낫지만
   // 데스크톱 첫인상엔 패널이 보여야 해서 열림 기본, 사용자가 토글로 제어한다.
@@ -135,10 +142,7 @@ export default function ListingTourRoom3D({
   }
 
   function normalizedScenePoint(point: { x: number; z: number }) {
-    return {
-      x: point.x / TOUR_HORIZONTAL_SCALE,
-      z: point.z / TOUR_HORIZONTAL_SCALE
-    };
+    return normalizeTourScenePoint(point, sceneHorizontalScale);
   }
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
@@ -285,9 +289,10 @@ export default function ListingTourRoom3D({
         controlsEnabled={!isFurnitureDragging}
         frameloop="always"
         furnitureData={placedFurnitures}
-        furnitureVerticalScale={TOUR_HORIZONTAL_SCALE}
+        furnitureVerticalScale={sceneHorizontalScale}
         hideHint
-        horizontalScale={TOUR_HORIZONTAL_SCALE}
+        horizontalScale={sceneHorizontalScale}
+        mitunetPlan={floorPlan.mitunet}
         orbitMinDistance={1.6}
         orbitZoomEnabled={variant !== "hero"}
         fitDistanceScale={variant === "hero" ? TOUR_HORIZONTAL_SCALE * 1.1 : undefined}

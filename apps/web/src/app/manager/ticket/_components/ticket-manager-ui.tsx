@@ -5,20 +5,24 @@ import type {
   RepairJob,
   RepairStage,
   ResponsibilityVerdict,
+  TicketAiFeedback,
+  TicketResponsibilityDecision,
   Ticket,
   TicketStatus,
+  TicketThreadMessage,
   Urgency,
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { stripScreenId } from "@/lib/screen-id";
+import { resolveTicketDirectFlow } from "@/lib/ticket-direct-flow-state";
 import { buildTicketTimeline } from "@/lib/ticket-timeline";
+import { ManagerMutationForm } from "../../_components/ManagerMutationForm";
+import type { ManagerMutationAction } from "../../_components/manager-mutation-state";
 
 export const dashRoutes = {
   "00": "/manager/ticket/dash/00",
   "01": "/manager/ticket/dash/01",
   "02": "/manager/ticket/dash/02",
-  "03": "/manager/ticket/dash/03",
-  "04": "/manager/ticket/dash/04",
   "05": "/manager/ticket/dash/05",
   e0: "/manager/ticket/dash/e0",
 } as const;
@@ -66,7 +70,7 @@ export const urgencyLabel: Record<Urgency, string> = {
 
 export const responsibilityLabel: Record<ResponsibilityVerdict, string> = {
   landlord_likely: "임대인 책임 가능성",
-  tenant_likely: "세입자 책임 가능성",
+  tenant_likely: "임차인 책임 가능성",
   unclear: "판단 어려움",
 };
 
@@ -95,6 +99,15 @@ export const sectionTitle: CSSProperties = {
   color: "var(--on-surface-variant)",
   fontWeight: 700,
 };
+
+export function managerTicketMessageSenderLabel(
+  role: TicketThreadMessage["senderRole"],
+) {
+  if (role === "TENANT") return "세입자";
+  if (role === "LANDLORD") return "나";
+  if (role === "VENDOR") return "업체";
+  return "시스템·AI";
+}
 
 export function LinkButton({
   href,
@@ -194,7 +207,184 @@ export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: Repa
   );
 }
 
-export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | null }) {
+const directHandlingField: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  fontSize: "var(--fs-caption)",
+};
+
+const directHandlingInput: CSSProperties = {
+  minHeight: "var(--touch-target)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  background: "var(--surface-container-lowest)",
+  color: "var(--on-surface)",
+  padding: "var(--space-sm)",
+  font: "inherit",
+};
+
+export function DirectHandlingActions({
+  ticket,
+  repair,
+  startAction,
+  completeAction,
+  cancelAction,
+}: {
+  ticket: Ticket;
+  repair?: RepairJob | null;
+  startAction: ManagerMutationAction;
+  completeAction: ManagerMutationAction;
+  cancelAction: ManagerMutationAction;
+}) {
+  const directHandling = ticket.directHandling;
+  const flow = resolveTicketDirectFlow({
+    ticketStatus: ticket.status,
+    directHandling,
+    hasRepairPath: Boolean(repair),
+    repairStage: repair?.stage,
+  });
+  const directPhaseCopy = !directHandling
+    ? null
+    : flow.directPhase === "active"
+      ? {
+          label: "직접 처리 중",
+          description: "관리자가 업체 배정 없이 직접 처리하고 있습니다.",
+        }
+      : flow.directPhase === "completion_pending" && directHandling.completedAt
+        ? {
+            label: "직접 처리 완료 보고됨",
+            description: "세입자 완료 확인을 기다리고 있습니다.",
+          }
+        : flow.directPhase === "resolved_history"
+          ? {
+              label: "직접 처리 완료",
+              description: "세입자가 완료를 확인한 처리 이력입니다.",
+            }
+          : flow.directPhase === "reopened_history"
+            ? {
+                label: "이전 직접 처리 이력",
+                description: flow.canStartDirect
+                  ? "재요청된 티켓입니다. 새 직접 처리나 업체 배정을 시작할 수 있습니다."
+                  : "재요청된 티켓의 이전 직접 처리 기록입니다.",
+              }
+            : {
+                label: "이전 직접 처리 이력",
+                description: "현재 진행 상태와 분리된 직접 처리 기록입니다.",
+              };
+
+  return (
+    <div style={{ display: "grid", gap: "var(--space-md)" }}>
+      {directHandling && directPhaseCopy ? (
+        <div
+          style={{
+            display: "grid",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+          }}
+        >
+          <div style={row}>
+            <Badge emphasis>
+              {directPhaseCopy.label}
+            </Badge>
+            <span style={muted}>
+              {directPhaseCopy.description}
+            </span>
+          </div>
+          {directHandling.note ? <div style={muted}>{directHandling.note}</div> : null}
+        </div>
+      ) : null}
+
+      {flow.canStartDirect ? (
+        <ManagerMutationForm action={startAction}>
+          <input type="hidden" name="ticketId" value={ticket.id} />
+          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+            <label style={directHandlingField}>
+              시작 안내 (선택)
+              <textarea
+                name="note"
+                placeholder="세입자에게 보일 직접 처리 안내"
+                style={{ ...directHandlingInput, minHeight: "calc(var(--touch-target) * 2)", resize: "vertical" }}
+              />
+            </label>
+            <Button type="submit">직접 처리 시작</Button>
+          </div>
+        </ManagerMutationForm>
+      ) : null}
+
+      {flow.directPhase === "active" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: "var(--space-md)" }}>
+          <ManagerMutationForm action={completeAction}>
+            <input type="hidden" name="ticketId" value={ticket.id} />
+            <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <label style={directHandlingField}>
+                완료 처리 내용
+                <textarea
+                  name="note"
+                  required
+                  placeholder="처리한 내용과 확인 사항"
+                  style={{ ...directHandlingInput, minHeight: "calc(var(--touch-target) * 2)", resize: "vertical" }}
+                />
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
+                <label style={directHandlingField}>
+                  비용 금액 (선택)
+                  <input name="amount" type="number" min={1} max={2_147_483_647} step={1} style={directHandlingInput} />
+                </label>
+                <label style={directHandlingField}>
+                  비용 항목 (선택)
+                  <input name="item" type="text" style={directHandlingInput} />
+                </label>
+              </div>
+              <Button type="submit">처리 완료 보고</Button>
+            </div>
+          </ManagerMutationForm>
+
+          <ManagerMutationForm action={cancelAction}>
+            <input type="hidden" name="ticketId" value={ticket.id} />
+            <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <label style={directHandlingField}>
+                취소 사유
+                <textarea
+                  name="reason"
+                  required
+                  style={{ ...directHandlingInput, minHeight: "calc(var(--touch-target) * 2)", resize: "vertical" }}
+                />
+              </label>
+              <Button type="submit" variant="secondary">직접 처리 취소</Button>
+            </div>
+          </ManagerMutationForm>
+        </div>
+      ) : null}
+
+      {!flow.canStartDirect && flow.directPhase === "none" ? (
+        <div style={muted}>현재 수리 상태에서는 직접 처리를 시작할 수 없습니다.</div>
+      ) : null}
+    </div>
+  );
+}
+
+export function SelfRepairBadge({ ticket }: { ticket: Ticket }) {
+  const selfRepair = ticket.selfRepair;
+  return selfRepair?.active ? (
+    <Badge emphasis>세입자 자가수리 진행중 · {selfRepair.statusLabel}</Badge>
+  ) : null;
+}
+
+export function ResponsibilityCard({
+  analysis,
+  ticketId,
+  aiFeedback = [],
+  responsibilityDecision,
+  decisionAction,
+}: {
+  analysis?: DefectAnalysis | null;
+  ticketId: string;
+  aiFeedback?: TicketAiFeedback[];
+  responsibilityDecision?: TicketResponsibilityDecision;
+  decisionAction: ManagerMutationAction;
+}) {
   if (!analysis) {
     return (
       <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
@@ -205,19 +395,88 @@ export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | n
   }
 
   const percent = Math.round(analysis.confidence * 100);
+  const openAppeals = aiFeedback.filter(
+    (feedback) => feedback.target === "RESPONSIBILITY" && feedback.status === "OPEN",
+  );
+  const decisionLabel = responsibilityDecision?.responsibility === "TENANT" ? "임차인" : "임대인";
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", padding: "var(--space-md)" }}>
       <div style={sectionTitle}>AI 책임 검토</div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>
         {responsibilityLabel[analysis.responsibility]} {percent}%
       </div>
-      <div style={{ ...row, justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div style={row}>
-          <Button variant="secondary">추가 정보 입력</Button>
-          {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
-        </div>
+      <div style={{ ...row, justifyContent: "space-between" }}>
+        {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
         <div style={muted}>AI 책임 검토는 참고용입니다.</div>
       </div>
+
+      {openAppeals.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+          }}
+        >
+          <strong style={{ fontSize: "var(--fs-caption)" }}>OPEN 책임 판단 이의제기</strong>
+          {openAppeals.map((feedback) => (
+            <div key={feedback.id} style={muted}>{feedback.reason}</div>
+          ))}
+        </div>
+      ) : null}
+
+      {responsibilityDecision ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <strong>관리자 확정: {decisionLabel} 책임</strong>
+          <div style={muted}>{responsibilityDecision.note}</div>
+        </div>
+      ) : null}
+
+      <ManagerMutationForm action={decisionAction}>
+        <input type="hidden" name="ticketId" value={ticketId} />
+        <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+          <label style={{ display: "grid", gap: "var(--space-xs)", fontSize: "var(--fs-caption)" }}>
+            관리자 책임 확정
+            <select
+              name="responsibility"
+              defaultValue={responsibilityDecision?.responsibility ?? "LANDLORD"}
+              style={{
+                minHeight: "var(--touch-target)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                background: "var(--surface-container-lowest)",
+                color: "var(--on-surface)",
+                padding: "0 var(--space-sm)",
+              }}
+            >
+              <option value="TENANT">임차인 책임</option>
+              <option value="LANDLORD">임대인 책임</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: "var(--space-xs)", fontSize: "var(--fs-caption)" }}>
+            세입자에게 보이는 사유
+            <textarea
+              name="note"
+              required
+              defaultValue={responsibilityDecision?.note}
+              style={{
+                minHeight: "calc(var(--touch-target) * 2)",
+                resize: "vertical",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                background: "var(--surface-container-lowest)",
+                color: "var(--on-surface)",
+                padding: "var(--space-sm)",
+                font: "inherit",
+              }}
+            />
+          </label>
+          <Button type="submit">관리자 확정 저장</Button>
+        </div>
+      </ManagerMutationForm>
     </Card>
   );
 }

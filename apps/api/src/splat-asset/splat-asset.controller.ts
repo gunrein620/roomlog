@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -17,7 +18,14 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import type { UserAccount, UserRole } from "../roomlog/roomlog.types";
 import { RoomlogService } from "../roomlog/roomlog.service";
 import { SplatAssetService, type UploadedSplatAssetFile } from "./splat-asset.service";
-import { parseCreateInput, parseIntakeInput, parseRegisterInput, parseUpdateFileInput } from "./splat-asset.types";
+import {
+  parseCreateInput,
+  parseIntakeCompleteInput,
+  parseIntakeInput,
+  parseIntakePresignInput,
+  parseRegisterInput,
+  parseUpdateFileInput
+} from "./splat-asset.types";
 import { workerSecretMatches } from "./worker-secret";
 
 @Controller("splat-assets")
@@ -63,6 +71,29 @@ export class SplatAssetController {
     // 남의 매물에 3D를 접수하지 못하게 서버에서 소유권을 강제한다(intake는 항상 listingId를 가짐).
     await this.splatAssetService.assertListingOwner(input.listingId, user.id);
     return this.splatAssetService.intake(input, file);
+  }
+
+  @Post("intake/presign")
+  @HttpCode(200)
+  async presignIntake(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: unknown
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const input = parseIntakePresignInput(body);
+    await this.splatAssetService.assertListingOwner(input.listingId, user.id);
+    return this.splatAssetService.presignIntake(input);
+  }
+
+  @Post("intake/complete")
+  async completeIntake(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: unknown
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const input = parseIntakeCompleteInput(body);
+    await this.splatAssetService.assertListingOwner(input.listingId, user.id);
+    return this.splatAssetService.completeIntake(input);
   }
 
   @Patch(":id/registration")

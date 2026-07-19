@@ -102,6 +102,16 @@ describe("furniture placement catalog", () => {
     assert.deepEqual(finalizedFurniture.rotation, rotatedDraft.rotation);
   });
 
+  it("rotates furniture one quarter turn in either direction", () => {
+    const draft = createFurnitureModel(IKEA_FURNITURE_CATALOG[4], [0, 0, 0]);
+
+    const rotatedLeft = rotateFurnitureQuarterTurn(draft, -1);
+    const rotatedRight = rotateFurnitureQuarterTurn(draft, 1);
+
+    assert.deepEqual(rotatedLeft.rotation, [0, Number((-Math.PI / 2).toFixed(4)), 0]);
+    assert.deepEqual(rotatedRight.rotation, [0, Number((Math.PI / 2).toFixed(4)), 0]);
+  });
+
   it("keeps finalized furniture stationary when the floor is clicked", () => {
     const draft = createFurnitureModel(IKEA_FURNITURE_CATALOG[4], [0, 0, 0]);
     const finalizedFurniture = finalizeFurnitureDraft(draft, "landlord");

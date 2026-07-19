@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { legacyVendorMgmtRedirect } from "@/lib/vendor-mgmt-nav";
+import { MANAGER_VENDOR_MGMT_PATHS } from "@/lib/vendor-mgmt-nav";
 
 export default function LegacyVendorEditorPage() {
-  redirect(legacyVendorMgmtRedirect("03", {}));
+  redirect(MANAGER_VENDOR_MGMT_PATHS.vendors);
 }

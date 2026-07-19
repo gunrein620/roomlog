@@ -96,6 +96,9 @@ class UnavailableManagerVendorRepository implements ManagerVendorRepository {
   async findJobByTicket() {
     return workflowUnavailable();
   }
+  async createManual(): Promise<never> {
+    return workflowUnavailable();
+  }
   async register(): Promise<never> {
     return workflowUnavailable();
   }
@@ -112,6 +115,9 @@ class UnavailableVendorWorkflowRepository implements VendorWorkflowRepository {
     return workflowUnavailable();
   }
   async getJob() {
+    return workflowUnavailable();
+  }
+  async addRepairMessage(): Promise<never> {
     return workflowUnavailable();
   }
   async listSettlements() {
