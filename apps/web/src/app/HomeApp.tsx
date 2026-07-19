@@ -1167,6 +1167,7 @@ function FilterBottomSheet({
 
 function SearchBottomSheet({
   isOpen,
+  currentArea,
   isResolving = false,
   isMapMode = false,
   queryCandidates = [],
@@ -1189,17 +1190,58 @@ function SearchBottomSheet({
   onSelectArea: (area: string) => void | Promise<void>;
   onSelectCandidate?: (keyword: string, candidate: MapResolvedQuery) => void;
 }) {
+  // 자유 텍스트 통합검색 — 지도 컨트롤 정리(298a976e) 때 함께 사라졌던 입력을 복원.
+  // 열 때마다 빈칸에서 시작하고, 현재 지역은 placeholder로만 보여준다.
+  const [searchValue, setSearchValue] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearchValue("");
+    }
+  }, [isOpen]);
+
+  const submitSearch = () => {
+    const keyword = searchValue.trim();
+
+    if (!keyword || isResolving) {
+      return;
+    }
+
+    void onSelectArea(keyword);
+  };
+
   if (!isOpen) {
     return null;
   }
 
   return (
     <div className="search-sheet-backdrop" role="presentation" onClick={onClose}>
-      <section className="search-sheet" role="dialog" aria-modal="true" aria-label="검색 결과" onClick={(event) => event.stopPropagation()}>
+      <section className="search-sheet" role="dialog" aria-modal="true" aria-labelledby="search-sheet-title" onClick={(event) => event.stopPropagation()}>
         <div className="sheet-handle" aria-hidden="true" />
-        <header className="search-sheet-close-row">
+        <header>
+          <div>
+            <span>통합검색</span>
+            <h2 id="search-sheet-title">어디에서 방을 찾을까요?</h2>
+          </div>
           <button type="button" onClick={onClose} aria-label="검색 닫기">×</button>
         </header>
+
+        <form
+          className="search-sheet-input"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitSearch();
+          }}
+        >
+          <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+          <input
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder={`동네, 역, 주소로 검색 (현재 ${currentArea})`}
+            aria-label="통합 검색어"
+          />
+          <button type="submit" disabled={isResolving}>{isResolving ? "확인 중" : "검색"}</button>
+        </form>
 
         {queryCandidates.length > 0 ? (
           <section className="search-result-candidates" aria-label="주소 검색 결과">
@@ -2281,6 +2323,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     await runMapSearch(keyword, false);
   };
 
+  // 히어로 검색카드 실행 — 검색어는 타이핑 즉시 홈 피드(searchKeyword 필터)에 반영되므로,
+  // 버튼/Enter는 시트를 닫고 결과 섹션으로 이동만 한다. 모달·지도 전환 없이 피드가 곧 결과다.
+  const submitHeroSearch = () => {
+    setIsPriceSheetOpen(false);
+    setIsFilterSheetOpen(false);
+    document.querySelector(".home-screen > .section-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const submitMapTopbarSearch = async () => {
     const keyword = mapTopbarDisplaySearchValue.trim();
     if (!keyword) {
@@ -2560,11 +2610,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               ))}
             </div>
             <div className="search-fields">
-              <button type="button" className="search-field" onClick={() => setIsSearchSheetOpen(true)}>
-                <span className="search-field-label">지역</span>
-                <span className="search-field-value">{selectedAreaTitle} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
-              </button>
-              <span className="search-field-divider" aria-hidden="true" />
               <button type="button" className="search-field" onClick={() => setIsFilterSheetOpen(true)}>
                 <span className="search-field-label">매물 유형</span>
                 <span className="search-field-value">{activeCategory} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
@@ -2574,18 +2619,23 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 <span className="search-field-label">가격대</span>
                 <span className="search-field-value">{activePriceLabel} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
               </button>
-              {/* 검색 = 현재 조건(탭·유형·가격)이 이미 피드에 반영돼 있으므로, 결과 섹션으로 이동시키는 실행 버튼 */}
-              <button
-                type="button"
-                className="search-submit"
-                onClick={() => {
-                  setIsPriceSheetOpen(false);
-                  setIsFilterSheetOpen(false);
-                  document.querySelector(".home-screen > .section-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-              >
-                검색
-              </button>
+              <span className="search-field-divider" aria-hidden="true" />
+              {/* 검색 = 자유 텍스트 입력 — 타이핑 즉시 아래 홈 피드가 필터링된다(버튼·모달·지도 전환 없음). */}
+              <div className="search-field search-field--query">
+                <span className="search-field-label">검색</span>
+                <input
+                  className="search-field-input"
+                  value={searchKeyword}
+                  placeholder="예: 성수동, 역삼역, 방배 루미에르"
+                  aria-label="매물 검색어"
+                  onChange={(event) => setSearchKeyword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                    event.preventDefault();
+                    submitHeroSearch();
+                  }}
+                />
+              </div>
             </div>
           </div>
 
