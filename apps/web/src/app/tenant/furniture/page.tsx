@@ -6,11 +6,8 @@ import type { FurnitureDimensionsMm, TenantFurniture } from "@roomlog/types/tena
 import { Button, Card } from "@roomlog/ui";
 import { fetchTenantFurniture } from "@/lib/tenant-furniture-api";
 import { DimensionEditor } from "./DimensionEditor";
-import {
-  TENANT_FURNITURE_CATEGORY_ICONS,
-  TENANT_FURNITURE_CATEGORY_LABELS,
-  tenantFurnitureName
-} from "./furniture-labels";
+import { FurniturePreview3D } from "./FurniturePreview3D";
+import { TENANT_FURNITURE_CATEGORY_LABELS, tenantFurnitureName } from "./furniture-labels";
 import styles from "./furniture.module.css";
 
 const SOURCE_LABELS: Record<TenantFurniture["source"], string> = {
@@ -89,9 +86,7 @@ export default function TenantFurniturePage() {
                   <Card className={styles.furnitureCard}>
                     <div className={styles.cardTop}>
                       <div className={styles.furnitureIdentity}>
-                        <span className={styles.categoryIcon} aria-hidden="true">
-                          {TENANT_FURNITURE_CATEGORY_ICONS[item.category] ?? "□"}
-                        </span>
+                        <FurniturePreview3D furniture={item} />
                         <div className={styles.headingBlock}>
                           <h3 className={styles.itemName}>{tenantFurnitureName(item)}</h3>
                           <p className={styles.itemMeta}>

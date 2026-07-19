@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { TenantFurniture, TenantFurniturePlacementItem } from "@roomlog/types/tenant-furniture";
+import { FurniturePreview3D } from "../../FurniturePreview3D";
 import { tenantFurnitureName } from "../../furniture-labels";
 import type { PlacementAnalysis } from "./placement-model";
 import styles from "../../furniture.module.css";
@@ -42,6 +43,7 @@ export function PlacedFurniturePanel({
                 <div className={styles.cardTop}>
                   <div className={styles.placementTitle}>
                     <span className={styles.placementIndex}>{index + 1}</span>
+                    <FurniturePreview3D furniture={furniture} />
                     <div className={styles.headingBlock}>
                       <h3 className={styles.itemName}>{tenantFurnitureName(furniture)}</h3>
                       <p className={styles.itemMeta}>
@@ -91,6 +93,7 @@ export function FurnitureInventoryPanel({
             return (
               <div key={furniture.id} className={styles.inventoryItem}>
                 <div className={styles.inventoryRow}>
+                  <FurniturePreview3D furniture={furniture} />
                   <div className={styles.headingBlock}>
                     <h3 className={styles.itemName}>{tenantFurnitureName(furniture)}</h3>
                     <p className={styles.itemMeta}>{furniture.sizeMm.width} × {furniture.sizeMm.depth} mm</p>
