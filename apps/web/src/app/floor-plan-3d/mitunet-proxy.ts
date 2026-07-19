@@ -81,10 +81,6 @@ export function transformMitunetViewerHtml(html: string) {
     )
     .replaceAll('>RoomLog에 연결</span>', '>3D 도면 저장하기</span>')
     .replaceAll(
-      'saveJsonButton.hidden = !canSave;',
-      'saveJsonButton.hidden = !canSave || Boolean(roomLogContext);',
-    )
-    .replaceAll(
       'setStatus("RoomLog에 3D 도면을 연결했습니다. RoomLog 탭으로 돌아가세요.");',
       'setStatus("3D 도면을 저장했습니다. 매물 등록 화면으로 돌아갑니다.");',
     );
