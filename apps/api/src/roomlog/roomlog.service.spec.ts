@@ -785,14 +785,14 @@ describe("RoomlogService", () => {
     }
   });
 
-  it("lets the manager realtime agent report ticket query results by defect keyword", () => {
+  it("lets the manager realtime agent report ticket query results by defect keyword", async () => {
     const service = new RoomlogService();
 
-    const airconResult = service.runManagerAgentCommand("landlord-demo", {
+    const airconResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "ticket.query",
       text: "에어컨 티켓 조회해서 결과 보고해줘"
     });
-    const sinkResult = service.runManagerAgentCommand("landlord-demo", {
+    const sinkResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "ticket.query",
       text: "세면대 누수 티켓 조회해서 결과 보고해줘"
     });
@@ -5844,23 +5844,23 @@ describe("RoomlogService", () => {
 
   it("runs manager agent commands through a narrow server allowlist", async () => {
     const service = new RoomlogService();
-    const ticketResult = service.runManagerAgentCommand("landlord-demo", {
+    const ticketResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "ticket.query",
       text: "긴급도 1순위 민원 중 아직 업체 배정 안 된 건 보여줘"
     });
-    const billingResult = service.runManagerAgentCommand("landlord-demo", {
+    const billingResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.summary",
       text: "이번 달 수납 현황 알려줘"
     });
-    const draftResult = service.runManagerAgentCommand("landlord-demo", {
+    const draftResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "messaging.draft_reply",
       text: "사진을 더 요청하는 답장 초안 만들어줘"
     });
-    const dunningResult = service.runManagerAgentCommand("landlord-demo", {
+    const dunningResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       text: "411호 미납 독촉 바로 보내줘"
     });
-    const guardedDunningResult = service.runManagerAgentCommand("landlord-demo", {
+    const guardedDunningResult = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       billId: "bill-demo-guarded",
       text: "301호 확인중 청구 독촉 보내줘"
@@ -5893,11 +5893,85 @@ describe("RoomlogService", () => {
     assert.equal(guardedDunningResult.navigation, undefined);
   });
 
+  it("summarizes total ticket counts for the manager agent", async () => {
+    const service = new RoomlogService();
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.summary",
+      text: "총 티켓은 몇개야?"
+    });
+    const data = result.data as {
+      total: number;
+      open: number;
+      completed: number;
+    };
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "ticket");
+    assert.match(result.summary, /전체 티켓 \d+건/);
+    assert.equal(data.total >= data.open, true);
+    assert.equal(result.navigation?.href, "/manager/ticket/dash/00");
+  });
+
+  it("keeps completed tickets in ticket.query results when the question asks for all tickets", async () => {
+    const service = new RoomlogService();
+
+    const allResult = await service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.query",
+      text: "전체 티켓 보여줘"
+    });
+    const defaultResult = await service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.query",
+      text: "티켓 보여줘"
+    });
+    const allData = allResult.data as { filters: string[]; matchedTickets: unknown[] };
+    const defaultData = defaultResult.data as { filters: string[]; matchedTickets: unknown[] };
+
+    assert.equal(allResult.status, "executed");
+    assert.deepEqual(allData.filters, ["범위: 전체"]);
+    assert.deepEqual(defaultData.filters, ["상태: 미처리"]);
+    assert.equal(allData.matchedTickets.length >= defaultData.matchedTickets.length, true);
+  });
+
+  it("answers manager credit balance through the injected credit service", async () => {
+    const service = new RoomlogService(
+      {},
+      {
+        getAccount: async (managerId: string) => {
+          assert.equal(managerId, "landlord-demo");
+          return { id: "acct-1", balance: 125000, updatedAt: "2026-07-19T00:00:00.000Z" };
+        }
+      } as never
+    );
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "credit.balance",
+      text: "현재 내 크레딧이 얼마지?"
+    });
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "credit");
+    assert.match(result.summary, /125,000원/);
+    assert.equal(result.navigation?.href, "/manager/vendor-mgmt/credit");
+  });
+
+  it("blocks credit balance queries when the credit service is unavailable", async () => {
+    const service = new RoomlogService();
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "credit.balance"
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.domain, "credit");
+    assert.match(result.summary, /크레딧/);
+  });
+
   it("sends a manager realtime message into the tenant-visible messaging thread", async () => {
     const service = new RoomlogService();
     const body = "오늘 오후 4시에 공용 현관등 점검을 진행하겠습니다.";
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "messaging.send_reply",
       threadId: "mth_demo_general",
       body
@@ -5917,7 +5991,7 @@ describe("RoomlogService", () => {
   it("records realtime dunning sends in the tenant-visible payment thread", async () => {
     const service = new RoomlogService();
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       text: "411호 연체 독촉 메시지 바로 보내줘"
     });
@@ -5941,7 +6015,7 @@ describe("RoomlogService", () => {
   it("blocks guarded dunning requests before creating a tenant-visible payment thread", async () => {
     const service = new RoomlogService();
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       text: "302호 독촉 메시지 보내"
     });
@@ -5959,7 +6033,7 @@ describe("RoomlogService", () => {
   it("blocks realtime manager messages that look like payment dunning", async () => {
     const service = new RoomlogService();
 
-    const result = service.runManagerAgentCommand("landlord-demo", {
+    const result = await service.runManagerAgentCommand("landlord-demo", {
       command: "messaging.send_reply",
       threadId: "mth_demo_general",
       body: "301호 미납 독촉 메시지 보내줘"

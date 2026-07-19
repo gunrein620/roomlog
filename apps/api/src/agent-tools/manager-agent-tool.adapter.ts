@@ -118,7 +118,7 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     this.requireManager(principal);
     if (tool === "ticket.query") {
       only(args, ["text"]);
-      const result = this.roomlog.runManagerAgentCommand(principal.userId, {
+      const result = await this.roomlog.runManagerAgentCommand(principal.userId, {
         command: tool,
         text: optionalText(args.text, "티켓 조회 조건이 올바르지 않습니다."),
       });
@@ -140,7 +140,7 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     }
     if (tool === "billing.summary") {
       only(args, []);
-      const result = this.roomlog.runManagerAgentCommand(principal.userId, { command: tool });
+      const result = await this.roomlog.runManagerAgentCommand(principal.userId, { command: tool });
       return { summary: result.summary };
     }
     if (tool === "messaging.list_threads") {
@@ -155,7 +155,7 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     }
     if (tool === "messaging.draft_reply") {
       only(args, ["text", "body"]);
-      const result = this.roomlog.runManagerAgentCommand(principal.userId, {
+      const result = await this.roomlog.runManagerAgentCommand(principal.userId, {
         command: tool,
         text: optionalText(args.text, "답장 요청이 올바르지 않습니다."),
         body: optionalText(args.body, "답장 초안이 올바르지 않습니다."),
@@ -307,7 +307,7 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
       storedCommand,
     );
     if (resolved.status !== "ready") throw new BadRequestException(resolved.summary);
-    const result = this.roomlog.runManagerAgentCommand(principal.userId, resolved.commandInput);
+    const result = await this.roomlog.runManagerAgentCommand(principal.userId, resolved.commandInput);
     if (result.status !== "executed") throw new BadRequestException(result.summary);
     return { summary: result.summary };
   }
