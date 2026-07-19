@@ -75,6 +75,14 @@ test("hides the workspace header bar on the empty landing screen", async () => {
   assert.match(css, /#workspace-empty-backdrop\s*\{[\s\S]*?inset:\s*0;/);
 });
 
+test("keeps the empty landing screen free of the legacy MitUNet side summary", async () => {
+  const html = await readFile(viewerPath, "utf8");
+  const css = readViewerStyle(html);
+
+  assert.match(html, /id="ui"/);
+  assert.match(css, /body\.upload-empty #ui\s*\{\s*display:\s*none;/);
+});
+
 test("keeps the existing viewer hooks and integration request paths intact", async () => {
   const html = await readFile(viewerPath, "utf8");
 

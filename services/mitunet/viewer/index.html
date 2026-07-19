@@ -177,6 +177,9 @@
     pointer-events: auto;
   }
   #ui { flex: 0 0 auto; }
+  /* The landing screen uses the centered upload card; hide the legacy side
+     summary so its English MitUNet copy does not duplicate that entry point. */
+  body.upload-empty #ui { display: none; }
   #editor-tools {
     flex: 0 1 auto;
     min-height: 0;
