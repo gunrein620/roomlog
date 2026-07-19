@@ -296,8 +296,6 @@ const notificationItems = [
 
 // 하드코딩 데모 지표/추천/체크리스트 상수들 제거 — 데모 컨셉 정리(4d1010a8 후속)
 
-const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
-
 const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   source: "default",
   label: "서초구 방배동",

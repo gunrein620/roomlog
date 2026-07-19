@@ -12,11 +12,15 @@ describe("public Gara payout requests", () => {
       createPublicGaraVendorPayoutRequest: async (input: unknown) => {
         received = input;
         return {
-          id: "gara-payout-1",
-          amount: 50_000,
-          accountNumber: "110-123-456789",
-          status: "PENDING_APPROVAL" as const,
-          createdAt: "2026-07-19T00:00:00.000Z"
+          managerId: "manager-1",
+          creditDebited: false,
+          request: {
+            id: "gara-payout-1",
+            amount: 50_000,
+            accountNumber: "110-123-456789",
+            status: "PENDING_APPROVAL" as const,
+            createdAt: "2026-07-19T00:00:00.000Z"
+          }
         };
       }
     };
@@ -36,11 +40,15 @@ describe("public Gara payout requests", () => {
 
     assert.deepEqual(received, input);
     assert.deepEqual(request, {
-      id: "gara-payout-1",
-      amount: 50_000,
-      accountNumber: "110-123-456789",
-      status: "PENDING_APPROVAL",
-      createdAt: "2026-07-19T00:00:00.000Z"
+      managerId: "manager-1",
+      creditDebited: false,
+      request: {
+        id: "gara-payout-1",
+        amount: 50_000,
+        accountNumber: "110-123-456789",
+        status: "PENDING_APPROVAL",
+        createdAt: "2026-07-19T00:00:00.000Z"
+      }
     });
   });
 
@@ -63,5 +71,40 @@ describe("public Gara payout requests", () => {
     assert.equal((handler as Function).length, 1);
     await handler?.call(controller, { managerVendorId: "manager-vendor-1", amount: 50_000 });
     assert.equal(broadcasts, 1);
+  });
+
+  it("notifies only the affected manager when a public request automatically debits credit", async () => {
+    const notifiedManagerIds: string[] = [];
+    const controller = new CreditController({
+      createPublicGaraVendorPayoutRequest: async () => ({
+        managerId: "manager-1",
+        creditDebited: true,
+        request: {
+          id: "gara-payout-1",
+          amount: 10_000,
+          accountNumber: "110-123-456789",
+          status: "CREDIT_DEBITED" as const,
+          createdAt: "2026-07-19T00:00:00.000Z"
+        }
+      })
+    } as never, {
+      notifyGaraPayoutUpdated: () => undefined,
+      notifyManagerCreditUpdated: (managerId: string) => notifiedManagerIds.push(managerId)
+    } as never);
+
+    const response = await controller.createPublicGaraVendorPayoutRequest({
+      managerVendorId: "manager-vendor-1",
+      amount: 10_000,
+      idempotencyKey: "gara-auto-debit-1"
+    });
+
+    assert.deepEqual(response, {
+      id: "gara-payout-1",
+      amount: 10_000,
+      accountNumber: "110-123-456789",
+      status: "CREDIT_DEBITED",
+      createdAt: "2026-07-19T00:00:00.000Z"
+    });
+    assert.deepEqual(notifiedManagerIds, ["manager-1"]);
   });
 });

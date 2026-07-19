@@ -28,6 +28,8 @@ services:
       MITUNET_INTERNAL_SERVICE_URL: ${MITUNET_INTERNAL_SERVICE_URL:-http://127.0.0.1:8012}
       MITUNET_PROJECT_ROOT: /mitunet
       FURNITURE_DATASET_ROOT: /furniture
+      # 가구 에셋 S3 리다이렉트(furniture-assets 라우트)가 web 컨테이너 런타임에서 읽는다.
+      FURNITURE_ASSET_BASE_URL: ${FURNITURE_ASSET_BASE_URL:-}
     depends_on:
       - api
     ports:

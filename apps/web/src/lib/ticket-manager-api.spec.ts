@@ -13,7 +13,7 @@ import { ApiError, ApiPayloadError } from "./server-api";
 const ticket = {
   messages: [
     { attachmentUrls: [" /uploads/high.png ", "", "/uploads/high.png"] },
-    { attachmentUrls: ["/uploads/wide.jpg"] },
+    { attachmentUrls: ["/uploads/chat-only.jpg"] },
   ],
 } as unknown as TeamManagerTicket;
 
@@ -37,11 +37,21 @@ const detailTicket = {
 } as TeamManagerTicket;
 
 describe("manager ticket attachment mapping", () => {
-  it("trims, removes blanks, and deduplicates attachment URLs", () => {
+  it("keeps only the initial intake photos and normalizes their URLs", () => {
     assert.deepEqual(managerTicketAttachmentUrls(ticket), [
       "/uploads/high.png",
-      "/uploads/wide.jpg",
     ]);
+  });
+
+  it("does not promote later chat photos when the intake had no photo", () => {
+    const chatOnlyTicket = {
+      messages: [
+        { messageText: "사진 없이 접수했습니다.", attachmentUrls: [] },
+        { messageText: "채팅 사진", attachmentUrls: ["/uploads/chat-only.jpg"] },
+      ],
+    } as unknown as TeamManagerTicket;
+
+    assert.deepEqual(managerTicketAttachmentUrls(chatOnlyTicket), []);
   });
 
   it("returns an empty list when messages or attachments are absent", () => {

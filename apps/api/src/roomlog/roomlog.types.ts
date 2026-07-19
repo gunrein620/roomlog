@@ -1285,6 +1285,7 @@ export type ManagerReplyDraftInput = {
 export type ManagerTicketReplyInput = {
   action?: ManagerReplyAction;
   messageText?: string;
+  attachmentUrls?: string[];
 };
 
 /** 관리인 대화 패널의 진행 레인 — 접수 | 진행 | 완료. 수리·결제 축과 분리된 티켓 상태 축이다. */

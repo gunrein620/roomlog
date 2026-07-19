@@ -11,6 +11,14 @@ const workspaceSource = readFileSync(
   join(process.cwd(), "src/app/manager/vendor-mgmt/credit/CreditWorkspace.tsx"),
   "utf8",
 );
+const actionsSource = readFileSync(
+  join(process.cwd(), "src/app/manager/vendor-mgmt/credit/actions.ts"),
+  "utf8",
+);
+const garaPayoutSection = workspaceSource.slice(
+  workspaceSource.indexOf("{workspace.garaPayoutRequests.map"),
+  workspaceSource.indexOf("{workspace.paymentRequests.map"),
+);
 
 test("starts the credit page with payment policy instead of settlement overview", () => {
   assert.doesNotMatch(pageSource, /VendorScreenHeader/);
@@ -24,5 +32,44 @@ test("starts the credit page with payment policy instead of settlement overview"
   assert.match(workspaceSource, /garaPayoutRequests/);
   assert.match(workspaceSource, /getRealtimeSocket/);
   assert.match(workspaceSource, /gara:payout-updated/);
+  assert.match(workspaceSource, /manager:credit-updated/);
+  assert.match(workspaceSource, /socket\.on\("manager:credit-updated", refreshWorkspace\)/);
+  assert.match(workspaceSource, /socket\.off\("manager:credit-updated", refreshWorkspace\)/);
   assert.doesNotMatch(workspaceSource, /<h2>Gara 업체 지급 요청<\/h2>/);
+});
+
+test("labels the policy submit button as save", () => {
+  assert.match(workspaceSource, /\? "저장 중" : "저장"/);
+  assert.doesNotMatch(workspaceSource, /"정책 저장"/);
+});
+
+test("shows the currently saved automatic debit limit beside the save action", () => {
+  assert.match(workspaceSource, /저장된 금액/);
+  assert.match(workspaceSource, /won\(workspace\.policy\.perRequestLimit\)/);
+});
+
+test("keeps Gara payout cards focused on vendor, requested date, paid date, and amount", () => {
+  assert.match(garaPayoutSection, /request\.vendorName/);
+  assert.match(garaPayoutSection, /요청일/);
+  assert.match(garaPayoutSection, /지급일/);
+  assert.match(garaPayoutSection, /won\(request\.amount\)/);
+  assert.doesNotMatch(garaPayoutSection, /request\.accountNumber/);
+  assert.doesNotMatch(garaPayoutSection, /Gara 지급 요청/);
+  assert.doesNotMatch(garaPayoutSection, /크레딧 지급 완료/);
+});
+
+test("publishes the settled credit balance to the header without waiting for a socket event", () => {
+  assert.match(workspaceSource, /let result: unknown;/);
+  assert.match(workspaceSource, /result = await mutation\(\);/);
+  assert.match(workspaceSource, /notifyManagerCreditBalanceChanged\(extractCreditBalance\(result\)\)/);
+});
+
+test("opens credit top-up with the payout shortfall when a credit payment is declined for insufficient balance", () => {
+  assert.match(actionsSource, /ApiError/);
+  assert.match(actionsSource, /error instanceof ApiError\s+&& error\.status === 409/);
+  assert.match(actionsSource, /kind: "INSUFFICIENT_CREDIT"/);
+  assert.match(workspaceSource, /openManagerCreditTopup/);
+  assert.match(workspaceSource, /isCreditInsufficientBalanceResult\(result\)/);
+  assert.match(workspaceSource, /request\.amount - workspace\.account\.balance/);
+  assert.match(workspaceSource, /openManagerCreditTopup\(insufficientCreditTopupAmount\)/);
 });

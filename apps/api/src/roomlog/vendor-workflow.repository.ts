@@ -108,13 +108,29 @@ export interface VendorRepairMessageRecord {
   createdAt: string;
 }
 
+export interface VendorAssignmentNoticeRecord {
+  id: string;
+  ticketId: string;
+  complaintId: string;
+  repairId: string;
+  senderUserId: string;
+  senderRole: "LANDLORD";
+  messageText: string;
+  attachmentUrls: string[];
+  createdAt: string;
+}
+
+export type VendorAssignmentResult = VendorJobDetail & {
+  assignmentNotice?: VendorAssignmentNoticeRecord;
+};
+
 export interface VendorRepairMessageResult {
   view: VendorJobMessageView;
   record: VendorRepairMessageRecord;
 }
 
 export interface VendorWorkflowRepository {
-  assignVendor(command: AssignVendorCommand): Promise<VendorJobDetail>;
+  assignVendor(command: AssignVendorCommand): Promise<VendorAssignmentResult>;
   listJobs(vendorId: string): Promise<VendorJobSummary[]>;
   getJob(vendorId: string, repairId: string): Promise<VendorJobDetail | null>;
   addRepairMessage(

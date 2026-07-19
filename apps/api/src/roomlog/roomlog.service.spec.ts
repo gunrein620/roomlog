@@ -6117,6 +6117,26 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("stores manager photo-only ticket replies and rejects an empty reply", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "보일러 배관 사진 확인",
+      description: "보일러 아래 배관에 물방울이 맺힙니다.",
+      location: "301호 보일러실",
+    });
+
+    const sent = service.sendManagerTicketReply("landlord-demo", created.ticket.id, {
+      attachmentUrls: ["/api/files/manager-boiler.jpg"],
+    });
+
+    assert.equal(sent.message.messageText, "사진을 첨부했습니다.");
+    assert.deepEqual(sent.message.attachmentUrls, ["/api/files/manager-boiler.jpg"]);
+    assert.throws(
+      () => service.sendManagerTicketReply("landlord-demo", created.ticket.id, {}),
+      /답변 내용 또는 사진/,
+    );
+  });
+
   it("links tenant additional info photos to the existing ticket and refreshes analysis", () => {
     const service = new RoomlogService();
     const created = service.createComplaint("tenant-demo", {

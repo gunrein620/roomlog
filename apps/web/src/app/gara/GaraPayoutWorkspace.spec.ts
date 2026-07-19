@@ -7,6 +7,10 @@ const workspacePath = path.join(
   process.cwd(),
   "src/app/gara/GaraPayoutWorkspace.tsx",
 );
+const stylesPath = path.join(
+  process.cwd(),
+  "src/app/gara/GaraPayoutWorkspace.module.css",
+);
 
 test("Gara shows linked accounts and each vendor cumulative credit", () => {
   const source = readFileSync(workspacePath, "utf8");
@@ -45,4 +49,10 @@ test("Gara refreshes its public credit view when a payout websocket event arrive
   assert.match(source, /getGaraRealtimeSocket/);
   assert.match(source, /gara:payout-updated/);
   assert.match(source, /router\.refresh\(\)/);
+});
+
+test("Gara send button keeps its label on one line in a narrow table column", () => {
+  const styles = readFileSync(stylesPath, "utf8");
+
+  assert.match(styles, /\.sendButton\s*\{[\s\S]*?white-space:\s*nowrap;/);
 });
