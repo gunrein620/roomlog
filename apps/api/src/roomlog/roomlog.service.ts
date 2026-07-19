@@ -6171,14 +6171,14 @@ export class RoomlogService implements OnModuleDestroy {
   }
 
   private async currentManagerReadStore() {
-    if (!this.storeProjector?.load) return this.store;
-
-    // projectStore()는 Postgres 반영을 큐에 걸고 바로 리턴한다. 그 직후 여기서 DB를 읽으면
-    // 방금 쓴 메시지·상태가 아직 없어 화면이 "한 박자 밀린다"(관리인 대화·레인 토글 증상).
-    // 밀린 쓰기를 먼저 흘려보내고 읽는다. 실패해도 읽기는 막지 않는다 — 그건 쓰기 경로의 책임.
+    // 인메모리 store가 쓰기의 1차 소스다(쓰기가 this.store를 먼저 갱신하고 Postgres로 미러링).
+    // 과거엔 여기서 storeProjector.load()로 DB 전체(~55개 테이블)를 매 요청 재로드했는데,
+    // 관리 대시보드(/manager/home)가 이 호출에 Promise.all로 묶여 콜드 시 5~7초까지 걸렸다
+    // — 다른 6개 원천은 인메모리 직독으로 1~70ms인데 티켓만 O(DB 전체)라 전체를 게이팅했다.
+    // 인메모리를 직독해 O(메모리)로 낮춘다. 대기 중 쓰기만 흘려보내 순서 정합("한 박자 밀림")을 지킨다.
     await this.pendingPersistence.catch(() => undefined);
 
-    return (await this.storeProjector.load()) ?? createEmptyStore();
+    return this.store;
   }
 
   listTicketsForManager(managerId: string, sourceStore: Store = this.store) {
