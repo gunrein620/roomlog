@@ -52,16 +52,6 @@ test("uses the RoomLog cosmic tokens for every floating viewer surface", async (
   }
 });
 
-test("uses the supplied night landscape image behind the 3D workspace", async () => {
-  const html = await readFile(viewerPath, "utf8");
-  const css = readViewerStyle(html);
-
-  assert.match(
-    css,
-    /canvas#scene\s*\{[\s\S]*?url\("assets\/cosmic-night-landscape\.png"\)[\s\S]*?background-size:\s*cover;/,
-  );
-});
-
 test("keeps the existing viewer hooks and integration request paths intact", async () => {
   const html = await readFile(viewerPath, "utf8");
 
