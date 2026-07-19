@@ -131,15 +131,26 @@
   #workspace-empty-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 5;
+    z-index: 1;
     opacity: 0;
     pointer-events: none;
-    background-image:
-      linear-gradient(180deg, rgba(1, 5, 15, .08), rgba(1, 7, 16, .18)),
-      url("/viewer-assets/assets/cosmic-night-landscape.png");
-    background-position: center;
-    background-size: cover;
-    background-repeat: no-repeat;
+    background:
+      radial-gradient(1.5px 1.5px at 18px 32px, rgba(255,255,255,0.98), transparent 70%),
+      radial-gradient(1.1px 1.1px at 121px 74px, rgba(255,255,255,0.8), transparent 70%),
+      radial-gradient(1.3px 1.3px at 67px 141px, rgba(214,226,255,0.92), transparent 70%),
+      radial-gradient(1.1px 1.1px at 203px 109px, rgba(255,255,255,0.66), transparent 70%),
+      radial-gradient(1.4px 1.4px at 90px 200px, rgba(255,246,232,0.85), transparent 70%),
+      radial-gradient(0.9px 0.9px at 250px 40px, rgba(255,255,255,0.7), transparent 70%),
+      radial-gradient(1.1px 1.1px at 40px 260px, rgba(210,224,255,0.74), transparent 70%),
+      radial-gradient(1px 1px at 300px 180px, rgba(255,255,255,0.74), transparent 70%),
+      radial-gradient(1.2px 1.2px at 160px 300px, rgba(255,255,255,0.82), transparent 70%),
+      radial-gradient(0.8px 0.8px at 210px 230px, rgba(255,255,255,0.6), transparent 70%),
+      radial-gradient(2.5px 2.5px at 331px 87px, rgba(255,255,255,1), rgba(255,255,255,0.3) 45%, transparent 72%),
+      radial-gradient(2.1px 2.1px at 120px 360px, rgba(224,236,255,1), rgba(224,236,255,0.28) 45%, transparent 72%),
+      radial-gradient(120% 80% at 50% 8%, rgba(58, 78, 140, .38), transparent 62%),
+      linear-gradient(#04060f, #101a38 55%, #26355e);
+    background-size: 160px 160px, 200px 200px, 240px 240px, 280px 280px, 300px 300px, 170px 170px, 220px 220px, 190px 190px, 260px 260px, 150px 150px, 520px 520px, 560px 560px, 100% 100%, 100% 100%;
+    background-repeat: repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat, no-repeat;
     transition: opacity 220ms ease;
   }
   body.upload-empty #workspace-empty-backdrop { opacity: 1; }
@@ -237,6 +248,7 @@
   body:not(.upload-empty) #landing-intro,
   body:not(.upload-empty) #start-sample-btn,
   body:not(.upload-empty) .landing-feature-row { display: none; }
+  body.view-original #ui { display: none !important; }
   #editor-tools {
     flex: 0 1 auto;
     min-height: 0;
@@ -500,6 +512,8 @@
     backdrop-filter: blur(22px) saturate(120%);
     -webkit-backdrop-filter: blur(22px) saturate(120%);
     pointer-events: none;
+    display: flex;
+    flex-direction: column;
   }
   body.view-furnishing #furniture-panel { pointer-events: auto; }
   .furniture-panel-title {
@@ -567,21 +581,24 @@
   }
   #furniture-results {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-    max-height: min(58vh, 620px);
-    margin: 0 -3px 10px 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    margin: 0 -3px 0 0;
     padding-right: 4px;
     overflow-y: auto;
     scrollbar-width: thin;
   }
   .furniture-card {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    min-height: 60px;
-    padding: 9px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
     overflow-wrap: anywhere;
     border: 0;
     border-radius: var(--radius);
@@ -597,11 +614,11 @@
     transform: translateY(-1px);
   }
   .furniture-card-swatch {
-    flex: 0 0 auto;
-    width: 28px;
-    height: 28px;
+    flex: 0 0 100px;
+    width: 100%;
+    height: 100px;
     overflow: hidden;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius) var(--radius) 0 0;
     background: var(--floor);
     border: 0;
   }
@@ -610,6 +627,11 @@
     height: 100%;
     display: block;
     object-fit: cover;
+  }
+  .furniture-card-details {
+    display: block;
+    min-width: 0;
+    padding: 10px;
   }
   .furniture-card-name {
     display: block;
@@ -637,7 +659,8 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 6px;
     align-items: center;
-    margin-top: 2px;
+    margin-top: auto;
+    padding-top: 10px;
   }
   #furniture-page-summary {
     color: var(--muted);
@@ -728,71 +751,6 @@
     font-size: 12px;
     font-weight: 700;
   }
-  #workflow-progress {
-    position: fixed;
-    top: 16px;
-    left: 50%;
-    z-index: 22;
-    width: min(760px, calc(100vw - 48px));
-    padding: 12px 24px;
-    transform: translateX(-50%);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, .94);
-    box-shadow: var(--shadow);
-    pointer-events: none;
-  }
-  #workflow-progress ol {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    align-items: center;
-    padding: 0;
-    margin: 0;
-    list-style: none;
-  }
-  .workflow-step {
-    position: relative;
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: #aaa6b8;
-    font-size: 14px;
-    font-weight: 800;
-    letter-spacing: -.02em;
-  }
-  .workflow-step:not(:last-child)::after {
-    position: absolute;
-    top: 50%;
-    left: calc(50% + 54px);
-    width: calc(100% - 68px);
-    height: 2px;
-    background: #dedbec;
-    content: "";
-  }
-  .workflow-step-number {
-    display: grid;
-    width: 30px;
-    height: 30px;
-    flex: 0 0 30px;
-    place-items: center;
-    border-radius: 50%;
-    background: #efedf4;
-    color: #aaa6b8;
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-  }
-  .workflow-step.is-active { color: var(--primary); }
-  .workflow-step.is-active .workflow-step-number {
-    background: var(--primary);
-    color: #fff;
-    box-shadow: 0 7px 16px rgba(87, 71, 207, .24);
-  }
-  .workflow-step.is-complete { color: #6282cc; }
-  .workflow-step.is-complete .workflow-step-number {
-    background: #e2ebff;
-    color: #4f70bd;
-  }
   #control-stack {
     top: 104px;
     bottom: 28px;
@@ -821,29 +779,136 @@
   #editor-tools {
     position: fixed;
     top: 96px;
-    bottom: 28px;
+    bottom: auto;
     left: 28px;
-    width: 76px;
-    padding: 12px 10px;
+    width: min(440px, calc(100vw - 56px));
+    max-height: calc(100vh - 124px);
+    padding: 24px;
     overflow-y: auto;
-    border-radius: var(--radius-md);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 24px 56px rgba(35, 27, 74, .12);
+    scrollbar-width: thin;
   }
   body.view-original #editor-tools { transform: translateX(0); }
   #editor-tools .label,
   #editor-tools .btn span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
   }
+  #editor-tools .label {
+    display: block;
+    color: var(--on-surface-variant);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    margin: 0 0 8px;
+  }
+  #editor-tools .label:not(:first-child) { margin-top: 18px; }
   #editor-tools .tool-grid,
-  #editor-tools .navigation-grid,
-  #editor-tools .action-grid { grid-template-columns: 1fr; }
-  #editor-tools .btn { min-height: 44px; padding: 8px; }
+  #editor-tools .navigation-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  #editor-tools .action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  #editor-tools .btn {
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  #editor-tools .btn svg,
+  #editor-tools .btn [data-lucide] { width: 21px; height: 21px; flex-basis: 21px; }
+  #editor-tools .tool-grid .btn {
+    min-height: 60px;
+    padding: 12px 10px;
+    background: #e9e5ff;
+  }
+  #editor-tools .tool-grid .btn.active {
+    background: var(--primary);
+    box-shadow: 0 10px 24px rgba(87, 71, 207, .3);
+  }
+  #editor-tools .navigation-grid .btn {
+    min-height: 54px;
+    padding: 12px;
+    background: #e9e5ff;
+  }
+  #editor-tools .action-grid .btn {
+    min-height: 54px;
+    padding: 12px 14px;
+    background: #ebe7ff;
+  }
+  #editor-tools .btn:disabled {
+    opacity: 1;
+    background: #f4f1ff;
+    color: #aaa4d9;
+    box-shadow: none;
+  }
   #editor-tools .scale-control,
   #editor-tools .brush-control,
   #editor-tools .legend { min-width: 0; }
+  #editor-tools .scale-control { gap: 8px; margin-top: 0; }
+  #editor-tools .scale-summary { min-height: 20px; font-size: 13px; }
+  #editor-tools .scale-input-row { gap: 10px; }
+  #editor-tools .scale-input-row input {
+    height: 50px;
+    padding: 0 16px;
+    border-radius: 18px;
+    background: #f5f2fb;
+    font-size: 15px;
+  }
+  #editor-tools .scale-unit { font-size: 14px; }
+  #editor-tools #apply-scale-btn,
+  #editor-tools #clear-scale-btn {
+    min-height: 50px;
+    border-radius: 18px;
+  }
+  #editor-tools #clear-scale-btn { width: 50px; padding: 12px; }
+  #editor-tools .brush-control {
+    grid-template-columns: auto minmax(0, 1fr) 34px;
+    gap: 12px;
+  }
+  #editor-tools .brush-control label,
+  #editor-tools .brush-value { font-size: 14px; }
+  #editor-tools .legend { grid-template-columns: 1fr; gap: 8px; }
+  #editor-tools .legend-row,
+  #editor-tools .legend-row:has([data-visibility="wall"]),
+  #editor-tools .legend-row:has([data-visibility="door"]),
+  #editor-tools .legend-row:has([data-visibility="window"]) {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 0 4px;
+    border-radius: 0;
+    background: transparent;
+  }
+  #editor-tools .legend-row:hover { box-shadow: none; transform: none; }
+  #editor-tools .legend-row input {
+    position: static;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--ink);
+  }
+  #editor-tools .swatch { width: 20px; height: 20px; border-radius: 4px; }
+  #editor-tools .swatch.wall { background: #3a70d6; }
+  #editor-tools .swatch.door { background: #e6ab1d; }
+  #editor-tools .swatch.window { background: #e05357; }
+  #editor-tools .legend-row > span:nth-of-type(2) {
+    color: var(--ink);
+    font-size: 14px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  #editor-tools .legend-row .count {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 13px;
+  }
   #view-controls {
     position: fixed;
     z-index: 21;
@@ -856,6 +921,7 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, .94);
     box-shadow: var(--shadow);
+    pointer-events: auto;
   }
   #view-controls .label { display: none; }
   body.upload-empty #ui #upload-btn {
@@ -931,19 +997,27 @@
     background: var(--surface-low);
   }
   #upload-btn .upload-format-icons svg { width: 21px; height: 21px; color: var(--input-placeholder); stroke-width: 1.5; }
-  /* Landing entry card: retain the existing upload button and viewer controls,
-     but give the first screen one clear, Korean entry point. */
+  /* Landing hero: centred on the night sky with no card behind it, so the stars
+     stay visible edge to edge. Text flips to light for contrast. */
+  /* Centre by stretching the stack over the viewport and centring its child —
+     NOT with a transform: a transformed ancestor would re-base the position:fixed
+     children inside #ui (the save button) and drag them into the hero. */
   body.upload-empty #control-stack {
-    top: 112px;
-    bottom: auto;
-    left: 40px;
-    width: min(390px, calc(100vw - 80px));
+    inset: 0;
+    width: auto;
+    align-items: center;
+    justify-content: center;
   }
   body.upload-empty #ui {
     display: block;
-    padding: 38px 40px 34px;
-    border-radius: 22px;
-    background: rgba(255, 255, 255, .96);
+    width: min(660px, calc(100vw - 48px));
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    text-align: center;
   }
   body.upload-empty #ui > h1,
   body.upload-empty #view-controls,
@@ -953,76 +1027,57 @@
   body.upload-empty #demo-controls,
   body.upload-empty #status { display: none !important; }
   body.upload-empty #landing-intro { display: block; }
-  /* Landing card — borrows the manager dashboard's card language: a hairline
-     border plus a layered soft shadow instead of one flat drop, and a roomier
-     hero padding. Scoped to the landing screen so the 3D workspace panels keep
-     their own compact styling. */
-  body.upload-empty #ui {
-    padding: 26px 24px 22px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, .96);
-    box-shadow:
-      rgba(11, 53, 88, .05) 0 4px 6px,
-      rgba(11, 53, 88, .05) 0 10px 20px,
-      rgba(11, 53, 88, .14) 0 28px 56px;
-  }
-  body.upload-empty #ui::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 0 1px rgba(11, 53, 88, .08);
-    pointer-events: none;
-  }
-  body.upload-empty #ui { position: relative; }
   .landing-kicker {
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    min-height: 28px;
-    padding: 0 12px;
+    min-height: 30px;
+    padding: 0 14px;
     border-radius: 999px;
-    background: #edf1ff;
-    box-shadow: inset 0 0 0 1px #c9d5f4;
-    color: #3656a6;
+    background: rgba(150, 176, 255, .12);
+    box-shadow: inset 0 0 0 1px rgba(168, 192, 255, .3);
+    color: #c3d4ff;
     font-size: 11px;
     font-weight: 800;
     letter-spacing: .08em;
   }
   .landing-kicker svg { width: 15px; height: 15px; }
   .landing-title {
-    margin: 22px 0 16px;
-    color: var(--on-surface);
-    font-size: clamp(28px, 2.4vw, 36px);
+    margin: 26px 0 18px;
+    color: #f6f8ff;
+    font-size: clamp(34px, 4vw, 52px);
     font-weight: 800;
     letter-spacing: -.055em;
-    line-height: 1.22;
+    line-height: 1.18;
+    text-shadow: 0 2px 24px rgba(4, 8, 22, .55);
   }
-  .landing-title strong { color: var(--primary); }
+  .landing-title strong { color: #a9bcff; }
   .landing-description {
-    margin: 0;
-    color: var(--on-surface-variant);
-    font-size: 15px;
+    margin: 0 auto;
+    max-width: 30em;
+    color: rgba(214, 224, 248, .82);
+    font-size: 16px;
     font-weight: 700;
     letter-spacing: -.02em;
-    line-height: 1.56;
+    line-height: 1.6;
+    text-shadow: 0 1px 12px rgba(4, 8, 22, .5);
   }
   body.upload-empty #ui #upload-btn {
     position: static;
-    display: flex;
-    width: 100%;
-    min-height: 64px;
-    padding: 0 22px;
-    margin-top: 28px;
+    display: inline-flex;
+    width: auto;
+    min-height: 60px;
+    padding: 0 30px;
+    margin-top: 34px;
     flex-direction: row;
     justify-content: center;
     gap: 10px;
     transform: none;
     border: 0;
-    border-radius: 14px;
+    border-radius: 999px;
     background: var(--primary);
     color: #fff;
-    box-shadow: 0 10px 24px rgba(87, 71, 207, .28);
+    box-shadow: 0 12px 30px rgba(87, 71, 207, .45);
   }
   body.upload-empty #upload-btn .upload-empty-icon {
     width: 24px;
@@ -1046,40 +1101,345 @@
   }
   #start-sample-btn {
     display: none;
-    width: 100%;
-    min-height: 58px;
-    margin-top: 14px;
-    border: 1px solid var(--input-border);
-    background: #fff;
-    color: var(--on-surface);
+    width: auto;
+    min-height: 60px;
+    margin-top: 34px;
+    margin-left: 10px;
+    padding: 0 26px;
+    border: 1px solid rgba(178, 198, 255, .34);
+    border-radius: 999px;
+    background: rgba(146, 173, 255, .1);
+    color: #dce5ff;
     font-size: 16px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   body.upload-empty #start-sample-btn { display: inline-flex; }
+  /* Interaction states, dashboard-style: a small lift on hover, settling back on
+     press, so both entry points feel clickable rather than static. */
+  body.upload-empty #ui #upload-btn,
+  body.upload-empty #start-sample-btn {
+    transition: transform 140ms ease, box-shadow 140ms ease,
+      background 140ms ease, border-color 140ms ease;
+  }
+  body.upload-empty #ui #upload-btn:hover {
+    background: var(--primary-hover, #4a3cc4);
+    box-shadow: 0 14px 30px rgba(87, 71, 207, .34);
+    transform: translateY(-1px);
+  }
+  body.upload-empty #ui #upload-btn:active {
+    box-shadow: 0 6px 16px rgba(87, 71, 207, .26);
+    transform: translateY(0);
+  }
+  body.upload-empty #start-sample-btn:hover {
+    border-color: rgba(196, 214, 255, .55);
+    background: rgba(166, 190, 255, .18);
+    transform: translateY(-1px);
+  }
+  body.upload-empty #start-sample-btn:active { transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    body.upload-empty #ui #upload-btn,
+    body.upload-empty #start-sample-btn { transition: none; transform: none; }
+  }
   .landing-feature-row {
     display: none;
     align-items: center;
+    justify-content: center;
     gap: 10px;
-    padding-top: 24px;
-    margin-top: 38px;
-    border-top: 1px solid #eeeaf6;
-    color: var(--on-surface-variant);
+    padding-top: 26px;
+    margin-top: 40px;
+    border-top: 1px solid rgba(178, 198, 255, .16);
+    color: rgba(206, 218, 246, .72);
     font-size: 13px;
     font-weight: 700;
   }
   body.upload-empty .landing-feature-row { display: flex; }
-  .landing-feature-row svg { width: 22px; height: 22px; color: var(--primary); }
-  .landing-feature-row strong { color: var(--primary); }
+  .landing-feature-row svg { width: 22px; height: 22px; color: #a9bcff; }
+  .landing-feature-row strong { color: #cfd9ff; }
+  /* Original-plan editing stays out of the drawing: the rail keeps only the
+     seven primary tools visible, while less frequent controls open beside it. */
+  #editor-tools {
+    top: 56px;
+    bottom: auto;
+    left: 20px;
+    width: 92px;
+    height: calc(100vh - 112px);
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 10px;
+    overflow: visible;
+    border-radius: 14px;
+    background: rgba(253, 251, 249, .98);
+    box-shadow: 0 14px 32px rgba(38, 43, 62, .12);
+  }
+  #editor-tools .label {
+    display: block;
+    margin: 0 0 12px;
+    color: #727486;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  #editor-tools .label::after {
+    display: block;
+    width: 30px;
+    height: 4px;
+    margin: 8px auto 0;
+    content: "";
+    border-radius: 999px;
+    background: #d8dbe5;
+  }
+  #editor-tools .tool-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  #editor-tools .tool-grid .btn {
+    position: relative;
+    min-height: 66px;
+    padding: 7px 4px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    border-radius: 11px;
+    background: transparent;
+    box-shadow: none;
+    color: #5c6170;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  #editor-tools .tool-grid .btn span {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    color: inherit;
+    font-size: 11px;
+    line-height: 1;
+  }
+  #editor-tools .tool-grid .btn svg,
+  #editor-tools .tool-grid .btn [data-lucide] {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+    stroke-width: 1.9;
+  }
+  #editor-tools .tool-grid .btn.active {
+    background: #e8e7ef;
+    box-shadow: inset 0 0 0 1px rgba(49, 91, 180, .05);
+    color: #315bb4;
+  }
+  #editor-tools .tool-grid .btn:hover:not(.active) {
+    background: #f4f3f5;
+    color: #343946;
+  }
+  #editor-tools .tool-grid .btn:nth-child(2),
+  #editor-tools .tool-grid .btn:nth-child(4),
+  #editor-tools .tool-grid .btn:nth-child(6) { margin-bottom: 14px; }
+  #editor-tools .tool-grid .btn:nth-child(2)::after,
+  #editor-tools .tool-grid .btn:nth-child(4)::after,
+  #editor-tools .tool-grid .btn:nth-child(6)::after {
+    position: absolute;
+    right: 0;
+    bottom: -7px;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    content: "";
+    background: #ecebf0;
+  }
+  #editor-rail-navigation {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    padding-top: 12px;
+    margin-top: 2px;
+    border-top: 1px solid #ecebf0;
+  }
+  #editor-rail-navigation .btn {
+    min-height: 42px;
+    padding: 0;
+    border-radius: 10px;
+    background: #f0eef9;
+    box-shadow: none;
+    color: #4d48bf;
+  }
+  #editor-rail-navigation .btn:hover { background: #e7e2fb; }
+  #editor-rail-navigation .btn svg,
+  #editor-rail-navigation .btn [data-lucide] {
+    width: 21px;
+    height: 21px;
+    stroke-width: 1.9;
+  }
+  #editor-tools .editor-rail-divider { display: none; }
+  #editor-tools .editor-rail-utility {
+    width: 100%;
+    min-height: 46px;
+    padding: 0;
+    border-radius: 11px;
+    background: transparent;
+    box-shadow: none;
+    color: #626775;
+  }
+  #editor-tools .editor-rail-utility svg,
+  #editor-tools .editor-rail-utility [data-lucide] {
+    width: 24px;
+    height: 24px;
+    stroke-width: 1.9;
+  }
+  #editor-tools #editor-more-btn { margin-top: auto; }
+  #editor-tools .editor-rail-utility:hover,
+  #editor-tools .editor-rail-utility.active {
+    background: #efedf6;
+    color: #315bb4;
+  }
+  #editor-context-panel {
+    position: fixed;
+    z-index: 24;
+    top: 232px;
+    left: 112px;
+    width: min(230px, calc(100vw - 132px));
+    padding: 12px 14px;
+    border-radius: 0 14px 14px 0;
+    background: rgba(255, 255, 255, .98);
+    box-shadow: 14px 14px 30px rgba(35, 27, 74, .10);
+  }
+  #editor-context-panel[data-context-tool="scale"] { top: 474px; }
+  #editor-context-panel[hidden] { display: none !important; }
+  #editor-context-panel .label {
+    margin: 0 0 7px;
+    color: #6c6880;
+    font-size: 11px;
+    letter-spacing: -.02em;
+    text-align: left;
+    text-transform: none;
+  }
+  #editor-context-panel .label::after { display: none; }
+  #editor-context-panel .scale-control { gap: 8px; margin: 0; }
+  #editor-context-panel .scale-summary { min-height: 18px; font-size: 11px; }
+  #editor-context-panel .scale-input-row { gap: 7px; }
+  #editor-context-panel .scale-input-row input {
+    height: 36px;
+    min-width: 0;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  #editor-context-panel .scale-unit { font-size: 11px; }
+  #editor-context-panel #apply-scale-btn,
+  #editor-context-panel #clear-scale-btn {
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  #editor-context-panel #clear-scale-btn { width: 36px; padding: 0; }
+  #editor-context-panel .brush-control {
+    grid-template-columns: auto minmax(0, 1fr) 24px;
+    gap: 7px;
+  }
+  #editor-context-panel .brush-control label,
+  #editor-context-panel .brush-value { font-size: 11px; }
+  #editor-utility-panel {
+    position: fixed;
+    z-index: 24;
+    top: 56px;
+    left: 112px;
+    width: min(360px, calc(100vw - 132px));
+    max-height: calc(100vh - 112px);
+    padding: 22px;
+    overflow-y: auto;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, .98);
+    box-shadow: 0 18px 44px rgba(35, 27, 74, .14);
+  }
+  #editor-utility-panel[hidden] { display: none !important; }
+  #editor-utility-panel .label {
+    margin: 18px 0 8px;
+    color: #656177;
+    font-size: 12px;
+    letter-spacing: -.02em;
+    text-align: left;
+    text-transform: none;
+  }
+  #editor-utility-panel .label::after { display: none; }
+  #editor-utility-panel .label:first-of-type { margin-top: 0; }
+  #editor-utility-panel .scale-control { gap: 8px; margin: 0; }
+  #editor-utility-panel .scale-summary { min-height: 20px; font-size: 13px; }
+  #editor-utility-panel .scale-input-row { gap: 8px; }
+  #editor-utility-panel .scale-input-row input {
+    height: 46px;
+    padding: 0 13px;
+    border-radius: 14px;
+    font-size: 14px;
+  }
+  #editor-utility-panel #apply-scale-btn,
+  #editor-utility-panel #clear-scale-btn {
+    min-height: 46px;
+    border-radius: 14px;
+  }
+  #editor-utility-panel #clear-scale-btn { width: 46px; }
+  #editor-utility-panel .brush-control {
+    grid-template-columns: auto minmax(0, 1fr) 30px;
+    gap: 9px;
+  }
+  #editor-utility-panel .brush-control label,
+  #editor-utility-panel .brush-value { font-size: 13px; }
+  #editor-utility-panel .navigation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  #editor-utility-panel .navigation-grid .btn { min-height: 48px; border-radius: 14px; background: #e9e5ff; }
+  #editor-utility-panel .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #editor-utility-panel .action-grid .btn { min-height: 48px; padding: 10px; border-radius: 14px; background: #f0edfb; }
+  #editor-utility-panel .legend { grid-template-columns: 1fr; gap: 7px; }
+  #editor-utility-panel .legend-row { flex-direction: row; justify-content: flex-start; padding: 0 4px; border-radius: 0; background: transparent; }
+  #editor-utility-panel .legend-row input { position: static; width: 18px; height: 18px; margin: 0; }
+  #editor-utility-panel .legend-row .count { margin-left: auto; }
+  #editor-class-legend {
+    position: fixed;
+    z-index: 24;
+    right: 24px;
+    bottom: 24px;
+    display: none;
+    min-width: 178px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 12px 28px rgba(35, 27, 74, .12);
+  }
+  body.view-original #editor-class-legend { display: block; }
+  #editor-class-legend .legend { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  #editor-class-legend .legend-row {
+    flex-direction: row;
+    justify-content: flex-start;
+    min-height: 22px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  #editor-class-legend .legend-row input {
+    position: static;
+    width: 14px;
+    height: 14px;
+    margin: 0 7px 0 0;
+  }
+  #editor-class-legend .swatch { width: 14px; height: 14px; margin-right: 6px; border-radius: 3px; }
+  #editor-class-legend .swatch.wall { background: #3a70d6; }
+  #editor-class-legend .swatch.door { background: #e6ab1d; }
+  #editor-class-legend .swatch.window { background: #e05357; }
+  #editor-class-legend .legend-row > span:nth-of-type(2) {
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  #editor-class-legend .legend-row .count { margin-left: auto; color: var(--muted); font-size: 12px; }
   #furniture-panel { top: 96px; right: 28px; max-height: calc(100vh - 124px); }
 
   @media (max-width: 720px) {
-    #workflow-progress {
-      top: 8px;
-      width: calc(100vw - 16px);
-      padding: 10px 8px;
-    }
-    .workflow-step { gap: 4px; font-size: 11px; }
-    .workflow-step-number { width: 26px; height: 26px; flex-basis: 26px; font-size: 11px; }
-    .workflow-step:not(:last-child)::after { left: calc(50% + 42px); width: calc(100% - 50px); }
     #control-stack {
       top: 8px;
       right: 8px;
@@ -1101,19 +1461,47 @@
       width: auto;
       max-height: 46vh;
     }
-    #furniture-results { max-height: 24vh; }
+    #furniture-results { max-height: none; }
     #workspace-header { min-height: 60px; padding: 0 16px; }
     #control-stack { top: 82px; right: 16px; bottom: auto; left: 16px; width: auto; }
-    #editor-tools { top: auto; right: 16px; bottom: 82px; left: 16px; width: auto; max-height: 96px; }
+    #editor-tools {
+      top: 16px;
+      right: 16px;
+      bottom: 16px;
+      left: 16px;
+      width: auto;
+      max-height: none;
+      padding: 16px;
+    }
     #editor-tools .tool-grid,
     #editor-tools .navigation-grid,
-    #editor-tools .action-grid { display: flex; overflow-x: auto; }
+    #editor-tools .action-grid { display: grid; overflow: visible; }
+    #editor-tools .tool-grid .btn { min-height: 56px; }
     body.upload-empty #ui #upload-btn { width: 100%; min-height: 60px; }
     body.upload-empty #control-stack { top: 82px; right: 16px; left: 16px; width: auto; }
     body.upload-empty #ui { padding: 30px 28px; }
     #view-controls { bottom: 16px; max-width: calc(100vw - 32px); overflow-x: auto; }
     #save-json-btn { right: 150px; }
     #connect-roomlog-btn { right: 16px; }
+  }
+  @media (max-width: 720px) {
+    #editor-tools {
+      top: 72px;
+      right: auto;
+      bottom: auto;
+      left: 12px;
+      width: 80px;
+      height: calc(100vh - 88px);
+      padding: 12px 8px;
+    }
+    #editor-tools .tool-grid .btn { min-height: 60px; }
+    #editor-utility-panel {
+      top: 72px;
+      left: 104px;
+      width: min(320px, calc(100vw - 116px));
+      max-height: calc(100vh - 88px);
+      padding: 18px;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     canvas#scene,
@@ -1143,15 +1531,6 @@
   <div class="workspace-header-context" aria-hidden="true">도면 → 3D</div>
 </header>
 
-<nav id="workflow-progress" aria-label="3D 도면 제작 단계">
-  <ol>
-    <li class="workflow-step is-active" data-workflow-step="1" aria-current="step"><span class="workflow-step-number">1</span><span>업로드</span></li>
-    <li class="workflow-step" data-workflow-step="2"><span class="workflow-step-number">2</span><span>공간 분석</span></li>
-    <li class="workflow-step" data-workflow-step="3"><span class="workflow-step-number">3</span><span>3D 생성</span></li>
-    <li class="workflow-step" data-workflow-step="4"><span class="workflow-step-number">4</span><span>편집</span></li>
-  </ol>
-</nav>
-
 <div id="control-stack">
 <div id="ui">
   <h1>MitUNet Floorplan → 3D</h1>
@@ -1161,14 +1540,6 @@
     <h2 class="landing-title">도면 한 장이면,<br><strong>3D 공간</strong>이 됩니다</h2>
     <p class="landing-description">AI가 평면도를 분석해 벽·문·창문을 인식하고, 바로 확인할 수 있는 3D 공간으로 만듭니다.</p>
   </section>
-
-  <div id="view-controls" hidden>
-    <div class="label">View</div>
-    <div class="segmented" id="view-switch" role="tablist" aria-label="Plan view">
-      <button class="segment active" data-view="original" role="tab" aria-selected="true" disabled>Show Original</button>
-      <button class="segment" data-view="3d" role="tab" aria-selected="false" disabled>Show 3D</button>
-    </div>
-  </div>
 
   <div id="camera-view-controls" hidden>
     <div class="label">3D View</div>
@@ -1232,58 +1603,75 @@
   <div id="status" role="status" aria-live="polite">Choose a floor-plan image.</div>
 </div>
 
+<div id="view-controls" hidden>
+  <div class="label">View</div>
+  <div class="segmented" id="view-switch" role="tablist" aria-label="Plan view">
+    <button class="segment active" data-view="original" role="tab" aria-selected="true" disabled>Show Original</button>
+    <button class="segment" data-view="3d" role="tab" aria-selected="false" disabled>Show 3D</button>
+  </div>
+</div>
+
 <aside id="editor-tools" hidden>
-    <div class="label">Tools</div>
+    <div class="label">도구</div>
     <div class="tool-grid" role="toolbar" aria-label="Recognition editing tools">
-      <button class="btn with-icon active" data-tool="select" title="Select and move"><i data-lucide="mouse-pointer-2" aria-hidden="true"></i><span>Select</span></button>
-      <button class="btn with-icon" data-tool="pan" title="Pan view"><i data-lucide="hand" aria-hidden="true"></i><span>Pan</span></button>
-      <button class="btn with-icon" data-tool="wall" title="Add wall"><i data-lucide="paintbrush" aria-hidden="true"></i><span>Wall</span></button>
-      <button class="btn with-icon" data-tool="erase" title="Erase wall"><i data-lucide="eraser" aria-hidden="true"></i><span>Erase</span></button>
-      <button class="btn with-icon" data-tool="door" title="Add door"><i data-lucide="door-open" aria-hidden="true"></i><span>Door</span></button>
-      <button class="btn with-icon" data-tool="window" title="Add window"><i data-lucide="panels-top-left" aria-hidden="true"></i><span>Window</span></button>
-      <button class="btn with-icon" data-tool="scale" title="Calibrate real dimensions"><i data-lucide="ruler" aria-hidden="true"></i><span>Scale</span></button>
+      <button class="btn with-icon active" data-tool="select" title="선택"><i data-lucide="mouse-pointer-2" aria-hidden="true"></i><span>선택</span></button>
+      <button class="btn with-icon" data-tool="pan" title="이동"><i data-lucide="hand" aria-hidden="true"></i><span>이동</span></button>
+      <button class="btn with-icon" data-tool="wall" title="벽"><i data-lucide="paintbrush" aria-hidden="true"></i><span>벽</span></button>
+      <button class="btn with-icon" data-tool="erase" title="지우기"><i data-lucide="eraser" aria-hidden="true"></i><span>지우기</span></button>
+      <button class="btn with-icon" data-tool="door" title="문"><i data-lucide="door-open" aria-hidden="true"></i><span>문</span></button>
+      <button class="btn with-icon" data-tool="window" title="창문"><i data-lucide="panels-top-left" aria-hidden="true"></i><span>창문</span></button>
+      <button class="btn with-icon" data-tool="scale" title="스케일"><i data-lucide="ruler" aria-hidden="true"></i><span>스케일</span></button>
     </div>
 
+    <div id="editor-rail-navigation" aria-label="도면 탐색"></div>
+    <div class="editor-rail-divider" aria-hidden="true"></div>
+    <button class="btn with-icon editor-rail-utility" id="editor-more-btn" type="button" title="도구 설정" aria-label="도구 설정" aria-expanded="false"><i data-lucide="settings" aria-hidden="true"></i></button>
+    <button class="btn with-icon editor-rail-utility" id="editor-help-btn" type="button" title="도움말" aria-label="도움말"><i data-lucide="circle-help" aria-hidden="true"></i></button>
+
+    <div id="editor-context-panel" hidden>
     <div class="scale-control" id="scale-control">
-      <div class="scale-summary" id="scale-summary">Choose two points.</div>
+      <div class="scale-summary" id="scale-summary">두 점을 선택하세요.</div>
       <div class="scale-input-row">
-        <input id="scale-length" type="number" min="1" step="1" inputmode="decimal" placeholder="Actual length" aria-label="Actual length in millimeters" disabled>
+        <input id="scale-length" type="number" min="1" step="1" inputmode="decimal" placeholder="실제 길이" aria-label="실제 길이 밀리미터" disabled>
         <span class="scale-unit">mm</span>
-        <button class="btn" id="apply-scale-btn" title="Apply real scale" disabled>Apply</button>
-        <button class="btn with-icon" id="clear-scale-btn" title="Clear scale calibration" aria-label="Clear scale calibration" disabled><i data-lucide="circle-x" aria-hidden="true"></i></button>
+        <button class="btn" id="apply-scale-btn" title="적용" disabled>적용</button>
+        <button class="btn with-icon" id="clear-scale-btn" title="스케일 초기화" aria-label="스케일 초기화" disabled><i data-lucide="circle-x" aria-hidden="true"></i></button>
       </div>
     </div>
 
-    <div class="label">Brush size</div>
+    <div class="label">브러시 크기</div>
     <div class="brush-control">
-      <label for="brush-size">Size</label>
+      <label for="brush-size">크기</label>
       <input id="brush-size" type="range" min="4" max="64" value="18" aria-label="Brush size">
       <output class="brush-value" id="brush-value" for="brush-size">18</output>
     </div>
 
-    <div class="label">Navigate</div>
+    <div class="label">탐색</div>
     <div class="navigation-grid" role="toolbar" aria-label="View navigation">
-      <button class="btn with-icon" id="zoom-out-btn" title="Zoom out" aria-label="Zoom out"><i data-lucide="zoom-out" aria-hidden="true"></i></button>
-      <button class="btn with-icon" id="fit-view-btn" title="Fit plan" aria-label="Fit plan"><i data-lucide="maximize" aria-hidden="true"></i></button>
-      <button class="btn with-icon" id="zoom-in-btn" title="Zoom in" aria-label="Zoom in"><i data-lucide="zoom-in" aria-hidden="true"></i></button>
+      <button class="btn with-icon" id="zoom-out-btn" title="축소" aria-label="축소"><i data-lucide="zoom-out" aria-hidden="true"></i></button>
+      <button class="btn with-icon" id="fit-view-btn" title="화면 맞춤" aria-label="화면 맞춤"><i data-lucide="maximize" aria-hidden="true"></i></button>
+      <button class="btn with-icon" id="zoom-in-btn" title="확대" aria-label="확대"><i data-lucide="zoom-in" aria-hidden="true"></i></button>
     </div>
 
-    <div class="label">Edit</div>
+    <div class="label">편집</div>
     <div class="action-grid" role="toolbar" aria-label="Edit actions">
-      <button class="btn with-icon" id="undo-btn" title="Undo" disabled><i data-lucide="undo-2" aria-hidden="true"></i><span>Undo</span></button>
-      <button class="btn with-icon" id="redo-btn" title="Redo" disabled><i data-lucide="redo-2" aria-hidden="true"></i><span>Redo</span></button>
-      <button class="btn with-icon" id="delete-btn" title="Delete selected opening" disabled><i data-lucide="trash-2" aria-hidden="true"></i><span>Delete</span></button>
-      <button class="btn with-icon" id="type-btn" title="Change selected door or window type" disabled><i data-lucide="refresh-cw" aria-hidden="true"></i><span>Type</span></button>
-      <button class="btn with-icon" id="reset-btn" title="Reset all edits" disabled><i data-lucide="rotate-ccw" aria-hidden="true"></i><span>Reset</span></button>
+      <button class="btn with-icon" id="undo-btn" title="실행취소" disabled><i data-lucide="undo-2" aria-hidden="true"></i><span>실행취소</span></button>
+      <button class="btn with-icon" id="redo-btn" title="다시실행" disabled><i data-lucide="redo-2" aria-hidden="true"></i><span>다시실행</span></button>
+      <button class="btn with-icon" id="delete-btn" title="삭제" disabled><i data-lucide="trash-2" aria-hidden="true"></i><span>삭제</span></button>
+      <button class="btn with-icon" id="type-btn" title="종류 변경" disabled><i data-lucide="refresh-cw" aria-hidden="true"></i><span>종류 변경</span></button>
+      <button class="btn with-icon" id="reset-btn" title="전체 초기화" disabled><i data-lucide="rotate-ccw" aria-hidden="true"></i><span>전체 초기화</span></button>
     </div>
 
-    <div class="label">Classes</div>
+    <div class="label">클래스</div>
     <div class="legend" aria-label="Class visibility">
-      <label class="legend-row"><input type="checkbox" data-visibility="wall" checked><span class="swatch wall"></span><span>Wall</span><span class="count" data-count="wall">0</span></label>
-      <label class="legend-row"><input type="checkbox" data-visibility="door" checked><span class="swatch door"></span><span>Door</span><span class="count" data-count="door">0</span></label>
-      <label class="legend-row"><input type="checkbox" data-visibility="window" checked><span class="swatch window"></span><span>Window</span><span class="count" data-count="window">0</span></label>
+      <label class="legend-row"><input type="checkbox" data-visibility="wall" checked><span class="swatch wall"></span><span>벽</span><span class="count" data-count="wall">0</span></label>
+      <label class="legend-row"><input type="checkbox" data-visibility="door" checked><span class="swatch door"></span><span>문</span><span class="count" data-count="door">0</span></label>
+      <label class="legend-row"><input type="checkbox" data-visibility="window" checked><span class="swatch window"></span><span>창문</span><span class="count" data-count="window">0</span></label>
+    </div>
     </div>
   </aside>
+  <aside id="editor-utility-panel" hidden aria-label="편집 설정"></aside>
+  <aside id="editor-class-legend" aria-label="클래스 범례"></aside>
 </div>
 
 <aside id="furniture-panel" hidden aria-label="가구 카탈로그">
@@ -1396,7 +1784,7 @@ const CAMERA_TWEEN_MS = 600;
 const CAMERA_PRESET_TWEEN_MS = 700;
 const VIEW_FADE_MS     = 220;
 const EDGE_ANGLE_DEG   = 14;          // smaller -> more crease lines
-const FURNITURE_PAGE_SIZE = 60;
+const FURNITURE_PAGE_SIZE = 4;
 
 const FURNITURE_CATEGORY_LABELS = {
   appliance: "가전",
@@ -2313,7 +2701,6 @@ async function loadPlan(data) {
 // API + UI wiring
 // -----------------------------------------------------------------------------
 const status = document.getElementById("status");
-const workflowSteps = [...document.querySelectorAll("[data-workflow-step]")];
 const sceneCanvas = document.getElementById("scene");
 const reviewCanvas = document.getElementById("review-canvas");
 const editorTools = document.getElementById("editor-tools");
@@ -2350,16 +2737,6 @@ const furnitureToolbar = document.getElementById("furniture-floating-toolbar");
 const furnitureSelectionToolbarActions = document.getElementById("furniture-selection-toolbar-actions");
 const furniturePendingToolbarActions = document.getElementById("furniture-pending-toolbar-actions");
 
-function updateWorkflowProgress(step) {
-  const activeStep = Math.min(4, Math.max(1, Number(step) || 1));
-  workflowSteps.forEach(item => {
-    const itemStep = Number(item.dataset.workflowStep);
-    const active = itemStep === activeStep;
-    item.classList.toggle("is-active", active);
-    item.classList.toggle("is-complete", itemStep < activeStep);
-    item.setAttribute("aria-current", active ? "step" : "false");
-  });
-}
 const furnitureMoveButton = document.getElementById("furniture-move-btn");
 const furnitureRotateLeftButton = document.getElementById("furniture-rotate-left-btn");
 const furnitureRotateRightButton = document.getElementById("furniture-rotate-right-btn");
@@ -2378,6 +2755,43 @@ const scaleLength = document.getElementById("scale-length");
 const applyScaleButton = document.getElementById("apply-scale-btn");
 const clearScaleButton = document.getElementById("clear-scale-btn");
 const scaleSummary = document.getElementById("scale-summary");
+const editorMoreButton = document.getElementById("editor-more-btn");
+const editorUtilityPanel = document.getElementById("editor-utility-panel");
+const editorContextPanel = document.getElementById("editor-context-panel");
+const editorRailNavigation = document.getElementById("editor-rail-navigation");
+const editorClassLegend = document.getElementById("editor-class-legend");
+const scaleControl = document.getElementById("scale-control");
+const brushControl = document.querySelector("#editor-context-panel .brush-control");
+const brushLabel = brushControl?.previousElementSibling;
+const contextNavigationGrid = document.querySelector("#editor-context-panel .navigation-grid");
+const contextNavigationLabel = contextNavigationGrid?.previousElementSibling;
+const actionGrid = document.querySelector("#editor-context-panel .action-grid");
+const actionLabel = actionGrid?.previousElementSibling;
+const classLegend = document.querySelector("#editor-context-panel .legend");
+const classLegendLabel = classLegend?.previousElementSibling;
+
+if (editorRailNavigation && contextNavigationGrid) {
+  navigationButtons.forEach(button => editorRailNavigation.append(button));
+  contextNavigationLabel?.remove();
+  contextNavigationGrid.remove();
+}
+if (editorUtilityPanel && actionGrid) {
+  if (actionLabel?.classList.contains("label")) editorUtilityPanel.append(actionLabel);
+  editorUtilityPanel.append(actionGrid);
+}
+if (editorClassLegend && classLegend) {
+  classLegendLabel?.remove();
+  editorClassLegend.append(classLegend);
+}
+
+if (editorMoreButton && editorUtilityPanel) {
+  editorMoreButton.addEventListener("click", () => {
+    const isOpen = editorUtilityPanel.hidden;
+    editorUtilityPanel.hidden = !isOpen;
+    editorMoreButton.classList.toggle("active", isOpen);
+    editorMoreButton.setAttribute("aria-expanded", String(isOpen));
+  });
+}
 
 let reviewEditor = null;
 let currentExtraction = null;
@@ -2471,6 +2885,7 @@ function renderFurnitureCatalog() {
     }
 
     const details = document.createElement("span");
+    details.className = "furniture-card-details";
     const name = document.createElement("span");
     name.className = "furniture-card-name";
     name.textContent = furnitureDisplayName(item);
@@ -3320,16 +3735,16 @@ function updateScaleControls() {
   clearScaleButton.disabled = (!points.length && !calibration) || inFlight;
 
   if (calibration?.estimated) {
-    scaleSummary.textContent = `${calibration.millimetersPerPixel.toFixed(2)} mm/px · auto-estimated from door width (${Math.round(calibration.actualMillimeters)} mm) · use Scale to refine`;
+    scaleSummary.textContent = `문 폭 기준 자동 보정 · ${calibration.millimetersPerPixel.toFixed(2)} mm/px`;
   } else if (calibration) {
-    scaleSummary.textContent = `${calibration.millimetersPerPixel.toFixed(2)} mm/px · calibrated ${Math.round(calibration.actualMillimeters)} mm · grid follows real scale`;
+    scaleSummary.textContent = `보정 완료 · ${calibration.millimetersPerPixel.toFixed(2)} mm/px`;
   } else if (hasTwoPoints) {
     const pixels = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-    scaleSummary.textContent = `${pixels.toFixed(1)} px selected. Enter the real length.`;
+    scaleSummary.textContent = `${pixels.toFixed(1)} px 선택됨 · 실제 길이를 입력하세요.`;
   } else if (points.length === 1) {
-    scaleSummary.textContent = "First point selected. Choose the second point.";
+    scaleSummary.textContent = "첫 번째 점을 선택했습니다. 두 번째 점을 선택하세요.";
   } else {
-    scaleSummary.textContent = "Choose Scale, then click two points.";
+    scaleSummary.textContent = "두 점을 선택하세요.";
   }
 }
 
@@ -3348,10 +3763,19 @@ function updateEditorControls() {
   const hasDocument = Boolean(reviewDocument);
   const hasSelection = Boolean(reviewEditor?.selectedId);
   const counts = openingCounts();
+  const selectedTool = toolButtons.find(button => button.classList.contains("active"))?.dataset.tool;
+  const shouldShowContext = hasDocument && (selectedTool === "wall" || selectedTool === "scale");
+
+  editorContextPanel.hidden = !shouldShowContext;
+  editorContextPanel.dataset.contextTool = shouldShowContext ? selectedTool : "";
+  brushControl.hidden = selectedTool !== "wall";
+  brushLabel.hidden = selectedTool !== "wall";
+  scaleControl.hidden = selectedTool !== "scale";
 
   document.querySelectorAll("[data-count]").forEach(node => {
     node.textContent = counts[node.dataset.count] ?? 0;
   });
+  viewControls.hidden = !hasDocument;
   toolButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   navigationButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   visibilityInputs.forEach(input => { input.disabled = !hasDocument || inFlight; });
@@ -3372,7 +3796,7 @@ function updateEditorControls() {
     !reviewDocument?.needsCompose();
   saveJsonButton.hidden = !canSave;
   saveJsonButton.disabled = !canSave || inFlight || Boolean(pendingFurniture);
-  connectRoomLogButton.hidden = !roomLogContext;
+  connectRoomLogButton.hidden = !roomLogContext || !canSave;
   connectRoomLogButton.disabled = !roomLogContext || !canSave || inFlight || Boolean(pendingFurniture);
   viewButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   document.body.classList.toggle("is-busy", inFlight);
@@ -3417,7 +3841,6 @@ async function enterFurnishingStage() {
       inFlight = false;
     }
     currentView = "furnishing";
-    updateWorkflowProgress(4);
     setCanvasViewState("furnishing");
     setFurnishingVisibility(true);
     furniturePanel.hidden = false;
@@ -3683,7 +4106,6 @@ function setView(view) {
     stopAutoOrbit();
   }
   currentView = view;
-  updateWorkflowProgress(view === "original" ? 2 : view === "furnishing" ? 4 : 3);
   editorTools.hidden = !reviewEditor?.document;
   setCanvasViewState(view);
   controls.enabled = !showingReview;
@@ -3791,7 +4213,6 @@ async function extractReviewFile(file) {
 async function extractForReview(file) {
   if (inFlight || !reviewEditor) return false;
   inFlight = true;
-  updateWorkflowProgress(2);
   updateEditorControls();
 
   try {
@@ -3799,7 +4220,6 @@ async function extractForReview(file) {
     document.body.classList.remove("upload-empty");
     return true;
   } catch (error) {
-    updateWorkflowProgress(1);
     setStatus(`Extraction failed: ${error.message}`, "error");
     return false;
   } finally {
@@ -3817,7 +4237,6 @@ async function showThreeDimensionalView() {
   if (!reviewDocument || inFlight) return;
 
   inFlight = true;
-  updateWorkflowProgress(3);
   updateEditorControls();
   try {
     if (reviewDocument.needsCompose()) {
@@ -3851,7 +4270,6 @@ async function showThreeDimensionalView() {
     await transitionCanvasView("3d");
     setStatus(summarize(currentComposedPlan));
   } catch (error) {
-    updateWorkflowProgress(2);
     setView("original");
     setStatus(
       `Composition failed: ${error.message}. Review preserved; choose Show 3D to retry.`,
