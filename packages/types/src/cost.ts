@@ -18,7 +18,7 @@ export type CostAttributionScope = "unit" | "building";
 /** 관리비 공개 상태 — opt-out 기본 public (D23). 관리비 외 유형에는 부여하지 않는다. */
 export type DisclosureState = "public" | "private";
 
-/** 수리비 2상태 — 이미 지불(기록만) / 미지불(→M-DASH-05 결제 승인). 수리비에만 부여. */
+/** 수리비 2상태 — 이미 지불(기록만) / 미지불(→관리자 크레딧 업체 지급 요청). 수리비에만 부여. */
 export type RepairPaymentState = "already_paid" | "unpaid";
 
 /**
@@ -58,7 +58,7 @@ export interface Cost {
   disclosure?: DisclosureState;
   /** 수리비 지불 상태. type=repair 외에는 undefined. */
   repairPayment?: RepairPaymentState;
-  /** 연결된 결제건(M-DASH-05) — 수리비 미지불 흐름 시. */
+  /** 연결된 업체 지급 요청 — 수리비 미지불 흐름 시. */
   paymentRef?: string;
   /** 원본 영수증(있으면). 없으면 증빙 없음(수동 입력) 원장. */
   receiptId?: string;

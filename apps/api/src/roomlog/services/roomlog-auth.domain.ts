@@ -842,11 +842,10 @@ export class RoomlogAuthDomain {
       throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
     }
 
+    // dedupe 키는 DB Room 유니크 제약과 같은 (건물명, 호수) — 주소 표기만 다른 같은 호실을
+    // 새로 만들면 미러 tx가 유니크 충돌로 영구 실패한다(2026-07-19 장애).
     const existingRoom = this.store.rooms.find(
-      (room) =>
-        room.buildingName === buildingName &&
-        room.roomNo === roomNo &&
-        room.address === address
+      (room) => room.buildingName === buildingName && room.roomNo === roomNo
     );
 
     if (existingRoom) {

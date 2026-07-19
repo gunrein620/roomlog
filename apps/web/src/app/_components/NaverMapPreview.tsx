@@ -406,6 +406,7 @@ export function NaverMapPreview({
       return;
     }
 
+    closeCenterInfoWindow(maps);
     if (centerMarkerRef.current?.setPosition) {
       centerMarkerRef.current.setPosition(nextCenter);
       openCenterInfoWindow(
@@ -452,6 +453,7 @@ export function NaverMapPreview({
         return;
       }
 
+      closeCenterInfoWindow(maps);
       if (centerMarkerRef.current?.setPosition) {
         centerMarkerRef.current.setPosition(nextCenter);
         openCenterInfoWindow(maps, map, centerMarkerRef.current, "매물 위치", addressKey);

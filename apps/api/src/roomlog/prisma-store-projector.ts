@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { randomUUID } from "node:crypto";
+import { inspect } from "node:util";
 import {
   Store,
   StoreProjector,
@@ -1458,7 +1459,22 @@ export class PrismaStoreProjector implements StoreProjector {
     return { ticket, activeRepair };
   }
 
+  // 데드락(40P01)은 repo-direct 쓰기 tx와 전체 미러 tx가 같은 행을 다른 순서로 잠글 때
+  // 간헐적으로 발생한다 — 일시 충돌이므로 짧은 지터를 두고 재시도한다.
   async persist(store: Store) {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.persistSnapshot(store);
+        return;
+      } catch (error) {
+        if (attempt >= 2 || !isTransientTxConflict(error)) throw error;
+        const delayMs = 100 + attempt * 250 + Math.floor(Math.random() * 100);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  private async persistSnapshot(store: Store) {
     await this.prisma.$transaction(async (tx) => {
       const financeOwnedLinks = await tx.vendorPaymentRequest.findMany({
         select: { costId: true, repairId: true }
@@ -1529,7 +1545,40 @@ export class PrismaStoreProjector implements StoreProjector {
         });
       }
 
+      // Room은 DB에서 (buildingName, roomNo) 유니크다. 생성 경로 dedupe가 뚫려 같은 키의 방이
+      // 스토어에 2개 생기면 전체 미러 tx가 영구 실패해 durability 게이트에 걸린 저장 API가 전부
+      // 죽는다(2026-07-19 프로드 장애). 스토어를 진실로 삼아: 키가 겹치면 나중(더 최근) 방만
+      // 미러하고, 같은 키를 다른 id로 점유한 DB 행은 호수를 비켜 표시해(자식 FK 보존) 둔다.
+      const roomKeyOf = (room: { buildingName: string; roomNo: string }) =>
+        `${room.buildingName} ${room.roomNo}`;
+      const mirroredRooms = new Map<string, Store["rooms"][number]>();
       for (const room of store.rooms) {
+        const shadowed = mirroredRooms.get(roomKeyOf(room));
+        if (shadowed) {
+          console.warn(
+            `[store-projector] (${room.buildingName}, ${room.roomNo}) 중복 방 감지 — ${shadowed.id} 대신 ${room.id}만 미러합니다. 방 생성 경로의 dedupe 버그를 확인하세요.`
+          );
+        }
+        mirroredRooms.set(roomKeyOf(room), room);
+      }
+
+      const dbRooms = await tx.room.findMany({
+        select: { id: true, buildingName: true, roomNo: true }
+      });
+      for (const dbRoom of dbRooms) {
+        const winner = mirroredRooms.get(roomKeyOf(dbRoom));
+        if (winner && winner.id !== dbRoom.id) {
+          console.warn(
+            `[store-projector] DB Room ${dbRoom.id}가 (${dbRoom.buildingName}, ${dbRoom.roomNo}) 키를 점유 중 — ${winner.id} 미러를 위해 호수를 비켜둡니다.`
+          );
+          await tx.room.update({
+            where: { id: dbRoom.id },
+            data: { roomNo: `${dbRoom.roomNo}#dup-${dbRoom.id.slice(-6)}` }
+          });
+        }
+      }
+
+      for (const room of mirroredRooms.values()) {
         await tx.room.upsert({
           where: { id: room.id },
           create: {
@@ -3222,4 +3271,13 @@ export class PrismaStoreProjector implements StoreProjector {
   async disconnect() {
     await this.prisma.$disconnect();
   }
+}
+
+function isTransientTxConflict(error: unknown) {
+  const text = inspect(error, { depth: 6 });
+  return (
+    text.includes("40P01") ||
+    text.includes("deadlock detected") ||
+    text.includes("P2034")
+  );
 }

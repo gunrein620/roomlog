@@ -9,7 +9,6 @@ import {
   MobileScreen,
   Money,
   callRoutes,
-  dashRoutes,
   muted,
   row,
 } from "../../_components/ticket-manager-ui";
@@ -27,8 +26,8 @@ export default async function Page() {
       title={`결제 승인 · ${ticket.unitId}호`}
       footer={
         <>
-          <LinkButton href={canApprove ? callRoutes["01"] : dashRoutes["05"]} fullWidth>
-            {canApprove ? "승인" : "웹에서 수리완료 확인"}
+          <LinkButton href={canApprove ? callRoutes["01"] : "/manager/vendor-mgmt/credit"} fullWidth>
+            {canApprove ? "승인" : "크레딧 결제로"}
           </LinkButton>
           <LinkButton href={callRoutes["00"]} variant="secondary" fullWidth>보류</LinkButton>
         </>
@@ -45,7 +44,7 @@ export default async function Page() {
       <Card style={{ border: "1.5px dashed var(--outline-variant)" }}>
         <div style={muted}>승인 완료 시 “{ticket.unitId}호 처리됐어요” 확인 후 다음 민원으로 이어집니다.</div>
       </Card>
-      <LinkButton href={dashRoutes["05"]} variant="secondary" fullWidth>비용 내역 웹에서</LinkButton>
+      <LinkButton href="/manager/vendor-mgmt/credit" variant="secondary" fullWidth>업체 지급 요청에서 확인</LinkButton>
     </MobileScreen>
   );
 }

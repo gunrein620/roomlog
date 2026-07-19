@@ -23,7 +23,6 @@ export const dashRoutes = {
   "00": "/manager/ticket/dash/00",
   "01": "/manager/ticket/dash/01",
   "02": "/manager/ticket/dash/02",
-  "05": "/manager/ticket/dash/05",
   e0: "/manager/ticket/dash/e0",
 } as const;
 

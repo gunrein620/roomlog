@@ -126,8 +126,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(cssSource, /data-status="processing"/);
   assert.match(cssSource, /data-status="resolved"/);
   assert.match(actionMenuSource, /ticketDashHref\("01",\s*ticketId\)/);
-  assert.match(actionMenuSource, /ticketDashHref\("04",\s*ticketId\)/);
-  assert.match(actionMenuSource, /ticketDashHref\("05",\s*ticketId\)/);
+  assert.doesNotMatch(actionMenuSource, /ticketDashHref\("04",\s*ticketId\)/);
+  assert.doesNotMatch(actionMenuSource, /ticketDashHref\("05",\s*ticketId\)/);
   assert.match(componentSource, /<TicketActionMenu/);
   assert.doesNotMatch(componentSource, /<details/);
   assert.doesNotMatch(componentSource, /<summary/);
@@ -144,8 +144,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.doesNotMatch(componentSource, />\s*대리\s*접수\s*</);
   assert.doesNotMatch(componentSource, /ManagerProxyIntakeDialog/);
   assert.match(actionMenuSource, /상세·정보입력/);
-  assert.match(actionMenuSource, /업체 선정·견적/);
-  assert.match(actionMenuSource, /결제·비용 승인/);
+  assert.doesNotMatch(actionMenuSource, /업체 선정·견적/);
+  assert.doesNotMatch(actionMenuSource, /결제·비용 승인/);
   assert.doesNotMatch(componentSource, /박지훈/);
   assert.doesNotMatch(componentSource, /row\.isDemo/);
   assert.doesNotMatch(componentSource, /더미 작업 비활성/);
