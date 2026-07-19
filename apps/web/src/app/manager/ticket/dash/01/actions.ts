@@ -1,13 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import {
-  cancelManagerTicketDirectHandling,
-  completeManagerTicketDirectHandling,
   decideManagerTicketResponsibility,
-  sendManagerTicketReply,
-  startManagerTicketDirectHandling,
 } from "@/lib/ticket-manager-api";
+import { assignManagerVendor } from "@/lib/vendor-mgmt-api";
 import { requireUser } from "@/lib/session";
 import type { ManagerMutationState } from "../../../_components/manager-mutation-state";
 import {
@@ -54,92 +52,23 @@ export async function decideResponsibilityAction(
   }
 }
 
-export async function startDirectHandlingAction(
+export async function assignVendorAction(
   _previousState: ManagerMutationState,
   formData: FormData,
 ): Promise<ManagerMutationState> {
   const ticketId = formString(formData, "ticketId");
-  const note = formString(formData, "note");
+  const vendorId = formString(formData, "vendorId");
+  const requestNote = formString(formData, "requestNote");
 
   try {
     await requireManager(ticketId);
-    await startManagerTicketDirectHandling(ticketId, note ? { note } : {});
+    if (!vendorId) throw new Error("배정할 업체를 선택해 주세요.");
+    if (!requestNote) throw new Error("업체에 전달할 요청 내용을 확인해 주세요.");
+    await assignManagerVendor(ticketId, { vendorId, requestNote });
     revalidateTicket(ticketId);
-    return managerMutationSuccess("관리자 직접 처리를 시작했습니다.");
+    revalidatePath("/gara");
   } catch (error) {
     return managerMutationError(error);
   }
-}
-
-export async function completeDirectHandlingAction(
-  _previousState: ManagerMutationState,
-  formData: FormData,
-): Promise<ManagerMutationState> {
-  const ticketId = formString(formData, "ticketId");
-  const note = formString(formData, "note");
-  const amountText = formString(formData, "amount");
-  const item = formString(formData, "item");
-
-  try {
-    await requireManager(ticketId);
-    if (!note) throw new Error("완료 처리 내용은 필수입니다.");
-
-    let cost: { amount: number; item?: string } | undefined;
-    if (amountText || item) {
-      if (!amountText) throw new Error("비용 항목을 기록하려면 금액도 입력해 주세요.");
-      const amount = Number(amountText);
-      if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2_147_483_647) {
-        throw new Error("비용 금액은 1원 이상의 정수로 입력해 주세요.");
-      }
-      cost = { amount, ...(item ? { item } : {}) };
-    }
-
-    await completeManagerTicketDirectHandling(ticketId, {
-      note,
-      ...(cost ? { cost } : {}),
-    });
-    revalidateTicket(ticketId);
-    return managerMutationSuccess("처리 완료를 보고했습니다. 세입자 확인을 기다립니다.");
-  } catch (error) {
-    return managerMutationError(error);
-  }
-}
-
-export async function cancelDirectHandlingAction(
-  _previousState: ManagerMutationState,
-  formData: FormData,
-): Promise<ManagerMutationState> {
-  const ticketId = formString(formData, "ticketId");
-  const reason = formString(formData, "reason");
-
-  try {
-    await requireManager(ticketId);
-    if (!reason) throw new Error("직접 처리 취소 사유를 입력해 주세요.");
-    await cancelManagerTicketDirectHandling(ticketId, { reason });
-    revalidateTicket(ticketId);
-    return managerMutationSuccess("직접 처리를 취소하고 검토 단계로 돌렸습니다.");
-  } catch (error) {
-    return managerMutationError(error);
-  }
-}
-
-export async function sendTicketChatAction(
-  _previousState: ManagerMutationState,
-  formData: FormData,
-): Promise<ManagerMutationState> {
-  const ticketId = formString(formData, "ticketId");
-  const messageText = formString(formData, "messageText");
-
-  try {
-    await requireManager(ticketId);
-    if (!messageText) throw new Error("전송할 메시지를 입력해 주세요.");
-    await sendManagerTicketReply(ticketId, {
-      action: "SEND_REPLY",
-      messageText,
-    });
-    revalidateTicket(ticketId);
-    return managerMutationSuccess("진행 메시지를 전송했습니다.");
-  } catch (error) {
-    return managerMutationError(error);
-  }
+  redirect(ticketDashHref("01", ticketId));
 }

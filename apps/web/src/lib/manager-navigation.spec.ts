@@ -27,7 +27,7 @@ describe("manager workspace navigation", () => {
   });
 
   it("selects a parent for contextual routes without inventing a child", () => {
-    assert.deepEqual(getManagerNavState("/manager/ticket/dash/04?id=tk_1"), {
+    assert.deepEqual(getManagerNavState("/manager/ticket/dash/01?id=tk_1"), {
       activeItemId: "ticket",
       activeChildHref: null,
     });

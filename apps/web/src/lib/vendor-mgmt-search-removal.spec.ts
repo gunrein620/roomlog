@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const webRoot = join(fileURLToPath(new URL("../..", import.meta.url)));
+const webRoot = process.cwd();
 const readWebSource = (...parts: string[]) => readFileSync(join(webRoot, ...parts), "utf8");
 
 test("manager vendor search has no navigation, page, API, legacy redirect, or guidance entry point", () => {
@@ -13,13 +12,15 @@ test("manager vendor search has no navigation, page, API, legacy redirect, or gu
   const clientSource = readWebSource("src/lib/vendor-mgmt-api.ts");
   const actionsSource = readWebSource("src/app/manager/vendor-mgmt/actions.ts");
   const archiveSource = readWebSource("src/app/manager/vendor-mgmt/vendors/ManagerVendorArchiveControl.tsx");
-  const ticketSource = readWebSource("src/app/manager/ticket/dash/04/page.tsx");
+  const ticketSource = readWebSource("src/app/manager/ticket/dash/01/page.tsx");
   const controllerSource = readFileSync(join(webRoot, "../api/src/roomlog/roomlog.controller.ts"), "utf8");
   const searchPage = join(webRoot, "src/app/manager/vendor-mgmt/search/page.tsx");
+  const obsoleteTicketVendorPage = join(webRoot, "src/app/manager/ticket/dash/04/page.tsx");
 
   assert.doesNotMatch(navSource, /업체 찾기|vendor-mgmt\/search/);
   assert.match(legacySource, /redirect\(MANAGER_VENDOR_MGMT_PATHS\.vendors\)/);
   assert.equal(existsSync(searchPage), false);
+  assert.equal(existsSync(obsoleteTicketVendorPage), false);
   assert.doesNotMatch(clientSource, /searchVendorCatalog|registerManagerVendor|manager\/vendor-mgmt\/search/);
   assert.doesNotMatch(actionsSource, /registerVendorAction|MANAGER_VENDOR_MGMT_PATHS\.search/);
   assert.doesNotMatch(controllerSource, /@(?:Get|Put)\("manager\/vendor-mgmt\/(?:search|vendors\/:vendorId\/registration)"\)/);
