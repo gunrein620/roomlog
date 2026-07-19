@@ -6170,14 +6170,13 @@ export class RoomlogService implements OnModuleDestroy {
     return this.store.tickets.map((ticket) => this.presentTicket(ticket));
   }
 
-  private async currentManagerReadStore() {
-    // 인메모리 store가 쓰기의 1차 소스다(쓰기가 this.store를 먼저 갱신하고 Postgres로 미러링).
-    // 과거엔 여기서 storeProjector.load()로 DB 전체(~55개 테이블)를 매 요청 재로드했는데,
-    // 관리 대시보드(/manager/home)가 이 호출에 Promise.all로 묶여 콜드 시 5~7초까지 걸렸다
-    // — 다른 6개 원천은 인메모리 직독으로 1~70ms인데 티켓만 O(DB 전체)라 전체를 게이팅했다.
-    // 인메모리를 직독해 O(메모리)로 낮춘다. 대기 중 쓰기만 흘려보내 순서 정합("한 박자 밀림")을 지킨다.
-    await this.pendingPersistence.catch(() => undefined);
-
+  private currentManagerReadStore() {
+    // 인메모리 store가 쓰기의 1차 소스다 — 쓰기가 this.store를 먼저(동기) 갱신하고 Postgres로 미러링.
+    // 과거엔 여기서 storeProjector.load()로 DB 전체(~55개 테이블)를 재로드했고, 그 시절엔
+    // 밀린 쓰기가 DB에 닿기 전 읽으면 "한 박자 밀림"이 생겨 pendingPersistence를 await했다.
+    // 인메모리 직독으로 바꾼 지금은 둘 다 불필요하다: 재로드는 콜드 시 5~7초(대시보드 게이팅),
+    // pendingPersistence 대기는 전체 스토어 미러링 flush(실측 3~28초)에 읽기를 볼모로 잡았다.
+    // 인메모리는 flush와 무관하게 항상 최신이므로 그대로 반환한다.
     return this.store;
   }
 
