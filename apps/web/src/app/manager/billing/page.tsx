@@ -43,9 +43,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     <BillingShell title="청구·수납 관리" active={routes.dashboard}>
       <div className={styles.workspace}>
         <BillingWorkspaceHeader
-          eyebrow="종합 업무 화면"
-          title="청구 대시보드"
-          description="선택한 달의 수금, 최근 입금, 연체를 빠르게 확인하고 아래 원장에서 처리 대상을 찾습니다."
           basePath="/manager/billing"
           scope={data.scope}
           month={data.billingMonth}
