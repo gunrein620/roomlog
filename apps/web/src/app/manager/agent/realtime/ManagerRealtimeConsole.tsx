@@ -60,6 +60,11 @@ const commandOptions: Array<{
     placeholder: "411호 연체 독촉 문구를 준비해줘"
   },
   {
+    command: "credit.balance",
+    label: "크레딧 잔액",
+    placeholder: "현재 보유 크레딧 알려줘"
+  },
+  {
     command: "messaging.draft_reply",
     label: "소통 초안",
     placeholder: "사진을 더 요청하는 답장 초안 만들어줘"
@@ -90,7 +95,7 @@ export function ManagerRealtimeConsole({
     {
       id: "initial",
       role: "agent",
-      text: "처리할 일을 대화로 입력하세요. 티켓 조회, 청구 요약, 청구 전용 연체 독촉 준비, 소통 답장 초안과 일반 답장 발송을 실행할 수 있습니다."
+      text: "처리할 일을 대화로 입력하세요. 티켓 조회, 청구 요약, 크레딧 잔액 조회, 청구 전용 연체 독촉 준비, 소통 답장 초안과 일반 답장 발송을 실행할 수 있습니다."
     }
   ]);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -690,7 +695,9 @@ function agentMessageToCommand(message: string, fallback: ManagerAgentCommandNam
   if (/send_dunning|dunning|독촉|연체/.test(normalized)) return "billing.send_dunning";
   if (/초안|draft/.test(normalized)) return "messaging.draft_reply";
   if (/답장|메시지|문자|소통|보내|발송/.test(normalized)) return "messaging.send_reply";
+  if (/크레딧|credit|잔액|충전/.test(normalized)) return "credit.balance";
   if (/청구|수납|입금|관리비|미납|월세|보증금/.test(normalized)) return "billing.summary";
+  if (/전체\s*티켓|총\s*티켓|티켓.*(전체|총|몇\s*개|몇개)/.test(normalized)) return "ticket.summary";
   if (/티켓|민원|하자|수리|에어컨|세면대|누수|업체|긴급/.test(normalized)) return "ticket.query";
 
   return fallback;

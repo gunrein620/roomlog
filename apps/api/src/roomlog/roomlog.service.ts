@@ -40,6 +40,7 @@ import {
   TossPaymentsHttpGateway,
   type TossPaymentGateway
 } from "../payment/toss-payment.gateway";
+import { CreditService } from "../credit/credit.service";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
   hasRequiredPasswordMix,
@@ -2493,7 +2494,9 @@ export class RoomlogService implements OnModuleDestroy {
   constructor(
     @Optional()
     @Inject(ROOMLOG_SERVICE_OPTIONS)
-    options: RoomlogServiceOptions = {}
+    options: RoomlogServiceOptions = {},
+    @Optional()
+    private readonly creditService?: CreditService
   ) {
     const configuredStoreFile = options.storeFilePath ?? process.env.ROOMLOG_STORE_FILE;
     this.storeFilePath = configuredStoreFile?.trim() || undefined;
@@ -5358,10 +5361,10 @@ export class RoomlogService implements OnModuleDestroy {
     }
   }
 
-  runManagerAgentCommand(
+  async runManagerAgentCommand(
     managerId: string,
     input: ManagerAgentCommandInput
-  ): ManagerAgentCommandResult {
+  ): Promise<ManagerAgentCommandResult> {
     const command = (input.command ?? "").trim();
     const text = input.text?.trim() ?? "";
     const body = input.body?.trim() ?? "";
@@ -5391,6 +5394,72 @@ export class RoomlogService implements OnModuleDestroy {
           href: "/manager/ticket/dash/00"
         }
       };
+    }
+
+    if (command === "ticket.summary") {
+      const scopedTickets = this.store.tickets.filter((ticket) =>
+        this.canManagerAccessRoom(managerId, ticket.roomId)
+      );
+      const openTickets = scopedTickets.filter(
+        (ticket) => !["COMPLETED", "CANCELLED"].includes(ticket.status)
+      );
+      const completedCount = scopedTickets.filter((ticket) => ticket.status === "COMPLETED").length;
+      const urgentCount = openTickets.filter((ticket) => ticket.priority === 1).length;
+      const unassignedCount = openTickets.filter((ticket) => !ticket.assignedVendorId).length;
+
+      return {
+        status: "executed",
+        domain: "ticket",
+        summary: `전체 티켓 ${scopedTickets.length}건 — 미처리 ${openTickets.length}건(긴급 ${urgentCount}건, 업체 미배정 ${unassignedCount}건), 완료 ${completedCount}건입니다.`,
+        data: {
+          total: scopedTickets.length,
+          open: openTickets.length,
+          completed: completedCount,
+          urgent: urgentCount,
+          unassigned: unassignedCount
+        },
+        navigation: {
+          label: "티켓 대시보드",
+          href: "/manager/ticket/dash/00"
+        }
+      };
+    }
+
+    if (command === "credit.balance") {
+      if (!this.creditService) {
+        return {
+          status: "blocked",
+          domain: "credit",
+          summary: "크레딧 조회 기능이 준비되지 않았습니다. 크레딧 관리 화면에서 확인해 주세요."
+        };
+      }
+
+      try {
+        const account = await this.creditService.getAccount(managerId);
+
+        return {
+          status: "executed",
+          domain: "credit",
+          summary: `보유 크레딧은 ${account.balance.toLocaleString("ko-KR")}원입니다.`,
+          data: {
+            balance: account.balance,
+            updatedAt: account.updatedAt
+          },
+          navigation: {
+            label: "크레딧 관리",
+            href: "/manager/vendor-mgmt/credit"
+          }
+        };
+      } catch (error) {
+        return {
+          status: "blocked",
+          domain: "credit",
+          summary:
+            error instanceof Error
+              ? `크레딧 잔액을 조회하지 못했습니다. ${error.message}`
+              : "크레딧 잔액을 조회하지 못했습니다. 크레딧 관리 화면에서 확인해 주세요."
+        };
+      }
     }
 
     if (command === "billing.summary") {
@@ -5560,7 +5629,7 @@ export class RoomlogService implements OnModuleDestroy {
       };
     }
 
-    const result = this.runManagerAgentCommand(managerId, input);
+    const result = await this.runManagerAgentCommand(managerId, input);
 
     if (!process.env.OPENAI_API_KEY || result.status === "blocked") {
       return result;
@@ -6206,8 +6275,12 @@ export class RoomlogService implements OnModuleDestroy {
     }
 
     if (filters.length === 0) {
-      matches = matches.filter((ticket) => !["COMPLETED", "CANCELLED"].includes(ticket.status));
-      filters.push("상태: 미처리");
+      if (/전체|총|모든|전부/.test(normalizedQuestion)) {
+        filters.push("범위: 전체");
+      } else {
+        matches = matches.filter((ticket) => !["COMPLETED", "CANCELLED"].includes(ticket.status));
+        filters.push("상태: 미처리");
+      }
     }
 
     matches.sort((left, right) => {
@@ -13612,6 +13685,10 @@ export class RoomlogService implements OnModuleDestroy {
 
     if (command.startsWith("billing.")) {
       return "billing";
+    }
+
+    if (command.startsWith("credit.")) {
+      return "credit";
     }
 
     if (command.startsWith("messaging.")) {
