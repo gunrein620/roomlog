@@ -5712,7 +5712,7 @@ export class RoomlogService implements OnModuleDestroy {
       "청구 요약에서 현재월 미납을 묻는 경우 currentMonthUnpaidBills만 열거하고 collection.unpaidAmount와 합계가 맞는지 확인하세요.",
       "실행 결과가 발송 또는 mutation이면 실행 여부와 대상만 간결히 말하고, 필요한 확인 화면은 navigation.label로 안내합니다.",
       "blocked 또는 requiresConfirmation이면 자동 처리하지 말고 확인이 필요한 이유를 말하세요.",
-      "한국어로 1~3문장, 필요하면 짧은 줄바꿈 목록으로 답하세요."
+      "한국어로 1~3문장, 필요하면 '- '로 시작하는 짧은 줄바꿈 목록으로 답하세요. 마크다운 문법(#, **)은 렌더링되지 않으니 쓰지 마세요."
     ].join("\n");
   }
 
