@@ -1,14 +1,13 @@
 import { MANAGER_BILLING_ROUTES } from "./billing-manager-nav";
 import { MANAGER_CONTRACT_ROUTES } from "./contract-manager-nav";
-import { MANAGER_CROSS, MHOME_ROUTES } from "./manager-home-nav";
+import { MHOME_ROUTES } from "./manager-home-nav";
 import { MANAGER_MESSAGING_ROUTES } from "./messaging-manager-nav";
-import { MANAGER_REPORT_ROUTES } from "./report-nav";
 import { MANAGER_TICKET_ROUTES } from "./ticket-manager-nav";
 import { MANAGER_VENDOR_MGMT_NAV, MANAGER_VENDOR_MGMT_PATHS } from "./vendor-mgmt-nav";
 
 export type ManagerNavItemId =
   | "dashboard" | "listing" | "contract" | "billing" | "cost" | "ticket"
-  | "messaging" | "moveout" | "vendor" | "report" | "assistant" | "settings";
+  | "messaging" | "moveout" | "vendor";
 
 export type ManagerTicketView = "dashboard" | "management";
 export interface ManagerNavChild {
@@ -131,44 +130,6 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         icon: "vendor",
         activePrefixes: ["/manager/vendor-mgmt"],
         children: MANAGER_VENDOR_MGMT_NAV,
-      },
-    ],
-  },
-  {
-    label: "인사이트",
-    items: [
-      {
-        id: "report",
-        label: "운영 리포트",
-        href: MANAGER_REPORT_ROUTES["M-RPT-00"],
-        icon: "report",
-        activePrefixes: ["/manager/report"],
-        children: [
-          { label: "리포트 허브", href: MANAGER_REPORT_ROUTES["M-RPT-00"] },
-          { label: "새 리포트 생성", href: MANAGER_REPORT_ROUTES["M-RPT-01"] },
-          { label: "빠른 조회", href: MANAGER_REPORT_ROUTES["M-RPT-05"] },
-        ],
-      },
-      {
-        id: "assistant",
-        label: "AI 비서",
-        href: MANAGER_CROSS.realtimeAgent,
-        icon: "assistant",
-        activePrefixes: ["/manager/agent"],
-        children: [],
-      },
-    ],
-  },
-  {
-    label: "계정",
-    items: [
-      {
-        id: "settings",
-        label: "설정",
-        href: MHOME_ROUTES["M-HOME-06"],
-        icon: "settings",
-        activePrefixes: [MHOME_ROUTES["M-HOME-06"]],
-        children: [],
       },
     ],
   },

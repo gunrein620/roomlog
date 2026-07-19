@@ -14,7 +14,6 @@ export const MHOME_ROUTES = {
   "M-HOME-03": "/manager/home/00#buildings", // 전체 건물 관리 — 00에 통합됨
   "M-HOME-04": "/manager/home/04", // 건물 상세
   "M-HOME-05": "/manager/home/00", // 건물·호실 등록 / CSV — 미사용 기능으로 제거, 대시보드로 수렴
-  "M-HOME-06": "/manager/home/06", // 설정
   "M-HOME-E0": "/manager/home/e0",
 } as const;
 

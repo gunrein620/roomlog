@@ -32,7 +32,8 @@
 .demoBadge,
 .tag,
 .statusPositive,
-.statusMuted {
+.statusMuted,
+.detailButton {
   display: inline-flex;
   align-items: center;
   min-height: 28px;
@@ -236,13 +237,7 @@
 }
 
 .detailButton {
-  min-height: var(--touch-target);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 var(--space-md);
   border: 1px solid var(--outline);
-  border-radius: var(--radius-btn);
   color: var(--on-surface);
   background: var(--surface-container-lowest);
   font-weight: var(--fw-subtitle);
