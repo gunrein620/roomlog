@@ -341,9 +341,12 @@ private struct ObjectCaptureCaptureScreen: View {
     let onFailed: (String) -> Void
 
     /// 카메라 뷰를 띄우는 단계들. 이 조건이 바뀌지 않는 한 아래 ObjectCaptureView 인스턴스는 유지된다.
+    /// `.finishing`·`.completed`까지 포함하는 이유: 촬영이 끝나는 순간 뷰를 곧바로 뜯으면 RealityKit이
+    /// 에셋 로드 중이라 내부 assert로 죽는다(EXC_BREAKPOINT in re::AssetManager::updateLoadRequests,
+    /// 2026-07-20 실기 스택). 화면 전환은 부모(flow)가 하므로 여기서 급히 내릴 이유가 없다.
     private var showsCameraView: Bool {
         switch session.state {
-        case .ready, .detecting, .capturing: return true
+        case .ready, .detecting, .capturing, .finishing, .completed: return true
         default: return false
         }
     }
@@ -409,7 +412,17 @@ private struct ObjectCaptureCaptureScreen: View {
                 }
 
             case .completed:
-                Color.clear.onAppear { handOff() }
+                // 곧바로 넘기면 RealityKit이 아직 정리 중인 상태에서 화면이 교체돼 위 assert를 밟는다.
+                // 한 박자(0.5s) 양보한 뒤 재구성 단계로 넘긴다.
+                VStack(spacing: 12) {
+                    ProgressView().tint(Woozu.secondarySoft)
+                    Text("촬영 정리 중…")
+                        .font(.subheadline)
+                        .foregroundStyle(Woozu.secondarySoft)
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { handOff() }
+                }
 
             case .failed(let error):
                 Color.clear.onAppear { onFailed(error.localizedDescription) }
