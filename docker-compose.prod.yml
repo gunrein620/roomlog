@@ -9,6 +9,7 @@ services:
         NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-https://api.woo-zu.com}
         NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
         NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL: ${NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL:-}
+        NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL: ${NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL:-}
     container_name: roomlog-web
     restart: unless-stopped
     environment:
