@@ -9,6 +9,7 @@ import {
 import { createHmac } from "node:crypto";
 import type {
   ConfirmManagerCreditTopupInput,
+  CreateGaraVendorCreditCheckoutInput,
   CreateGaraVendorPayoutInput,
   CreateManagerCreditTopupInput,
   ManagerCreditTopupOrderView,
@@ -137,6 +138,34 @@ export class CreditService {
     };
   }
 
+  async createGaraVendorCreditCheckout(
+    input: CreateGaraVendorCreditCheckoutInput
+  ) {
+    const body = requireInputRecord(input);
+    if (!Number.isSafeInteger(body.amount) || (body.amount as number) <= 0) {
+      throw new BadRequestException("충전 금액은 1원 이상의 정수여야 합니다.");
+    }
+    const { order } =
+      await this.commandRepository.createGaraTopupOrder({
+        managerVendorId: requireInputString(
+          body,
+          "managerVendorId",
+          "업체 등록 식별자"
+        ),
+        amount: body.amount as number,
+        creationKey: requireInputString(body, "creationKey", "충전 요청 키"),
+        returnPath: "/gara"
+      });
+    return {
+      order,
+      clientKey: this.options.clientKey,
+      customerKey: `credit_${createHmac("sha256", this.options.tokenSecret)
+        .update(`toss-gara-credit-customer:${order.orderId}`, "utf8")
+        .digest("base64url")}`,
+      orderName: "Gara 업체 크레딧 충전"
+    };
+  }
+
   async createGaraVendorPayout(
     managerId: string,
     input: CreateGaraVendorPayoutInput
@@ -156,7 +185,8 @@ export class CreditService {
   async confirmTopup(
     managerId: string,
     orderId: string,
-    input: ConfirmManagerCreditTopupInput
+    input: ConfirmManagerCreditTopupInput,
+    garaManagerVendorId?: string
   ): Promise<ManagerCreditTopupOrderView> {
     const body = requireInputRecord(input);
     const paymentKey = requireInputString(body, "paymentKey", "결제 키");
@@ -168,7 +198,8 @@ export class CreditService {
       managerId,
       orderId,
       paymentKey,
-      amount
+      amount,
+      ...(garaManagerVendorId ? { garaManagerVendorId } : {})
     });
     if (claim.outcome !== "CLAIMED") return claim.order;
 
@@ -207,7 +238,8 @@ export class CreditService {
         await this.commandRepository.finalizeTopup({
           managerId,
           orderId,
-          payment
+          payment,
+          ...(garaManagerVendorId ? { garaManagerVendorId } : {})
         })
       ).order;
     } catch (_error) {
@@ -292,6 +324,10 @@ export class CreditService {
 
   async getTopupOrder(managerId: string, orderId: string) {
     return this.queryRepository.getTopupOrder(managerId, orderId);
+  }
+
+  async getGaraTopupOrder(orderId: string) {
+    return this.queryRepository.getGaraTopupOrder(orderId);
   }
 
   async getAccount(managerId: string) {

@@ -12,6 +12,7 @@ import {
 import type {
   CancelVendorPaymentRequestInput,
   ConfirmManagerCreditTopupInput,
+  CreateGaraVendorCreditCheckoutInput,
   CreateGaraVendorPayoutInput,
   CreateManagerCreditTopupInput,
   ManagerCreditAccountView,
@@ -124,6 +125,47 @@ function optionalPositiveInteger(value: string | undefined) {
 @Controller()
 export class CreditController {
   constructor(private readonly credit: CreditService) {}
+
+  @Post("gara/vendor-credit-checkouts")
+  async createGaraVendorCreditCheckout(
+    @Body() input: CreateGaraVendorCreditCheckoutInput
+  ) {
+    const checkout =
+      await this.credit.createGaraVendorCreditCheckout(input);
+    return { ...checkout, order: publicTopupOrder(checkout.order) };
+  }
+
+  @Get("gara/vendor-credit-checkouts/:orderId")
+  async getGaraVendorCreditCheckout(@Param("orderId") orderId: string) {
+    const garaOrder = await this.credit.getGaraTopupOrder(orderId);
+    return publicTopupOrder(
+      await this.credit.getTopupOrder(garaOrder.managerId, orderId)
+    );
+  }
+
+  @Post("gara/vendor-credit-checkouts/:orderId/confirm")
+  async confirmGaraVendorCreditCheckout(
+    @Param("orderId") orderId: string,
+    @Body() input: ConfirmManagerCreditTopupInput
+  ) {
+    const garaOrder = await this.credit.getGaraTopupOrder(orderId);
+    return publicTopupOrder(
+      await this.credit.confirmTopup(
+        garaOrder.managerId,
+        orderId,
+        input,
+        garaOrder.managerVendorId
+      )
+    );
+  }
+
+  @Post("gara/vendor-credit-checkouts/:orderId/cancel")
+  async cancelGaraVendorCreditCheckout(@Param("orderId") orderId: string) {
+    const garaOrder = await this.credit.getGaraTopupOrder(orderId);
+    return publicTopupOrder(
+      await this.credit.cancelTopup(garaOrder.managerId, orderId)
+    );
+  }
 
   @Get("manager/credits/account")
   async getAccount(@Headers("authorization") authorization?: string) {

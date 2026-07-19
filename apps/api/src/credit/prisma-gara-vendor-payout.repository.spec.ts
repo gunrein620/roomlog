@@ -1,4 +1,6 @@
 import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it } from "node:test";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -6,6 +8,27 @@ import { PrismaCreditCommandRepository } from "./prisma-credit-command.repositor
 import { PrismaCreditQueryRepository } from "./prisma-credit-query.repository";
 
 const databaseUrl = process.env.ROOMLOG_TEST_DATABASE_URL;
+
+it("preserves the Gara fulfillment marker when a registration deletion is attempted", () => {
+  const prismaRoot = resolve(__dirname, "../../../../prisma");
+  const schema = readFileSync(resolve(prismaRoot, "schema.prisma"), "utf8");
+  const migration = readFileSync(
+    resolve(
+      prismaRoot,
+      "migrations/20260719010000_restrict_gara_topup_registration_delete/migration.sql"
+    ),
+    "utf8"
+  );
+
+  assert.match(
+    schema,
+    /garaManagerVendor ManagerVendor\?[\s\S]*onDelete: Restrict/
+  );
+  assert.match(
+    migration,
+    /CreditTopupOrder_garaManagerVendorId_fkey[\s\S]*ON DELETE RESTRICT/
+  );
+});
 
 describe("PrismaCreditCommandRepository.createGaraVendorPayout", () => {
   it("exposes an atomic Gara vendor payout command", () => {
@@ -136,6 +159,191 @@ describe("PrismaCreditCommandRepository.createGaraVendorPayout", () => {
       }
     },
   );
+});
+
+describe("PrismaCreditCommandRepository.finalizeTopup Gara payout", () => {
+  it("atomically offsets the top-up into one linked payout and stays idempotent", async () => {
+    const approvedAt = new Date("2026-07-19T01:02:03.000Z");
+    let balance = 0n;
+    let version = 0;
+    let order = {
+      id: "credit-topup-gara-1",
+      creditAccountId: "credit-account-gara-1",
+      managerId: "manager-1",
+      garaManagerVendorId: "manager-vendor-1",
+      orderId: "roomlog-credit-gara-1",
+      creationKey: "creation-gara-1",
+      payloadHash: "payload-gara-1",
+      amount: 4_000n,
+      status: "CONFIRMING",
+      paymentKey: "payment-gara-1",
+      method: null,
+      failureReason: null,
+      returnPath: "/gara",
+      approvedAt: null as Date | null,
+      createdAt: new Date("2026-07-19T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-19T00:00:00.000Z")
+    };
+    const ledgerByKey = new Map<string, Record<string, unknown>>();
+    const payouts: Array<Record<string, unknown>> = [];
+    let failPayout = false;
+    const tx = {
+      creditTopupOrder: {
+        findFirst: async () => order,
+        update: async ({ data }: { data: Record<string, unknown> }) => {
+          order = { ...order, ...data, updatedAt: approvedAt } as typeof order;
+          return order;
+        }
+      },
+      creditAccount: {
+        updateMany: async ({ data }: { data: { balance: { increment: bigint } } }) => {
+          balance += data.balance.increment;
+          version += 1;
+          return { count: 1 };
+        },
+        findUniqueOrThrow: async () => ({
+          id: "credit-account-gara-1",
+          managerId: "manager-1",
+          balance,
+          version,
+          createdAt: new Date("2026-07-19T00:00:00.000Z"),
+          updatedAt: approvedAt
+        })
+      },
+      creditLedgerEntry: {
+        findUnique: async ({ where }: { where: { idempotencyKey: string } }) =>
+          ledgerByKey.get(where.idempotencyKey) ?? null,
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          const row = { ...data, createdAt: approvedAt };
+          ledgerByKey.set(String(data.idempotencyKey), row);
+          return row;
+        }
+      },
+      managerVendor: {
+        findUnique: async () => ({
+          id: "manager-vendor-1",
+          managerId: "manager-1",
+          vendorId: "vendor-1",
+          status: "ACTIVE",
+          settlementAccountNumber: "110-123-456789",
+          vendor: { isActive: true }
+        })
+      },
+      garaVendorPayoutRequest: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          if (failPayout) throw new Error("injected payout failure");
+          payouts.push(data);
+          return { ...data, createdAt: approvedAt };
+        }
+      },
+      $queryRaw: async () => {
+        if (balance < 4_000n) return [];
+        balance -= 4_000n;
+        version += 1;
+        return [{ id: "credit-account-gara-1" }];
+      }
+    };
+    const database = {
+      client: {
+        $transaction: async (operation: (client: typeof tx) => Promise<unknown>) => {
+          const snapshot = {
+            balance,
+            version,
+            order: { ...order },
+            ledgerEntries: [...ledgerByKey.entries()],
+            payouts: payouts.slice()
+          };
+          try {
+            return await operation(tx);
+          } catch (error) {
+            balance = snapshot.balance;
+            version = snapshot.version;
+            order = snapshot.order;
+            ledgerByKey.clear();
+            for (const [key, value] of snapshot.ledgerEntries) {
+              ledgerByKey.set(key, value);
+            }
+            payouts.splice(0, payouts.length, ...snapshot.payouts);
+            throw error;
+          }
+        }
+      }
+    };
+    const repository = new PrismaCreditCommandRepository(
+      database as never,
+      { enqueue: async () => ({ eventId: "event-1" }) } as never
+    );
+    const payment = {
+      paymentKey: "payment-gara-1",
+      orderId: "roomlog-credit-gara-1",
+      amount: 4_000,
+      status: "DONE",
+      method: "카드",
+      approvedAt: approvedAt.toISOString()
+    };
+
+    const first = await repository.finalizeTopup({
+      managerId: "manager-1",
+      orderId: "roomlog-credit-gara-1",
+      payment
+    });
+    const second = await repository.finalizeTopup({
+      managerId: "manager-1",
+      orderId: "roomlog-credit-gara-1",
+      payment
+    });
+
+    assert.equal(first.order.status, "APPROVED");
+    assert.equal(second.order.status, "APPROVED");
+    assert.equal(balance, 0n);
+    assert.equal(payouts.length, 1);
+    assert.equal(payouts[0]?.topupOrderId, "credit-topup-gara-1");
+    assert.equal(
+      payouts[0]?.idempotencyKey,
+      "gara-topup-payout:roomlog-credit-gara-1"
+    );
+    const debit = ledgerByKey.get(
+      "gara-topup-payout:roomlog-credit-gara-1"
+    );
+    assert.equal(debit?.type, "MANUAL_DEBIT");
+    assert.equal(debit?.signedAmount, -4_000n);
+    assert.equal(debit?.referenceType, "GARA_VENDOR_PAYOUT_REQUEST");
+    assert.equal(debit?.referenceId, payouts[0]?.id);
+
+    balance = 0n;
+    version = 0;
+    ledgerByKey.clear();
+    payouts.length = 0;
+    failPayout = true;
+    order = {
+      ...order,
+      id: "credit-topup-gara-failure",
+      orderId: "roomlog-credit-gara-failure",
+      creationKey: "creation-gara-failure",
+      status: "CONFIRMING",
+      paymentKey: "payment-gara-failure",
+      method: null,
+      approvedAt: null
+    };
+
+    await assert.rejects(
+      () => repository.finalizeTopup({
+        managerId: "manager-1",
+        orderId: "roomlog-credit-gara-failure",
+        payment: {
+          ...payment,
+          paymentKey: "payment-gara-failure",
+          orderId: "roomlog-credit-gara-failure"
+        },
+        garaManagerVendorId: "manager-vendor-1"
+      }),
+      /injected payout failure/
+    );
+    assert.equal(order.status, "CONFIRMING");
+    assert.equal(balance, 0n);
+    assert.equal(ledgerByKey.size, 0);
+    assert.equal(payouts.length, 0);
+  });
 });
 
 describe("PrismaCreditQueryRepository.listPublicGaraVendors", () => {

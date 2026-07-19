@@ -22,6 +22,18 @@ export type CreateTopupOrderResult = Readonly<{
   order: ManagerCreditTopupOrderView;
 }>;
 
+export type CreateGaraTopupOrderCommand = Readonly<{
+  managerVendorId: string;
+  amount: number;
+  creationKey: string;
+  returnPath: "/gara";
+}>;
+
+export type CreateGaraTopupOrderResult = Readonly<{
+  managerId: string;
+  order: ManagerCreditTopupOrderView;
+}>;
+
 export type CreateGaraVendorPayoutCommand = Readonly<{
   managerId: string;
   managerVendorId: string;
@@ -39,6 +51,7 @@ export type ClaimTopupConfirmationCommand = Readonly<{
   orderId: string;
   paymentKey: string;
   amount: number;
+  garaManagerVendorId?: string;
 }>;
 
 export type TopupConfirmationClaim =
@@ -54,6 +67,7 @@ export type FinalizeTopupCommand = Readonly<{
   managerId: string;
   orderId: string;
   payment: TossPaymentSnapshot;
+  garaManagerVendorId?: string;
 }>;
 
 export type FinalizeTopupResult = Readonly<{
@@ -162,6 +176,9 @@ export interface CreditCommandRepository {
   createTopupOrder(
     input: CreateTopupOrderCommand
   ): Promise<CreateTopupOrderResult>;
+  createGaraTopupOrder(
+    input: CreateGaraTopupOrderCommand
+  ): Promise<CreateGaraTopupOrderResult>;
   createGaraVendorPayout(
     input: CreateGaraVendorPayoutCommand
   ): Promise<CreateGaraVendorPayoutResult>;

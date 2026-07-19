@@ -12,6 +12,8 @@ import { DOMAIN_EVENT_REPOSITORY } from "../domain-events/domain-event.repositor
 import type {
   CancelReadyTopupCommand,
   ClaimTopupConfirmationCommand,
+  CreateGaraTopupOrderCommand,
+  CreateGaraTopupOrderResult,
   CreateGaraVendorPayoutCommand,
   CreateTopupOrderCommand,
   CreateGaraVendorPayoutResult,
@@ -271,6 +273,78 @@ export class PrismaCreditCommandRepository
     });
   }
 
+  async createGaraTopupOrder(
+    input: CreateGaraTopupOrderCommand
+  ): Promise<CreateGaraTopupOrderResult> {
+    const managerVendorId = requireNonblank(
+      input.managerVendorId,
+      "managerVendorId"
+    );
+    const amount = requirePositiveSafeMoney(input.amount, "amount");
+    const creationKey = requireNonblank(input.creationKey, "creationKey");
+    const returnPath = normalizeReturnPath(input.returnPath);
+
+    return this.serializable(async (tx) => {
+      const registration = await tx.managerVendor.findUnique({
+        where: { id: managerVendorId },
+        include: { manager: true, vendor: true }
+      });
+      if (
+        !registration ||
+        registration.status !== "ACTIVE" ||
+        registration.manager.status !== "ACTIVE" ||
+        !registration.vendor.isActive
+      ) {
+        throw new NotFoundException("충전할 Gara 업체 등록을 찾을 수 없습니다.");
+      }
+      if (!registration.settlementAccountNumber?.trim()) {
+        throw new BadRequestException(
+          "업체 계좌번호를 등록한 뒤 충전해 주세요."
+        );
+      }
+
+      const managerId = registration.managerId;
+      const payloadHash = topupPayloadHash({
+        managerId,
+        amount,
+        returnPath,
+        garaManagerVendorId: managerVendorId
+      });
+      const account = await this.ensureAccountRows(tx, managerId);
+      const existing = await tx.creditTopupOrder.findUnique({
+        where: { creationKey }
+      });
+      if (existing) {
+        if (
+          existing.managerId !== managerId ||
+          existing.payloadHash !== payloadHash
+        ) {
+          topupConflict(
+            "동일한 creationKey로 다른 충전 주문을 만들 수 없습니다."
+          );
+        }
+        return { managerId, order: mapCreditTopupOrder(existing) };
+      }
+
+      const suffix = randomUUID();
+      const order = await tx.creditTopupOrder.create({
+        data: {
+          id: `credit-topup-${suffix}`,
+          creditAccountId: account.id,
+          managerId,
+          garaManagerVendorId: managerVendorId,
+          orderId: `roomlog-credit-${suffix}`,
+          creationKey,
+          payloadHash,
+          amount: BigInt(amount),
+          status: "READY",
+          returnPath
+        }
+      });
+      return { managerId, order: mapCreditTopupOrder(order) };
+    });
+  }
+
   async createGaraVendorPayout(
     input: CreateGaraVendorPayoutCommand
   ): Promise<CreateGaraVendorPayoutResult> {
@@ -389,6 +463,9 @@ export class PrismaCreditCommandRepository
     const orderId = requireNonblank(input.orderId, "orderId");
     const paymentKey = requireNonblank(input.paymentKey, "paymentKey");
     const amount = requirePositiveSafeMoney(input.amount, "amount");
+    const garaManagerVendorId = input.garaManagerVendorId
+      ? requireNonblank(input.garaManagerVendorId, "garaManagerVendorId")
+      : undefined;
 
     return this.serializable(async (tx) => {
       const claimed = await tx.creditTopupOrder.updateMany({
@@ -396,7 +473,8 @@ export class PrismaCreditCommandRepository
           managerId,
           orderId,
           status: "READY",
-          amount: BigInt(amount)
+          amount: BigInt(amount),
+          ...(garaManagerVendorId ? { garaManagerVendorId } : {})
         },
         data: { status: "CONFIRMING", paymentKey }
       });
@@ -404,6 +482,13 @@ export class PrismaCreditCommandRepository
         where: { managerId, orderId }
       });
       if (!order) throw new NotFoundException("충전 주문을 찾을 수 없습니다.");
+
+      if (
+        garaManagerVendorId &&
+        order.garaManagerVendorId !== garaManagerVendorId
+      ) {
+        topupConflict("Gara 충전 주문의 업체 등록 연결이 변경되었습니다.");
+      }
 
       if (order.amount !== BigInt(amount)) {
         topupConflict("충전 요청 금액이 저장된 주문 금액과 다릅니다.");
@@ -446,6 +531,9 @@ export class PrismaCreditCommandRepository
       "payment.orderId"
     );
     const amount = requirePositiveSafeMoney(input.payment.amount, "payment.amount");
+    const garaManagerVendorId = input.garaManagerVendorId
+      ? requireNonblank(input.garaManagerVendorId, "garaManagerVendorId")
+      : undefined;
     const method = requireNonblank(input.payment.method ?? "", "payment.method");
     const approvedAt = new Date(input.payment.approvedAt ?? "");
     if (input.payment.status !== "DONE") {
@@ -463,6 +551,12 @@ export class PrismaCreditCommandRepository
         where: { managerId, orderId }
       });
       if (!order) throw new NotFoundException("충전 주문을 찾을 수 없습니다.");
+      if (
+        garaManagerVendorId &&
+        order.garaManagerVendorId !== garaManagerVendorId
+      ) {
+        topupConflict("Gara 충전 주문의 업체 등록 연결이 변경되었습니다.");
+      }
       this.assertPaymentMatches(order, paymentKey, amount);
 
       const ledgerKey = `topup:${orderId}`;
@@ -524,6 +618,84 @@ export class PrismaCreditCommandRepository
           approvedAt
         }
       });
+
+      if (order.garaManagerVendorId) {
+        const registration = await tx.managerVendor.findUnique({
+          where: { id: order.garaManagerVendorId },
+          include: { vendor: true }
+        });
+        if (
+          !registration ||
+          registration.managerId !== managerId ||
+          registration.status !== "ACTIVE" ||
+          !registration.vendor.isActive
+        ) {
+          throw new ConflictException(
+            "Gara 업체 등록 상태가 변경되어 충전을 확정할 수 없습니다."
+          );
+        }
+        const accountNumber = registration.settlementAccountNumber?.trim();
+        if (!accountNumber) {
+          throw new ConflictException(
+            "Gara 업체 계좌번호가 없어 충전을 확정할 수 없습니다."
+          );
+        }
+
+        const now = new Date();
+        const debited = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          UPDATE "CreditAccount"
+          SET
+            "balance" = "balance" - ${BigInt(amount)},
+            "version" = "version" + 1,
+            "updatedAt" = ${now}
+          WHERE "id" = ${account.id}
+            AND "balance" >= ${BigInt(amount)}
+          RETURNING "id"
+        `);
+        if (debited.length === 0) {
+          throw new ConflictException("크레딧 잔액이 부족합니다.");
+        }
+
+        const accountAfterPayout = await tx.creditAccount.findUniqueOrThrow({
+          where: { id: account.id }
+        });
+        const payoutId = `gara-vendor-payout-${randomUUID()}`;
+        const payoutKey = `gara-topup-payout:${order.orderId}`;
+        const payoutLedger = await tx.creditLedgerEntry.create({
+          data: {
+            id: `credit-ledger-${randomUUID()}`,
+            creditAccountId: account.id,
+            type: "MANUAL_DEBIT",
+            signedAmount: -BigInt(amount),
+            balanceAfter: accountAfterPayout.balance,
+            referenceType: "GARA_VENDOR_PAYOUT_REQUEST",
+            referenceId: payoutId,
+            idempotencyKey: payoutKey
+          }
+        });
+        await tx.garaVendorPayoutRequest.create({
+          data: {
+            id: payoutId,
+            managerId,
+            managerVendorId: registration.id,
+            vendorId: registration.vendorId,
+            creditAccountId: account.id,
+            ledgerEntryId: payoutLedger.id,
+            topupOrderId: order.id,
+            amount: BigInt(amount),
+            accountNumberSnapshot: accountNumber,
+            status: "CREDIT_DEBITED",
+            idempotencyKey: payoutKey,
+            payloadHash: canonicalHash({
+              amount: String(amount),
+              managerId,
+              managerVendorId: registration.id,
+              topupOrderId: order.id
+            }),
+            createdAt: now
+          }
+        });
+      }
 
       await this.events.enqueue(tx, {
         event: {

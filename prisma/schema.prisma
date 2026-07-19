@@ -1228,7 +1228,7 @@ model CreditTopupOrder {
   updatedAt       DateTime               @updatedAt
 
   creditAccount CreditAccount @relation(fields: [creditAccountId, managerId], references: [id, managerId], onDelete: Restrict)
-  garaManagerVendor ManagerVendor? @relation("GaraTopupOrderRegistration", fields: [garaManagerVendorId], references: [id], onDelete: SetNull)
+  garaManagerVendor ManagerVendor? @relation("GaraTopupOrderRegistration", fields: [garaManagerVendorId], references: [id], onDelete: Restrict)
   garaVendorPayoutRequest GaraVendorPayoutRequest?
 
   @@index([managerId, status, updatedAt])
