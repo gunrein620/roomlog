@@ -1751,12 +1751,23 @@ export class RoomlogContractDomain {
     const acceptedAt = this.requireAcceptedEventTime(input.acceptedAt);
     const contractId = `ct_trade_${tradeContractId}`;
     const deterministic = this.store.contracts.find((contract) => contract.id === contractId);
-    const room: Room = resolved.room ?? {
+    const buildingName =
+      typeof input.listingTitle === "string" && input.listingTitle.trim()
+        ? input.listingTitle.trim()
+        : resolved.address;
+    // 주소 표기 차이로 resolveExactTradeRoom이 놓친 같은 호실을 (건물명, 호수)로 한 번 더 찾는다 —
+    // DB Room 유니크가 이 키라서, 놓치고 새로 만들면 미러가 유니크 충돌로 죽는다(2026-07-19 장애).
+    const sameKeyRoom =
+      resolved.room ??
+      this.store.rooms.find(
+        (item) =>
+          item.landlordId === input.landlordId &&
+          item.buildingName === buildingName &&
+          this.normalizeUnit(item.roomNo) === resolved.unit
+      );
+    const room: Room = sameKeyRoom ?? {
       id: id("room"),
-      buildingName:
-        typeof input.listingTitle === "string" && input.listingTitle.trim()
-          ? input.listingTitle.trim()
-          : resolved.address,
+      buildingName,
       roomNo: resolved.unit,
       address: resolved.address,
       landlordId: input.landlordId

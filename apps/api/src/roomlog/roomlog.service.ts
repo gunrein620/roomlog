@@ -7461,8 +7461,10 @@ export class RoomlogService implements OnModuleDestroy {
       throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
     }
 
+    // dedupe 키는 DB Room 유니크 제약과 같은 (건물명, 호수)여야 한다. 주소 표기 차이("55-5" vs
+    // "55-5 303")로 같은 호실이 중복 생성되면 미러 tx가 유니크 충돌로 영구 실패한다(2026-07-19 장애).
     const existingRoom = this.store.rooms.find(
-      (room) => room.buildingName === buildingName && room.roomNo === roomNo && room.address === address
+      (room) => room.buildingName === buildingName && room.roomNo === roomNo
     );
     const room =
       existingRoom ??
@@ -7478,6 +7480,7 @@ export class RoomlogService implements OnModuleDestroy {
       throw new ForbiddenException("담당 호실에만 도면을 저장할 수 있습니다.");
     }
     room.landlordId = ownerId;
+    room.address = address;
 
     if (!existingRoom) {
       this.store.rooms.push(room);
@@ -10815,6 +10818,12 @@ export class RoomlogService implements OnModuleDestroy {
           if (generation >= (this.persistenceFailure?.generation ?? -1)) {
             this.persistenceFailure = { generation, error };
           }
+          // 미러 실패는 durability 게이트를 통해 이후 저장 API를 전부 500으로 만든다 —
+          // 조용히 쌓이면 원인 추적이 늦어지므로 즉시 로그로 드러낸다.
+          console.error(
+            `[roomlog] 스토어 DB 미러 실패 (generation ${generation}):`,
+            error instanceof Error ? error.message : error
+          );
         }
       );
     return generation;
