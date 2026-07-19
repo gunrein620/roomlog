@@ -132,6 +132,11 @@ const FAILED_CHAMFER_METERS = 0.5;
 const FAILED_IOU = 0.35;
 const AMBIGUOUS_SCORE_MARGIN = 0.06;
 
+// ⚠️ 자리채움일 뿐 정합 결과가 아니다. rotX는 "정합"이 아니라 **파일 포맷** 문제라서(Spark가 .ply는
+// Y-down으로, .spz는 Y-up으로 읽음) 소비하는 쪽이 소스 확장자로 결정해야 한다 —
+// web/splat-tour/splat-orientation.ts의 defaultRotationXDegreesForSrc가 정본이고,
+// register 페이지가 자동 후보를 적용할 때 이 값을 그 함수 결과로 덮는다.
+// 이걸 그대로 저장하면 이미 Y-up으로 구워진 spz가 한 번 더 뒤집힌다(2026-07-20 실측 회귀).
 const FIXED_ROTATION_X_DEGREES = 180;
 const FIXED_SCALE_MULTIPLIER = 1;
 const FIXED_OFFSET_Y = 0;

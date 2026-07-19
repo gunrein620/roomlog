@@ -288,8 +288,17 @@ export default function Page() {
 
   // best + 대안 중 최대 2개 = 후보 최대 3개("ambiguous" 카드가 소비).
   const autoCandidates = autoResult ? [autoResult.best, ...autoResult.alternatives.slice(0, 2)] : null;
+  // rotX는 "정합"이 아니라 "파일 포맷" 문제다 — 매처는 yaw+xz만 풀고 rotX엔 자리채움(180)을 넣는데,
+  // 그대로 저장하면 위 수동 경로가 겪었던 것과 같은 회귀가 난다: SplatScene은 저장된 transform.rotX를
+  // 포맷 기본값(.spz=0)보다 우선하므로(splat-scene.tsx:771), 이미 Y-up으로 구워진 spz가 한 번 더
+  // 뒤집혀 거꾸로 보인다(2026-07-20 실측). 수동 경로(위 247행)와 동일하게 포맷 기반 값으로 덮는다.
   const selectedAutoTransform =
-    autoCandidates && selectedAutoIndex !== null ? autoCandidates[selectedAutoIndex].transform : null;
+    autoCandidates && selectedAutoIndex !== null
+      ? {
+          ...autoCandidates[selectedAutoIndex].transform,
+          rotationXDegrees: defaultRotationXDegreesForSrc(splatSrc)
+        }
+      : null;
   // 자동 후보가 선택돼 있으면 그게 우선(수동 픽을 덮음). 선택 해제(수동 전환) 시 즉시 수동값으로 복귀.
   const effectiveTransform = selectedAutoTransform ?? transform;
 
