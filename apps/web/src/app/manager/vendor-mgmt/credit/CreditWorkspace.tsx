@@ -788,7 +788,13 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
             )}
           </div>
           <div className={styles.policyActions}>
-            <span>최근 저장 {formatDate(workspace.policy.updatedAt)}</span>
+            <span>
+              최근 저장 {formatDate(workspace.policy.updatedAt)}
+              {workspace.policy.mode === "AUTO_DEBIT_UNDER_LIMIT"
+                && typeof workspace.policy.perRequestLimit === "number"
+                ? ` · 저장된 금액 ${won(workspace.policy.perRequestLimit)}`
+                : " · 저장된 금액 없음"}
+            </span>
             <button className={styles.primaryButton} type="submit" disabled={busyKeys.has("policy") || demoReadOnly}>
               {busyKeys.has("policy") ? "저장 중" : "저장"}
             </button>

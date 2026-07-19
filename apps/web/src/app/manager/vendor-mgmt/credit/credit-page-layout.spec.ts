@@ -43,6 +43,11 @@ test("labels the policy submit button as save", () => {
   assert.doesNotMatch(workspaceSource, /"정책 저장"/);
 });
 
+test("shows the currently saved automatic debit limit beside the save action", () => {
+  assert.match(workspaceSource, /저장된 금액/);
+  assert.match(workspaceSource, /won\(workspace\.policy\.perRequestLimit\)/);
+});
+
 test("keeps Gara payout cards focused on vendor, requested date, paid date, and amount", () => {
   assert.match(garaPayoutSection, /request\.vendorName/);
   assert.match(garaPayoutSection, /요청일/);
