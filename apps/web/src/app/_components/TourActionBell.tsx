@@ -77,8 +77,8 @@ export default function TourActionBell() {
         className="tour-bell-button"
         aria-label={count > 0 ? `3D 투어 조치 필요 알림 ${count}건` : "3D 투어 조치 필요 알림 없음"}
         aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open && count > 0}
+        onClick={() => setOpen((value) => count > 0 && !value)}
       >
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -86,27 +86,24 @@ export default function TourActionBell() {
         </svg>
         {count > 0 ? <span className="tour-bell-badge">{count}</span> : null}
       </button>
-      {open ? (
+      {/* 조치할 매물이 없으면 팝업 자체를 열지 않는다 — 빈 안내 문구가 더 어색하다는 피드백. */}
+      {open && count > 0 ? (
         <div className="tour-bell-menu" role="menu" aria-label="3D 투어 조치 필요 매물">
           <p className="tour-bell-menu-title">3D 투어 조치 필요</p>
-          {count === 0 ? (
-            <p className="tour-bell-empty">정합이 필요한 매물이 없어요.</p>
-          ) : (
-            <ul className="tour-bell-list">
-              {actions.map((action) => (
-                <li key={`${action.listingId}-${action.assetId}`}>
-                  <a
-                    className={action.status === "UPLOADED" ? "tour-bell-item is-uploaded" : "tour-bell-item is-failed"}
-                    href={actionHref(action)}
-                    role="menuitem"
-                    onClick={() => setOpen(false)}
-                  >
-                    {actionLabel(action)}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ul className="tour-bell-list">
+            {actions.map((action) => (
+              <li key={`${action.listingId}-${action.assetId}`}>
+                <a
+                  className={action.status === "UPLOADED" ? "tour-bell-item is-uploaded" : "tour-bell-item is-failed"}
+                  href={actionHref(action)}
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                >
+                  {actionLabel(action)}
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
     </div>

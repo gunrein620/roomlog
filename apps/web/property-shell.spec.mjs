@@ -923,13 +923,12 @@ test("trade update badge ignores messages sent by the current viewer", () => {
 
 test("owner registration state survives refresh via a versioned local draft with no fake prefills", () => {
   // QA 8 + 사전 입력 제거: 폼은 빈 값으로 시작하고, 작성/등록 상태는 localStorage draft로 유지된다.
+  // "임시저장됨" 상태 라벨은 사용자 결정(2026-07-19)으로 화면에서 제거 — 저장 동작 자체만 검증한다.
   assert.match(pageSource, /useState\(emptyOwnerForm\)/);
   assert.match(pageSource, /OWNER_DRAFT_STORAGE_KEY/);
   assert.match(pageSource, /parseOwnerDraft/);
   assert.match(pageSource, /serializeOwnerDraft/);
-  assert.match(pageSource, /임시저장됨/);
   assert.doesNotMatch(pageSource, /title: "방배 루미에르 402호",\s*\n\s*address: "서울특별시 서초구 방배동"/);
-  assert.match(cssSource, /\.owner-draft-status/);
 });
 
 test("login success consumes the pushed auth history entry so back does not reopen the login screen", () => {

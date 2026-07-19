@@ -19,7 +19,6 @@ const FloorPlan3DPreview = dynamic(
 import {
   OWNER_DRAFT_STORAGE_KEY,
   emptyOwnerForm,
-  formatDraftSavedAt,
   initialOwnerListings,
   parseOwnerDraft,
   saveOwnerDraft
@@ -953,12 +952,6 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 <h3 id="owner-registration-title" className="owner-form-title">매물등록</h3>
               </div>
             </div>
-
-            {draftSavedAt ? (
-              <small className="owner-draft-status" role="status">
-                임시저장됨 · {formatDraftSavedAt(draftSavedAt)} — 새로고침해도 작성 내용이 유지됩니다.
-              </small>
-            ) : null}
 
             {/* 1열 기본 — 짝을 이루는 필드(전용면적|층수, 보증금|월세)만 owner-step1-pair로 묶는다.
                 owner-group-caption으로 필드 묶음의 의미를 나눈다. */}
