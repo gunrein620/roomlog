@@ -7397,6 +7397,8 @@ p {
 }
 
 .tenant-defect-messages li {
+  align-self: flex-start;
+  max-width: 82%;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -7407,6 +7409,7 @@ p {
 }
 
 .tenant-defect-messages li[data-sender="TENANT"] {
+  align-self: flex-end;
   border-color: color-mix(in srgb, var(--blue) 30%, var(--line));
   background: color-mix(in srgb, var(--blue-soft) 45%, var(--paper));
 }
