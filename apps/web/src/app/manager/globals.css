@@ -3253,53 +3253,24 @@ html:has(.manager-workspace) {
   font-weight: var(--fw-subtitle);
 }
 
-.manager-defect-dashboard__more-action {
-  width: var(--touch-target);
-  height: var(--touch-target);
-  display: grid;
-  place-items: center;
-  border: 0;
+.manager-defect-dashboard__detail-action {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--primary);
   border-radius: var(--radius);
-  color: var(--on-surface-variant);
-  background: transparent;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.manager-defect-dashboard__more-action[aria-expanded="true"] {
   color: var(--primary);
-  background: var(--primary-container);
-}
-
-.manager-defect-dashboard__more-menu-list {
-  position: fixed;
-  z-index: var(--z-floating);
-  min-width: calc(var(--touch-target) * 4);
-  display: grid;
-  gap: var(--space-xs);
-  padding: var(--space-xs);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-container-lowest);
-  box-shadow: var(--shadow);
-}
-
-.manager-defect-dashboard__more-menu-list[data-positioned="false"] {
-  visibility: hidden;
-}
-
-.manager-defect-dashboard__more-menu-list a {
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius);
-  color: var(--on-surface);
+  background: transparent;
   text-decoration: none;
   white-space: nowrap;
   font-size: var(--fs-caption);
   font-weight: var(--fw-subtitle);
 }
 
-.manager-defect-dashboard__more-menu-list a:hover,
-.manager-defect-dashboard__more-menu-list a:focus-visible {
+.manager-defect-dashboard__detail-action:hover,
+.manager-defect-dashboard__detail-action:focus-visible {
   color: var(--on-primary-container);
   background: var(--primary-container);
 }
@@ -3364,8 +3335,7 @@ html:has(.manager-workspace) {
 .manager-defect-dashboard__filter-panel select:focus-visible,
 .manager-defect-dashboard__job-link:focus-visible,
 .manager-defect-dashboard__primary-action:focus-visible,
-.manager-defect-dashboard__more-action:focus-visible,
-.manager-defect-dashboard__more-menu-list a:focus-visible,
+.manager-defect-dashboard__detail-action:focus-visible,
 .manager-defect-dashboard__pagination button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -4687,11 +4657,89 @@ html:has(.manager-workspace) {
   line-height: var(--lh-body);
 }
 
+.manager-ticket-panel__selected-attachments {
+  display: flex;
+  gap: var(--space-xs);
+  overflow-x: auto;
+}
+
+.manager-ticket-panel__selected-attachments figure {
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(var(--touch-target) + var(--space-lg));
+  height: calc(var(--touch-target) + var(--space-lg));
+  margin: 0;
+}
+
+.manager-ticket-panel__selected-attachments img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+.manager-ticket-panel__selected-attachments button {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-xs);
+  width: calc(var(--touch-target) / 2);
+  height: calc(var(--touch-target) / 2);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  cursor: pointer;
+}
+
+.manager-ticket-panel__selected-attachments button svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
 .manager-ticket-panel__composer-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
+}
+
+.manager-ticket-panel__composer-actions > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-panel__attach-button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-md);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.manager-ticket-panel__attach-button:hover {
+  background: var(--surface-container);
+}
+
+.manager-ticket-panel__attach-button svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-ticket-panel__attach-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .manager-ticket-panel__composer-actions a {
