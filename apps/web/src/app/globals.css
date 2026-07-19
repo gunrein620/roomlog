@@ -1,22 +1,27 @@
 :root {
-  --ink: #171923;
-  --muted: #6f7787;
-  --subtle: #9aa1af;
-  --line: #e3e6ed;
-  --paper: #ffffff;
-  --canvas: #f5f6f8;
-  --blue: #2f55ff;
-  --blue-dark: #173ad7;
-  --blue-soft: #eef2ff;
+  /* 우주(WOOZU) 테마 — 딥퍼플 60 / 연보라 30 / 코랄핑크 10 */
+  --ink: #20184a;       /* 본문·제목 (딥퍼플) */
+  --muted: #5a5478;     /* 보조 텍스트 */
+  --subtle: #9a95b0;    /* 옅은 텍스트 */
+  --line: #ece8f4;      /* 경계선 (연보라 라인) */
+  --paper: #ffffff;     /* 카드 */
+  --canvas: #faf8fc;    /* 프레임 배경 */
+  --blue: #20184a;      /* 강조·active·아이콘 (딥퍼플) — 변수명은 호환 위해 유지 */
+  --blue-dark: #17133a; /* 더 진한 강조 */
+  --blue-soft: #efecfa; /* 옅은 강조 면 (연보라) */
+  --pink: #f2899d;      /* 핵심 CTA·'우주'에만 (코랄핑크 10%) */
+  --pink-deep: #c25370; /* 밝은 배경 위 핑크 링크/강조 */
   --green: #00bf72;
   --kakao: #fee500;
-  --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
+  --shadow: 0 18px 44px rgba(26, 19, 48, 0.10);
   font-family:
+    "Pretendard",
+    "Noto Sans KR",
     Arial,
     Helvetica,
     sans-serif;
   color: var(--ink);
-  background: #e9edf3;
+  background: var(--canvas);
 }
 
 * {
@@ -27,17 +32,24 @@ html,
 body {
   min-height: 100%;
   margin: 0;
+  /* 가로 스크롤 전역 가드 — 한 요소가 삐져나와도 페이지가 옆으로 밀리지 않게 (hidden이 아닌 clip: 스크롤 컨테이너화 방지) */
+  overflow-x: clip;
 }
 
 body {
   background:
-    radial-gradient(circle at 22% 4%, rgba(47, 85, 255, 0.15), transparent 28%),
-    radial-gradient(circle at 82% 80%, rgba(0, 191, 114, 0.11), transparent 28%),
-    #e9edf3;
+    radial-gradient(circle at 22% 4%, rgba(87, 71, 207, 0.14), transparent 30%),
+    radial-gradient(circle at 82% 80%, rgba(242, 137, 157, 0.10), transparent 30%),
+    var(--canvas);
 }
 
+/* 로그인 = 밤하늘 위 카드 (A안) — 카드 뒤 달무리(성운 글로우)로 명도를 계단식으로 잇는다 */
 body:has(.login-canvas) {
-  background: #ffffff;
+  background:
+    url("/login-stars.svg") center / cover no-repeat,
+    radial-gradient(ellipse 62% 46% at 50% 46%, rgba(122, 104, 224, 0.3), transparent 72%),
+    radial-gradient(ellipse 30% 22% at 50% 38%, rgba(242, 137, 157, 0.12), transparent 70%),
+    linear-gradient(160deg, #17133a, #2a1f52 55%, #241d4e);
 }
 
 button,
@@ -62,20 +74,164 @@ img {
 }
 
 .app-canvas {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 0;
 }
 
 .login-canvas {
-  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 40px 16px 48px;
+  background: transparent;
 }
 
+/* 밤하늘 위 브랜드·헤드라인 — 흰 세리프 + '우주' 핑크 (홈 히어로와 같은 문법) */
+.login-hero {
+  color: #f4f1fd;
+  text-align: center;
+}
+
+/* trim 로고(홈과 동일 자산) — 누르면 홈 복귀. a/button 모두 중앙 정렬되도록 fit-content */
+.login-hero-logo {
+  position: relative;
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 0;
+  background: none;
+}
+
+.login-hero-logo img {
+  position: relative;
+  z-index: 2;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* 궤도 별 — 로고 속 궤적처럼 타원으로 공전. 뒤쪽 반궤도에선 로고 뒤(z-index 1)로
+   들어가 가려졌다가 반대편에서 다시 앞(z-index 3)으로 나온다. 스케일로 원근감. */
+.login-hero-logo::after {
+  content: "✦";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  color: var(--pink);
+  font-size: 19px;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(242, 137, 157, 0.85);
+  pointer-events: none;
+  offset-path: path("M 0 38 A 92 38 0 1 1 0 -38 A 92 38 0 1 1 0 38");
+  offset-rotate: 0deg;
+  animation: login-star-orbit 2s linear infinite;
+}
+
+/* 혜성 리듬: 타원의 긴 구간(앞·뒤 가로 스윕)은 빠르게 슝, 양끝 짧은 턴에서는
+   잠깐 정체. offset-distance 체크포인트를 비선형 배분해 속도를 만든다.
+   (d=0 앞중앙 · d=25/75 양끝 턴 · d=50 뒤중앙) */
+@keyframes login-star-orbit {
+  0%   { offset-distance: 0%;   transform: scale(1);    opacity: 1;    z-index: 3; }
+  7%   { offset-distance: 15%;  transform: scale(0.9);  opacity: 1;    z-index: 3; }
+  25%  { offset-distance: 25%;  transform: scale(0.75); opacity: 0.95; z-index: 3; }
+  27%  { z-index: 1; }
+  43%  { offset-distance: 35%;  transform: scale(0.6);  opacity: 0.85; z-index: 1; }
+  50%  { offset-distance: 50%;  transform: scale(0.55); opacity: 0.8;  z-index: 1; }
+  57%  { offset-distance: 65%;  transform: scale(0.6);  opacity: 0.85; z-index: 1; }
+  73%  { z-index: 1; }
+  75%  { offset-distance: 75%;  transform: scale(0.75); opacity: 0.95; z-index: 3; }
+  93%  { offset-distance: 85%;  transform: scale(0.9);  opacity: 1;    z-index: 3; }
+  100% { offset-distance: 100%; transform: scale(1);    opacity: 1;    z-index: 3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-hero-logo::after {
+    animation: none;
+    offset-distance: 12%;
+  }
+}
+
+.login-hero h1 {
+  margin: 18px 0 0;
+  color: #ffffff;
+  font-family: "Gowun Batang", serif;
+  font-size: 2.1rem;
+  font-weight: 700;
+}
+
+.login-hero h1 .hero-woozu {
+  color: var(--pink);
+}
+
+.login-hero .login-hero-sub {
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+}
+
+/* 이메일로 계속하기 — 소셜 스택과 같은 결(흰 버튼 + 봉투 아이콘), 누르면 아래로 폼 전개 */
+.email-login-button {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.email-login-button:hover {
+  background: #faf8fc;
+  border-color: #e1dcef;
+  box-shadow: 0 8px 18px rgba(32, 24, 74, 0.1);
+}
+
+.email-login-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+/* 회원가입·업체 등록 보조 링크 — 한 줄씩 세로 스택, 폰트·밑줄 통일 */
+.login-alt-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.login-alt-links a {
+  display: inline-block;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-caption);
+  line-height: var(--lh-caption);
+  text-decoration: underline;
+  text-underline-offset: var(--space-xs);
+}
+
+/* 로그인 확인 중 — 밤하늘 위 흰 텍스트 (라이트 배경 플래시 방지) */
+.login-canvas .auth-check-screen {
+  color: #ffffff;
+}
+
+.login-canvas .auth-check-screen span {
+  color: #cbbff5;
+}
+
+/* 밤하늘 위 글래스 카드 — 별빛이 살짝 배어 보이게 (배지·하트와 같은 blur 문법) */
 .login-canvas .login-phone {
-  box-shadow: none;
+  min-height: 0;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 30px 70px rgba(11, 8, 30, 0.5);
 }
 
 .auth-check-screen {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-content: center;
   gap: 10px;
@@ -98,7 +254,7 @@ img {
 .login-phone,
 .service-frame {
   width: min(100%, 430px);
-  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0 auto;
   overflow: clip;
   background: var(--canvas);
@@ -235,7 +391,7 @@ img {
 .brand-star svg {
   width: 100%;
   height: 100%;
-  fill: #ec6a86;
+  fill: #f2899d;
   filter: drop-shadow(0 0 12px rgba(236, 106, 134, 0.65));
 }
 
@@ -329,7 +485,7 @@ p {
   padding: 10px 0;
   overflow: hidden;
   border-radius: 18px;
-  background: linear-gradient(120deg, #f4f6fb 0%, #f8f5fa 52%, #f4faf8 100%);
+  background: linear-gradient(120deg, #f5f2fb 0%, #f8f5fa 52%, #f4faf8 100%);
   box-shadow: inset 0 0 0 1.5px rgba(108, 118, 158, 0.1);
 }
 
@@ -352,7 +508,7 @@ p {
   font-weight: 900;
   letter-spacing: -0.02em;
   white-space: nowrap;
-  background-image: linear-gradient(100deg, #173ad7 0%, #4c6ffb 35%, #8fa4ff 65%, #173ad7 100%);
+  background-image: linear-gradient(100deg, #17133a 0%, #3b2f7a 35%, #a99fd8 65%, #17133a 100%);
   background-size: 240% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -471,8 +627,8 @@ p {
 }
 
 .social-button.google:hover {
-  background: #f8faff;
-  border-color: #d2e3fc;
+  background: #faf8fc;
+  border-color: #ece8f4;
   box-shadow: 0 1px 3px rgba(66, 133, 244, 0.15);
 }
 
@@ -493,9 +649,9 @@ p {
 .social-login-notice {
   margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid #dfe5ef;
+  border: 1px solid #ece8f4;
   border-radius: 12px;
-  background: #f8fbff;
+  background: #faf8fc;
   color: #596170;
   font-size: 0.76rem;
   font-weight: 900;
@@ -507,7 +663,7 @@ p {
   gap: 12px;
   margin-top: 16px;
   padding: 14px;
-  border: 1px solid #dfe5ef;
+  border: 1px solid #ece8f4;
   border-radius: 16px;
   background: #ffffff;
   box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);
@@ -561,8 +717,61 @@ p {
 
 .service-login-form input:focus,
 .signup-form input:focus {
-  outline: 2px solid rgba(47, 85, 255, 0.18);
+  outline: 2px solid rgba(32, 24, 74, 0.18);
   border-color: var(--blue);
+}
+
+/* 비밀번호 보기 — 입력창 우측 눈 아이콘 토글 */
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 46px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: var(--subtle);
+}
+
+.password-toggle:hover {
+  color: var(--ink);
+}
+
+/* 이메일 저장 · 자동 로그인 체크 줄 */
+.login-remember-row {
+  display: flex;
+  gap: 18px;
+}
+
+/* .service-login-form label(grid) 공통 규칙보다 특이성을 높여 가로 정렬 유지 */
+.service-login-form .login-check,
+.login-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 폼 공통 input 스타일(46px 박스)이 체크박스를 삼키지 않게 원복 */
+.login-check input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--blue);
 }
 
 .service-login-submit,
@@ -593,12 +802,15 @@ p {
 }
 
 .service-signup-link,
+/* 보조 링크 — 로그인 하단 링크(.login-alt-links a)와 동일 문법 */
 .signup-back-link {
-  color: var(--blue);
-  font-size: 0.82rem;
-  font-weight: 950;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-caption);
+  line-height: var(--lh-caption);
   text-align: center;
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: var(--space-xs);
 }
 
 .login-vendor-activation-entry {
@@ -626,7 +838,7 @@ p {
   margin-top: 12px;
   background: var(--blue);
   color: #ffffff;
-  box-shadow: 0 14px 26px rgba(47, 85, 255, 0.26);
+  box-shadow: 0 14px 26px rgba(32, 24, 74, 0.26);
 }
 
 .dev-login-panel {
@@ -686,12 +898,11 @@ p {
   text-align: center;
 }
 
+/* 회원가입 = 로그인과 같은 밤하늘 (배경은 body:has(.login-canvas)가 담당) */
 .signup-page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
+  min-height: 100dvh;
   padding: 42px 18px;
-  background: linear-gradient(135deg, #f4f7ff 0%, #ffffff 46%, #f3fbf8 100%);
+  background: transparent;
 }
 
 .signup-card {
@@ -699,10 +910,11 @@ p {
   display: grid;
   gap: 18px;
   padding: 26px;
-  border: 1px solid #dfe5ef;
-  border-radius: 20px;
-  background: #ffffff;
-  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.1);
+  border: 0;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 30px 70px rgba(11, 8, 30, 0.5);
 }
 
 .signup-brand {
@@ -800,6 +1012,11 @@ p {
   padding-top: 4px;
 }
 
+/* 모바일 홈 = 히어로 밴드 바로 아래 기능 헤더 — 밴드와 숨 고를 간격 */
+.web-hero-head + .app-header {
+  margin-top: 18px;
+}
+
 .app-header h1 {
   margin-top: 6px;
   font-size: 1.48rem;
@@ -820,7 +1037,6 @@ p {
 }
 
 .round-button,
-.search-box button,
 .map-topbar > button,
 .section-title button,
 .listing-photo button,
@@ -858,26 +1074,21 @@ p {
   box-shadow: 0 8px 16px rgba(18, 24, 40, 0.06);
 }
 
+/* 5b 검색 카드 — 전세·월세/매매 탭 + 지역/유형/가격 필드 + 핑크 검색 (모바일 기본) */
 .search-box {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 50px;
+  display: block;
   margin-top: 14px;
-  padding: 0 12px;
-  border: 1px solid #cbd1dd;
-  border-radius: 14px;
+  padding: 16px;
+  border-radius: 16px;
   background: var(--paper);
-  box-shadow: 0 12px 24px rgba(18, 24, 40, 0.06);
+  box-shadow: 0 12px 24px rgba(26, 19, 48, 0.08);
 }
 
-.search-box > svg,
 .map-topbar label svg {
   flex: 0 0 auto;
   color: var(--blue);
 }
 
-.search-box input,
 .map-topbar input {
   width: 100%;
   min-width: 0;
@@ -887,18 +1098,85 @@ p {
   color: var(--ink);
 }
 
-.search-box input::placeholder {
-  color: #a5acba;
+.search-deal-tabs {
+  display: flex;
+  gap: 20px;
 }
 
-.search-box button {
-  width: auto;
-  min-width: 48px;
+.search-deal-tab {
+  padding: 0 0 8px;
+  border: 0;
+  background: none;
+  color: var(--subtle);
+  font-size: 0.95rem;
+  font-weight: 800;
+  border-bottom: 2px solid transparent;
+}
+
+.search-deal-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.search-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.search-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.search-field-label {
+  color: var(--subtle);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.search-field-value {
+  max-width: 100%;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ▾ 글리프 → lucide ChevronDown 전환분 — 인라인 svg 베이스라인 보정 */
+.search-field-value svg {
+  display: inline;
+  vertical-align: -3px;
+  color: var(--subtle);
+}
+
+.search-field-divider {
+  flex: none;
+  width: 1px;
   height: 34px;
-  border-radius: 9px;
-  box-shadow: none;
-  color: var(--blue);
-  font-size: 0.78rem;
+  background: var(--line);
+}
+
+.search-submit {
+  flex: none;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--pink);
+  color: #0b0b12;
+  font-size: 0.95rem;
+  font-weight: 800;
 }
 
 .category-strip,
@@ -922,60 +1200,44 @@ p {
   display: none;
 }
 
-.category-card {
-  flex: 0 0 88px;
-  display: grid;
-  min-width: 88px;
-  min-height: 66px;
-  align-content: space-between;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--paper);
-  cursor: pointer;
-  text-align: left;
-  -webkit-user-drag: none;
+/* .category-card 계열은 5b 언더라인 탭 전환 때 JSX에서 사라진 사체라 제거됨 */
+
+/* 5b 언더라인 카테고리 탭 — 데스크톱 블록에만 있던 위계(밑줄·색)를 전 뷰포트 base로 승격 */
+.category-strip {
+  gap: 20px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--line);
 }
 
-.category-card i {
-  display: inline-grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-style: normal;
-}
-
-.category-card i svg {
-  width: 18px;
-  height: 18px;
-}
-
-.category-card span {
-  font-size: 0.88rem;
-  font-weight: 900;
-}
-
-.category-card strong {
+.category-tab {
+  flex: none;
+  padding: 8px 0 10px;
+  border: 0;
+  background: none;
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
 }
 
-.category-card.active {
-  border-color: var(--blue);
-  background: var(--blue);
-  color: #ffffff;
+.category-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
 
-.category-card.active i {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-}
+/* 터치 기기 = 최소 48px 히트영역 (hallmark responsive 게이트) — 시각 밀도는 유지, 타깃만 확장 */
+@media (pointer: coarse) {
+  .search-deal-tab,
+  .category-tab {
+    min-height: 48px;
+  }
 
-.category-card.active strong {
-  color: rgba(255, 255, 255, 0.78);
+  .quick-filter-row button,
+  .map-filter-row button {
+    min-height: 44px;
+    padding: 0 14px;
+  }
 }
 
 @media (max-width: 759px) {
@@ -988,7 +1250,7 @@ p {
     cursor: grabbing;
   }
 
-  .category-strip .category-card {
+  .category-strip .category-tab {
     cursor: inherit;
   }
 }
@@ -1024,9 +1286,9 @@ p {
   gap: 12px;
   margin-top: 8px;
   padding: 8px 11px;
-  border: 1px solid rgba(47, 85, 255, 0.18);
+  border: 1px solid rgba(32, 24, 74, 0.18);
   border-radius: 13px;
-  background: #f8faff;
+  background: #faf8fc;
 }
 
 .filter-feedback strong {
@@ -1187,9 +1449,9 @@ p {
   flex: 0 0 auto;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(47, 85, 255, 0.22);
+  border: 1px solid rgba(32, 24, 74, 0.22);
   border-radius: 999px;
-  background: #f7f9ff;
+  background: #faf8fc;
   color: var(--blue);
   font-size: 0.76rem;
   font-weight: 900;
@@ -1222,7 +1484,7 @@ p {
   gap: 12px;
   padding: 15px;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.08), rgba(255, 255, 255, 0.95)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.08), rgba(255, 255, 255, 0.95)),
     #ffffff;
 }
 
@@ -1340,7 +1602,7 @@ p {
   padding: 0 12px;
   border: 1px solid #d4d9e5;
   border-radius: 999px;
-  background: #f8faff;
+  background: #faf8fc;
   color: #2f3542;
   font-size: 0.78rem;
   font-weight: 900;
@@ -1435,7 +1697,7 @@ p {
   gap: 8px;
   padding: 16px;
   border-left: 1px solid var(--line);
-  background: #f7f9ff;
+  background: #faf8fc;
 }
 
 .map-provider-status strong {
@@ -1471,7 +1733,7 @@ p {
   gap: 5px;
   padding: 10px;
   border-radius: 14px;
-  background: #f8faff;
+  background: #faf8fc;
   text-align: left;
 }
 
@@ -1594,9 +1856,9 @@ p {
   gap: 9px;
   min-height: 44px;
   padding: 8px 10px;
-  border: 1px solid #dfe5ef;
+  border: 1px solid #ece8f4;
   border-radius: 13px;
-  background: #f9fbff;
+  background: #faf8fc;
 }
 
 .neighborhood-rank-list b {
@@ -1630,7 +1892,7 @@ p {
   gap: 13px;
   padding: 16px;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.08), rgba(255, 255, 255, 0.96)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.08), rgba(255, 255, 255, 0.96)),
     #ffffff;
 }
 
@@ -1661,7 +1923,7 @@ p {
   align-content: center;
   gap: 4px;
   padding: 8px;
-  border: 1px solid rgba(47, 85, 255, 0.14);
+  border: 1px solid rgba(32, 24, 74, 0.14);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.78);
   text-align: center;
@@ -1727,7 +1989,7 @@ p {
   padding: 20px;
   border: 1px dashed #b9c2d3;
   border-radius: 18px;
-  background: #f9fbff;
+  background: #faf8fc;
   text-align: center;
 }
 
@@ -1763,7 +2025,7 @@ p {
   border: 1px solid var(--line);
   border-radius: 18px;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.07), rgba(255, 255, 255, 0.96)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.07), rgba(255, 255, 255, 0.96)),
     #ffffff;
   box-shadow: 0 10px 22px rgba(18, 24, 40, 0.06);
 }
@@ -1799,7 +2061,7 @@ p {
   align-content: center;
   gap: 4px;
   padding: 10px;
-  border: 1px solid #dfe5ef;
+  border: 1px solid #ece8f4;
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.82);
   color: var(--blue);
@@ -1841,7 +2103,7 @@ p {
 .map-listing-action:focus-visible,
 .save-listing-button:focus-visible,
 .map-listing > button:not(.map-listing-action):focus-visible {
-  outline: 3px solid rgba(47, 85, 255, 0.34);
+  outline: 3px solid rgba(32, 24, 74, 0.34);
   outline-offset: -3px;
 }
 
@@ -1853,6 +2115,50 @@ p {
   width: 100%;
   height: 126px;
   object-fit: cover;
+}
+
+/* ── 썸네일 스티커(시안: 워킹뷰 스티커) — 골드 버스트=1인칭 워킹뷰, 흰 pill=3D 가구 배치.
+   실제 기능 있는 매물에만 부착. 시안(340px 카드, 90px 버스트)을 썸네일 실높이에 비례 축소. ── */
+.thumb-sticker-walk {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  clip-path: polygon(50% 0%, 55.3% 6.32%, 61.97% 1.45%, 65.6% 8.86%, 73.24% 5.73%, 74.99% 13.79%, 83.16% 12.57%, 82.93% 20.82%, 91.15% 21.6%, 88.96% 29.55%, 96.75% 32.27%, 92.72% 39.47%, 99.64% 43.97%, 94% 50%, 99.64% 56.03%, 92.72% 60.53%, 96.75% 67.73%, 88.96% 70.45%, 91.15% 78.4%, 82.93% 79.18%, 83.16% 87.43%, 74.99% 86.21%, 73.24% 94.27%, 65.6% 91.14%, 61.97% 98.55%, 55.3% 93.68%, 50% 100%, 44.7% 93.68%, 38.03% 98.55%, 34.4% 91.14%, 26.76% 94.27%, 25.01% 86.21%, 16.84% 87.43%, 17.07% 79.18%, 8.85% 78.4%, 11.04% 70.45%, 3.25% 67.73%, 7.28% 60.53%, 0.36% 56.03%, 6% 50%, 0.36% 43.97%, 7.28% 39.47%, 3.25% 32.27%, 11.04% 29.55%, 8.85% 21.6%, 17.07% 20.82%, 16.84% 12.57%, 25.01% 13.79%, 26.76% 5.73%, 34.4% 8.86%, 38.03% 1.45%, 44.7% 6.32%);
+  background: linear-gradient(150deg, #fbd877, #f0bc46);
+  color: #2e2258;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  filter: drop-shadow(0 4px 8px rgba(23, 19, 58, 0.32));
+  pointer-events: none;
+}
+
+.thumb-sticker-3d {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 2;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #c25370;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: 0 2px 8px rgba(23, 19, 58, 0.22);
+  pointer-events: none;
 }
 
 .badge-row {
@@ -1869,40 +2175,45 @@ p {
   display: inline-flex;
   min-height: 26px;
   align-items: center;
-  padding: 0 9px;
+  padding: 0 11px;
   border-radius: 999px;
-  background: var(--blue);
-  color: #ffffff;
+  background: #efecfa;
+  color: #5a4fa0;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 800;
+  backdrop-filter: blur(6px);
 }
 
 .badge-row span:nth-child(2),
 .verified-row span:nth-child(2) {
-  background: #111827;
+  background: #e1dcef;
+  color: #20184a;
 }
 
+/* 5b: 원형 하트 — 반투명 + 블러 */
 .save-listing-button {
   position: absolute;
   top: 12px;
   right: 12px;
   display: inline-grid;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   border: 0;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(6px);
   color: var(--ink);
   font-size: 1.15rem;
   font-weight: 900;
-  box-shadow: 0 8px 18px rgba(18, 24, 40, 0.08);
+  box-shadow: 0 8px 18px rgba(26, 19, 48, 0.1);
 }
 
+/* 찜 활성 = 채워진 별 — 브랜드 코랄 딥핑크 */
 .save-listing-button.saved,
 .map-listing > button.saved {
-  background: #fff0f3;
-  color: #e32952;
+  background: #fdeef2;
+  color: var(--pink-deep);
 }
 
 /* 카드 본문 — 가격·제목·스펙·위치 네 줄만. 액션/신뢰 칩은 상세로 넘겼다. */
@@ -2031,7 +2342,7 @@ p {
 }
 
 .map-context-bar strong {
-  border-color: rgba(47, 85, 255, 0.24);
+  border-color: rgba(32, 24, 74, 0.24);
   background: var(--blue);
   color: #ffffff;
 }
@@ -2128,7 +2439,7 @@ p {
 .naver-map-shell[data-state="missing-key"] {
   height: 340px;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.06), rgba(255, 255, 255, 0.72)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.06), rgba(255, 255, 255, 0.72)),
     #eef4f6;
 }
 
@@ -2168,7 +2479,7 @@ p {
   padding-right: 36px;
   padding-left: 36px;
   border-bottom: 1px solid #d9d9d9;
-  color: #2f55ff;
+  color: #20184a;
 }
 
 .naver-info-window-close {
@@ -2204,7 +2515,7 @@ p {
   background: #ffffff;
   color: var(--blue);
   text-align: center;
-  box-shadow: 0 10px 22px rgba(47, 85, 255, 0.22);
+  box-shadow: 0 10px 22px rgba(32, 24, 74, 0.22);
 }
 
 .naver-price-marker::after {
@@ -2317,7 +2628,7 @@ p {
   padding: 0 8px;
   border: 1px solid #dfe5f0;
   border-radius: 999px;
-  background: #f8fbff;
+  background: #faf8fc;
   color: #526078;
   font-size: 0.64rem;
   font-weight: 900;
@@ -2394,7 +2705,7 @@ p {
   gap: 10px;
   align-items: center;
   padding: 12px;
-  border: 1px solid rgba(47, 85, 255, 0.18);
+  border: 1px solid rgba(32, 24, 74, 0.18);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.95);
   box-shadow: 0 16px 36px rgba(18, 24, 40, 0.17);
@@ -2477,16 +2788,16 @@ p {
   gap: 3px 10px;
   align-items: center;
   padding: 9px 10px;
-  border: 1px solid rgba(47, 85, 255, 0.14);
+  border: 1px solid rgba(32, 24, 74, 0.14);
   border-radius: 13px;
-  background: #f8fbff;
+  background: #faf8fc;
   color: inherit;
   text-align: left;
 }
 
 .map-selected-room-list button.active {
-  border-color: rgba(47, 85, 255, 0.72);
-  background: #eef3ff;
+  border-color: rgba(32, 24, 74, 0.72);
+  background: #efecfa;
 }
 
 .map-selected-room-list strong,
@@ -2562,7 +2873,7 @@ p {
   padding: 8px;
   border: 1px solid #e0e5ef;
   border-radius: 13px;
-  background: #f8fbff;
+  background: #faf8fc;
 }
 
 .map-result-summary span {
@@ -2579,9 +2890,9 @@ p {
 .map-sort-feedback {
   margin-top: 10px;
   padding: 9px 11px;
-  border: 1px solid #dce4f8;
+  border: 1px solid #ece8f4;
   border-radius: 11px;
-  background: #f7f9ff;
+  background: #faf8fc;
   color: #4b5872;
   font-size: 0.72rem;
   font-weight: 900;
@@ -2598,7 +2909,7 @@ p {
   display: grid;
   gap: 8px;
   padding: 18px;
-  border: 1px solid #dce4f8;
+  border: 1px solid #ece8f4;
   border-radius: 8px;
   background: #ffffff;
 }
@@ -2646,7 +2957,7 @@ p {
 }
 
 .map-listing > .map-listing-action.active {
-  outline: 2px solid rgba(47, 85, 255, 0.18);
+  outline: 2px solid rgba(32, 24, 74, 0.18);
   outline-offset: 6px;
 }
 
@@ -2785,8 +3096,8 @@ p {
   justify-content: center;
   padding: 0 5px;
   border-radius: 6px;
-  background: #eef3ff;
-  color: #2d43a8;
+  background: #efecfa;
+  color: #2a1f52;
   font-size: 0.58rem;
   font-weight: 900;
   line-height: 1.2;
@@ -2863,7 +3174,7 @@ p {
   gap: 4px;
   padding: 9px;
   border-radius: 12px;
-  background: #f7f9ff;
+  background: #faf8fc;
 }
 
 .complex-map-card dt {
@@ -2913,8 +3224,8 @@ p {
   align-items: center;
   padding: 0 8px;
   border-radius: 999px;
-  background: #eef3ff;
-  color: #2d43a8;
+  background: #efecfa;
+  color: #2a1f52;
   font-size: 0.64rem;
   font-style: normal;
   font-weight: 900;
@@ -2927,12 +3238,12 @@ p {
 }
 
 .agent-map-card footer button:first-child {
-  background: #edf2ff;
+  background: #efecfa;
   color: var(--blue);
 }
 
 .listing-detail-screen {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding-bottom: 128px;
   background: #ffffff;
 }
@@ -3062,6 +3373,895 @@ p {
   font-size: 1.5rem;
 }
 
+/* ══ 3D 히어로 스테이지 — 도면 있는 매물은 3D가 첫 화면 (시안: 3D 도면 리스팅 라이트) ══ */
+
+.detail-3d-hero {
+  position: relative;
+  height: clamp(440px, 66dvh, 620px);
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, #2a2158 0%, #171235 60%, #0f0b24 100%);
+}
+
+/* 시안: 헤더는 별도 바가 아니라 스테이지 위 오버레이 — 스테이지가 최상단부터 시작.
+   배경은 시안의 --color-bg(#faf8fc) — 하단 섹션이 앉는 면. 패널(--color-surface)은 흰색 유지. */
+.listing-detail-screen.has-3d {
+  position: relative;
+  background: var(--canvas);
+}
+
+.listing-detail-screen.has-3d .detail-top-title {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 9;
+  min-height: 0;
+  padding: 18px 16px 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.listing-detail-screen.has-3d .detail-top-title button,
+.listing-detail-screen.has-3d .detail-top-title a {
+  pointer-events: auto;
+}
+
+.listing-detail-screen.has-3d .detail-top-title h1 {
+  color: #ffffff;
+  font-family: "Gowun Batang", serif;
+  font-size: 1.22rem;
+  font-weight: 700;
+}
+
+.listing-detail-screen.has-3d .detail-back-button,
+.listing-detail-screen.has-3d .detail-header-actions button {
+  border-color: rgba(203, 191, 245, 0.3);
+  background: transparent;
+  color: #ebe5ff;
+}
+
+/* 시안의 원형 뒤로가기 */
+.listing-detail-screen.has-3d .detail-back-button {
+  border-radius: 50%;
+}
+
+/* 매물번호 바는 우측 패널 안으로 이동 — 헤더→스테이지 사이 별도 행 제거(시안). */
+
+.listing-detail-screen.has-3d .detail-header-actions button.active {
+  border-color: rgba(242, 137, 157, 0.55);
+  background: rgba(242, 137, 157, 0.14);
+  color: var(--pink);
+}
+
+.detail-3d-hero .listing-tour-room3d.hero-stage {
+  position: absolute;
+  inset: 0;
+}
+
+/* 캔버스는 필름스트립(하단 ~118px) 위 영역을 차지 — 배경은 투명(밤하늘이 비침) */
+.hero-stage .floor-plan-3d-preview {
+  position: absolute;
+  inset: 0 0 118px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+}
+
+.detail-3d-hero .tour-room-loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #cbbff5;
+  font-weight: 800;
+}
+
+/* 우상단 가구 배치 토글 pill */
+.hero-furniture-toggle {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(203, 191, 245, 0.4);
+  border-radius: 999px;
+  background: rgba(23, 19, 58, 0.55);
+  color: #ebe5ff;
+  font-size: 0.8rem;
+  font-weight: 850;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.hero-furniture-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(203, 191, 245, 0.25);
+}
+
+.hero-furniture-toggle-dot.on {
+  background: var(--pink);
+}
+
+/* 좌측 가구 패널 — sheet의 흰 바텀시트를 hero에선 다크 글래스로 재스킨 */
+.hero-stage .listing-tour-furniture {
+  top: 66px;
+  right: auto;
+  bottom: auto;
+  left: 14px;
+  z-index: 7;
+  width: min(252px, calc(100% - 28px));
+  max-height: calc(100% - 200px);
+  padding: 14px;
+  border: 1px solid rgba(203, 191, 245, 0.22);
+  border-radius: 16px;
+  background: rgba(18, 14, 42, 0.82);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+}
+
+.hero-stage .listing-tour-furniture-head strong {
+  color: #ebe5ff;
+}
+
+.hero-furniture-count {
+  margin-left: 6px;
+  color: rgba(203, 191, 245, 0.55);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.hero-stage .listing-tour-furniture-head span {
+  color: rgba(203, 191, 245, 0.6);
+  white-space: normal;
+}
+
+.hero-stage .listing-tour-furniture-head button,
+.hero-stage .listing-tour-furniture-actions button {
+  border-color: rgba(203, 191, 245, 0.35);
+  background: rgba(203, 191, 245, 0.12);
+  color: #ebe5ff;
+}
+
+.hero-furniture-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.hero-furniture-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: rgba(235, 229, 255, 0.9);
+  font-size: 0.82rem;
+  font-weight: 750;
+  text-align: left;
+}
+
+.hero-furniture-list button:hover,
+.hero-furniture-list button.active {
+  background: rgba(203, 191, 245, 0.14);
+}
+
+.hero-furniture-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.hero-furniture-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-furniture-empty {
+  padding: 6px 8px;
+  color: rgba(203, 191, 245, 0.6);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+/* hero 안 배치 UI(검색·카탈로그) 다크 재스킨 */
+.hero-stage .listing-tour-furniture-search input {
+  border-color: rgba(203, 191, 245, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f1ff;
+}
+
+.hero-stage .listing-tour-furniture-grid button {
+  border-color: rgba(203, 191, 245, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f1ff;
+}
+
+.hero-stage .listing-tour-furniture-hint {
+  color: rgba(203, 191, 245, 0.6);
+}
+
+/* 1인칭 CTA — 핑크 글로우 pill (시안) */
+.hero-tour-cta-wrap {
+  position: absolute;
+  right: 0;
+  bottom: 150px;
+  left: 0;
+  z-index: 6;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.hero-tour-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 26px;
+  border: 1px solid rgba(242, 137, 157, 0.6);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(203, 191, 245, 0.3), rgba(139, 131, 192, 0.16));
+  color: #ffffff;
+  font-size: 0.92rem;
+  font-weight: 850;
+  white-space: nowrap;
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 28px 2px rgba(242, 137, 157, 0.38), 0 14px 32px rgba(0, 0, 0, 0.4);
+}
+
+.hero-tour-cta:hover {
+  transform: translateY(-1px);
+}
+
+.hero-tour-cta.disabled {
+  border-color: rgba(203, 191, 245, 0.3);
+  color: rgba(235, 229, 255, 0.72);
+  box-shadow: none;
+  cursor: default;
+}
+
+.hero-tour-cta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--pink);
+  color: #0b0b12;
+}
+
+.hero-filmstrip {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.hero-filmstrip button {
+  position: relative;
+  flex: none;
+  width: 132px;
+  height: 88px;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid rgba(203, 191, 245, 0.25);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.hero-filmstrip button:hover {
+  outline: 2px solid rgba(203, 191, 245, 0.7);
+  outline-offset: 2px;
+}
+
+.hero-filmstrip .gallery-image {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-filmstrip .hero-filmstrip-more {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  border-style: dashed;
+  border-color: rgba(203, 191, 245, 0.4);
+  color: rgba(235, 229, 255, 0.85);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+/* ── 사진 무대(도면 없는 매물) — 밤하늘 대신 라이트 배경(하단 섹션과 같은 면), 사진은 라운드 프레임 ── */
+.detail-3d-hero.photo-stage {
+  background: var(--canvas);
+}
+
+/* 헤더(위)와 필름스트립(아래)을 비켜 앉는 사진 프레임 — 화살표의 공통 좌표계 */
+.photo-stage .photo-stage-frame {
+  position: absolute;
+  inset: 68px 20px 122px;
+}
+
+.photo-stage .photo-stage-main {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: none;
+  box-shadow: 0 14px 34px rgba(23, 19, 58, 0.1);
+  cursor: zoom-in;
+}
+
+.photo-stage .photo-stage-main img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 큰 사진 양옆 이동 버튼 — 사진을 그 자리에서 넘긴다(라이트박스 아님) */
+.photo-stage-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--blue);
+  transform: translateY(-50%);
+  box-shadow: 0 6px 18px rgba(23, 19, 58, 0.16);
+}
+
+.photo-stage-nav.prev {
+  left: 14px;
+}
+
+.photo-stage-nav.next {
+  right: 14px;
+}
+
+.photo-stage-nav:hover {
+  background: #ffffff;
+}
+
+/* ── 사진 히어로는 라이트 무대 — 오버레이 헤더·필름스트립을 다크 텍스트 문법으로 전환 ──
+   (.has-3d 다크 오버레이 규칙보다 클래스 하나 높은 특이성으로 이긴다) */
+.listing-detail-screen.has-3d.photo-hero .detail-top-title h1 {
+  color: #17133a;
+}
+
+.listing-detail-screen.has-3d.photo-hero .detail-title-caption {
+  color: var(--muted);
+}
+
+.listing-detail-screen.has-3d.photo-hero .detail-back-button,
+.listing-detail-screen.has-3d.photo-hero .detail-header-actions button {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--blue);
+}
+
+.listing-detail-screen.has-3d.photo-hero .detail-header-actions button.active {
+  border-color: #ffd2dc;
+  background: #fff0f4;
+  color: #e32952;
+}
+
+.photo-hero .hero-filmstrip button {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+.photo-hero .hero-filmstrip button:hover {
+  outline-color: rgba(32, 24, 74, 0.45);
+}
+
+/* 현재 큰 사진과 연동된 썸네일 표시 */
+.photo-hero .hero-filmstrip button.is-active {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.photo-hero .hero-filmstrip .hero-filmstrip-more {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* ── 등록 주체(집주인) 카드 — 시안 스펙: surface-muted 배경 + 세리프 아바타 글자 ── */
+.detail-owner-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 18px 0;
+  padding: 16px;
+  border: 1px solid #ece8f4;
+  border-radius: 16px;
+  background: #efecfa;
+}
+
+.detail-owner-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #cbbff5;
+  color: #17133a;
+  font-family: "Gowun Batang", serif;
+  font-size: 1.06rem;
+  font-weight: 400;
+}
+
+.detail-owner-card div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.detail-owner-card strong {
+  color: #172033;
+  font-size: 0.9rem;
+}
+
+.detail-owner-card div > span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* ── 상세 설명 ── */
+.detail-description-text {
+  margin: 0;
+  padding: 0 16px 16px;
+  color: #3f4757;
+  font-size: 0.88rem;
+  line-height: 1.85;
+}
+
+/* ── 사진 라이트박스 — 스테이지 영역 안에서만, 절대 밖으로 넘치지 않게(flex 체인) ── */
+/* 라이트박스 무대 모드가 스테이지만 덮도록 position:relative를 모든 폭에서 보장한다
+   (데스크톱 전용이던 규칙 — 모바일 스택 레이아웃에서도 absolute 기준이 된다). */
+.detail-hero-stage {
+  position: relative;
+}
+
+.photo-lightbox-backdrop {
+  /* 기본은 무대(스테이지) 안에서만 커진다 — 부모 .detail-hero-stage(position:relative) 기준 absolute.
+     3D 히어로: 필름스트립 클릭 → 무대 크기, 헤더 확대 버튼으로 .is-fullscreen(풀스크린) 승격. */
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px 20px 20px;
+  background: rgba(8, 6, 20, 0.86);
+  backdrop-filter: blur(6px);
+}
+
+/* 확대 2단계(또는 도면 없는 사진 히어로) — 스테이지를 벗어나 화면 전체를 덮는다. */
+.photo-lightbox-backdrop.is-fullscreen {
+  position: fixed;
+  z-index: 120;
+}
+
+/* 사진이 스테이지를 거의 채운다 — 헤더(카운터·닫기)만 남기고 나머지는 이미지 */
+.photo-lightbox {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+.photo-lightbox header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.photo-lightbox header strong {
+  color: #ffffff;
+  font-size: 0.95rem;
+}
+
+.photo-lightbox header strong span {
+  color: rgba(203, 191, 245, 0.65);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.photo-lightbox header .photo-lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.photo-lightbox header button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(203, 191, 245, 0.4);
+  border-radius: 50%;
+  background: rgba(23, 19, 58, 0.6);
+  color: #ebe5ff;
+}
+
+.photo-lightbox-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.photo-lightbox-stage > img {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  background: #0f0b24;
+  object-fit: contain;
+}
+
+.photo-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(203, 191, 245, 0.35);
+  border-radius: 50%;
+  background: rgba(23, 19, 58, 0.65);
+  color: #ebe5ff;
+  transform: translateY(-50%);
+}
+
+.photo-lightbox-nav.prev {
+  left: 10px;
+}
+
+.photo-lightbox-nav.next {
+  right: 10px;
+}
+
+/* ── 헤더 타이틀 스택(라벨+이름) ── */
+.detail-title-stack {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.detail-title-stack h1 {
+  overflow: hidden;
+  font-size: 1.32rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-title-caption {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.listing-detail-screen.has-3d .detail-title-caption {
+  color: rgba(203, 191, 245, 0.65);
+}
+
+/* ── 가격 헤더(시안) — 작은 캡션 + 세리프 큰 가격 ── */
+.detail-price-caption {
+  display: block;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.detail-price-block .detail-price-main {
+  margin-top: 8px;
+  font-family: "Gowun Batang", serif;
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.detail-price-sep {
+  color: var(--subtle);
+  font-size: 0.62em;
+}
+
+/* ── 스펙 테이블(시안) — 구분선 라벨/값 행 ── */
+.detail-spec-table {
+  display: grid;
+  margin: 18px 18px 0;
+}
+
+.detail-spec-table > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.86rem;
+}
+
+.detail-spec-table > div:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-spec-table dt {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.detail-spec-table dd {
+  margin: 0;
+  color: #172033;
+  font-weight: 800;
+}
+
+/* ── 우측 패널 옵션 칩 ── */
+.detail-panel-options {
+  display: grid;
+  gap: 10px;
+  margin: 18px 18px 0;
+}
+
+.detail-panel-options strong {
+  color: #172033;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.detail-panel-options p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.detail-panel-option-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-panel-option-chips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(139, 131, 192, 0.28);
+  border-radius: 999px;
+  background: rgba(203, 191, 245, 0.16);
+  color: #3b3568;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+/* ── 우측 패널 CTA(시안) — 데스크톱 전용, 모바일은 하단 고정 바가 담당 ── */
+.detail-panel-cta {
+  display: none;
+}
+
+.detail-panel-cta-note {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--subtle);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.detail-panel-cta-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+/* 주 CTA = DS 액센트(코랄핑크) — "Accent — KEY CTA & emphasis ONLY" */
+.detail-panel-primary {
+  flex: 2.4;
+  min-height: 50px;
+  border-radius: 14px;
+  background: var(--pink);
+  color: #0b0b12;
+  font-size: 0.9rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.detail-panel-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(242, 137, 157, 0.45);
+}
+
+.detail-panel-ghost {
+  flex: 1;
+  min-height: 50px;
+  border: 1px solid rgba(32, 24, 74, 0.22);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--blue);
+  font-size: 0.9rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.detail-panel-ghost:hover {
+  background: rgba(32, 24, 74, 0.05);
+}
+
+/* ══ 상세 타이포 정합 — DS 스케일(400/600/700, 세리프는 400)로 재보정.
+      앱 관성(750~950 헤비)이 시안과 가장 크게 어긋나던 지점이라 일괄 오버라이드. ══ */
+
+.detail-title-caption {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.listing-detail-screen.has-3d .detail-top-title h1 {
+  font-weight: 400;
+}
+
+.detail-price-caption {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.detail-price-block .detail-price-main {
+  font-weight: 400;
+}
+
+.detail-side-panel .detail-address-line,
+.detail-side-panel .detail-address-line span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 400;
+}
+
+.detail-spec-table > div {
+  font-size: 0.875rem;
+}
+
+.detail-spec-table dt {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.detail-spec-table dd {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.detail-panel-options strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.detail-panel-options p {
+  font-weight: 400;
+}
+
+.detail-panel-option-chips span {
+  background: #efecfa;
+  border-color: transparent;
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.detail-owner-card strong {
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.detail-owner-card div > span {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.detail-panel-cta-note {
+  font-weight: 400;
+}
+
+.detail-panel-primary,
+.detail-panel-ghost {
+  font-weight: 600;
+}
+
+/* 히어로(스테이지) 쪽 */
+.hero-furniture-toggle {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.hero-stage .listing-tour-furniture-head strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.hero-stage .listing-tour-furniture-head span {
+  font-weight: 400;
+}
+
+.hero-furniture-list button {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.hero-furniture-empty {
+  font-weight: 400;
+}
+
+.hero-tour-cta {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* 하단 섹션 */
+.detail-description-text {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* 건물 정보 테이블도 같은 스케일로 */
+.detail-building-section .detail-info-table dt {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.detail-building-section .detail-info-table dd {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.photo-lightbox header strong {
+  font-weight: 600;
+}
+
+/* 터치 기기 — 히어로 컨트롤도 48px 터치 타깃 확보 (hallmark 게이트) */
+@media (pointer: coarse) {
+  .hero-furniture-toggle {
+    min-height: 48px;
+  }
+
+  .hero-furniture-list button {
+    min-height: 44px;
+  }
+}
+
 .gallery-photo-count {
   position: absolute;
   right: 14px;
@@ -3086,7 +4286,7 @@ p {
   min-height: 46px;
   padding: 0 18px;
   border-bottom: 1px solid #eff1f5;
-  background: #f8fafd;
+  background: #faf8fc;
 }
 
 .listing-number-bar button {
@@ -3307,10 +4507,143 @@ p {
   justify-content: center;
   border: 1px solid #dde2ec;
   border-radius: 12px;
-  background: #f8faff;
+  background: #faf8fc;
   color: #373f4e;
   font-size: 0.78rem;
   font-weight: 900;
+}
+
+.detail-report-card {
+  display: grid;
+  gap: 12px;
+  margin: 20px 18px 0;
+  padding: 16px;
+  border: 1px solid rgba(32, 24, 74, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(32, 24, 74, 0.08), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.detail-report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.detail-report-head span {
+  color: var(--blue);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.detail-report-head h2 {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.32;
+}
+
+.detail-report-head > strong {
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 1.02rem;
+}
+
+.detail-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-report-grid article {
+  display: grid;
+  min-height: 82px;
+  align-content: center;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e0e6f1;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.detail-report-grid span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.detail-report-grid strong {
+  color: #202838;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.detail-report-grid small {
+  color: var(--blue);
+  font-size: 0.64rem;
+  font-weight: 900;
+}
+
+/* AI 안전분석 요약 배너 — 지킴 진단 리포트와 같은 블루 카드 계열 */
+.safety-analysis-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 20px 18px 0;
+  padding: 16px;
+  border: 1px solid rgba(32, 24, 74, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(32, 24, 74, 0.08), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.safety-analysis-card span {
+  color: var(--blue);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.safety-analysis-card h2 {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.32;
+}
+
+.safety-analysis-card p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.safety-analysis-card > strong {
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 1.02rem;
 }
 
 .detail-tour-banner {
@@ -3407,7 +4740,7 @@ p {
 }
 
 .detail-contact-primary {
-  background: #3568f4;
+  background: #3b2f7a;
   color: #ffffff;
 }
 
@@ -3430,9 +4763,9 @@ p {
 }
 
 .detail-contact-tour {
-  border: 1px solid rgba(47, 85, 255, 0.4);
-  background: #f0f4ff;
-  color: #193274;
+  border: 1px solid rgba(32, 24, 74, 0.4);
+  background: #efecfa;
+  color: #17133a;
   text-decoration: none;
 }
 
@@ -3448,8 +4781,8 @@ p {
 
 /* 1인칭 체험(splat 투어) — 3D 둘러보기와 구분되게 살짝 강조 */
 .detail-contact-splat {
-  border-color: rgba(47, 85, 255, 0.55);
-  background: #e6edff;
+  border-color: rgba(32, 24, 74, 0.55);
+  background: #efecfa;
 }
 
 .detail-screen {
@@ -3551,7 +4884,7 @@ p {
   background-size: 26px 26px;
   color: #ffffff;
   text-align: left;
-  box-shadow: 0 18px 34px rgba(47, 85, 255, 0.24);
+  box-shadow: 0 18px 34px rgba(32, 24, 74, 0.24);
 }
 
 .tour-banner span {
@@ -3658,12 +4991,12 @@ p {
   height: 100%;
   min-height: 240px;
   overflow: hidden;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 6px;
   background:
-    linear-gradient(90deg, rgba(47, 85, 255, 0.09) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(47, 85, 255, 0.09) 1px, transparent 1px),
-    #eef3ff;
+    linear-gradient(90deg, rgba(32, 24, 74, 0.09) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(32, 24, 74, 0.09) 1px, transparent 1px),
+    #efecfa;
   background-size: 24px 24px;
 }
 
@@ -3742,9 +5075,9 @@ p {
 .listing-tour-furniture-actions button {
   min-height: 38px;
   padding: 0 12px;
-  border: 1px solid rgba(47, 85, 255, 0.22);
+  border: 1px solid rgba(32, 24, 74, 0.22);
   border-radius: 999px;
-  background: rgba(47, 85, 255, 0.08);
+  background: rgba(32, 24, 74, 0.08);
   color: var(--blue);
   font-size: 0.78rem;
   font-weight: 950;
@@ -3753,7 +5086,7 @@ p {
 .listing-tour-furniture-head button:hover,
 .listing-tour-furniture-actions button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(47, 85, 255, 0.12);
+  box-shadow: 0 8px 18px rgba(32, 24, 74, 0.12);
 }
 
 .listing-tour-furniture-body {
@@ -3765,9 +5098,9 @@ p {
   width: 100%;
   min-height: 42px;
   padding: 0 14px;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 14px;
-  background: #f8faff;
+  background: #faf8fc;
   color: #172033;
   font: inherit;
   font-size: 0.82rem;
@@ -3792,15 +5125,15 @@ p {
   padding: 9px;
   border: 1px solid #e2e7f1;
   border-radius: 16px;
-  background: #fbfcff;
+  background: #faf8fc;
   color: #172033;
   text-align: left;
 }
 
 .listing-tour-furniture-grid button.active {
   border-color: var(--blue);
-  background: rgba(47, 85, 255, 0.08);
-  box-shadow: 0 0 0 2px rgba(47, 85, 255, 0.1);
+  background: rgba(32, 24, 74, 0.08);
+  box-shadow: 0 0 0 2px rgba(32, 24, 74, 0.1);
 }
 
 .listing-tour-furniture-thumb {
@@ -3941,7 +5274,7 @@ p {
   left: 36px;
   width: 56px;
   height: 30px;
-  background: #9bc1ff;
+  background: #cbbff5;
 }
 
 .tour-window {
@@ -3991,7 +5324,7 @@ p {
   }
 
   .tour-sheet {
-    width: calc(100vw - 24px);
+    width: 100%;
     height: min(92vh, 840px);
     max-height: none;
     padding: 10px 14px 16px;
@@ -4129,9 +5462,9 @@ p {
   display: grid;
   gap: 5px;
   padding: 15px;
-  border: 1px solid #dfe5ef;
+  border: 1px solid #ece8f4;
   border-radius: 16px;
-  background: #f8fbff;
+  background: #faf8fc;
 }
 
 .inquiry-listing-summary strong {
@@ -4187,8 +5520,8 @@ p {
 
 .inquiry-message-grid button.active,
 .visit-time-group button.active {
-  border-color: rgba(47, 85, 255, 0.28);
-  background: #eef3ff;
+  border-color: rgba(32, 24, 74, 0.28);
+  background: #efecfa;
   color: var(--blue);
 }
 
@@ -4256,7 +5589,7 @@ p {
   margin-top: 12px;
   padding: 12px;
   border-radius: 14px;
-  background: #f7f9ff;
+  background: #faf8fc;
   color: #2f3a52;
 }
 
@@ -4332,6 +5665,7 @@ p {
 
 .owner-draft-status {
   display: block;
+  width: fit-content;
   margin: 10px 0 0;
   padding: 8px 10px;
   border-radius: 10px;
@@ -4354,7 +5688,7 @@ p {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fbfcff;
+  background: #faf8fc;
 }
 
 .fact-grid dt {
@@ -4519,15 +5853,15 @@ p {
   padding: 10px 12px;
   border: 1px solid #e1e7f0;
   border-radius: 14px;
-  background: #f9fbff;
+  background: #faf8fc;
   color: var(--ink);
   text-align: left;
   text-decoration: none;
 }
 
 .owner-dashboard-sidebar button[aria-current="page"] {
-  border-color: rgba(47, 85, 255, 0.65);
-  background: rgba(47, 85, 255, 0.09);
+  border-color: rgba(32, 24, 74, 0.65);
+  background: rgba(32, 24, 74, 0.09);
   color: var(--blue);
 }
 
@@ -4564,7 +5898,7 @@ p {
 }
 
 .my-flow-bar .owner-sidebar-toggle[aria-expanded="true"] {
-  border-color: rgba(47, 85, 255, 0.55);
+  border-color: rgba(32, 24, 74, 0.55);
   color: var(--blue);
 }
 
@@ -4579,7 +5913,7 @@ p {
   border: 1px solid var(--line);
   border-radius: 22px;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.1), rgba(255, 255, 255, 0.92)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.1), rgba(255, 255, 255, 0.92)),
     #ffffff;
   box-shadow: 0 10px 22px rgba(18, 24, 40, 0.06);
 }
@@ -4619,7 +5953,7 @@ p {
   border: 1px solid var(--line);
   border-radius: 22px;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.1), rgba(0, 191, 114, 0.08)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.1), rgba(0, 191, 114, 0.08)),
     #ffffff;
   box-shadow: 0 10px 22px rgba(18, 24, 40, 0.06);
 }
@@ -4648,24 +5982,55 @@ p {
   justify-content: center;
   min-height: 44px;
   padding: 0 18px;
-  border: 1px solid rgba(47, 85, 255, 0.22);
+  border: 1px solid rgba(32, 24, 74, 0.22);
   border-radius: 14px;
   background: #ffffff;
   color: var(--blue);
   font-size: 0.92rem;
   font-weight: 900;
-  box-shadow: 0 10px 22px rgba(47, 85, 255, 0.12);
+  box-shadow: 0 10px 22px rgba(32, 24, 74, 0.12);
 }
 
 .mypage-main-button:hover {
-  border-color: rgba(47, 85, 255, 0.42);
-  background: rgba(47, 85, 255, 0.06);
+  border-color: rgba(32, 24, 74, 0.42);
+  background: rgba(32, 24, 74, 0.06);
 }
 
 .owner-form {
   display: grid;
   gap: 14px;
   margin-top: 14px;
+}
+
+/* 두 레인 구조 — 왼쪽 2/3 폼 레인 · 오른쪽 1/3 첨부(사진·3D·영상) 레인. 900px 이하는 세로 스택. */
+/* 폼 레인 콘텐츠는 owner-step1-fields 캡(600px) + owner-card 좌우 패딩(16px×2)으로 632px에서
+   더 안 늘어난다 — 2fr을 주면 그만큼 빈 여백이 되므로 고정폭으로 잡고, 첨부 레인이 나머지를 전부 가져간다. */
+.owner-lanes {
+  display: grid;
+  grid-template-columns: 632px minmax(260px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.owner-lane-form,
+.owner-lane-attach {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .owner-lanes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 두 레인이 나란히 있는 구간(>900px)에서만 첨부 레인을 고정 — 96px는 이 화면(.owner-screen)에서
+   이미 쓰는 고정 헤더 여유값(owner-dashboard-sidebar sticky top, owner-hero 등 scroll-margin-top과 동일). */
+@media (min-width: 901px) {
+  .owner-lane-attach {
+    position: sticky;
+    top: 96px;
+    align-self: start;
+  }
 }
 
 .owner-status-board {
@@ -4813,7 +6178,7 @@ p {
   align-items: center;
   padding: 0 10px;
   border-radius: 999px;
-  background: #eef3ff;
+  background: #efecfa;
   color: var(--blue);
   font-size: 0.72rem;
   font-style: normal;
@@ -4839,7 +6204,7 @@ p {
   padding: 10px;
   border: 1px solid #e1e7f0;
   border-radius: 13px;
-  background: #f9fbff;
+  background: #faf8fc;
   min-width: 0;
 }
 
@@ -4872,9 +6237,9 @@ p {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(47, 85, 255, 0.14);
+  border: 1px solid rgba(32, 24, 74, 0.14);
   border-radius: 15px;
-  background: #fbfcff;
+  background: #faf8fc;
 }
 
 .owner-panel-head strong,
@@ -4995,7 +6360,7 @@ p {
   align-items: center;
   padding: 12px;
   border-radius: 15px;
-  background: #f7f9ff;
+  background: #faf8fc;
   border: 1px solid #e2e8f5;
 }
 
@@ -5012,13 +6377,13 @@ p {
   padding: 10px;
   border: 1px solid #e1e7f0;
   border-radius: 13px;
-  background: #f9fbff;
+  background: #faf8fc;
   text-align: left;
 }
 
 .owner-vendor-list button.active {
-  border-color: rgba(47, 85, 255, 0.45);
-  background: #eef3ff;
+  border-color: rgba(32, 24, 74, 0.45);
+  background: #efecfa;
 }
 
 .owner-vendor-list button > span {
@@ -5063,7 +6428,7 @@ p {
 .owner-vendor-jobs span {
   padding: 4px 8px;
   border-radius: 999px;
-  background: #eef3ff;
+  background: #efecfa;
   color: var(--blue);
   font-size: 0.62rem;
   font-weight: 900;
@@ -5112,7 +6477,7 @@ p {
   gap: 12px;
   margin-top: 12px;
   padding: 14px;
-  border: 1px solid rgba(47, 85, 255, 0.18);
+  border: 1px solid rgba(32, 24, 74, 0.18);
   border-radius: 18px;
   background: #ffffff;
   box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
@@ -5263,14 +6628,51 @@ p {
   gap: 12px;
 }
 
+/* display:block 명시 — 카드 태그가 <figure>/<div>였을 땐 기본값으로 충분했지만, 영상 패널은
+   전체가 <label>(인라인 기본)이라 명시하지 않으면 aspect-ratio·height가 먹지 않는다. */
 .summary-media-card {
   position: relative;
+  display: block;
   margin: 0;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #eef1f8;
+  background: #efecfa;
+}
+
+/* 빈 상태 — 내용이 없을 때는 정사각 비율 대신 낮은 고정 높이로(라이트 페이지 한가운데 큰 빈 패널 방지).
+   점선 보더는 "드롭 가능" 신호 — 드롭을 지원하는 사진·영상 패널의 기본값이다(3D는 아래에서 solid로 되돌림). */
+.summary-media-card.is-empty {
+  aspect-ratio: auto;
+  height: 220px;
+  max-height: 300px;
+  border: 1.5px dashed color-mix(in srgb, var(--blue) 22%, var(--line));
+  background: var(--canvas);
+}
+
+/* 드래그오버 중 시각 피드백 — 드롭 가능한 패널(사진·영상)에만 JSX에서 조건부로 붙는다 */
+.summary-media-card.is-dragover {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+/* 첨부 레인 sticky(96px 오프셋)가 뷰포트를 넘지 않도록 7라운드에서 전체적으로 낮췄다
+   (사진 240→200 · 3D 140→120 · 영상 190→150) — 기본값을 영상 높이(150px)로 두고
+   사진(최중요·최빈 행동)은 더 크게, 드롭 불가인 3D는 더 컴팩트하게 아래에서 되돌린다. */
+.owner-lane-attach .summary-media-card.is-empty {
+  height: 150px;
+}
+
+.owner-lane-attach .summary-media-photos.is-empty {
+  height: 200px;
+}
+
+.owner-lane-attach .summary-media-3d.is-empty {
+  height: 120px;
+  /* 3D 도면 박스는 사진/영상처럼 일반 드롭을 지원하지 않는다(도면 JSON 숨은 드롭만 지원, 시각 피드백 없음) —
+     점선(드롭 가능 신호)을 solid로 되돌려 거짓 신호를 없앤다 */
+  border-style: solid;
 }
 
 .summary-media-photos img {
@@ -5330,18 +6732,29 @@ p {
   font-weight: 800;
 }
 
-.summary-media-empty,
-.summary-media-loading {
-  display: grid;
-  place-items: center;
+/* label(사진 드롭 트리거)·a(3D 빈 상태 링크)로도 쓰인다 — 링크/라벨 기본 스타일(밑줄·포인터 아닌 커서)을 지운다.
+   grid+place-items는 카드가 콘텐츠보다 훨씬 클 때(사진 240px 등) 아이콘·문구 블록이 위쪽에 붙어버려서
+   flex 세로열로 바꿔 아이콘+문구를 한 덩어리로 카드 정중앙에 놓는다.
+   .summary-media-card를 붙여 스코프 — 사진 쪽 빈 상태 트리거가 <label>이라 .owner-form label(class+element,
+   특이도 0,0,1,1)에 밀려 grid로 되돌아가며 아이콘·문구 간격이 100px 가까이 벌어지던 버그의 원인이었다. */
+.summary-media-card .summary-media-empty,
+.summary-media-card .summary-media-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   width: 100%;
   height: 100%;
   padding: 12px;
+  /* button으로도 쓰이므로(빈 상태 진입) 기본 버튼 배경을 지운다 */
+  background: none;
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 700;
   text-align: center;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .summary-media-loading {
@@ -5357,10 +6770,11 @@ p {
 
 .summary-media-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 
+/* 사진 업로드 / 3D 도면 만들기 — 최종 CTA(핑크 필)보다 낮은 위계라 아웃라인으로 */
 .owner-form .summary-media-btn {
   display: inline-flex;
   min-height: 44px;
@@ -5368,10 +6782,10 @@ p {
   justify-content: center;
   gap: 6px;
   padding: 0 12px;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--blue);
-  color: #ffffff;
+  background: #ffffff;
+  color: var(--blue);
   font-size: 0.8rem;
   font-weight: 900;
   text-align: center;
@@ -5381,7 +6795,7 @@ p {
 }
 
 .owner-form .summary-media-btn:hover {
-  filter: brightness(0.96);
+  background: var(--blue-soft);
 }
 
 .owner-form .summary-media-btn--ghost {
@@ -5391,6 +6805,74 @@ p {
 }
 
 .summary-media-btn input[type="file"] {
+  display: none;
+}
+
+/* 카드 패널 자체가 액션존일 때(사진 빈 상태 label, 영상 카드) 안에 숨은 파일 인풋 */
+.summary-media-card input[type="file"] {
+  display: none;
+}
+
+/* 영상/스플랫 패널 — 파일 선택 후 상태(아이콘+파일명·크기+변경) 한 줄 레이아웃 */
+.summary-media-tour-selected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+  color: var(--ink);
+}
+
+.summary-media-tour-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-media-tour-cta {
+  flex: none;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+/* 영상 패널 빈 상태의 보조 카피(zip 권장·소요시간 등) — 주 카피보다 한 단 작게.
+   var(--subtle)은 대비가 낮아 거의 안 읽혀서 var(--muted)로 — 다른 보조 카피들과 같은 톤 */
+.summary-media-hint {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+/* 도면 JSON 업로드 — 개발자용 기능이라 버튼 줄에서 빼고 작은 텍스트 링크로 강등 */
+/* 3D 도면 버튼 바로 아래, 우측 정렬 — 개발자용 기능이라 카드 폭을 다 안 쓰고 구석에 자리잡는다 */
+.owner-form .summary-media-json-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: end;
+  width: fit-content;
+  margin-top: 2px;
+  /* button으로도 쓰이므로(다시 열기) 기본 버튼 배경을 지운다 */
+  background: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.owner-form .summary-media-json-link:hover {
+  color: var(--blue);
+}
+
+.summary-media-json-link input[type="file"] {
   display: none;
 }
 
@@ -5408,7 +6890,7 @@ p {
   padding: 8px;
   border: 1px solid #e1e7f0;
   border-radius: 13px;
-  background: #f9fbff;
+  background: #faf8fc;
 }
 
 .owner-submit-summary p {
@@ -5455,6 +6937,23 @@ p {
   font-size: 1.05rem;
 }
 
+/* 폼 레인 제목 — 공개 표면의 세리프 페이지 타이틀 문법(listing 상세 오버레이 h1,
+   splat-tour/register 페이지 타이틀: Gowun Batang·굵게)을 따라 카드 헤딩을 페이지 제목급으로 승격.
+   오른쪽 "사진·3D 자료"(.form-heading h3, 1.05rem)보다 뚜렷하게 크게 잡아 위계를 드러낸다. */
+.owner-form-title {
+  font-family: "Gowun Batang", serif;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.owner-form-subtitle {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 .form-heading > strong {
   display: inline-flex;
   min-height: 28px;
@@ -5480,15 +6979,16 @@ p {
   min-height: 48px;
   border: 1px solid #cbd1dd;
   border-radius: 13px;
-  background: #fbfcff;
+  background: #faf8fc;
   color: var(--ink);
   outline: 0;
   padding: 0 12px;
 }
 
+/* 인풋 → 버튼 순(JSX 순서와 일치) — 검색 버튼이 인풋 오른쪽에 온다 */
 .owner-address-row {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 8px;
   align-items: stretch;
 }
@@ -5511,12 +7011,12 @@ p {
   font-size: 0.82rem;
   font-weight: 900;
   white-space: nowrap;
-  box-shadow: 0 12px 24px rgba(47, 91, 255, 0.2);
+  box-shadow: 0 12px 24px rgba(32, 24, 74, 0.2);
   cursor: pointer;
 }
 
 .owner-address-search-button:hover {
-  background: #244cff;
+  background: #20184a;
 }
 
 .postcode-sheet-backdrop {
@@ -5575,7 +7075,7 @@ p {
   overflow: hidden;
   border: 1px solid #d7deea;
   border-radius: 16px;
-  background: #f8fbff;
+  background: #faf8fc;
 }
 
 .postcode-search-embed {
@@ -5599,7 +7099,7 @@ p {
   font-size: 0.86rem;
   font-weight: 900;
   text-align: center;
-  background: #f8fbff;
+  background: #faf8fc;
 }
 
 .postcode-search-status.error {
@@ -5622,41 +7122,96 @@ p {
   gap: 10px;
 }
 
-/* STEP 01 필드 묶음 — 기본 2열(모바일), 데스크톱에서 3열로 넓혀 세로 높이를 줄인다 */
+/* 폼 레인 필드 — 1열이 기본. 짝을 이루는 필드(전용면적|층수, 보증금|월세)만 owner-step1-pair로
+   묶고, 나머지는 전부 한 줄에 하나씩 세로로 흘려서 두 레인 구조에서 폭이 과하게 넓어지지 않게 한다. */
 .owner-step1-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
-}
-
-.owner-step1-fields > .owner-step1-wide,
-.owner-step1-fields > .owner-step1-addr-row {
-  grid-column: 1 / -1;
-}
-
-/* 주소·세부주소 한 행 — 모바일은 세로 스택, 데스크톱은 반반(1:1) */
-.owner-step1-addr-row {
-  display: grid;
   grid-template-columns: 1fr;
-  gap: 12px 16px;
+  gap: 10px;
 }
 
-/* 옵션 선택 — 상세 "옵션 정보" 칩과 같은 언어의 토글 버튼. 선택 시 파란 채움 */
-.owner-option-field {
+/* 인풋 폭 3단계 티어 — 내용 길이에 맞춘다. 기본(풀폭 600px, 매물명·주소) → owner-w-md(360px,
+   건물명·세부주소·매물유형·거래유형) → owner-w-sm(240px, 관리비·전세금·매매가·입주가능일). */
+.owner-step1-fields > label {
+  max-width: 600px;
+}
+
+.owner-step1-fields > label.owner-w-md {
+  max-width: 360px;
+}
+
+/* 매물유형·거래유형처럼 select인 md 필드는 값이 짧아 답답해 보이므로 한 단계 넓힌다
+   (텍스트 입력인 건물명·세부주소는 360px 유지). */
+.owner-step1-fields > label.owner-w-md:has(> select) {
+  max-width: 480px;
+}
+
+.owner-step1-fields > label.owner-w-sm {
+  max-width: 240px;
+}
+
+/* 짝 행(전용면적|층수, 보증금|월세) — 풀폭보다 좁게, 칸당 약 230px */
+.owner-step1-pair {
   display: grid;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  max-width: 480px;
 }
 
-.owner-option-label {
-  font-size: 0.8rem;
+/* 필드 묶음 캡션 — 그룹 사이 여백으로 의미 단위를 나눈다 */
+/* 소제목급으로 승격 — 헤어라인(border-top)으로 그룹 사이를 끊는다. 첫 캡션은 카드 헤딩
+   바로 아래라 구분선·여백 없이 시작한다. 여백은 20px→10px로 한 단계 축소(7라운드,
+   첨부 레인 sticky 오버플로 해소용 — 첨부 레인에 캡션 2개가 늘어난 만큼 폼 레인도 같이 낮춰
+   두 레인의 세로 리듬을 맞춘다). */
+.owner-group-caption {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
   font-weight: 800;
-  color: #373f4e;
+  letter-spacing: 0.01em;
+  color: var(--blue);
 }
 
+.owner-group-caption:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* 첨부 레인의 첫 캡션(사진)은 form-heading 다음이라 :first-child가 안 걸린다 — 명시적으로 재사용 */
+.owner-group-caption--first {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* 돈·면적 필드의 인풋 안 단위 표기(만원/m²) — 포커스는 인풋 그대로, 표기는 겹쳐서 얹는다 */
+.owner-input-suffix {
+  position: relative;
+}
+
+.owner-input-suffix input {
+  padding-right: 44px;
+}
+
+.owner-input-suffix span {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+/* 3열 고정(6개 칩 = 3×2) + 인풋 컬럼(600px)과 같은 상한 — 옵션 칩만 레인 풀폭으로 퍼지지 않게 */
 .owner-option-chip-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+  max-width: 600px;
 }
 
 .owner-option-chip-grid button {
@@ -5666,7 +7221,7 @@ p {
   justify-content: center;
   border: 1px solid #dde2ec;
   border-radius: 12px;
-  background: #f8faff;
+  background: #faf8fc;
   color: #373f4e;
   font-size: 0.78rem;
   font-weight: 900;
@@ -5677,12 +7232,6 @@ p {
   border-color: var(--blue);
   background: var(--blue);
   color: #ffffff;
-}
-
-@media (min-width: 960px) {
-  .owner-option-chip-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
 }
 
 /* 업로드 타일 — 사진/3D도면/JSON/영상을 하나의 통일된 카드 언어로 묶는다.
@@ -5709,8 +7258,8 @@ p {
 
 .upload-tile:hover,
 .upload-tile:focus-visible {
-  border-color: rgba(47, 85, 255, 0.45);
-  box-shadow: 0 6px 18px rgba(47, 85, 255, 0.1);
+  border-color: rgba(32, 24, 74, 0.45);
+  box-shadow: 0 6px 18px rgba(32, 24, 74, 0.1);
   outline: none;
 }
 
@@ -5815,7 +7364,7 @@ p {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #eef1f8;
+  background: #efecfa;
 }
 
 .upload-preview-grid img {
@@ -5859,8 +7408,8 @@ p {
 }
 
 .upload-tile--action.is-connected {
-  border-color: rgba(47, 85, 255, 0.42);
-  background: linear-gradient(135deg, rgba(47, 85, 255, 0.09), #ffffff);
+  border-color: rgba(32, 24, 74, 0.42);
+  background: linear-gradient(135deg, rgba(32, 24, 74, 0.09), #ffffff);
 }
 
 .upload-tile--action.is-connected .upload-tile-icon {
@@ -5871,7 +7420,7 @@ p {
 .owner-submit-summary {
   margin-top: 0;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.06), rgba(255, 255, 255, 0.96)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.06), rgba(255, 255, 255, 0.96)),
     #ffffff;
 }
 
@@ -5895,11 +7444,20 @@ p {
 
 .submit-listing {
   min-height: 58px;
-  border-radius: 16px;
-  background: var(--blue);
-  color: #ffffff;
+  border-radius: 12px;
+  background: var(--pink);
+  color: #0b0b12;
   font-weight: 900;
-  box-shadow: 0 14px 28px rgba(47, 85, 255, 0.24);
+  box-shadow: 0 8px 22px rgba(242, 137, 157, 0.35);
+}
+
+/* 등록 행동에 대한 안내라 CTA 바로 위, 작은 중앙 텍스트로 — 첨부 레인 바닥이 아니라 여기가 제자리 */
+.owner-submit-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .section-title.no-margin {
@@ -5948,7 +7506,7 @@ p {
   border-radius: 18px;
   background: var(--blue);
   color: #ffffff;
-  box-shadow: 0 12px 22px rgba(47, 85, 255, 0.24);
+  box-shadow: 0 12px 22px rgba(32, 24, 74, 0.24);
 }
 
 .profile-account-card h2 {
@@ -6104,7 +7662,7 @@ p {
   padding: 18px;
   border: 1px dashed #b9c2d3;
   border-radius: 16px;
-  background: #f9fbff;
+  background: #faf8fc;
   text-align: center;
 }
 
@@ -6158,7 +7716,7 @@ p {
 .inquiry-status-card button {
   min-height: 44px;
   border-radius: 12px;
-  background: #edf2ff;
+  background: #efecfa;
   color: var(--blue);
   font-weight: 900;
 }
@@ -6171,9 +7729,9 @@ p {
 .inquiry-notice {
   margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid #dce4f8;
+  border: 1px solid #ece8f4;
   border-radius: 12px;
-  background: #f7f9ff;
+  background: #faf8fc;
   color: #4b5872;
   font-size: 0.76rem;
   font-weight: 900;
@@ -6272,7 +7830,7 @@ p {
 
 .tenant-hero {
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.12), rgba(255, 255, 255, 0.86)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.12), rgba(255, 255, 255, 0.86)),
     #ffffff;
 }
 
@@ -6361,6 +7919,10 @@ p {
 .tenant-contract-card button:disabled {
   cursor: not-allowed;
   opacity: 0.72;
+}
+
+.submit-listing:disabled {
+  opacity: 0.45;
 }
 
 .btn-spinner {
@@ -8069,7 +9631,7 @@ p {
   padding: 13px;
   border: 1px solid #e0e5ef;
   border-radius: 15px;
-  background: #f8fbff;
+  background: #faf8fc;
 }
 
 .notification-list article > div {
@@ -8144,7 +9706,7 @@ p {
 
 .sort-option-list button.active {
   border-color: var(--blue);
-  background: #f4f7ff;
+  background: #f5f2fb;
   box-shadow: inset 4px 0 0 var(--blue);
 }
 
@@ -8168,9 +9730,9 @@ p {
   gap: 14px;
   margin-bottom: 10px;
   padding: 12px;
-  border: 1px solid rgba(47, 85, 255, 0.18);
+  border: 1px solid rgba(32, 24, 74, 0.18);
   border-radius: 16px;
-  background: #f7f9ff;
+  background: #faf8fc;
 }
 
 .filter-summary-card div {
@@ -8239,7 +9801,7 @@ p {
 .filter-chip-cloud button,
 .filter-segment-grid button {
   min-height: 40px;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 12px;
   background: #ffffff;
   color: #333a47;
@@ -8297,7 +9859,7 @@ p {
   padding: 12px;
   border: 1px solid #dde4ef;
   border-radius: 16px;
-  background: #fbfcff;
+  background: #faf8fc;
 }
 
 .filter-range-bars label {
@@ -8308,9 +9870,38 @@ p {
   font-weight: 900;
 }
 
+/* 게이지 트랙 — 채운 만큼만 은하수(--gauge-fill %), 나머지는 기존 회색. 노브 = 연보라 */
 .filter-range-bars input {
   width: 100%;
-  accent-color: var(--blue);
+  height: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 999px;
+  background:
+    linear-gradient(to right, rgba(0, 0, 0, 0) var(--gauge-fill, 100%), #e3e6ed var(--gauge-fill, 100%)),
+    url("/gauge-stars.svg") left center / cover no-repeat,
+    linear-gradient(90deg, #1e1840, #2a1f52 55%, #241d4e);
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-range-bars input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #8b83c0;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(32, 24, 74, 0.35);
+}
+
+.filter-range-bars input::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #8b83c0;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(32, 24, 74, 0.35);
 }
 
 .filter-price-grid {
@@ -8326,7 +9917,7 @@ p {
   align-content: center;
   gap: 6px;
   padding: 10px;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 14px;
   color: var(--muted);
   font-size: 0.72rem;
@@ -8368,6 +9959,35 @@ p {
   font-weight: 850;
 }
 
+/* 가격대 시트 하단 — 초기화(고스트) + 적용(주버튼) 나란히 */
+.price-sheet-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.price-sheet-actions .filter-apply-button {
+  position: static;
+  flex: 1;
+}
+
+.price-reset-button {
+  flex: none;
+  min-height: 56px;
+  padding: 0 22px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #ffffff;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.price-reset-button:hover {
+  background: #faf8fc;
+  color: var(--ink);
+}
+
 .filter-apply-button {
   position: sticky;
   bottom: 0;
@@ -8379,7 +9999,7 @@ p {
   background: var(--blue);
   color: #ffffff;
   font-weight: 900;
-  box-shadow: 0 14px 28px rgba(47, 85, 255, 0.24);
+  box-shadow: 0 14px 28px rgba(32, 24, 74, 0.24);
 }
 
 .search-sheet-backdrop {
@@ -8446,7 +10066,7 @@ p {
   padding: 0 10px;
   border: 2px solid var(--blue);
   border-radius: 14px;
-  background: #f8fbff;
+  background: #faf8fc;
 }
 
 .search-sheet-input span {
@@ -8485,10 +10105,10 @@ p {
   gap: 11px;
   margin-top: 12px;
   padding: 13px;
-  border: 1px solid rgba(47, 85, 255, 0.18);
+  border: 1px solid rgba(32, 24, 74, 0.18);
   border-radius: 17px;
   background:
-    linear-gradient(135deg, rgba(47, 85, 255, 0.08), rgba(255, 255, 255, 0.96)),
+    linear-gradient(135deg, rgba(32, 24, 74, 0.08), rgba(255, 255, 255, 0.96)),
     #ffffff;
 }
 
@@ -8865,7 +10485,7 @@ p {
 }
 
 .floor-plan-page {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 18px;
   background: #eef1f6;
   color: var(--ink);
@@ -8917,7 +10537,7 @@ p {
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   max-width: 1380px;
-  min-height: calc(100vh - 98px);
+  min-height: calc(100dvh - 98px);
   margin: 16px auto 0;
   /* 요약 드로어(.floor-plan-drawer)의 기준 컨테이너 */
   position: relative;
@@ -8963,7 +10583,7 @@ p {
 }
 
 .floor-plan-float-tools button:hover {
-  background: #eef2fb;
+  background: #efecfa;
 }
 
 .floor-plan-float-tools button.active {
@@ -8999,7 +10619,7 @@ p {
 }
 
 .floor-plan-zoom-controls button:hover {
-  background: #eef2fb;
+  background: #efecfa;
 }
 
 .floor-plan-zoom-controls button:disabled {
@@ -9026,7 +10646,7 @@ p {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #f8fafd;
+  background: #faf8fc;
 }
 
 .floor-plan-candidate-review-head {
@@ -9079,8 +10699,8 @@ p {
 }
 
 .floor-plan-candidate-list li:hover {
-  border-color: rgba(47, 85, 255, 0.35);
-  background: #eef2fb;
+  border-color: rgba(32, 24, 74, 0.35);
+  background: #efecfa;
 }
 
 .floor-plan-candidate-badge {
@@ -9098,7 +10718,7 @@ p {
 }
 
 .floor-plan-candidate-badge.is-fixture {
-  background: #efe8ff;
+  background: #efecfa;
   color: #6d3fd1;
 }
 
@@ -9119,8 +10739,8 @@ p {
   min-height: 26px;
   padding: 0 10px;
   border-radius: 7px;
-  background: #eef2fb;
-  color: #2f55ff;
+  background: #efecfa;
+  color: #20184a;
   font-size: 0.72rem;
   font-weight: 900;
 }
@@ -9229,7 +10849,7 @@ p {
   padding: 8px 16px;
   border-radius: 999px;
   background: rgba(24, 30, 46, 0.86);
-  color: #f4f6fb;
+  color: #f5f2fb;
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.35;
@@ -9300,9 +10920,9 @@ p {
 }
 
 .floor-plan-scale-banner.is-set {
-  border-color: #9db9ff;
-  background: #ecf2ff;
-  color: #24418f;
+  border-color: #cbbff5;
+  background: #efecfa;
+  color: #2a1f52;
 }
 
 /* 도면 인식 중 스캔 애니메이션 — 캔버스를 위아래로 훑는 빔 + 상태 라벨. 클릭은 통과시킨다. */
@@ -9312,7 +10932,7 @@ p {
   z-index: 5;
   overflow: hidden;
   pointer-events: none;
-  background: rgba(47, 85, 255, 0.05);
+  background: rgba(32, 24, 74, 0.05);
 }
 
 .floor-plan-scan-beam {
@@ -9323,12 +10943,12 @@ p {
   height: 16%;
   background: linear-gradient(
     to bottom,
-    rgba(47, 85, 255, 0) 0%,
-    rgba(47, 85, 255, 0.1) 70%,
-    rgba(47, 85, 255, 0.32) 100%
+    rgba(32, 24, 74, 0) 0%,
+    rgba(32, 24, 74, 0.1) 70%,
+    rgba(32, 24, 74, 0.32) 100%
   );
-  border-bottom: 2px solid rgba(47, 85, 255, 0.85);
-  box-shadow: 0 3px 22px rgba(47, 85, 255, 0.4);
+  border-bottom: 2px solid rgba(32, 24, 74, 0.85);
+  box-shadow: 0 3px 22px rgba(32, 24, 74, 0.4);
   animation: floor-plan-scan-sweep 2.4s ease-in-out infinite alternate;
 }
 
@@ -9368,7 +10988,7 @@ p {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #9db9ff;
+  background: #cbbff5;
   animation: floor-plan-scan-dot-pulse 1.2s ease-in-out infinite;
 }
 
@@ -9503,7 +11123,7 @@ p {
   overflow: hidden;
   border: 1px solid #cbd1dd;
   border-radius: 14px;
-  background: #fbfcff;
+  background: #faf8fc;
   cursor: crosshair;
   touch-action: none;
 }
@@ -9531,7 +11151,7 @@ p {
 }
 
 .floor-plan-svg pattern path {
-  stroke: rgba(47, 85, 255, 0.1);
+  stroke: rgba(32, 24, 74, 0.1);
   stroke-width: 1;
 }
 
@@ -9613,7 +11233,7 @@ p {
   background: var(--blue);
   color: #ffffff;
   font-weight: 900;
-  box-shadow: 0 14px 28px rgba(47, 85, 255, 0.22);
+  box-shadow: 0 14px 28px rgba(32, 24, 74, 0.22);
 }
 
 /* 조건이 안 갖춰진 저장/등록은 확실히 죽은 색으로 — 파란색 그대로면 눌리는 줄 안다 */
@@ -9824,7 +11444,7 @@ p {
 .floor-plan-drawer-section {
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fbfcff;
+  background: #faf8fc;
 }
 
 .floor-plan-drawer-section > summary {
@@ -10098,9 +11718,9 @@ p {
   display: grid;
   gap: 6px;
   padding: 12px;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 12px;
-  background: #fbfcff;
+  background: #faf8fc;
 }
 
 .floor-plan-sim-preview code {
@@ -10116,9 +11736,9 @@ p {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 12px;
-  background: #fbfcff;
+  background: #faf8fc;
 }
 
 .floor-plan-furniture-grid {
@@ -10133,7 +11753,7 @@ p {
   width: 100%;
   min-height: 38px;
   padding: 0 10px;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 8px;
   background: #ffffff;
   color: #172033;
@@ -10155,7 +11775,7 @@ p {
   gap: 5px;
   min-height: 30px;
   padding: 0 9px;
-  border: 1px solid #d9dfeb;
+  border: 1px solid #ece8f4;
   border-radius: 999px;
   background: #ffffff;
   color: #4e5b73;
@@ -10166,7 +11786,7 @@ p {
 
 .floor-plan-furniture-kind-tabs button.active {
   border-color: var(--blue);
-  background: rgba(47, 85, 255, 0.08);
+  background: rgba(32, 24, 74, 0.08);
   color: var(--blue);
 }
 
@@ -10192,7 +11812,7 @@ p {
 
 .floor-plan-furniture-grid button.active {
   border-color: var(--blue);
-  box-shadow: 0 0 0 2px rgba(47, 85, 255, 0.12);
+  box-shadow: 0 0 0 2px rgba(32, 24, 74, 0.12);
 }
 
 .floor-plan-furniture-thumb {
@@ -10256,7 +11876,7 @@ p {
   background: rgba(33, 118, 255, 0.1);
   border: 1px solid rgba(33, 118, 255, 0.24);
   border-radius: 8px;
-  color: #0f2f61;
+  color: #17133a;
   display: inline-flex;
   font-size: 0.78rem;
   font-weight: 800;
@@ -10300,7 +11920,7 @@ p {
 /* 방 크기 측정 바 — '세부 조정' 모드일 때만 툴바 아래에 뜨는 한 줄짜리 입력 UI */
 .floor-plan-interior-measure-strip {
   align-items: center;
-  background: #f8fbff;
+  background: #faf8fc;
   border: 1px solid rgba(33, 118, 255, 0.18);
   border-radius: 8px;
   display: flex;
@@ -10311,7 +11931,7 @@ p {
 }
 
 .floor-plan-interior-measure-strip > span {
-  color: #0f2f61;
+  color: #17133a;
   font-size: 0.82rem;
   font-weight: 900;
 }
@@ -10349,7 +11969,7 @@ p {
 
 .floor-plan-visible-dimension-strip {
   align-items: center;
-  background: #f8fbff;
+  background: #faf8fc;
   border: 1px solid rgba(33, 118, 255, 0.18);
   border-radius: 8px;
   display: flex;
@@ -10361,7 +11981,7 @@ p {
 }
 
 .floor-plan-visible-dimension-strip > span {
-  color: #0f2f61;
+  color: #17133a;
   font-size: 0.82rem;
   font-weight: 900;
 }
@@ -10437,7 +12057,7 @@ p {
 
   .login-phone,
   .service-frame {
-    min-height: calc(100vh - 64px);
+    min-height: calc(100dvh - 64px);
     border: 1px solid rgba(18, 24, 40, 0.12);
     border-radius: 24px;
   }
@@ -10461,9 +12081,53 @@ p {
   }
 }
 
-.web-topbar,
-.web-hero-head {
+.web-topbar {
   display: none;
+}
+
+/* 모바일 컴팩트 히어로 — PC 별밤 히어로의 축소판. 모바일 첫 화면도 브랜드로 열어 두 표면의 무드를 잇는다.
+   .screen 패딩(14px 16px)을 음수 마진으로 뚫고 풀블리드, 사진은 bottom 기준이라 집 실루엣이 유지된다 */
+.web-hero-head {
+  position: relative;
+  margin: -14px -16px 0;
+  padding: 34px 22px 30px;
+  overflow: hidden;
+  text-align: left;
+  background-image:
+    linear-gradient(180deg, rgba(11, 8, 30, 0.4), transparent 42%, rgba(11, 8, 30, 0.3)),
+    linear-gradient(200deg, rgba(32, 24, 74, 0.5), rgba(32, 24, 74, 0.34)),
+    url("/hero-night.jpg");
+  background-size: cover;
+  background-position: center 100%;
+}
+
+.web-hero-eyebrow {
+  display: block;
+  color: #cbbff5;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+}
+
+.web-hero-head h1 {
+  margin-top: 8px;
+  color: #ffffff;
+  font-family: "Gowun Batang", serif;
+  font-size: 1.72rem;
+  line-height: 1.26;
+  letter-spacing: -0.005em;
+  font-weight: 700;
+}
+
+.web-hero-head h1 .hero-woozu {
+  color: var(--pink);
+}
+
+.web-hero-head p.web-hero-sub {
+  margin-top: 9px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 /* 3D 투어 백그라운드 업로드 전역 진행바 — 상단 네비 바로 아래, 어느 탭에서든 노출. */
@@ -10547,7 +12211,7 @@ p {
   .service-frame.with-bottom-tabs {
     display: block;
     width: 100%;
-    min-height: 100vh;
+    min-height: 100dvh;
     padding-bottom: 0;
     border: 0;
     border-radius: 0;
@@ -10555,37 +12219,109 @@ p {
     overflow: visible;
   }
 
-  /* 로그인 화면 = 웹 사이즈에서도 좌우 분할 없이 중앙 정렬, 배경·프레임 구분 없이 전체 흰색 */
+  /* 로그인 = 데스크톱에서도 밤하늘 중앙 카드 */
   .app-canvas.login-canvas {
-    padding: 48px 24px;
-    background: #ffffff;
+    padding: 56px 24px;
+    background: transparent;
   }
 
   .login-canvas .login-phone {
+    width: min(100%, 520px);
     min-height: 0;
     border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 30px 70px rgba(11, 8, 30, 0.5);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(14px);
   }
 
   .service-frame:not(.with-bottom-tabs) {
-    width: min(calc(100vw - 48px), 980px);
-    min-height: calc(100vh - 48px);
+    width: min(calc(100% - 48px), 980px);
+    min-height: calc(100dvh - 48px);
   }
 
   .detail-service-frame {
     overflow: visible;
   }
 
-  /* 상단 가로 네비게이션 */
+  /* 3D 히어로 상세 — 풀블리드 대신 살짝 여유 있는 1200px 카드(라운드 유지) */
+  .service-frame.detail-frame-wide {
+    width: min(calc(100% - 48px), 1200px);
+  }
+
+  /* 카드 프레임 라운드에 맞춰 스테이지 위 모서리도 깎는다 */
+  .detail-frame-wide .detail-hero-row {
+    overflow: hidden;
+    border-radius: 24px 24px 0 0;
+  }
+
+  /* 상단 가로 네비게이션 — 모든 탭에서 얇은 밤하늘 띠(galaxy-texture)로 홈 히어로와 세계관 연결 */
   .web-topbar {
     display: block;
     position: sticky;
     top: 0;
     z-index: 55;
-    background: #ffffff;
-    border-bottom: 1px solid #ecedf2;
+    background:
+      url("/topbar-stars.svg") center / cover no-repeat,
+      linear-gradient(100deg, #241d4e, #322868 55%, #3a2f77);
+  }
+
+  /* 아래 밝은 콘텐츠와 뚝 끊기지 않게 — 띠 색이 아래로 번지며 사라지는 페이드아웃 */
+  .web-topbar::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -16px;
+    height: 16px;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(50, 40, 104, 0.35), transparent);
+  }
+
+  /* 홈 = 별밤 히어로 위 상단바 오버레이 (5b). 공용 헤더라 홈에서만 :has로 격리 */
+  .service-frame.with-bottom-tabs:has(.home-screen) .web-topbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+    border-bottom: none;
+  }
+
+  /* 홈은 히어로가 곧 배경 — 띠 하단 페이드가 사진 위 얼룩이 되므로 끈다 */
+  .service-frame.with-bottom-tabs:has(.home-screen) .web-topbar::after {
+    content: none;
+  }
+
+  .service-frame:has(.home-screen) .web-nav button {
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .service-frame:has(.home-screen) .web-nav button:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+  }
+
+  .service-frame:has(.home-screen) .web-nav button.active {
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+  }
+
+  .service-frame:has(.home-screen) .web-topbar-actions .web-login {
+    color: #ffffff;
+  }
+
+  .service-frame:has(.home-screen) .web-sell-cta {
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    color: #ffffff;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  /* 홈 스코프 규칙이 일반 hover보다 특이성이 높아 여기서 다시 선언해야 먹는다 */
+  .service-frame:has(.home-screen) .web-sell-cta:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.55);
   }
 
   /* 데스크톱은 topbar(68px + 1px 보더)가 sticky라 진행바를 그 아래에 고정한다. */
@@ -10649,19 +12385,19 @@ p {
     padding: 8px 14px;
     border-radius: 10px;
     background: none;
-    color: #3d4351;
+    color: rgba(255, 255, 255, 0.92);
     font-size: 1rem;
     font-weight: 800;
   }
 
   .web-nav button:hover {
-    background: #f2f4f8;
-    color: var(--blue);
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
   }
 
   .web-nav button.active {
-    background: var(--blue-soft);
-    color: var(--blue);
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
   }
 
   .web-nav .nav-badge {
@@ -10686,18 +12422,44 @@ p {
   }
 
   .web-topbar-actions .web-login {
-    padding: 9px 6px;
+    padding: 9px 12px;
+    border-radius: 10px;
     background: none;
-    color: #5b6270;
+    color: #ffffff;
     font-weight: 800;
   }
 
-  .web-topbar-actions .web-signup {
+  /* 로그인도 나머지 메뉴와 같은 호버 문법 */
+  .web-topbar-actions .web-login:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  /* 매물등록 — 시안(5b) 반투명 박스 CTA. 상단바가 전 탭 밤하늘 띠라 홈/비홈 동일 */
+  .web-sell-cta {
     padding: 9px 16px;
     border-radius: 10px;
-    background: #eef1fb;
-    color: var(--blue);
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    color: #ffffff;
     font-weight: 800;
+  }
+
+  .web-sell-cta:hover {
+    background: rgba(255, 255, 255, 0.26);
+  }
+
+  /* 로고 이미지 — 홈/탭 구분 없이 단일 규칙 (위치·크기 통일) */
+  .web-logo-img {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+    object-fit: cover;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+
+  /* 히어로 '우주'만 코랄 핑크 (60·30·10 규칙: 핑크는 검색 CTA·'우주'에만) */
+  .web-hero-head h1 .hero-woozu {
+    color: var(--pink);
   }
 
   .web-role-select {
@@ -10706,7 +12468,7 @@ p {
     align-items: center;
     gap: 8px;
     padding: 0 12px;
-    border: 1px solid #dfe5ef;
+    border: 1px solid #ece8f4;
     border-radius: 10px;
     background: #ffffff;
   }
@@ -10741,7 +12503,7 @@ p {
     height: 34px;
     place-items: center;
     border-radius: 50%;
-    background: #eef1fb;
+    background: #efecfa;
     color: var(--blue);
     font-size: 0.95rem;
     font-weight: 900;
@@ -10750,7 +12512,7 @@ p {
   .web-profile-name {
     max-width: 120px;
     overflow: hidden;
-    color: #2b3140;
+    color: #ffffff;
     font-weight: 900;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -10759,9 +12521,13 @@ p {
   .web-logout {
     padding: 9px 14px;
     border-radius: 10px;
-    background: #f2f4f8;
-    color: #5b6270;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
     font-weight: 800;
+  }
+
+  .web-logout:hover {
+    background: rgba(255, 255, 255, 0.24);
   }
 
   .screen {
@@ -10820,33 +12586,54 @@ p {
   }
 
   /* 히어로 */
+  /* 별밤 히어로 — 은하수 사진 + 코랄/퍼플 그레이딩 + 하단 가독성 그라디언트 (5b) */
+  /* 히어로 = 5b(660px)의 ~3/4로 압축 — 첫 화면에서 검색카드가 통째로 보이게.
+     사진은 bottom 기준이라 줄인 만큼 윗하늘만 잘리고 집은 유지된다 */
   .web-hero-head {
     display: block;
-    padding: 56px 24px 0;
-    text-align: center;
+    position: relative;
+    min-height: 550px;
+    margin: 0;
+    /* 좌우 여백 = 검색카드(중앙 1180px)의 좌측 시작선과 일치 */
+    padding: 120px max(56px, calc((100% - 1180px) / 2)) 0;
+    border-radius: 0;
+    overflow: hidden;
+    text-align: left;
+    background-image:
+      linear-gradient(180deg, rgba(11, 8, 30, 0.5), transparent 30%, transparent 66%, rgba(11, 8, 30, 0.32)),
+      linear-gradient(200deg, rgba(32, 24, 74, 0.5), rgba(32, 24, 74, 0.34)),
+      url("/hero-night.jpg");
+    background-size: cover;
+    background-position: center 100%;
   }
 
+  .web-hero-eyebrow {
+    display: block;
+    color: #cbbff5;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+  }
+
+  /* 5b: Gowun Batang 700 66px / 1.18 / -0.005em, 2줄 줄바꿈 */
   .web-hero-head h1 {
-    font-size: 2.3rem;
-    line-height: 1.14;
-    letter-spacing: -0.02em;
-  }
-
-  .web-hero-head p {
-    margin-top: 12px;
-    color: #6b7280;
-    font-size: 1.02rem;
+    margin-top: 18px;
+    color: #ffffff;
+    font-family: "Gowun Batang", serif;
+    font-size: 3.75rem;
+    line-height: 1.18;
+    letter-spacing: -0.005em;
     font-weight: 700;
   }
 
   .web-hero-head p.web-hero-sub {
-    display: inline-block;
-    background-image: linear-gradient(100deg, #8c95b0 0%, #5b6aaa 30%, #8fa4ff 55%, #5b6aaa 80%, #8c95b0 100%);
-    background-size: 260% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent !important;
-    animation: web-hero-sub-shine 5s ease-in-out infinite;
+    display: block;
+    margin-top: 18px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 1.25rem;
+    font-weight: 400;
+    line-height: 1.6;
+    animation: none;
   }
 
   @keyframes web-hero-sub-shine {
@@ -10859,96 +12646,150 @@ p {
     }
   }
 
+  /* 5b 검색바 — 히어로에 겹친 흰 카드(-34px), 검색 버튼만 코랄 핑크 CTA */
   .home-screen > .search-box {
-    width: min(100% - 48px, 720px);
-    height: 62px;
-    margin: 24px auto 0;
-    border-radius: 16px;
-    box-shadow: 0 14px 30px rgba(18, 24, 40, 0.1);
-  }
-
-  /* 카테고리 = 큰 카드 한 줄 */
-  .home-screen > .category-strip {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 14px;
-    width: min(100% - 48px, 1180px);
-    margin: 36px auto 0;
-    padding: 0;
-    overflow: visible;
-  }
-
-  /* 카드가 세로로 비대해 빈 공간이 크던 문제 — 아이콘 좌측·텍스트 우측의 컴팩트 가로형으로 */
-  .home-screen > .category-strip .category-card {
-    grid-template-columns: 40px minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    align-content: center;
-    align-items: center;
-    column-gap: 12px;
-    row-gap: 1px;
-    justify-items: start;
-    min-width: 0;
-    min-height: 74px;
-    padding: 14px 16px;
-    border-radius: 16px;
+    display: block;
+    position: relative;
+    z-index: 2;
+    width: min(100% - 112px, 1180px);
+    height: auto;
+    margin: -34px auto 0;
+    padding: 26px 28px;
     background: #ffffff;
-    box-shadow: 0 8px 20px rgba(18, 24, 40, 0.05);
-    transition: transform 0.14s ease, box-shadow 0.14s ease;
+    border-radius: 20px;
+    box-shadow: 0 30px 70px rgba(20, 16, 50, 0.28);
   }
 
-  .home-screen > .category-strip .category-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 16px 30px rgba(18, 24, 40, 0.12);
+  .search-deal-tabs {
+    display: flex;
+    gap: 24px;
   }
 
-  .home-screen > .category-strip .category-card i {
-    grid-row: 1 / span 2;
-    width: 40px;
-    height: 40px;
+  .search-deal-tab {
+    background: none;
+    color: var(--subtle);
+    font-size: 1rem;
+    font-weight: 800;
+    padding: 0 0 8px;
+    border-bottom: 2px solid transparent;
+  }
+
+  .search-deal-tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
+  }
+
+  .search-fields {
+    display: flex;
+    align-items: flex-end;
+    gap: 22px;
+    margin-top: 18px;
+  }
+
+  .search-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    background: none;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .search-field-label {
+    color: var(--subtle);
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .search-field-value {
+    max-width: 100%;
+    color: var(--ink);
+    font-size: 1.05rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .search-field-divider {
+    flex: none;
+    width: 1px;
+    height: 38px;
+    background: var(--line);
+  }
+
+  .search-submit {
+    flex: none;
+    padding: 15px 40px;
     border-radius: 12px;
+    background: var(--pink);
+    color: #0b0b12;
+    font-size: 1rem;
+    font-weight: 800;
   }
 
-  .home-screen > .category-strip .category-card i svg {
-    width: 22px;
-    height: 22px;
+  /* 5b 카테고리 = 언더라인 텍스트 탭 (전체/원룸/투룸/오피스텔/아파트/3D 투어) */
+  .home-screen > .category-strip {
+    display: flex;
+    gap: 30px;
+    width: min(100% - 40px, 1180px);
+    margin: 28px auto 0;
+    padding: 0 4px;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
   }
 
-  .home-screen > .category-strip .category-card span {
-    font-size: 0.96rem;
+  .home-screen > .category-strip .category-tab {
+    flex: none;
+    padding: 0 0 14px;
+    background: none;
+    color: var(--muted);
+    font-size: 0.98rem;
+    font-weight: 700;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
   }
 
-  .home-screen > .category-strip .category-card strong {
-    color: #8a90a0;
-    font-size: 0.76rem;
+  .home-screen > .category-strip .category-tab:hover {
+    color: var(--ink);
   }
 
-  .home-screen > .category-strip .category-card.active {
-    border: 1.5px solid var(--blue);
-    color: var(--blue);
-    box-shadow: 0 12px 26px rgba(47, 85, 255, 0.16);
+  .home-screen > .category-strip .category-tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
   }
 
-  .home-screen > .category-strip .category-card.active strong {
-    color: var(--blue);
+  /* 빠른필터·조건요약은 5b 홈에 없음 — 데스크톱 홈에서 숨김(검색바/필터시트가 대체) */
+  .home-screen > .quick-filter-row,
+  .home-screen > .filter-feedback {
+    display: none;
   }
 
-  .home-screen > .category-strip .category-card.active i {
-    background: var(--blue);
-    color: #ffffff;
-  }
-
-  .home-screen > .quick-filter-row {
-    width: min(100% - 48px, 1180px);
-    margin: 20px auto 0;
-    padding: 0;
-    justify-content: center;
-    flex-wrap: wrap;
-    overflow: visible;
-  }
-
+  /* 5b: "3D로 미리 보는 추천 매물" 26px 800 + 우측 연보라 "전체보기 →" */
   .home-screen > .section-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
     width: min(100% - 48px, 1180px);
     margin: 48px auto 0;
+  }
+
+  .home-screen > .section-title h2 {
+    color: var(--ink);
+    font-size: 1.625rem;
+    font-weight: 800;
+  }
+
+  .home-screen > .section-title p {
+    display: none;
+  }
+
+  .home-screen > .section-title a {
+    color: #8b83c0;
+    font-size: 0.875rem;
+    font-weight: 700;
   }
 
   /* 매물 = 넓은 3열 그리드 */
@@ -10962,6 +12803,22 @@ p {
 
   .listing-photo img {
     height: 190px;
+  }
+
+  /* 큰 썸네일에선 스티커도 시안 비례로 키운다 */
+  .thumb-sticker-walk {
+    top: 10px;
+    left: 10px;
+    width: 66px;
+    height: 66px;
+    font-size: 0.7rem;
+  }
+
+  .thumb-sticker-3d {
+    bottom: 10px;
+    left: 10px;
+    padding: 6px 12px;
+    font-size: 0.74rem;
   }
 
   /* 홈 외 화면은 중앙 정렬 */
@@ -10987,7 +12844,7 @@ p {
     grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 12px 18px;
-    min-height: calc(100vh - 104px);
+    min-height: calc(100dvh - 104px);
     padding: 16px 20px 22px;
     border-top: 1px solid var(--line);
     background: #eef2f8;
@@ -11009,7 +12866,7 @@ p {
     border: 2px solid var(--blue);
     border-radius: 16px;
     background: #ffffff;
-    box-shadow: 0 16px 36px rgba(47, 85, 255, 0.1);
+    box-shadow: 0 16px 36px rgba(32, 24, 74, 0.1);
   }
 
   .map-topbar label {
@@ -11095,7 +12952,7 @@ p {
   .map-canvas-stack {
     grid-column: 2;
     grid-row: 3;
-    min-height: calc(100vh - 240px);
+    min-height: calc(100dvh - 240px);
   }
 
   /* [data-state] 셀렉터는 오류/키없음 상태에서 height 340px를 거는
@@ -11103,14 +12960,14 @@ p {
   .map-stage,
   .map-canvas-stack .map-stage[data-state] {
     height: 100%;
-    min-height: calc(100vh - 240px);
+    min-height: calc(100dvh - 240px);
     margin-top: 0;
     border: 1px solid var(--line);
     border-radius: 18px;
   }
 
   .map-unresolved-state {
-    min-height: calc(100vh - 240px);
+    min-height: calc(100dvh - 240px);
     margin-top: 0;
     border: 1px solid var(--line);
     border-radius: 18px;
@@ -11127,7 +12984,7 @@ p {
     grid-column: 1;
     grid-row: 3;
     align-self: stretch;
-    max-height: calc(100vh - 240px);
+    max-height: calc(100dvh - 240px);
     overflow-y: auto;
     margin-top: 0;
     padding: 14px;
@@ -11385,15 +13242,6 @@ p {
     align-items: start;
   }
 
-  .owner-step1-fields {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  /* 데스크톱: 주소·세부주소를 반반(1:1)으로 */
-  .owner-step1-addr-row {
-    grid-template-columns: 1fr 1fr;
-  }
-
   /* 문의센터: 채팅 허브가 전체 폭 — 데스크톱 2패널(목록+대화)은 TradeChatCenter variant="hub"가 그린다 */
   .inquiry-screen > .inquiry-chat-panel {
     grid-column: 1 / -1;
@@ -11409,64 +13257,117 @@ p {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* 시안 구조 — grid 산개 대신 hero-row(좌 스테이지 + 우 고정폭 패널) 플렉스 한 행 */
   .listing-detail-screen {
-    display: grid;
-    grid-template-columns: minmax(460px, 1fr) 360px;
-    align-items: start;
-    padding-bottom: 120px;
+    padding-bottom: 48px;
   }
 
-  .detail-top-title {
-    grid-column: 1 / -1;
+  .detail-hero-row {
+    display: flex;
+    align-items: stretch;
+    height: min(820px, calc(100dvh - 96px));
+    min-height: 560px;
   }
 
-  .listing-number-bar {
-    grid-column: 1 / -1;
-    grid-row: 2;
+  .detail-hero-stage {
+    position: relative;
+    flex: 1;
+    min-width: 0;
   }
 
-  /* 오른쪽 컬럼(가격·기본정보·태그) 3행에 맞춰 스팬 — 안심 거래/단지 카드 제거로 5행→3행 */
-  .detail-gallery {
-    grid-column: 1;
-    grid-row: 3 / span 3;
-    align-self: start;
-    height: min(680px, calc(100vh - 160px));
-    min-height: 540px;
+  .detail-hero-stage .detail-gallery,
+  .detail-hero-stage .detail-3d-hero {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
   }
 
-  .detail-price-block,
-.listing-detail-facts,
-.detail-tags {
-    grid-column: 2;
+  .detail-side-panel {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: clamp(380px, 33vw, 460px);
+    overflow: auto;
+    padding: 6px 0 0;
+    border-left: 1px solid var(--line);
+    /* 시안: 패널은 --color-surface(#fff), 하단 영역은 --color-bg(#faf8fc)로 위아래가 다른 면 */
+    background: #ffffff;
+  }
+
+  /* 캡션 시작을 두 줄가량 내려 헤더 코너(공유·찜)와 시각적 간섭을 줄인다 */
+  .listing-detail-screen.has-3d .detail-side-panel {
+    padding-top: 64px;
+  }
+
+  /* 패널 하단(집주인 카드+CTA)은 바닥 정렬 — 시안의 margin-top:auto */
+  .detail-panel-bottom {
+    margin-top: auto;
+    padding-top: 18px;
+  }
+
+  /* 패널이 행 높이를 넘칠 때도 주 CTA는 항상 보이게 — 패널 안 sticky 바닥 */
+  .detail-panel-cta {
+    position: sticky;
+    bottom: 0;
+    margin: 14px 0 0;
+    padding: 12px 18px 18px;
+    background: #ffffff;
+    box-shadow: 0 -10px 14px rgba(255, 255, 255, 0.92);
+  }
+
+  /* 오버레이 헤더 우측(공유·찜)은 밝은 패널 위에 얹힘 — 라이트 버튼으로 복원 */
+  .listing-detail-screen.has-3d .detail-header-actions button {
+    border-color: var(--line);
+    background: #ffffff;
+    color: var(--blue);
+  }
+
+  .listing-detail-screen.has-3d .detail-header-actions button.active {
+    border-color: #ffd2dc;
+    background: #fff0f4;
+    color: #e32952;
+  }
+
+  /* 하단 섹션(시안) — 카드 상자 없이 세리프 헤딩 + 본문이 배경 위에 직접 */
+  .detail-lower-duo .detail-info-section {
+    padding: 14px 0 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .detail-lower-duo .detail-section-heading h2,
+  .detail-lower-duo .detail-map-section h2 {
+    font-family: "Gowun Batang", serif;
+    font-size: 1.35rem;
+    font-weight: 400;
+  }
+
+  /* 시안엔 보조 라벨이 없다 — 하단 2단에선 숨김 */
+  .detail-lower-duo .detail-section-heading span {
+    display: none;
+  }
+
+  .detail-lower-duo .detail-description-text {
+    max-width: 620px;
+    padding: 10px 0 0;
+  }
+
+  .detail-lower-duo .detail-similar-grid {
+    padding: 14px 0 0;
+  }
+
+  /* 오너 배지 행이 있으면 오버레이 헤더에 가리지 않게 내린다 */
+  .listing-detail-screen.has-3d .detail-owner-bar {
+    margin-top: 74px;
   }
 
   .detail-price-block {
-    grid-row: 3;
+    padding-top: 8px;
   }
 
-  .listing-detail-facts {
-    grid-row: 4;
-  }
-
-  .detail-tags {
-    grid-row: 5;
-  }
-
-  .detail-price-block {
-    padding-top: 28px;
-  }
-
-  .detail-price-block h2 {
-    font-size: 2rem;
-  }
-
-  .detail-price-block p {
-    margin-top: 18px;
-    font-size: 1.08rem;
-  }
-
-  .listing-detail-facts {
-    grid-template-columns: 1fr;
+  .detail-price-block .detail-price-main {
+    font-size: 2.5rem;
   }
 
   .gallery-tile {
@@ -11505,8 +13406,72 @@ p {
     bottom: 24px;
     /* 전화 · 3D 둘러보기 · 1인칭 체험 · 문자 문의 — 데스크톱도 4버튼 한 줄 */
     grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
-    width: min(calc(100vw - 48px), 980px);
+    width: min(calc(100% - 48px), 980px);
     border-radius: 18px;
+  }
+
+  .detail-panel-cta {
+    display: block;
+    margin: 14px 18px 0;
+  }
+
+  /* 데스크톱은 우측 패널 CTA가 담당 — 화면을 가리는 하단 고정 바를 없앤다(시안) */
+  .detail-contact-bar {
+    display: none;
+  }
+
+  /* 하단 2단 — 시안 컨테이너 그대로: padding 44px 48px + 상단 구분선(border-top), 갭 44px.
+     히어로 카드(위)와 섹션 영역(아래)을 나누는 그 선이다. */
+  .detail-lower-duo {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 0 44px;
+    align-items: start;
+    margin: 0;
+    padding: 40px 48px 48px;
+    border-top: 1px solid var(--line);
+  }
+
+  .detail-lower-main,
+  .detail-lower-side {
+    min-width: 0;
+  }
+
+  /* duo 우측 — 집주인 카드가 건물 정보 위에 앉는다(패널에서 이동) */
+  .detail-lower-side .detail-owner-card {
+    margin: 24px 0 0;
+  }
+
+  .detail-lower-duo .detail-info-section,
+  .detail-lower-duo .detail-map-section,
+  .detail-lower-duo .detail-similar-section {
+    grid-column: auto;
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  /* duo 좌측은 폭이 절반 — 지도는 제목 아래로 스택(시안).
+     좌우 패딩 0 = 상세 설명과 "위치" 헤딩 시작선 정렬, 위 여백은 시안의 36px 리듬. */
+  .detail-lower-duo .detail-map-section {
+    grid-template-columns: 1fr;
+    padding: 40px 0 0;
+  }
+
+  /* 상세 설명 — 헤딩과 본문 사이, 본문 줄길이에 숨 쉴 공간 */
+  .detail-lower-duo .detail-description-text {
+    padding: 14px 0 0;
+    line-height: 1.9;
+  }
+
+  /* 지도 박스 — 시안 height 240px */
+  .detail-lower-duo .detail-naver-map {
+    height: 240px;
+    min-height: 240px;
+  }
+
+  .hero-stage .listing-tour-furniture {
+    width: 258px;
   }
 
   .bottom-tabs {
@@ -11520,12 +13485,12 @@ p {
 .sort-sheet,
 .notification-sheet,
 .postcode-sheet {
-    width: min(calc(100vw - 48px), 560px);
+    width: min(calc(100% - 48px), 560px);
     border-radius: 26px;
   }
 
   .tenant-request-sheet {
-    width: min(calc(100vw - 48px), 700px);
+    width: min(calc(100% - 48px), 700px);
   }
 
   .search-sheet-backdrop,
@@ -12011,7 +13976,7 @@ p {
 
 .tenant-landlord-chat-button {
   position: fixed;
-  right: max(18px, calc((100vw - 1180px) / 2 + 18px));
+  right: max(18px, calc((100% - 1180px) / 2 + 18px));
   bottom: 24px;
   z-index: 70;
   display: inline-flex;
@@ -12050,7 +14015,7 @@ p {
   z-index: 91;
   display: flex;
   flex-direction: column;
-  width: min(440px, calc(100vw - 24px));
+  width: min(440px, calc(100% - 24px));
   height: 100dvh;
   background: var(--paper);
   border-left: 1px solid var(--line);
@@ -12112,7 +14077,7 @@ p {
   z-index: 91;
   display: flex;
   flex-direction: column;
-  width: min(420px, calc(100vw - 28px));
+  width: min(420px, calc(100% - 28px));
   height: min(720px, calc(100dvh - 48px));
   transform: translate(-50%, -50%);
   overflow: hidden;
@@ -13278,7 +15243,7 @@ p {
   }
 
   .tenant-ai-assist-button {
-    right: max(24px, calc((100vw - 1180px) / 2 - 72px));
+    right: max(24px, calc((100% - 1180px) / 2 - 72px));
     left: auto;
     bottom: 32px;
     width: 64px;
@@ -13488,7 +15453,7 @@ p {
 }
 
 .contract-bar.is-open {
-  background: #eef2fb;
+  background: #efecfa;
 }
 
 .contract-bar.is-done {
@@ -13539,7 +15504,7 @@ p {
   font-size: 0.84rem;
   font-weight: 900;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(47, 85, 255, 0.28);
+  box-shadow: 0 8px 18px rgba(32, 24, 74, 0.28);
 }
 
 .contract-cta:disabled {
@@ -14032,7 +15997,7 @@ p {
 }
 
 .manager-assistant-dialog {
-  width: min(calc(100vw - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
+  width: min(calc(100% - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
   height: min(calc(100dvh - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
   max-width: none;
   max-height: calc(100dvh - var(--space-xxl));

@@ -16,28 +16,38 @@ import { ListingDetailRoute } from "./ListingDetailRoute";
 
 export const dynamic = "force-dynamic";
 
+// 직접등록 목록 조회는 실패해도 상세를 살린다 — 데모 매물 상세·비슷한 매물 폴백에 빈 배열이면 충분.
+async function fetchTradeListings(): Promise<TradeListing[]> {
+  try {
+    const response = await fetch(apiUrl("/trade/listings"), { cache: "no-store" });
+    if (!response.ok) return [];
+    const all = (await response.json()) as TradeListing[];
+    return Array.isArray(all) ? all : [];
+  } catch {
+    return [];
+  }
+}
+
 // ownerId는 직접등록(TRADE-) 매물에만 있다 — "관리/수정" 버튼 노출 판정(isListingOwner)에 넘긴다.
-async function resolveListing(listingNo: string): Promise<{ listing: Listing; ownerId?: string } | null> {
+function resolveListing(
+  listingNo: string,
+  tradeListings: TradeListing[]
+): { listing: Listing; ownerId?: string } | null {
   if (listingNo.startsWith(TRADE_LISTING_NO_PREFIX)) {
     const tradeId = listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
-    try {
-      const response = await fetch(apiUrl("/trade/listings"), { cache: "no-store" });
-      if (!response.ok) return null;
-      const all = (await response.json()) as TradeListing[];
-      const found = all.find((item) => item.id === tradeId);
-      return found ? { listing: tradeListingToCard(found), ownerId: found.ownerId } : null;
-    } catch {
-      return null;
-    }
+    const found = tradeListings.find((item) => item.id === tradeId);
+    return found ? { listing: tradeListingToCard(found), ownerId: found.ownerId } : null;
   }
 
   const listing = findDemoListing(listingNo);
   return listing ? { listing } : null;
 }
 
+// 비슷한 매물 기능은 팀 결정으로 제거(2026-07-18) — 점수 함수는 git 히스토리 참조.
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const resolved = await resolveListing(decodeURIComponent(id));
+  const resolved = resolveListing(decodeURIComponent(id), await fetchTradeListings());
 
   if (!resolved) {
     return { title: "매물을 찾을 수 없습니다 · 집우집주 WOOZU" };
@@ -58,7 +68,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const resolved = await resolveListing(decodeURIComponent(id));
+  const tradeListings = await fetchTradeListings();
+  const resolved = resolveListing(decodeURIComponent(id), tradeListings);
 
   if (!resolved) {
     notFound();
@@ -68,7 +79,8 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
 
   return (
     <main className="app-canvas">
-      <div className="service-frame detail-service-frame" aria-label="집우집주 매물 상세">
+      {/* 도면 유무와 무관하게 같은 무대 레이아웃(1200 카드) — 스테이지 콘텐츠만 3D↔사진 */}
+      <div className="service-frame detail-service-frame detail-frame-wide" aria-label="집우집주 매물 상세">
         <ListingDetailRoute listing={resolved.listing} isOwner={isOwner} />
       </div>
     </main>
