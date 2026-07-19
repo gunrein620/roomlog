@@ -258,7 +258,16 @@ export function ManagerCreditUtility() {
   }, [loadAccount]);
 
   useEffect(() => {
-    const openFromWorkspace = () => openDialog();
+    const openFromWorkspace = (event?: unknown) => {
+      const amount = event instanceof CustomEvent
+        && typeof event.detail?.amount === "number"
+        && Number.isSafeInteger(event.detail.amount)
+        && event.detail.amount > 0
+        ? event.detail.amount
+        : undefined;
+      if (amount !== undefined) setAmountText(String(amount));
+      openDialog();
+    };
     const refreshFromWorkspace = (event?: unknown) => {
       const balance = event instanceof CustomEvent
         && typeof event.detail?.balance === "number"

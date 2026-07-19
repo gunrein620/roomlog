@@ -11,6 +11,10 @@ const workspaceSource = readFileSync(
   join(process.cwd(), "src/app/manager/vendor-mgmt/credit/CreditWorkspace.tsx"),
   "utf8",
 );
+const actionsSource = readFileSync(
+  join(process.cwd(), "src/app/manager/vendor-mgmt/credit/actions.ts"),
+  "utf8",
+);
 const garaPayoutSection = workspaceSource.slice(
   workspaceSource.indexOf("{workspace.garaPayoutRequests.map"),
   workspaceSource.indexOf("{workspace.paymentRequests.map"),
@@ -48,4 +52,14 @@ test("publishes the settled credit balance to the header without waiting for a s
   assert.match(workspaceSource, /let result: unknown;/);
   assert.match(workspaceSource, /result = await mutation\(\);/);
   assert.match(workspaceSource, /notifyManagerCreditBalanceChanged\(extractCreditBalance\(result\)\)/);
+});
+
+test("opens credit top-up with the payout shortfall when a credit payment is declined for insufficient balance", () => {
+  assert.match(actionsSource, /ApiError/);
+  assert.match(actionsSource, /error instanceof ApiError\s+&& error\.status === 409/);
+  assert.match(actionsSource, /kind: "INSUFFICIENT_CREDIT"/);
+  assert.match(workspaceSource, /openManagerCreditTopup/);
+  assert.match(workspaceSource, /isCreditInsufficientBalanceResult\(result\)/);
+  assert.match(workspaceSource, /request\.amount - workspace\.account\.balance/);
+  assert.match(workspaceSource, /openManagerCreditTopup\(insufficientCreditTopupAmount\)/);
 });

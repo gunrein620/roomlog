@@ -12,6 +12,7 @@ import type {
 } from "@roomlog/types";
 import {
   notifyManagerCreditBalanceChanged,
+  openManagerCreditTopup,
 } from "@/lib/vendor-credit-events";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { repairPaymentRecovery } from "@/lib/repair-payment-recovery";
@@ -22,6 +23,7 @@ import {
   settleGaraPayoutAction,
   settleCreditPaymentAction,
   updateCreditPolicyAction,
+  type CreditInsufficientBalanceResult,
 } from "./actions";
 import styles from "./CreditWorkspace.module.css";
 import type {
@@ -115,6 +117,14 @@ function extractCreditBalance(value: unknown): number | undefined {
   return typeof balance === "number" && Number.isSafeInteger(balance) && balance >= 0
     ? balance
     : undefined;
+}
+
+function isCreditInsufficientBalanceResult(
+  value: unknown,
+): value is CreditInsufficientBalanceResult {
+  return Boolean(value)
+    && typeof value === "object"
+    && (value as { kind?: unknown }).kind === "INSUFFICIENT_CREDIT";
 }
 
 function ledgerReferenceLabel(referenceType: string): string {
@@ -407,6 +417,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     key: string,
     successMessage: string,
     mutation: () => Promise<unknown>,
+    insufficientCreditTopupAmount?: number,
   ) {
     if (demoReadOnly) {
       publishFeedback({ kind: "error", text: "데모 데이터에서는 저장·지급 작업을 실행할 수 없습니다." });
@@ -422,6 +433,15 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     } catch (error) {
       feedbackSequence.publish(feedbackToken, () => {
         setFeedback({ kind: "error", text: messageFromError(error) });
+      });
+      markBusy(key, false);
+      return;
+    }
+
+    if (isCreditInsufficientBalanceResult(result)) {
+      openManagerCreditTopup(insufficientCreditTopupAmount);
+      feedbackSequence.publish(feedbackToken, () => {
+        setFeedback({ kind: "error", text: "크레딧 잔액이 부족해 충전 창을 열었습니다." });
       });
       markBusy(key, false);
       return;
@@ -474,6 +494,10 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
   ) {
     const key = `payment:${request.id}`;
     const busy = busyKeys.has(key);
+    const insufficientCreditTopupAmount = Math.max(
+      1,
+      request.amount - workspace.account.balance,
+    );
     const settlementPending = request.status === "PENDING_APPROVAL"
       || request.status === "INSUFFICIENT_CREDIT";
     const latestRepairOrder = request.latestRepairPaymentOrder;
@@ -603,7 +627,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
                       settleCreditPaymentAction(request.id, {
                         mode: "MANUAL_CREDIT",
                         idempotencyKey: crypto.randomUUID(),
-                      }));
+                      }), insufficientCreditTopupAmount);
                   }}
                 >
                   크레딧으로 지급
@@ -785,6 +809,10 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
             {workspace.garaPayoutRequests.map((request) => {
               const pending = request.status === "PENDING_APPROVAL";
               const key = `gara-payout:${request.id}`;
+              const insufficientCreditTopupAmount = Math.max(
+                1,
+                request.amount - workspace.account.balance,
+              );
               return (
                 <article className={`${styles.paymentCard} ${styles.garaPayoutCard}`} key={request.id}>
                   <div className={styles.requestMain}>
@@ -802,7 +830,7 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
                         type="button"
                         disabled={busyKeys.has(key) || demoReadOnly}
                         onClick={() => void runMutation(key, "Gara 업체 지급을 완료했습니다.", () =>
-                          settleGaraPayoutAction(request.id, crypto.randomUUID()))}
+                          settleGaraPayoutAction(request.id, crypto.randomUUID()), insufficientCreditTopupAmount)}
                       >
                         {busyKeys.has(key) ? "지급 중…" : "크레딧 지급"}
                       </button>
