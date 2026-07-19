@@ -128,6 +128,16 @@
     background-size: 100% 100%, 160px 160px, 200px 200px, 240px 240px, 280px 280px, 300px 300px, 170px 170px, 220px 220px, 190px 190px, 260px 260px, 150px 150px, 520px 520px, 560px 560px, 100% 100%;
     background-repeat: no-repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat;
   }
+  /* The transparent WebGL renderer keeps the supplied landscape visible behind
+     the 3D structure without feeding it into the post-processing depth pass. */
+  canvas#scene {
+    background-image:
+      linear-gradient(180deg, rgba(1, 5, 15, .08), rgba(1, 7, 16, .25)),
+      url("assets/cosmic-night-landscape.png");
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+  }
   #review-canvas {
     background: var(--surface-dim);
   }
