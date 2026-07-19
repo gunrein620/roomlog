@@ -20,8 +20,9 @@ export type ManagerAssistantSessionEvent =
       pendingAction: ManagerCopilotPendingAction | null;
     };
 
+// 모드 선택 단계 없이 바로 텍스트 채팅으로 연다 — 음성 전환은 대화 화면 하단 토글로.
 export const initialManagerAssistantSessionState: ManagerAssistantSessionState = {
-  stage: "choose",
+  stage: "conversation",
   mode: "text",
   entries: [],
   pendingAction: null,

@@ -95,14 +95,10 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(assistant, /aria-controls="manager-assistant-panel"/);
   assert.match(assistant, /id="manager-assistant-panel"/);
   assert.match(assistant, /aria-label="AI 관리 비서 닫기"/);
-  assert.match(assistant, /AI 상담 모드 선택/);
   assert.match(assistant, /Woo-zu AI 비서/);
-  assert.match(assistant, /상담 방식을 선택해 주세요/);
-  assert.match(assistant, /Woo-zu AI와 어떻게 대화하시겠어요\?/);
-  assert.match(assistant, /텍스트 채팅/);
-  assert.match(assistant, /음성 통화/);
-  assert.match(assistant, /manager-ai-mode-icon/);
-  assert.doesNotMatch(assistant, /Choose your consultation mode/);
+  // 모드 선택 단계는 제거 — 패널은 바로 텍스트 채팅으로 열리고, 전환은 하단 토글이 담당.
+  assert.doesNotMatch(assistant, /manager-ai-mode-picker/);
+  assert.match(assistant, /aria-label="AI 상담 모드 전환"/);
   assert.match(assistant, /role="log"/);
   assert.match(assistant, /aria-live="polite"/);
   assert.match(assistant, /ref=\{transcriptRef\}/);

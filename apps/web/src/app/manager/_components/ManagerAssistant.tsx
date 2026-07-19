@@ -285,37 +285,7 @@ export function ManagerAssistantSidePanel(_props: ManagerAssistantPanelProps) {
             <X aria-hidden="true" />
           </button>
         </header>
-        {session.stage === "choose" ? (
-          <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
-            <div className="manager-ai-mode-picker__copy">
-              <h2>상담 방식을 선택해 주세요</h2>
-              <p>Woo-zu AI와 어떻게 대화하시겠어요?</p>
-            </div>
-            <div className="manager-ai-mode-cards">
-              <button
-                type="button"
-                onClick={() => selectMode("text")}
-              >
-                <span className="manager-ai-mode-icon" aria-hidden="true">
-                  <MessageSquare />
-                </span>
-                <strong>텍스트 채팅</strong>
-                <small>TEXT</small>
-              </button>
-              <button
-                type="button"
-                onClick={() => selectMode("voice")}
-              >
-                <span className="manager-ai-mode-icon" aria-hidden="true">
-                  <Headphones />
-                </span>
-                <strong>음성 통화</strong>
-                <small>CALL</small>
-              </button>
-            </div>
-          </section>
-        ) : (
-          <section className="manager-ai-conversation" aria-label="AI 관리 비서 대화">
+        <section className="manager-ai-conversation" aria-label="AI 관리 비서 대화">
             <div
               ref={transcriptRef}
               className="manager-ai-transcript"
@@ -464,7 +434,6 @@ export function ManagerAssistantSidePanel(_props: ManagerAssistantPanelProps) {
               </button>
             </div>
           </section>
-        )}
     </aside>
   );
 }

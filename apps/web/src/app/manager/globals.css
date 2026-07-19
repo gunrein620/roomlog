@@ -1743,7 +1743,6 @@ html:has(.manager-workspace) {
 
 /* 공용 .manager-ai-* 베이스(루트 globals.css에도 복제돼 세입자 다이얼로그가 사용)는 두고,
    패널 내부에서만 flex 컬럼이 높이를 결정하도록 스코프 오버라이드한다. */
-.manager-assistant-panel .manager-ai-mode-picker,
 .manager-assistant-panel .manager-ai-conversation {
   flex: 1 1 auto;
   min-height: 0;
