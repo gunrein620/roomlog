@@ -150,6 +150,7 @@ describe("roomlog complaint realtime activity", () => {
 
     const result = controller.sendManagerReply(header, ticket.id, {
       messageText: "내일 오전에 기사 방문 잡겠습니다.",
+      attachmentUrls: ["/api/files/manager-visit.jpg"],
     });
 
     assert.equal(broadcasts.length, 1);
@@ -164,6 +165,10 @@ describe("roomlog complaint realtime activity", () => {
       "내일 오전에 기사 방문 잡겠습니다.",
     );
     assert.equal((broadcast.payload.message as { senderRole: string }).senderRole, "LANDLORD");
+    assert.deepEqual(
+      (broadcast.payload.message as { attachmentUrls: string[] }).attachmentUrls,
+      ["/api/files/manager-visit.jpg"],
+    );
   });
 
   it("carries the tenant message body on the same event", () => {

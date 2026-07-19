@@ -139,6 +139,7 @@ export interface ManagerReplyDraftInput {
 export interface ManagerTicketReplyInput {
   action?: ManagerReplyAction;
   messageText?: string;
+  attachmentUrls?: string[];
 }
 
 /**

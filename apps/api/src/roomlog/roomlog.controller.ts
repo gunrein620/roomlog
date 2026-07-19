@@ -2373,14 +2373,22 @@ export class RoomlogController {
   }
 
   @Post("manager/tickets/:ticketId/assign-vendor")
-  assignVendor(
+  async assignVendor(
     @Headers("authorization") authorization: string | undefined,
     @Param("ticketId") ticketId: string,
     @Body() body: { vendorId: string; requestNote: string }
   ) {
     rejectCallerIdentity(body, ["managerId", "actorUserId"]);
     const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireVendorWorkflowDomain().assignVendor(user.id, ticketId, body);
+    const result = await this.requireVendorWorkflowDomain().assignVendor(user.id, ticketId, body);
+    const { assignmentNotice, ...job } = result;
+    if (assignmentNotice) {
+      this.realtime.broadcast("roomlog:ticket-message", {
+        ticketId,
+        message: assignmentNotice
+      });
+    }
+    return job;
   }
 
   @Post("manager/repairs/:repairId/estimates/:estimateId/review")
