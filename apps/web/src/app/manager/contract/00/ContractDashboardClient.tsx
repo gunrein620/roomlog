@@ -117,15 +117,13 @@ export function ContractDashboardClient({
 
   return (
     <section className="manager-contract-dashboard" aria-label="계약 검토 대시보드">
-      <div className="manager-contract-dashboard__hero">
-        <div className="manager-contract-dashboard__hero-actions">
-          <button type="button" className="manager-contract-dashboard__secondary-action">
-            필터 저장
-          </button>
-          <Link className="manager-contract-dashboard__create-link" href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>
-            계약서 등록
-          </Link>
-        </div>
+      <div className="manager-contract-dashboard__hero-actions">
+        <button type="button" className="manager-contract-dashboard__secondary-action">
+          필터 저장
+        </button>
+        <Link className="manager-contract-dashboard__create-link" href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>
+          계약서 등록
+        </Link>
       </div>
 
       <div className="manager-contract-dashboard__metrics" aria-label="계약서 검토 요약">
