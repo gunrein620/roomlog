@@ -7234,7 +7234,7 @@ export class RoomlogService implements OnModuleDestroy {
       complaint.id,
       tenantId,
       "TENANT",
-      messageText || "추가 사진을 제출했습니다.",
+      messageText || "사진을 첨부했습니다.",
       attachmentUrls,
       this.activeRepairIdForTicket(ticket.id)
     );
