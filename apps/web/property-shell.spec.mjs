@@ -1448,6 +1448,47 @@ test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
   assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);
   assert.match(homeAppSource, /key=\{listing\.listingNo\}/);
+  assert.match(homeAppSource, /HOME_LISTINGS_PAGE_SIZE/);
+  assert.match(homeAppSource, /homeFeedListings\.map/);
+  assert.match(homeAppSource, /visibleHomeListings\.length > 0/);
+  assert.match(homeAppSource, /listing-pagination/);
+  assert.match(cssSource, /\.listing-pagination/);
+  assert.match(homeAppSource, /className="home-footer"/);
+  assert.match(homeAppSource, /\["home", "saved", "inquiry", "sell", "living"\]\.includes\(activeTab\) \? appFooter : null/);
+  assert.match(homeAppSource, /크래프톤 정글/);
+  assert.match(homeAppSource, /https:\/\/jungle\.krafton\.com\//);
+  assert.match(homeAppSource, /https:\/\/github\.com\/gunrein620\/roomlog/);
+  assert.match(homeAppSource, /isFooterTeamOpen/);
+  assert.match(homeAppSource, /팀 카이사르/);
+  assert.match(homeAppSource, /고명석 · 김용 · 김정환 · 박건우 · 박승현 · 서원규/);
+  assert.match(homeAppSource, /Contact : 010-2965-7486/);
+  assert.match(cssSource, /\.home-footer/);
+  assert.match(cssSource, /\.home-footer-team/);
+  assert.match(cssSource, /\.home-footer-contact/);
+  assert.match(cssSource, /\.home-footer-location a,[\s\S]*color:\s*#ffffff/);
+});
+
+test("reuses the main footer on saved, inquiry, sell, and living tabs", () => {
+  assert.match(homeAppSource, /const appFooter = \(/);
+  assert.doesNotMatch(homeAppSource, /footer: ReactNode/);
+  assert.doesNotMatch(homeAppSource, /footer=\{appFooter\}/);
+  assert.match(homeAppSource, /\["home", "saved", "inquiry", "sell", "living"\]\.includes\(activeTab\) \? appFooter : null/);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs > \.home-footer/);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs > \.home-footer\s*{[^}]*margin-top:\s*auto/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*flex/s);
+});
+
+test("uses the Jungle campus address for default and current-location map labels", () => {
+  assert.match(pageSource, /JUNGLE_CAMPUS_ADDRESS = "경기도 용인시 처인구 영문로 55"/);
+  assert.match(pageSource, /JUNGLE_CAMPUS_CENTER = \{ lat: 37\.2697301353189, lng: 127\.207838838402 \}/);
+  assert.match(pageSource, /label: JUNGLE_CAMPUS_ADDRESS/);
+  assert.match(pageSource, /reverseGeocodeMapPoint/);
+  assert.match(pageSource, /reverseGeocode/);
+  assert.match(pageSource, /isNearJungleCampus/);
+  assert.match(pageSource, /fallbackAddress/);
+  assert.match(pageSource, /setSelectedArea\(locationLabel\)/);
+  assert.match(naverMapPreviewSource, /reverseGeocode/);
+  assert.match(naverMapPreviewSource, /NaverReverseGeocodeResponse/);
 });
 
 test("keeps the bottom app tabs fixed to the viewport", () => {
@@ -1464,7 +1505,7 @@ test("keeps the bottom app tabs fixed to the viewport", () => {
 test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /@media \(min-width:\s*1080px\)/);
   // 데스크톱은 전체폭 포털 셸(모바일 카드 프레임 제거)
-  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*block/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*flex/s);
   assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*100%/s);
   // 상단 가로 네비 + 히어로는 기본(모바일) 숨김, 데스크톱에서 노출
   assert.match(cssSource, /\.web-topbar,\s*\.web-hero-head\s*{[^}]*display:\s*none/s);

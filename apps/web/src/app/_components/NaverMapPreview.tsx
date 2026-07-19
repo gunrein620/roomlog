@@ -70,12 +70,40 @@ type NaverMapsApi = {
       options: { query: string },
       callback: (status: string, response: NaverGeocodeResponse) => void
     ) => void;
+    reverseGeocode?: (
+      options: { coords: NaverLatLng; orders?: string },
+      callback: (status: string, response: NaverReverseGeocodeResponse) => void
+    ) => void;
+    OrderType?: {
+      ADDR?: string;
+      ROAD_ADDR?: string;
+    };
     Status: { OK: string; ERROR: string };
   };
 };
 
 export type NaverGeocodeResponse = {
   v2?: { addresses?: Array<{ x: string; y: string; roadAddress?: string; jibunAddress?: string }> };
+};
+
+export type NaverReverseGeocodeResponse = {
+  v2?: {
+    results?: Array<{
+      name?: string;
+      region?: {
+        area1?: { name?: string };
+        area2?: { name?: string };
+        area3?: { name?: string };
+        area4?: { name?: string };
+      };
+      land?: {
+        type?: string;
+        name?: string;
+        number1?: string;
+        number2?: string;
+      };
+    }>;
+  };
 };
 
 type MapLoadState = "missing-key" | "loading" | "ready" | "error";

@@ -108,7 +108,8 @@ import {
   NaverMapPreview,
   type MapMarkerInput,
   type NaverGeocodeResponse,
-  type NaverMapViewport
+  type NaverMapViewport,
+  type NaverReverseGeocodeResponse
 } from "./_components/NaverMapPreview";
 import { loadSavedListingNos, toggleSavedListingNo } from "../lib/saved-listings";
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
@@ -159,10 +160,6 @@ type MapListingGroup = {
   clusterLabel: string;
   updated: string;
 };
-
-
-
-
 
 const protectedRoleConfig = {
   tenant: {
@@ -227,8 +224,8 @@ const listingMatchesCategory = (label: string, listing: Listing): boolean => {
 /* 거래유형(월세·전세)은 검색카드 탭이 단독 점유 — 여기엔 부가 조건만 남긴다 (중복 스택 제거) */
 const quickFilters = ["관리비 포함", "반려동물", "주차", "풀옵션"];
 
-// 홈 추천 피드 렌더 상한 — 3열 그리드 × 7줄. 초과분은 지도 탭 "전체보기"가 담당.
-const HOME_FEED_MAX_ITEMS = 21;
+// 홈 추천 피드 페이지 크기 — 3열 그리드 × 3줄.
+const HOME_LISTINGS_PAGE_SIZE = 9;
 
 // 검색바 거래유형 탭 — 택일. 필터 체인의 거래유형 OR 매칭(dealTypeFilters)과 같은 어휘를 쓴다.
 const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
@@ -296,13 +293,18 @@ const notificationItems = [
 
 // 하드코딩 데모 지표/추천/체크리스트 상수들 제거 — 데모 컨셉 정리(4d1010a8 후속)
 
+const JUNGLE_CAMPUS_ADDRESS = "경기도 용인시 처인구 영문로 55";
+const JUNGLE_CAMPUS_CENTER = { lat: 37.2697301353189, lng: 127.207838838402 };
+
 const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   source: "default",
-  label: "서초구 방배동",
-  center: { lat: 37.4875, lng: 126.9931 },
+  label: JUNGLE_CAMPUS_ADDRESS,
+  center: JUNGLE_CAMPUS_CENTER,
   radiusM: 2500,
-  queryType: "neighborhood",
-  precision: "neighborhood"
+  queryType: "road",
+  precision: "address",
+  addressText: JUNGLE_CAMPUS_ADDRESS,
+  description: `도로명 기준 · 반경 2.5km · ${JUNGLE_CAMPUS_ADDRESS}`
 };
 const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 const MAP_SEARCH_RADIUS_M = 2500;
@@ -380,9 +382,63 @@ function loadNaverMapService(): Promise<boolean> {
 }
 
 type NaverGeocodeAddress = NonNullable<NonNullable<NaverGeocodeResponse["v2"]>["addresses"]>[number];
+type NaverReverseGeocodeResult = NonNullable<NonNullable<NaverReverseGeocodeResponse["v2"]>["results"]>[number];
 
 function compactAddressLabel(value: string) {
   return value.trim().replace(/^대한민국\s*/, "").replace(/^서울특별시\s*/, "");
+}
+
+function reverseGeocodeResultLabel(result: NaverReverseGeocodeResult | undefined): string | null {
+  if (!result) return null;
+
+  const regionParts = [
+    result.region?.area1?.name,
+    result.region?.area2?.name,
+    result.region?.area3?.name,
+    result.region?.area4?.name
+  ]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  const landName = result.land?.name?.trim();
+  const landNumber = [result.land?.number1?.trim(), result.land?.number2?.trim()]
+    .filter(Boolean)
+    .join("-");
+  const landParts = [landName, landNumber].filter((part): part is string => Boolean(part));
+  const address = [...regionParts, ...landParts].join(" ").trim();
+
+  return address ? compactAddressLabel(address) : null;
+}
+
+async function reverseGeocodeMapPoint(center: MapPoint): Promise<string | null> {
+  const isReady = await loadNaverMapService();
+  const maps = window.naver?.maps;
+  const service = maps?.Service;
+  if (!isReady || !maps || !service?.reverseGeocode) return null;
+
+  const orderTypes = [service.OrderType?.ROAD_ADDR, service.OrderType?.ADDR].filter(Boolean).join(",");
+
+  return new Promise((resolve) => {
+    try {
+      service.reverseGeocode?.(
+        {
+          coords: new maps.LatLng(center.lat, center.lng),
+          orders: orderTypes || undefined
+        },
+        (status: string, response: NaverReverseGeocodeResponse) => {
+          if (status !== service.Status.OK) {
+            resolve(null);
+            return;
+          }
+
+          const results = response.v2?.results ?? [];
+          const roadResult = results.find((result) => result.name === "roadaddr");
+          resolve(reverseGeocodeResultLabel(roadResult ?? results[0]));
+        }
+      );
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 function addressParts(address?: { roadAddress?: string; jibunAddress?: string }) {
@@ -1587,6 +1643,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeMapFilter, setActiveMapFilter] = useState("시세");
   const [activeSort, setActiveSort] = useState(sortOptions[0].label);
+  const [isFooterTeamOpen, setIsFooterTeamOpen] = useState(false);
+  const [homeListingPage, setHomeListingPage] = useState(1);
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
   const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
   // 찜은 localStorage와 동기화 — 상세 라우트(/listing/[id])와 같은 키를 써서 라우트를 오가도 유지된다.
@@ -1656,7 +1714,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setMapQueryStatus("idle");
     setMapLocationStatus("requesting");
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         if (requestId !== mapContextRequestIdRef.current) return;
 
         const center = {
@@ -1669,15 +1727,27 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           return;
         }
 
+        const currentAddress = await reverseGeocodeMapPoint(center);
+        if (requestId !== mapContextRequestIdRef.current) return;
+        const isNearJungleCampus = distanceBetweenMeters(center, JUNGLE_CAMPUS_CENTER) <= 5000;
+        const fallbackAddress = isNearJungleCampus ? JUNGLE_CAMPUS_ADDRESS : CURRENT_LOCATION_AREA_LABEL;
+        const locationLabel = currentAddress ?? fallbackAddress;
+
         setMapSearchContext({
           source: "user-location",
-          label: CURRENT_LOCATION_AREA_LABEL,
+          label: locationLabel,
           center,
-          radiusM: 3000
+          radiusM: 3000,
+          queryType: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "road" : undefined,
+          precision: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "address" : undefined,
+          addressText: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? locationLabel : undefined,
+          description: locationLabel !== CURRENT_LOCATION_AREA_LABEL
+            ? `현재 위치 기준 · 반경 3km · ${locationLabel}`
+            : undefined
         });
         setMapSearchMatchedListingNos([]);
         setHasResolvedMapContext(true);
-        setSelectedArea(CURRENT_LOCATION_AREA_LABEL);
+        setSelectedArea(locationLabel);
         setMapTopbarSearchValue("");
         setActiveMapResultTab("rooms");
         setMapLocationStatus("granted");
@@ -1761,8 +1831,20 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches && priceMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
-  // 홈 피드는 최대 21개(3열 × 7줄)만 — 나머지는 "전체보기 →"(지도 탭)로. 카운트 표기는 전체 기준 유지.
-  const homeFeedListings = visibleHomeListings.slice(0, HOME_FEED_MAX_ITEMS);
+  // 홈 피드는 페이지 단위로 나누고, 카운트 표기는 전체 기준을 유지한다.
+  const homeListingPageCount = Math.max(1, Math.ceil(visibleHomeCount / HOME_LISTINGS_PAGE_SIZE));
+  const currentHomeListingPage = Math.min(homeListingPage, homeListingPageCount);
+  const homeListingPageStart = (currentHomeListingPage - 1) * HOME_LISTINGS_PAGE_SIZE;
+  const homeFeedListings = visibleHomeListings.slice(
+    homeListingPageStart,
+    homeListingPageStart + HOME_LISTINGS_PAGE_SIZE
+  );
+  useEffect(() => {
+    setHomeListingPage(1);
+  }, [activeCategory, activeQuickFilters, searchKeyword, priceRange]);
+  useEffect(() => {
+    if (homeListingPage > homeListingPageCount) setHomeListingPage(homeListingPageCount);
+  }, [homeListingPage, homeListingPageCount]);
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
   const mapFilterOptions = ["시세", "원룸·투룸", "보증금", "안전", "3D 가능", "찜한 매물"];
   // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
@@ -2500,6 +2582,32 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setIsDevRolePreview(false);
   };
 
+  const appFooter = (
+    <footer className="home-footer" aria-label="서비스 정보">
+      <div className="home-footer-location">
+        <a href="https://jungle.krafton.com/" target="_blank" rel="noreferrer">
+          크래프톤 정글
+        </a>
+        <strong>{selectedAreaTitle}</strong>
+        <button type="button" onClick={() => requestMapCurrentLocation(true)} disabled={mapLocationStatus === "requesting"}>
+          위치 업데이트
+        </button>
+      </div>
+      <div className="home-footer-links">
+        <a href="https://github.com/gunrein620/roomlog" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </div>
+      <div className="home-footer-team">
+        <button type="button" onClick={() => setIsFooterTeamOpen((isOpen) => !isOpen)} aria-expanded={isFooterTeamOpen}>
+          팀 카이사르
+        </button>
+        {isFooterTeamOpen ? <span className="home-footer-team-members">고명석 · 김용 · 김정환 · 박건우 · 박승현 · 서원규</span> : null}
+      </div>
+      <div className="home-footer-contact">Contact : 010-2965-7486</div>
+    </footer>
+  );
+
   if (authMode) {
     return (
       <WoozuLoginScreen
@@ -2751,6 +2859,39 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
           {/* 하드코딩 데모 컨셉 섹션(내 조건 요약·AI중개사 추천·저장한 검색 조건·지역 지표) 제거 —
               가짜 수치가 실데이터처럼 보이던 문제. 실데이터가 생기면 그때 실계산으로 되살린다. */}
+          {visibleHomeListings.length > 0 ? (
+            <nav className="listing-pagination" aria-label="매물 페이지">
+              <button
+                type="button"
+                onClick={() => setHomeListingPage((page) => Math.max(1, page - 1))}
+                disabled={currentHomeListingPage === 1}
+                aria-label="이전 매물 페이지"
+              >
+                {"<"}
+              </button>
+              {Array.from({ length: homeListingPageCount }, (_, index) => index + 1).map((page) => (
+                <button
+                  className={currentHomeListingPage === page ? "active" : ""}
+                  type="button"
+                  key={page}
+                  onClick={() => setHomeListingPage(page)}
+                  aria-label={`매물 ${page}페이지`}
+                  aria-current={currentHomeListingPage === page ? "page" : undefined}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setHomeListingPage((page) => Math.min(homeListingPageCount, page + 1))}
+                disabled={currentHomeListingPage === homeListingPageCount}
+                aria-label="다음 매물 페이지"
+              >
+                {">"}
+              </button>
+            </nav>
+          ) : null}
+
           <article className="map-entry-card">
             <div className="map-entry-copy">
               <span>지도 기반 검색</span>
@@ -3067,23 +3208,33 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} composeListing={composeListing} />
+          <InquiryHubSection
+            onRequireLogin={() => openAuthScreen("login")}
+            focusThreadId={buyerFocusThreadId}
+            composeListing={composeListing}
+          />
         ) : null}
         {activeTab === "sell" ? (
-          <LandlordMyPage
-            onGoHome={() => {
-              // 등록 성공 팝업 확인 → 홈 피드로. 목록을 즉시 갱신해 방금 등록한 매물이 바로 보이게 한다.
-              void loadTradeListings();
-              activateTab("home");
-            }}
-          />
+          <>
+            <LandlordMyPage
+              onGoHome={() => {
+                // 등록 성공 팝업 확인 → 홈 피드로. 목록을 즉시 갱신해 방금 등록한 매물이 바로 보이게 한다.
+                void loadTradeListings();
+                activateTab("home");
+              }}
+            />
+          </>
         ) : null}
         {activeTab === "living" ? (
-          <TenantMyPage
-            onGoInquiry={() => activateTab("inquiry")}
-            onGoHome={() => activateTab("home")}
-          />
+          <>
+            <TenantMyPage
+              onGoInquiry={() => activateTab("inquiry")}
+              onGoHome={() => activateTab("home")}
+            />
+          </>
         ) : null}
+
+        {["home", "saved", "inquiry", "sell", "living"].includes(activeTab) ? appFooter : null}
 
         <nav className="bottom-tabs" aria-label="앱 하단 메뉴">
           {bottomTabs.map((item) => (
