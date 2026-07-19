@@ -61,7 +61,7 @@ test("shows the supplied night landscape over the empty green workspace", async 
   assert.match(html, /classList\.remove\("upload-empty"\)/);
   assert.match(
     css,
-    /#workspace-empty-backdrop\s*\{[\s\S]*?url\("assets\/cosmic-night-landscape\.png"\)[\s\S]*?background-size:\s*cover;/,
+    /#workspace-empty-backdrop\s*\{[\s\S]*?url\("\/viewer-assets\/assets\/cosmic-night-landscape\.png"\)[\s\S]*?background-size:\s*cover;/,
   );
   assert.match(css, /body\.upload-empty #workspace-empty-backdrop\s*\{[\s\S]*?opacity:\s*1;/);
 });
