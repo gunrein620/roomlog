@@ -46,8 +46,12 @@ const OBJECT_CAPTURE_EXTENSION = ".usdz";
 // "수십 MB" 스캔치고 넉넉한 상한 — splat-asset의 직접업로드 한도(2GB)보다 훨씬 보수적으로 잡는다.
 const MAX_OBJECT_CAPTURE_BYTES = 300 * 1024 * 1024;
 const MAX_OBJECT_CAPTURE_MESSAGE = "Object Capture 스캔은 300MB 이하만 접수할 수 있습니다.";
-// 박스-메시 정합(스케일/방향)은 보류 — Object Capture가 미터 스케일을 주는지 온디바이스 검증 전까지,
-// 새로 생성되는 가구는 이 자리표시자 치수로 시작한다(변환 완료 후에도 실측 갱신은 별도 작업, C-2b).
+// [2026-07-20 해소] Object Capture가 미터 스케일을 주는지 → **준다.** 실캡처 USDZ 검사 결과
+// metersPerUnit=1 · xformOp 0개 · extent 0.727×0.806×0.775m 이 줄자 실측과 일치. 앵커 규약도 확정
+// (원점=발자국 중심, 바닥=y0, Y-up) → 박스-메시 정렬의 남은 자유도는 yaw 하나.
+// 그럼에도 이 값이 남아 있는 이유: **USDZ bbox를 치수로 쓸 수 없다.** X·Z가 촬영 바운딩 박스 벽면에
+// 잘려 실물보다 크게 나온다(대칭 extent가 그 증거). 치수의 정본은 RoomPlan 박스이고, RoomPlan 항목
+// 없이 들어온 단독 스캔은 아직 실치수 출처가 없다 → 그 경우에만 자리표시자로 시작(C-2b).
 const PLACEHOLDER_OBJECT_CAPTURE_SIZE_MM: FurnitureDimensionsMm = { width: 500, depth: 500, height: 500 };
 
 const ROOMPLAN_CATEGORY_BY_NORMALIZED_RAW: Record<string, TenantFurnitureCategory> = {
