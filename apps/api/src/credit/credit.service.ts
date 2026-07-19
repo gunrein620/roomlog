@@ -182,6 +182,30 @@ export class CreditService {
     });
   }
 
+  async createPublicGaraVendorPayoutRequest(input: CreateGaraVendorPayoutInput) {
+    const body = requireInputRecord(input);
+    if (!Number.isSafeInteger(body.amount) || (body.amount as number) <= 0) {
+      throw new BadRequestException("요청 금액은 1원 이상의 정수여야 합니다.");
+    }
+    return this.commandRepository.createPublicGaraVendorPayoutRequest({
+      managerVendorId: requireInputString(body, "managerVendorId", "업체 등록 식별자"),
+      amount: body.amount as number,
+      idempotencyKey: requireInputString(body, "idempotencyKey", "멱등성 키")
+    });
+  }
+
+  async settleGaraVendorPayout(
+    managerId: string,
+    payoutRequestId: string,
+    input: Readonly<{ idempotencyKey: string }>
+  ) {
+    return this.commandRepository.settleGaraVendorPayout({
+      managerId,
+      payoutRequestId,
+      idempotencyKey: requireInputString(input, "idempotencyKey", "멱등성 키")
+    });
+  }
+
   async confirmTopup(
     managerId: string,
     orderId: string,

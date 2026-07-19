@@ -69,6 +69,16 @@ export function createGaraVendorPayout(
   });
 }
 
+export function settleGaraVendorPayout(
+  payoutRequestId: string,
+  input: Readonly<{ idempotencyKey: string }>,
+): Promise<CreateGaraVendorPayoutResult> {
+  return serverFetch<CreateGaraVendorPayoutResult>(
+    `/manager/gara/vendor-payout-requests/${encodeURIComponent(payoutRequestId)}/settle`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
 function managerCreditWorkspacePath(page: ManagerCreditWorkspacePage = {}): string {
   const params = new URLSearchParams();
   if (page.ledgerCursor?.trim()) params.set("ledgerCursor", page.ledgerCursor.trim());

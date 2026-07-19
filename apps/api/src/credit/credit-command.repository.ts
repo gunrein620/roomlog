@@ -46,6 +46,18 @@ export type CreateGaraVendorPayoutResult = Readonly<{
   account: ManagerCreditAccountView;
 }>;
 
+export type CreatePublicGaraVendorPayoutRequestCommand = Readonly<{
+  managerVendorId: string;
+  amount: number;
+  idempotencyKey: string;
+}>;
+
+export type SettleGaraVendorPayoutCommand = Readonly<{
+  managerId: string;
+  payoutRequestId: string;
+  idempotencyKey: string;
+}>;
+
 export type ClaimTopupConfirmationCommand = Readonly<{
   managerId: string;
   orderId: string;
@@ -181,6 +193,12 @@ export interface CreditCommandRepository {
   ): Promise<CreateGaraTopupOrderResult>;
   createGaraVendorPayout(
     input: CreateGaraVendorPayoutCommand
+  ): Promise<CreateGaraVendorPayoutResult>;
+  createPublicGaraVendorPayoutRequest(
+    input: CreatePublicGaraVendorPayoutRequestCommand
+  ): Promise<GaraVendorPayoutRequestPublicView>;
+  settleGaraVendorPayout(
+    input: SettleGaraVendorPayoutCommand
   ): Promise<CreateGaraVendorPayoutResult>;
   claimTopupConfirmation(
     input: ClaimTopupConfirmationCommand

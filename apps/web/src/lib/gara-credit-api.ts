@@ -1,7 +1,9 @@
 import type {
   ConfirmManagerCreditTopupInput,
   CreateGaraVendorCreditCheckoutInput,
+  CreateGaraVendorPayoutInput,
   GaraVendorCreditCheckout,
+  GaraVendorPayoutRequestPublicView,
   ManagerCreditTopupOrderPublicView,
 } from "@roomlog/types";
 
@@ -44,6 +46,16 @@ async function browserGaraCreditFetch<T>(
 }
 
 const CHECKOUTS_PATH = "/api/gara/vendor-credit-checkouts";
+const PAYOUT_REQUESTS_PATH = "/api/gara/vendor-payout-requests";
+
+export function createGaraVendorPayoutRequest(
+  input: CreateGaraVendorPayoutInput,
+): Promise<GaraVendorPayoutRequestPublicView> {
+  return browserGaraCreditFetch<GaraVendorPayoutRequestPublicView>(PAYOUT_REQUESTS_PATH, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
 
 export function createGaraVendorCreditCheckout(
   input: CreateGaraVendorCreditCheckoutInput,

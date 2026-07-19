@@ -83,6 +83,7 @@ function publicWorkspace(
     ),
     topupOrders: workspace.topupOrders.map(publicTopupOrder),
     paymentRequests: workspace.paymentRequests.map(publicPaymentRequest),
+    garaPayoutRequests: workspace.garaPayoutRequests,
     ...(workspace.nextLedgerCursor
       ? { nextLedgerCursor: encodeCursor("ledger", workspace.nextLedgerCursor) }
       : {}),
@@ -138,6 +139,11 @@ export class CreditController {
     const checkout =
       await this.credit.createGaraVendorCreditCheckout(input);
     return { ...checkout, order: publicTopupOrder(checkout.order) };
+  }
+
+  @Post("gara/vendor-payout-requests")
+  createPublicGaraVendorPayoutRequest(@Body() input: CreateGaraVendorPayoutInput) {
+    return this.credit.createPublicGaraVendorPayoutRequest(input);
   }
 
   @Get("gara/vendor-credit-checkouts/:orderId")
@@ -223,6 +229,17 @@ export class CreditController {
   ) {
     const managerId = await this.credit.requireManager(authorization);
     const result = await this.credit.createGaraVendorPayout(managerId, input);
+    return { request: result.request, account: publicAccount(result.account) };
+  }
+
+  @Post("manager/gara/vendor-payout-requests/:payoutRequestId/settle")
+  async settleGaraVendorPayout(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("payoutRequestId") payoutRequestId: string,
+    @Body() input: { idempotencyKey: string }
+  ) {
+    const managerId = await this.credit.requireManager(authorization);
+    const result = await this.credit.settleGaraVendorPayout(managerId, payoutRequestId, input);
     return { request: result.request, account: publicAccount(result.account) };
   }
 

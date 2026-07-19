@@ -375,6 +375,7 @@ describe("PrismaCreditQueryRepository.listPublicGaraVendors", () => {
       const firstCreditAccountId = `credit_gara_public_first_${suffix}`;
       const firstLedgerEntryId = `ledger_gara_public_first_${suffix}`;
       const firstPayoutId = `payout_gara_public_first_${suffix}`;
+      const pendingPayoutId = `payout_gara_public_pending_${suffix}`;
       const repository = new PrismaCreditQueryRepository({ client: prisma } as never);
       const candidate = repository as unknown as {
         listPublicGaraVendors(): Promise<Array<{
@@ -494,6 +495,19 @@ describe("PrismaCreditQueryRepository.listPublicGaraVendors", () => {
             payloadHash: "test-payload-hash",
           },
         });
+        await prisma.garaVendorPayoutRequest.create({
+          data: {
+            id: pendingPayoutId,
+            managerId: firstManagerId,
+            managerVendorId: creditedRegistrationId,
+            vendorId: firstVendorId,
+            amount: 9_000n,
+            accountNumberSnapshot: "110-100-000001",
+            idempotencyKey: `gara-public-pending-${suffix}`,
+            payloadHash: "test-pending-payload-hash",
+            status: "PENDING_APPROVAL",
+          },
+        });
 
         const rows = await candidate.listPublicGaraVendors();
 
@@ -516,7 +530,7 @@ describe("PrismaCreditQueryRepository.listPublicGaraVendors", () => {
         });
       } finally {
         await prisma.garaVendorPayoutRequest.deleteMany({
-          where: { id: firstPayoutId },
+          where: { id: { in: [firstPayoutId, pendingPayoutId] } },
         });
         await prisma.creditLedgerEntry.deleteMany({
           where: { id: firstLedgerEntryId },

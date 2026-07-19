@@ -15,6 +15,7 @@ import type {
   CreateGaraTopupOrderCommand,
   CreateGaraTopupOrderResult,
   CreateGaraVendorPayoutCommand,
+  CreatePublicGaraVendorPayoutRequestCommand,
   CreateTopupOrderCommand,
   CreateGaraVendorPayoutResult,
   CreditCommandRepository,
@@ -26,6 +27,7 @@ import type {
   SaveAutoPayPolicyCommand,
   SettlePaymentRequestCommand,
   SettlePaymentRequestResult,
+  SettleGaraVendorPayoutCommand,
   TopupConfirmationClaim,
   VendorPaymentCorrectionCommand
 } from "./credit-command.repository";
@@ -367,6 +369,9 @@ export class PrismaCreditCommandRepository
         if (existing.managerId !== managerId || existing.payloadHash !== payloadHash) {
           topupConflict("동일한 멱등성 키로 다른 Gara 지급 요청을 만들 수 없습니다.");
         }
+        if (!existing.creditAccount) {
+          throw new ConflictException("관리자 결제를 기다리는 Gara 지급 요청입니다.");
+        }
         return {
           request: {
             id: existing.id,
@@ -452,6 +457,138 @@ export class PrismaCreditCommandRepository
           createdAt: payout.createdAt.toISOString(),
         },
         account: mapCreditAccount(accountAfter),
+      };
+    });
+  }
+
+  async createPublicGaraVendorPayoutRequest(
+    input: CreatePublicGaraVendorPayoutRequestCommand
+  ) {
+    const managerVendorId = requireNonblank(input.managerVendorId, "managerVendorId");
+    const amount = requirePositiveSafeMoney(input.amount, "amount");
+    const idempotencyKey = requireNonblank(input.idempotencyKey, "idempotencyKey");
+    const payloadHash = canonicalHash({ amount: String(amount), managerVendorId });
+
+    return this.serializable(async (tx) => {
+      const existing = await tx.garaVendorPayoutRequest.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        if (existing.payloadHash !== payloadHash) {
+          topupConflict("동일한 멱등성 키로 다른 Gara 지급 요청을 만들 수 없습니다.");
+        }
+        return {
+          id: existing.id,
+          amount: Number(existing.amount),
+          accountNumber: existing.accountNumberSnapshot,
+          status: existing.status,
+          createdAt: existing.createdAt.toISOString()
+        };
+      }
+
+      const registration = await tx.managerVendor.findUnique({
+        where: { id: managerVendorId },
+        include: { vendor: true }
+      });
+      if (!registration) throw new NotFoundException("등록한 업체를 찾을 수 없습니다.");
+      if (registration.status !== "ACTIVE" || !registration.vendor.isActive) {
+        throw new ConflictException("현재 지급할 수 없는 업체입니다.");
+      }
+      const accountNumber = registration.settlementAccountNumber?.trim();
+      if (!accountNumber) {
+        throw new BadRequestException("업체 계좌번호를 등록한 뒤 지급 요청을 만들어 주세요.");
+      }
+
+      const payout = await tx.garaVendorPayoutRequest.create({
+        data: {
+          id: `gara-vendor-payout-${randomUUID()}`,
+          managerId: registration.managerId,
+          managerVendorId: registration.id,
+          vendorId: registration.vendorId,
+          amount: BigInt(amount),
+          accountNumberSnapshot: accountNumber,
+          status: "PENDING_APPROVAL",
+          idempotencyKey,
+          payloadHash
+        }
+      });
+      return {
+        id: payout.id,
+        amount,
+        accountNumber: payout.accountNumberSnapshot,
+        status: payout.status,
+        createdAt: payout.createdAt.toISOString()
+      };
+    });
+  }
+
+  async settleGaraVendorPayout(input: SettleGaraVendorPayoutCommand) {
+    const managerId = requireNonblank(input.managerId, "managerId");
+    const payoutRequestId = requireNonblank(input.payoutRequestId, "payoutRequestId");
+    const idempotencyKey = requireNonblank(input.idempotencyKey, "idempotencyKey");
+
+    return this.serializable(async (tx) => {
+      const payout = await tx.garaVendorPayoutRequest.findUnique({
+        where: { id: payoutRequestId },
+        include: { creditAccount: true }
+      });
+      if (!payout || payout.managerId !== managerId) {
+        throw new NotFoundException("Gara 지급 요청을 찾을 수 없습니다.");
+      }
+      if (payout.status === "CREDIT_DEBITED") {
+        if (!payout.creditAccount) throw new ConflictException("지급 요청 계정 정보가 올바르지 않습니다.");
+        return {
+          request: {
+            id: payout.id,
+            amount: Number(payout.amount),
+            accountNumber: payout.accountNumberSnapshot,
+            status: payout.status,
+            createdAt: payout.createdAt.toISOString()
+          },
+          account: mapCreditAccount(payout.creditAccount)
+        };
+      }
+
+      const account = await this.ensureAccountRows(tx, managerId);
+      const now = new Date();
+      const debited = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        UPDATE "CreditAccount"
+        SET "balance" = "balance" - ${payout.amount}, "version" = "version" + 1, "updatedAt" = ${now}
+        WHERE "id" = ${account.id} AND "balance" >= ${payout.amount}
+        RETURNING "id"
+      `);
+      if (debited.length === 0) throw new ConflictException("크레딧 잔액이 부족합니다.");
+
+      const ledgerEntryId = `credit-ledger-${randomUUID()}`;
+      const accountAfter = await tx.creditAccount.findUniqueOrThrow({ where: { id: account.id } });
+      await tx.creditLedgerEntry.create({
+        data: {
+          id: ledgerEntryId,
+          creditAccountId: account.id,
+          type: "MANUAL_DEBIT",
+          signedAmount: -payout.amount,
+          balanceAfter: accountAfter.balance,
+          referenceType: "GARA_VENDOR_PAYOUT_REQUEST",
+          referenceId: payout.id,
+          idempotencyKey: `gara-payout-settle:${idempotencyKey}`
+        }
+      });
+      const settled = await tx.garaVendorPayoutRequest.update({
+        where: { id: payout.id },
+        data: {
+          creditAccountId: account.id,
+          ledgerEntryId,
+          status: "CREDIT_DEBITED",
+          processedAt: now
+        }
+      });
+      return {
+        request: {
+          id: settled.id,
+          amount: Number(settled.amount),
+          accountNumber: settled.accountNumberSnapshot,
+          status: settled.status,
+          createdAt: settled.createdAt.toISOString()
+        },
+        account: mapCreditAccount(accountAfter)
       };
     });
   }

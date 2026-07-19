@@ -344,6 +344,7 @@ enum CreditLedgerEntryType {
 }
 
 enum GaraVendorPayoutStatus {
+  PENDING_APPROVAL
   CREDIT_DEBITED
 }
 
@@ -1187,21 +1188,22 @@ model GaraVendorPayoutRequest {
   managerId             String
   managerVendorId       String
   vendorId              String
-  creditAccountId       String
-  ledgerEntryId         String                 @unique
+  creditAccountId       String?
+  ledgerEntryId         String?                @unique
   topupOrderId          String?                @unique
   amount                BigInt
   accountNumberSnapshot String
-  status                GaraVendorPayoutStatus @default(CREDIT_DEBITED)
+  status                GaraVendorPayoutStatus @default(PENDING_APPROVAL)
   idempotencyKey        String                 @unique
   payloadHash           String
   createdAt             DateTime               @default(now())
+  processedAt           DateTime?
 
   manager       UserAccount       @relation(fields: [managerId], references: [id], onDelete: Restrict)
   managerVendor ManagerVendor     @relation(fields: [managerVendorId], references: [id], onDelete: Restrict)
   vendor        VendorProfile     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
-  creditAccount CreditAccount     @relation(fields: [creditAccountId], references: [id], onDelete: Restrict)
-  ledgerEntry   CreditLedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+  creditAccount CreditAccount?    @relation(fields: [creditAccountId], references: [id], onDelete: Restrict)
+  ledgerEntry   CreditLedgerEntry? @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
   topupOrder    CreditTopupOrder? @relation(fields: [topupOrderId], references: [id], onDelete: SetNull)
 
   @@index([managerId, createdAt])

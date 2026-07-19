@@ -18,36 +18,23 @@ test("Gara shows linked accounts and each vendor cumulative credit", () => {
   assert.match(source, /vendor\.cumulativeCredit/);
 });
 
-test("Gara starts checkout for only the selected row and a positive integer amount", () => {
+test("Gara sends a payout request for only the selected row and a positive integer amount", () => {
   const source = readFileSync(workspacePath, "utf8");
 
-  assert.match(source, /createGaraVendorCreditCheckout/);
+  assert.match(source, /createGaraVendorPayoutRequest/);
   assert.match(source, /managerVendorId:\s*vendor\.id/);
   assert.match(
     source,
-    /amount,[\s\S]*creationKey:\s*crypto\.randomUUID\(\)/,
+    /amount,[\s\S]*idempotencyKey:\s*crypto\.randomUUID\(\)/,
   );
   assert.match(source, /\^\\d\+\$/);
-  assert.match(source, /requestManagerCardPayment/);
-  assert.match(source, /\/gara\/payment\/success/);
-  assert.match(source, /\/gara\/payment\/fail/);
+  assert.match(source, />발송</);
 });
 
-test("Gara cancels the created checkout when Toss launch fails", () => {
+test("Gara never launches a Toss checkout or immediately debits credit", () => {
   const source = readFileSync(workspacePath, "utf8");
 
-  assert.match(source, /cancelGaraVendorCreditCheckout/);
-  assert.match(source, /createdCheckout\.order\.orderId/);
-  assert.doesNotMatch(source, /createGaraPayoutAction/);
-  assert.doesNotMatch(source, /useActionState/);
-});
-
-test("Gara prepares Toss widgets before requesting a widget-mode payment", () => {
-  const source = readFileSync(workspacePath, "utf8");
-
-  assert.match(source, /createTossWidgets/);
-  assert.match(source, /tossPaymentMode/);
-  assert.match(source, /renderPaymentMethods/);
-  assert.match(source, /renderAgreement/);
-  assert.match(source, /widgets:/);
+  assert.doesNotMatch(source, /requestManagerCardPayment/);
+  assert.doesNotMatch(source, /createTossWidgets/);
+  assert.doesNotMatch(source, /vendor-credit-checkouts/);
 });
