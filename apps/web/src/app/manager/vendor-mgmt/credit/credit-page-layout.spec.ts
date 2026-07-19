@@ -11,6 +11,10 @@ const workspaceSource = readFileSync(
   join(process.cwd(), "src/app/manager/vendor-mgmt/credit/CreditWorkspace.tsx"),
   "utf8",
 );
+const garaPayoutSection = workspaceSource.slice(
+  workspaceSource.indexOf("{workspace.garaPayoutRequests.map"),
+  workspaceSource.indexOf("{workspace.paymentRequests.map"),
+);
 
 test("starts the credit page with payment policy instead of settlement overview", () => {
   assert.doesNotMatch(pageSource, /VendorScreenHeader/);
@@ -25,4 +29,14 @@ test("starts the credit page with payment policy instead of settlement overview"
   assert.match(workspaceSource, /getRealtimeSocket/);
   assert.match(workspaceSource, /gara:payout-updated/);
   assert.doesNotMatch(workspaceSource, /<h2>Gara 업체 지급 요청<\/h2>/);
+});
+
+test("keeps Gara payout cards focused on vendor, requested date, paid date, and amount", () => {
+  assert.match(garaPayoutSection, /request\.vendorName/);
+  assert.match(garaPayoutSection, /요청일/);
+  assert.match(garaPayoutSection, /지급일/);
+  assert.match(garaPayoutSection, /won\(request\.amount\)/);
+  assert.doesNotMatch(garaPayoutSection, /request\.accountNumber/);
+  assert.doesNotMatch(garaPayoutSection, /Gara 지급 요청/);
+  assert.doesNotMatch(garaPayoutSection, /크레딧 지급 완료/);
 });

@@ -775,20 +775,16 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
               const pending = request.status === "PENDING_APPROVAL";
               const key = `gara-payout:${request.id}`;
               return (
-                <article className={styles.paymentCard} key={request.id}>
+                <article className={`${styles.paymentCard} ${styles.garaPayoutCard}`} key={request.id}>
                   <div className={styles.requestMain}>
-                    <span className={styles.requestLabel}>{request.vendorName}</span>
-                    <strong>Gara 지급 요청 · {request.accountNumber}</strong>
-                    <div className={styles.requestMeta}>
-                      <span>요청일 {formatDate(request.createdAt)}</span>
-                      {request.processedAt ? <span>지급일 {formatDate(request.processedAt)}</span> : null}
-                    </div>
+                    <strong>{request.vendorName}</strong>
+                  </div>
+                  <div className={`${styles.requestMeta} ${styles.garaPayoutDates}`}>
+                    <span>요청일 {formatDate(request.createdAt)}</span>
+                    <span>지급일 {formatDate(request.processedAt)}</span>
                   </div>
                   <div className={styles.requestAmount}>
                     <strong>{won(request.amount)}</strong>
-                    <span className={pending ? styles.statusPending : styles.statusDone}>
-                      {pending ? "지급 승인 대기" : "크레딧 지급 완료"}
-                    </span>
                     {pending ? (
                       <button
                         className={styles.primaryButton}
