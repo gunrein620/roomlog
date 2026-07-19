@@ -1,29 +1,22 @@
 import { Badge, Card } from "@roomlog/ui";
 import { getManagerTicketDetail } from "@/lib/ticket-manager-api";
-import { resolveTicketDirectFlow } from "@/lib/ticket-direct-flow-state";
 import {
-  LinkButton,
-  DirectHandlingActions,
+  findManagerVendorJobByTicket,
+  searchAssignableVendorCandidates,
+} from "@/lib/vendor-mgmt-api";
+import {
   ResponsibilityCard,
   StatusBadges,
   TicketHeader,
-  Timeline,
   muted,
   pageStack,
   row,
   sectionTitle,
-  ticketDashHref,
 } from "../../_components/ticket-manager-ui";
 import { AttachmentThumbnailGallery } from "./AttachmentThumbnailGallery";
 import { TicketDetailBackButton } from "./TicketDetailBackButton";
-import { ManagerTicketChat } from "./ManagerTicketChat";
-import {
-  cancelDirectHandlingAction,
-  completeDirectHandlingAction,
-  decideResponsibilityAction,
-  sendTicketChatAction,
-  startDirectHandlingAction,
-} from "./actions";
+import { RegisteredVendorAssignment } from "./RegisteredVendorAssignment";
+import { decideResponsibilityAction } from "./actions";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -44,12 +37,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   }
 
   const { ticket, analysis, repair } = detail;
-  const flow = resolveTicketDirectFlow({
-    ticketStatus: ticket.status,
-    directHandling: ticket.directHandling,
-    hasRepairPath: Boolean(repair),
-    repairStage: repair?.stage,
-  });
+  const assignmentData = await Promise.all([
+    searchAssignableVendorCandidates(ticket.id),
+    findManagerVendorJobByTicket(ticket.id),
+  ]).catch(() => null);
   return (
     <div style={pageStack}>
       <TicketHeader
@@ -64,84 +55,53 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       />
       <StatusBadges ticket={ticket} repair={repair} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "var(--space-lg)", alignItems: "start" }}>
-        <div style={pageStack}>
-          <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
-            <div style={sectionTitle}>AI 요약</div>
-            {analysis ? (
-              <>
-                <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>{ticket.title}</div>
-                <div style={muted}>{ticket.description}</div>
-                <div style={row}>
-                  {analysis.problemCandidates.map((candidate) => (
-                    <Badge key={candidate}>{candidate}</Badge>
-                  ))}
-                  {analysis.safetyRisk ? <Badge emphasis>위험 키워드 상향</Badge> : null}
-                </div>
-              </>
-            ) : (
-              <div style={muted}>조회할 AI 분석 내용이 없습니다.</div>
-            )}
-          </Card>
-
-          <ResponsibilityCard
-            analysis={analysis}
-            ticketId={ticket.id}
-            aiFeedback={detail.aiFeedback}
-            responsibilityDecision={detail.responsibilityDecision}
-            decisionAction={decideResponsibilityAction}
-          />
-
-          <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-            <div style={sectionTitle}>임차인 입력·첨부</div>
-            <div style={muted}>{[ticket.location, ticket.description].filter(Boolean).join(" · ")}</div>
-            <AttachmentThumbnailGallery
-              attachmentUrls={detail.attachmentUrls}
-              emptyMessage="조회할 첨부 내용이 없습니다."
-            />
-          </Card>
-
-          <ManagerTicketChat
-            ticketId={ticket.id}
-            messages={detail.messages}
-            action={sendTicketChatAction}
-          />
-
-          {detail.vendorDecline ? (
-            <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
-              <div style={{ fontWeight: 700 }}>업체가 배정을 거절했습니다</div>
-              <div style={muted}>{detail.vendorDecline.reason}</div>
-              <div style={{ ...row, justifyContent: "flex-end" }}>
-                <LinkButton
-                  href={ticketDashHref("04", ticket.id)}
-                  variant="secondary"
-                >
-                  다른 업체 배정
-                </LinkButton>
-              </div>
-            </Card>
-          ) : null}
-
-          <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
-            <div style={sectionTitle}>다음 행동</div>
-            <DirectHandlingActions
-              ticket={ticket}
-              repair={repair}
-              startAction={startDirectHandlingAction}
-              completeAction={completeDirectHandlingAction}
-              cancelAction={cancelDirectHandlingAction}
-            />
-            <div style={{ ...row, justifyContent: "flex-end" }}>
-              {flow.showVendorAssignment ? (
-                <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
-              ) : null}
-              <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">답변 초안 생성</LinkButton>
+      <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+        <div style={sectionTitle}>AI 요약</div>
+        {analysis ? (
+          <>
+            <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>{ticket.title}</div>
+            <div style={muted}>{ticket.description}</div>
+            <div style={row}>
+              {analysis.problemCandidates.map((candidate) => (
+                <Badge key={candidate}>{candidate}</Badge>
+              ))}
+              {analysis.safetyRisk ? <Badge emphasis>위험 키워드 상향</Badge> : null}
             </div>
-          </Card>
-        </div>
+          </>
+        ) : (
+          <div style={muted}>조회할 AI 분석 내용이 없습니다.</div>
+        )}
+      </Card>
 
-        <Timeline ticket={ticket} analysis={analysis} repair={repair} />
-      </div>
+      <ResponsibilityCard
+        analysis={analysis}
+        ticketId={ticket.id}
+        aiFeedback={detail.aiFeedback}
+        responsibilityDecision={detail.responsibilityDecision}
+        decisionAction={decideResponsibilityAction}
+      />
+
+      <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        <div style={sectionTitle}>임차인 입력·첨부</div>
+        <div style={muted}>{[ticket.location, ticket.description].filter(Boolean).join(" · ")}</div>
+        <AttachmentThumbnailGallery
+          attachmentUrls={detail.attachmentUrls}
+          emptyMessage="조회할 첨부 내용이 없습니다."
+        />
+      </Card>
+
+      {assignmentData ? (
+        <RegisteredVendorAssignment
+          ticket={ticket}
+          candidates={assignmentData[0].data}
+          current={assignmentData[1].data}
+        />
+      ) : (
+        <Card role="alert" style={{ display: "grid", gap: "var(--space-sm)" }}>
+          <strong>업체 정보를 불러오지 못했습니다</strong>
+          <div style={muted}>잠시 후 페이지를 새로고침해 주세요.</div>
+        </Card>
+      )}
     </div>
   );
 }
