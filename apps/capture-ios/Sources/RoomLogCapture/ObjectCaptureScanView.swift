@@ -336,16 +336,45 @@ private struct ObjectCaptureCaptureScreen: View {
     let onCompleted: (URL) -> Void
     let onFailed: (String) -> Void
 
+    /// 카메라 뷰를 띄우는 단계들. 이 조건이 바뀌지 않는 한 아래 ObjectCaptureView 인스턴스는 유지된다.
+    private var showsCameraView: Bool {
+        switch session.state {
+        case .ready, .detecting, .capturing: return true
+        default: return false
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
-            switch session.state {
-            case .ready, .initializing:
-                Woozu.night.ignoresSafeArea()
-                ProgressView().tint(Woozu.secondarySoft)
-
-            case .detecting:
+            // ⚠️ ObjectCaptureView는 switch **밖에 하나만** 둔다.
+            // 상태 분기마다 각각 만들면 .ready→.detecting 전환에서 SwiftUI가 뷰를 파괴·재생성하고,
+            // 그 순간 세션이 paused로 떨어져 촬영 시작이 통째로 무시된다:
+            //   "startCapturing() called in state paused != .detecting in object mode. Dropping the call..."
+            //   (2026-07-20 실기 콘솔 로그로 확인)
+            if showsCameraView {
                 RealityKit.ObjectCaptureView(session: session)
                     .ignoresSafeArea()
+            } else {
+                Woozu.night.ignoresSafeArea()
+            }
+
+            // 아래 분기는 **오버레이(안내 카드)만** 담당한다 — 카메라 뷰를 다시 만들지 않는다.
+            switch session.state {
+            case .initializing:
+                ProgressView().tint(Woozu.secondarySoft)
+
+            // startDetecting()은 세션이 .ready가 된 뒤에 호출해야 먹는다 — start() 직후에 부르면
+            // 아직 .initializing이라 무시된다(실기 확인 2026-07-19).
+            case .ready:
+                instructionCard(
+                    title: "가구를 화면 가운데 두세요",
+                    message: "준비되면 물체 인식을 시작합니다.",
+                    actionTitle: "물체 인식 시작",
+                    action: { session.startDetecting() }
+                )
+                .onAppear { session.startDetecting() }
+
+            case .detecting:
                 instructionCard(
                     title: "가구를 사각형 안에 맞추세요",
                     message: "가구 전체가 프레임 안에 들어오면 촬영을 시작하세요.",
@@ -354,8 +383,6 @@ private struct ObjectCaptureCaptureScreen: View {
                 )
 
             case .capturing:
-                RealityKit.ObjectCaptureView(session: session)
-                    .ignoresSafeArea()
                 instructionCard(
                     title: "천천히 한 바퀴 돌며 촬영 중",
                     message: "촬영 \(session.numberOfShotsTaken)장 — 여러 각도에서 가구를 비춰 주세요.",
@@ -364,7 +391,6 @@ private struct ObjectCaptureCaptureScreen: View {
                 )
 
             case .finishing:
-                Woozu.night.ignoresSafeArea()
                 VStack(spacing: 12) {
                     ProgressView().tint(Woozu.secondarySoft)
                     Text("마무리 중…")
@@ -373,15 +399,12 @@ private struct ObjectCaptureCaptureScreen: View {
                 }
 
             case .completed:
-                Woozu.night.ignoresSafeArea()
-                    .onAppear { handOff() }
+                Color.clear.onAppear { handOff() }
 
             case .failed(let error):
-                Woozu.night.ignoresSafeArea()
-                    .onAppear { onFailed(error.localizedDescription) }
+                Color.clear.onAppear { onFailed(error.localizedDescription) }
 
             @unknown default:
-                Woozu.night.ignoresSafeArea()
                 ProgressView().tint(Woozu.secondarySoft)
             }
         }
@@ -408,8 +431,9 @@ private struct ObjectCaptureCaptureScreen: View {
 
         // start(imagesDirectory:)는 Bool이 아니라 Void를 반환한다 — 시작 실패는 반환값이 아니라
         // 세션 상태(.failed)로 전달되므로, 아래 body의 switch가 그 경로를 이미 처리한다.
+        // startDetecting()은 여기서 부르지 않는다 — 이 시점 세션은 아직 .initializing이라 무시된다.
+        // .ready 케이스의 onAppear(또는 사용자 버튼)에서 호출한다.
         session.start(imagesDirectory: directory)
-        session.startDetecting()
     }
 
     private func handOff() {
