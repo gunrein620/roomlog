@@ -143,6 +143,56 @@
     transition: opacity 220ms ease;
   }
   body.upload-empty #workspace-empty-backdrop { opacity: 1; }
+  /* Shooting stars — a compositor-only layer above the landing photo. Each streak
+     is a gradient line that falls diagonally, fading in at the head and out at the
+     tail. Only alive on the landing screen, so it never competes with the 3D view. */
+  #shooting-stars {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 400ms ease;
+  }
+  body.upload-empty #shooting-stars { opacity: 1; }
+  #shooting-stars i {
+    position: absolute;
+    top: var(--sy);
+    left: var(--sx);
+    width: var(--len);
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(198,216,255,.55) 42%, rgba(255,255,255,.95) 100%);
+    filter: drop-shadow(0 0 6px rgba(180, 205, 255, .85));
+    opacity: 0;
+    transform: rotate(35deg) translate3d(0, 0, 0);
+    transform-origin: 100% 50%;
+    will-change: transform, opacity;
+    animation: shooting-star var(--dur) linear var(--delay) infinite;
+  }
+  /* The head of the streak — a small bright point that leads the trail. */
+  #shooting-stars i::after {
+    content: "";
+    position: absolute;
+    right: -1px;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin-top: -2px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 8px 2px rgba(214, 230, 255, .95);
+  }
+  @keyframes shooting-star {
+    0%       { opacity: 0; transform: rotate(35deg) translate3d(0, 0, 0); }
+    8%       { opacity: 1; }
+    70%      { opacity: 1; }
+    100%     { opacity: 0; transform: rotate(35deg) translate3d(min(78vw, 900px), 0, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #shooting-stars { display: none; }
+  }
   #review-canvas {
     background: var(--surface-dim);
   }
@@ -678,8 +728,73 @@
     font-size: 12px;
     font-weight: 700;
   }
+  #workflow-progress {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    z-index: 22;
+    width: min(760px, calc(100vw - 48px));
+    padding: 12px 24px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: var(--shadow);
+    pointer-events: none;
+  }
+  #workflow-progress ol {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: center;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+  .workflow-step {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #aaa6b8;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .workflow-step:not(:last-child)::after {
+    position: absolute;
+    top: 50%;
+    left: calc(50% + 54px);
+    width: calc(100% - 68px);
+    height: 2px;
+    background: #dedbec;
+    content: "";
+  }
+  .workflow-step-number {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    place-items: center;
+    border-radius: 50%;
+    background: #efedf4;
+    color: #aaa6b8;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .workflow-step.is-active { color: var(--primary); }
+  .workflow-step.is-active .workflow-step-number {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 7px 16px rgba(87, 71, 207, .24);
+  }
+  .workflow-step.is-complete { color: #6282cc; }
+  .workflow-step.is-complete .workflow-step-number {
+    background: #e2ebff;
+    color: #4f70bd;
+  }
   #control-stack {
-    top: 24px;
+    top: 104px;
     bottom: 28px;
     left: 120px;
     width: 312px;
@@ -819,7 +934,7 @@
   /* Landing entry card: retain the existing upload button and viewer controls,
      but give the first screen one clear, Korean entry point. */
   body.upload-empty #control-stack {
-    top: 40px;
+    top: 112px;
     bottom: auto;
     left: 40px;
     width: min(390px, calc(100vw - 80px));
@@ -838,6 +953,28 @@
   body.upload-empty #demo-controls,
   body.upload-empty #status { display: none !important; }
   body.upload-empty #landing-intro { display: block; }
+  /* Landing card — borrows the manager dashboard's card language: a hairline
+     border plus a layered soft shadow instead of one flat drop, and a roomier
+     hero padding. Scoped to the landing screen so the 3D workspace panels keep
+     their own compact styling. */
+  body.upload-empty #ui {
+    padding: 26px 24px 22px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow:
+      rgba(11, 53, 88, .05) 0 4px 6px,
+      rgba(11, 53, 88, .05) 0 10px 20px,
+      rgba(11, 53, 88, .14) 0 28px 56px;
+  }
+  body.upload-empty #ui::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(11, 53, 88, .08);
+    pointer-events: none;
+  }
+  body.upload-empty #ui { position: relative; }
   .landing-kicker {
     display: inline-flex;
     align-items: center;
@@ -935,6 +1072,14 @@
   #furniture-panel { top: 96px; right: 28px; max-height: calc(100vh - 124px); }
 
   @media (max-width: 720px) {
+    #workflow-progress {
+      top: 8px;
+      width: calc(100vw - 16px);
+      padding: 10px 8px;
+    }
+    .workflow-step { gap: 4px; font-size: 11px; }
+    .workflow-step-number { width: 26px; height: 26px; flex-basis: 26px; font-size: 11px; }
+    .workflow-step:not(:last-child)::after { left: calc(50% + 42px); width: calc(100% - 50px); }
     #control-stack {
       top: 8px;
       right: 8px;
@@ -958,13 +1103,13 @@
     }
     #furniture-results { max-height: 24vh; }
     #workspace-header { min-height: 60px; padding: 0 16px; }
-    #control-stack { top: 72px; right: 16px; bottom: auto; left: 16px; width: auto; }
+    #control-stack { top: 82px; right: 16px; bottom: auto; left: 16px; width: auto; }
     #editor-tools { top: auto; right: 16px; bottom: 82px; left: 16px; width: auto; max-height: 96px; }
     #editor-tools .tool-grid,
     #editor-tools .navigation-grid,
     #editor-tools .action-grid { display: flex; overflow-x: auto; }
     body.upload-empty #ui #upload-btn { width: 100%; min-height: 60px; }
-    body.upload-empty #control-stack { top: 16px; right: 16px; left: 16px; width: auto; }
+    body.upload-empty #control-stack { top: 82px; right: 16px; left: 16px; width: auto; }
     body.upload-empty #ui { padding: 30px 28px; }
     #view-controls { bottom: 16px; max-width: calc(100vw - 32px); overflow-x: auto; }
     #save-json-btn { right: 150px; }
@@ -997,6 +1142,15 @@
   <div id="workspace-brand" aria-label="RoomLog">RoomLog</div>
   <div class="workspace-header-context" aria-hidden="true">도면 → 3D</div>
 </header>
+
+<nav id="workflow-progress" aria-label="3D 도면 제작 단계">
+  <ol>
+    <li class="workflow-step is-active" data-workflow-step="1" aria-current="step"><span class="workflow-step-number">1</span><span>업로드</span></li>
+    <li class="workflow-step" data-workflow-step="2"><span class="workflow-step-number">2</span><span>공간 분석</span></li>
+    <li class="workflow-step" data-workflow-step="3"><span class="workflow-step-number">3</span><span>3D 생성</span></li>
+    <li class="workflow-step" data-workflow-step="4"><span class="workflow-step-number">4</span><span>편집</span></li>
+  </ol>
+</nav>
 
 <div id="control-stack">
 <div id="ui">
@@ -1167,6 +1321,14 @@
 </div>
 
 <div id="workspace-empty-backdrop" aria-hidden="true"></div>
+<div id="shooting-stars" aria-hidden="true">
+  <i style="--sx: 12%;  --sy: -8%;  --delay: 0s;    --dur: 2.6s; --len: 160px;"></i>
+  <i style="--sx: 38%;  --sy: -14%; --delay: 1.9s;  --dur: 3.1s; --len: 210px;"></i>
+  <i style="--sx: 61%;  --sy: -6%;  --delay: 3.6s;  --dur: 2.4s; --len: 140px;"></i>
+  <i style="--sx: 78%;  --sy: -16%; --delay: 5.2s;  --dur: 3.4s; --len: 240px;"></i>
+  <i style="--sx: 26%;  --sy: -12%; --delay: 7.1s;  --dur: 2.9s; --len: 180px;"></i>
+  <i style="--sx: 89%;  --sy: -4%;  --delay: 8.8s;  --dur: 2.7s; --len: 165px;"></i>
+</div>
 <canvas id="scene"></canvas>
 <canvas id="review-canvas" aria-label="Floor plan recognition editor" aria-hidden="true"></canvas>
 
@@ -2151,6 +2313,7 @@ async function loadPlan(data) {
 // API + UI wiring
 // -----------------------------------------------------------------------------
 const status = document.getElementById("status");
+const workflowSteps = [...document.querySelectorAll("[data-workflow-step]")];
 const sceneCanvas = document.getElementById("scene");
 const reviewCanvas = document.getElementById("review-canvas");
 const editorTools = document.getElementById("editor-tools");
@@ -2186,6 +2349,17 @@ const furniturePageSummary = document.getElementById("furniture-page-summary");
 const furnitureToolbar = document.getElementById("furniture-floating-toolbar");
 const furnitureSelectionToolbarActions = document.getElementById("furniture-selection-toolbar-actions");
 const furniturePendingToolbarActions = document.getElementById("furniture-pending-toolbar-actions");
+
+function updateWorkflowProgress(step) {
+  const activeStep = Math.min(4, Math.max(1, Number(step) || 1));
+  workflowSteps.forEach(item => {
+    const itemStep = Number(item.dataset.workflowStep);
+    const active = itemStep === activeStep;
+    item.classList.toggle("is-active", active);
+    item.classList.toggle("is-complete", itemStep < activeStep);
+    item.setAttribute("aria-current", active ? "step" : "false");
+  });
+}
 const furnitureMoveButton = document.getElementById("furniture-move-btn");
 const furnitureRotateLeftButton = document.getElementById("furniture-rotate-left-btn");
 const furnitureRotateRightButton = document.getElementById("furniture-rotate-right-btn");
@@ -3243,6 +3417,7 @@ async function enterFurnishingStage() {
       inFlight = false;
     }
     currentView = "furnishing";
+    updateWorkflowProgress(4);
     setCanvasViewState("furnishing");
     setFurnishingVisibility(true);
     furniturePanel.hidden = false;
@@ -3508,6 +3683,7 @@ function setView(view) {
     stopAutoOrbit();
   }
   currentView = view;
+  updateWorkflowProgress(view === "original" ? 2 : view === "furnishing" ? 4 : 3);
   editorTools.hidden = !reviewEditor?.document;
   setCanvasViewState(view);
   controls.enabled = !showingReview;
@@ -3615,6 +3791,7 @@ async function extractReviewFile(file) {
 async function extractForReview(file) {
   if (inFlight || !reviewEditor) return false;
   inFlight = true;
+  updateWorkflowProgress(2);
   updateEditorControls();
 
   try {
@@ -3622,6 +3799,7 @@ async function extractForReview(file) {
     document.body.classList.remove("upload-empty");
     return true;
   } catch (error) {
+    updateWorkflowProgress(1);
     setStatus(`Extraction failed: ${error.message}`, "error");
     return false;
   } finally {
@@ -3639,6 +3817,7 @@ async function showThreeDimensionalView() {
   if (!reviewDocument || inFlight) return;
 
   inFlight = true;
+  updateWorkflowProgress(3);
   updateEditorControls();
   try {
     if (reviewDocument.needsCompose()) {
@@ -3672,6 +3851,7 @@ async function showThreeDimensionalView() {
     await transitionCanvasView("3d");
     setStatus(summarize(currentComposedPlan));
   } catch (error) {
+    updateWorkflowProgress(2);
     setView("original");
     setStatus(
       `Composition failed: ${error.message}. Review preserved; choose Show 3D to retry.`,

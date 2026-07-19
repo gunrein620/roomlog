@@ -105,6 +105,21 @@ test("keeps the legacy upload controls off the loaded 3D workspace", async () =>
   assert.match(css, /body:not\(\.upload-empty\) \.landing-feature-row\s*\{\s*display:\s*none;/);
 });
 
+test("shows a four-step creation workflow from the landing screen", async () => {
+  const html = await readFile(viewerPath, "utf8");
+  const css = readViewerStyle(html);
+
+  assert.match(html, /id="workflow-progress"/);
+  for (const label of ["업로드", "공간 분석", "3D 생성", "편집"]) {
+    assert.ok(html.includes(label), `missing workflow label: ${label}`);
+  }
+  assert.match(html, /function updateWorkflowProgress\(step\)/);
+  assert.match(html, /updateWorkflowProgress\(2\)/);
+  assert.match(html, /updateWorkflowProgress\(3\)/);
+  assert.match(html, /updateWorkflowProgress\(4\)/);
+  assert.match(css, /#workflow-progress\s*\{[\s\S]*?border-radius:\s*999px;/);
+});
+
 test("keeps the existing viewer hooks and integration request paths intact", async () => {
   const html = await readFile(viewerPath, "utf8");
 
