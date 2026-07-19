@@ -56,7 +56,9 @@ export function BillingWorkspaceHeader({
         </div>
       ) : null}
 
-      <div className={styles.headerControls}>
+      <div
+        className={`${styles.headerControls}${hasHeading ? "" : ` ${styles.headerControlsEnd}`}`}
+      >
         <div className={styles.fieldGroup}>
           <label className={styles.fieldLabel} htmlFor="billing-building">
             건물
