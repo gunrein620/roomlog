@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Card, Input } from "@roomlog/ui";
+import { Badge, Card } from "@roomlog/ui";
 import { MHOME_ROUTES } from "@/lib/manager-home-nav";
 
 // M-HOME-03(전체 건물 관리) 데모 콘텐츠를 00 페이지 하단 섹션으로 통합.
@@ -21,15 +21,6 @@ export function BuildingsSection() {
       </div>
 
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
-        {/* 건물·호실 등록은 미사용 기능으로 제거 — 검색만 남긴다 */}
-        <Input aria-label="건물 검색" placeholder="건물명, 지역, 담당자 검색" readOnly />
-
-        <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-          {["리스크순", "수납률순", "월세순", "공실순", "담당자", "유형", "지역", "상태"].map((label, index) => (
-            <Badge key={label} emphasis={index === 0}>{label}</Badge>
-          ))}
-        </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "var(--space-md)" }}>
           {buildings.map((building) => (
             <Link key={building.name} href={`${MHOME_ROUTES["M-HOME-04"]}?building=${encodeURIComponent(building.name)}`} style={linkReset}>
