@@ -14,6 +14,7 @@ import {
   closeManagerRealtimeResources,
   parseManagerRealtimeEvent,
 } from "@/app/manager/_components/manager-realtime-events";
+import { managerRealtimeCommandDisposition } from "@/app/manager/_components/useManagerRealtimeSession";
 import { normalizeManagerPrompt } from "@/lib/manager-assistant";
 import { requestManagerCopilotChat } from "@/lib/manager-copilot-api";
 
@@ -104,6 +105,9 @@ export function ManagerRealtimeConsole({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
+  const pendingActionRef = useRef<ManagerCopilotPendingAction | null>(null);
+  const lastUserTranscriptRef = useRef("");
+  pendingActionRef.current = pendingAction;
 
   useEffect(() => {
     return () => {
@@ -471,6 +475,7 @@ export function ManagerRealtimeConsole({
       return;
     }
     if (event.kind === "transcript") {
+      if (event.role === "user") lastUserTranscriptRef.current = event.content;
       appendEntry({
         role: event.role === "user" ? "manager" : "agent",
         text: event.content,
@@ -484,7 +489,24 @@ export function ManagerRealtimeConsole({
       // 명령 실패도 모델에 결과로 돌려줘야 대화가 이어진다 — 안 돌려주면 응답 없이 멈춘 것처럼 보인다.
       let result: ManagerAgentCommandResult;
       try {
-        if (args.command === "billing.send_dunning") {
+        const disposition = managerRealtimeCommandDisposition(pendingActionRef.current, {
+          ...args,
+          text: lastUserTranscriptRef.current || args.text,
+        });
+
+        if (disposition.kind === "confirm_pending") {
+          const response = await requestManagerCopilotChat({
+            messages: [],
+            confirmActionId: disposition.actionId,
+          });
+          applyCopilotResponse(response);
+          result = {
+            status: response.receipts?.length ? "executed" : "blocked",
+            domain: "billing",
+            summary: response.reply,
+            requiresConfirmation: Boolean(response.pendingAction),
+          };
+        } else if (disposition.kind === "prepare_dunning") {
           const response = await requestDunningPreparation({
             prompt: args.text,
             billId: args.billId || initialBillId,
@@ -506,6 +528,8 @@ export function ManagerRealtimeConsole({
             channel: args.channel,
             threadId: args.threadId,
             body: args.body,
+            title: args.title,
+            target: args.target,
           });
           appendEntry({ role: "agent", text: result.summary, result });
         }

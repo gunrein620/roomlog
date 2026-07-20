@@ -107,10 +107,14 @@ function parseCommandInput(argumentsText: string): ManagerAgentCommandInput {
     ...optionalValue("channel", args.channel),
     ...optionalValue("threadId", args.threadId),
     ...optionalValue("body", args.body),
+    ...optionalValue("title", args.title),
+    ...optionalValue("target", args.target),
   };
 }
 
-function optionalValue<Key extends "text" | "billId" | "channel" | "threadId" | "body">(
+function optionalValue<
+  Key extends "text" | "billId" | "channel" | "threadId" | "body" | "title" | "target"
+>(
   key: Key,
   value: unknown,
 ): Partial<Record<Key, string>> {

@@ -342,6 +342,14 @@ export function useTenantAiAssistant({
         assistantTranscript: flush.assistantTranscript,
         eventId: flush.eventId,
       });
+      if (result.autoFinalized) {
+        announceComplaintFiled(result.autoFinalized);
+      } else if (
+        result.session.draft.title.trim() &&
+        result.session.draft.summary.trim()
+      ) {
+        setTenantAiDraftForRequest(result.session.draft);
+      }
       succeeded = true;
     } catch {
       // 전사 기록 실패 — 다음 턴에서 재시도되며, 대화 자체는 이어진다.

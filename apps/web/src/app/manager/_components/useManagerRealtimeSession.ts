@@ -7,8 +7,10 @@ import type {
   ManagerAssistantConnectionState,
   ManagerAssistantTranscriptEntry,
   ManagerCopilotChatResponse,
+  ManagerCopilotPendingAction,
 } from "@roomlog/types";
 import { requestManagerCopilotChat } from "../../../lib/manager-copilot-api";
+import { getManagerAssistantState } from "./manager-assistant-store";
 import {
   closeManagerRealtimeResources,
   parseManagerRealtimeEvent,
@@ -43,6 +45,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
   const channelRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastUserTranscriptRef = useRef("");
 
   useEffect(() => closeResources, []);
 
@@ -168,6 +171,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       return;
     }
     if (event.kind === "transcript") {
+      if (event.role === "user") lastUserTranscriptRef.current = event.content;
       appendMessage(event.role, event.content);
       return;
     }
@@ -186,7 +190,29 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
 
   async function executeCommand(input: ManagerAgentCommandInput): Promise<ManagerAgentCommandResult> {
     try {
-      if (input.command === "billing.send_dunning") {
+      const disposition = managerRealtimeCommandDisposition(
+        getManagerAssistantState().pendingAction,
+        {
+          ...input,
+          text: lastUserTranscriptRef.current || input.text,
+        },
+      );
+
+      if (disposition.kind === "confirm_pending") {
+        const response = await requestManagerCopilotChat({
+          messages: [],
+          confirmActionId: disposition.actionId,
+        });
+        options.applyCopilotResponse(response);
+        return {
+          status: response.receipts?.length ? "executed" : "blocked",
+          domain: "billing",
+          summary: response.reply,
+          requiresConfirmation: Boolean(response.pendingAction),
+        };
+      }
+
+      if (disposition.kind === "prepare_dunning") {
         const response = await requestManagerCopilotChat({
           messages: [],
           intent: {
@@ -253,6 +279,26 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
 
 export function managerPushToTalkEnabled(status: ManagerAssistantConnectionState) {
   return status === "connected";
+}
+
+export function managerRealtimeCommandDisposition(
+  pendingAction: ManagerCopilotPendingAction | null,
+  input: ManagerAgentCommandInput,
+):
+  | { kind: "confirm_pending"; actionId: string }
+  | { kind: "prepare_dunning" }
+  | { kind: "execute" } {
+  if (
+    input.command === "billing.send_dunning" &&
+    pendingAction?.kind === "billing.send_dunning" &&
+    /^(승인|진행해)$/.test((input.text ?? "").trim())
+  ) {
+    return { kind: "confirm_pending", actionId: pendingAction.id };
+  }
+  if (input.command === "billing.send_dunning") {
+    return { kind: "prepare_dunning" };
+  }
+  return { kind: "execute" };
 }
 
 export function setManagerAudioTracksEnabled(

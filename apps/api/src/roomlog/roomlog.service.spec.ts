@@ -2210,6 +2210,42 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("finalizes a tenant voice intake when a spoken approval follows the shown draft", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "VOICE_CHAT"
+    });
+
+    try {
+      const draftTurn = await service.recordRealtimeTurn("tenant-demo", session.id, {
+        userTranscript:
+          "301호 화장실 천장에서 물이 떨어져요. 오늘 저녁 7시 이후 방문 가능하고 민원 접수해줘.",
+        assistantTranscript:
+          "301호 화장실 천장 누수 초안을 만들었습니다. 이대로 접수할까요?",
+        eventId: "evt_voice_draft"
+      });
+
+      assert.equal(draftTurn.session.draft.readyToFinalize, true);
+      assert.equal(draftTurn.autoFinalized, undefined);
+
+      const approvalTurn = await service.recordRealtimeTurn("tenant-demo", session.id, {
+        userTranscript: "진행해",
+        assistantTranscript: "초안대로 접수하겠습니다.",
+        eventId: "evt_voice_approval"
+      });
+
+      assert.ok(approvalTurn.autoFinalized);
+      assert.equal(approvalTurn.session.status, "FINALIZED");
+      assert.ok(approvalTurn.autoFinalized.complaint.id);
+      assert.ok(approvalTurn.autoFinalized.ticket.id);
+    } finally {
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+    }
+  });
+
   it("deduplicates retried Realtime turns by event id", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

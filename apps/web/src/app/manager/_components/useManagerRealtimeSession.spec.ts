@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  managerRealtimeCommandDisposition,
   managerPushToTalkEnabled,
   managerRealtimeStatusLabel,
   microphoneErrorMessage,
@@ -36,5 +37,35 @@ describe("manager realtime session labels", () => {
     assert.equal(managerPushToTalkEnabled("connecting"), false);
     assert.equal(managerPushToTalkEnabled("idle"), false);
     assert.equal(managerPushToTalkEnabled("error"), false);
+  });
+
+  it("confirms an existing dunning action instead of preparing it again", () => {
+    const pendingAction = {
+      id: "copilot-action-1",
+      kind: "billing.send_dunning" as const,
+      summary: "103호 7월분 독촉 발송",
+    };
+
+    assert.deepEqual(
+      managerRealtimeCommandDisposition(pendingAction, {
+        command: "billing.send_dunning",
+        text: "승인",
+      }),
+      { kind: "confirm_pending", actionId: "copilot-action-1" },
+    );
+    assert.deepEqual(
+      managerRealtimeCommandDisposition(null, {
+        command: "billing.send_dunning",
+        text: "103호 월세 독촉 보내",
+      }),
+      { kind: "prepare_dunning" },
+    );
+    assert.deepEqual(
+      managerRealtimeCommandDisposition(pendingAction, {
+        command: "billing.send_dunning",
+        text: "문구를 더 짧게 바꿔줘",
+      }),
+      { kind: "prepare_dunning" },
+    );
   });
 });

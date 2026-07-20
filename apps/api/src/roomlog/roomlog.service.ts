@@ -4602,6 +4602,7 @@ export class RoomlogService implements OnModuleDestroy {
       throw new BadRequestException("Realtime 전사 내용이 필요합니다.");
     }
 
+    const approvalTurn = this.isIntakeApprovalTurn(session, userTranscript);
     const recordedMessages: IntakeMessage[] = [];
 
     if (userTranscript || attachmentUrls.length > 0) {
@@ -4618,6 +4619,32 @@ export class RoomlogService implements OnModuleDestroy {
       };
       session.messages.push(tenantMessage);
       recordedMessages.push(tenantMessage);
+    }
+
+    if (approvalTurn) {
+      const assistantMessage = this.createIntakeMessage(
+        session.id,
+        "AI_ASSISTANT",
+        "초안대로 민원을 접수했습니다. 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
+        "VOICE"
+      );
+      assistantMessage.realtimeEventId = realtimeEventId;
+      session.messages.push(assistantMessage);
+      recordedMessages.push(assistantMessage);
+      session.updatedAt = now();
+      const finalized = this.finalizeIntakeSession(tenantId, session.id);
+
+      return {
+        session: this.presentIntakeSession(session),
+        turnSummary: this.presentRealtimeTurnSummary(session, assistantMessage.messageText),
+        recordedMessages: this.presentIntakeMessages(recordedMessages),
+        deduplicated: false,
+        autoFinalized: {
+          complaint: finalized.complaint,
+          ticket: finalized.ticket,
+          analysis: finalized.analysis
+        }
+      };
     }
 
     const fallbackDraft = this.buildIntakeDraft(session);

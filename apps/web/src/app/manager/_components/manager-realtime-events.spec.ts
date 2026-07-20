@@ -55,6 +55,35 @@ describe("manager realtime event parser", () => {
     );
   });
 
+  it("preserves announcement target, title, and body from voice tool calls", () => {
+    assert.deepEqual(
+      parseManagerRealtimeEvent(
+        JSON.stringify({
+          type: "response.function_call_arguments.done",
+          call_id: "call-announcement",
+          arguments: JSON.stringify({
+            command: "messaging.send_announcement",
+            text: "102호 에어컨 설치 공지",
+            target: "관리자-세입자 플로우테스트2 102호",
+            title: "102호 에어컨 설치 안내",
+            body: "오늘 에어컨 설치 작업이 진행됩니다.",
+          }),
+        }),
+      ),
+      {
+        kind: "command",
+        callId: "call-announcement",
+        input: {
+          command: "messaging.send_announcement",
+          text: "102호 에어컨 설치 공지",
+          target: "관리자-세입자 플로우테스트2 102호",
+          title: "102호 에어컨 설치 안내",
+          body: "오늘 에어컨 설치 작업이 진행됩니다.",
+        },
+      },
+    );
+  });
+
   it("maps speech and response lifecycle events to activity", () => {
     assert.deepEqual(
       parseManagerRealtimeEvent(
