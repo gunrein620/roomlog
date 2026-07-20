@@ -28,7 +28,10 @@ type ManagerRealtimeClientSecretResult = {
 
 export interface ManagerRealtimeSessionOptions {
   appendEntry(entry: ManagerAssistantTranscriptEntry): void;
-  applyCopilotResponse(response: ManagerCopilotChatResponse): void;
+  applyCopilotResponse(
+    response: ManagerCopilotChatResponse,
+    options?: { includeReply?: boolean },
+  ): void;
   initialBillId?: string;
 }
 
@@ -203,7 +206,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
           messages: [],
           confirmActionId: disposition.actionId,
         });
-        options.applyCopilotResponse(response);
+        options.applyCopilotResponse(response, { includeReply: false });
         return {
           status: response.receipts?.length ? "executed" : "blocked",
           domain: "billing",
@@ -224,7 +227,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
             messageText: input.body,
           },
         });
-        options.applyCopilotResponse(response);
+        options.applyCopilotResponse(response, { includeReply: false });
         return {
           status: response.pendingAction ? "draft_only" : "blocked",
           domain: "billing",
@@ -238,7 +241,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
           messages: [],
           command: input,
         });
-        options.applyCopilotResponse(response);
+        options.applyCopilotResponse(response, { includeReply: false });
         return {
           status: response.pendingAction ? "draft_only" : "blocked",
           domain: "messaging",
@@ -255,7 +258,6 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       const body = await response.json().catch(() => undefined);
       if (!response.ok) throw new Error(responseMessage(body) || "명령을 실행하지 못했습니다.");
       const result = body as ManagerAgentCommandResult;
-      appendMessage("assistant", result.summary);
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : "명령 실행 중 오류가 발생했습니다.";

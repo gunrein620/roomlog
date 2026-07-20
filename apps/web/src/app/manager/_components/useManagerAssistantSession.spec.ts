@@ -58,4 +58,29 @@ describe("manager assistant copilot response", () => {
       { inputDisabled: true, notice: "API 키 필요" },
     );
   });
+
+  it("can apply a voice tool result without duplicating its assistant reply", () => {
+    const events = copilotResponseEvents(
+      {
+        mode: "openai",
+        reply: "102호에 독촉을 발송했습니다.",
+        receipts: [{ kind: "billing.send_dunning", summary: "발송 완료" }],
+      },
+      () => "fixed",
+      { includeReply: false },
+    );
+
+    assert.equal(
+      events.some(
+        (event) => event.type === "append" && event.entry.kind === "message",
+      ),
+      false,
+    );
+    assert.equal(
+      events.some(
+        (event) => event.type === "append" && event.entry.kind === "receipt",
+      ),
+      true,
+    );
+  });
 });
