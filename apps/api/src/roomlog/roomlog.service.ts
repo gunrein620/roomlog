@@ -86,7 +86,11 @@ import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
 import { RoomlogAnnouncementTranslationService } from "./services/roomlog-announcement-translation.service";
 import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
 import { RoomlogReportDomain } from "./services/roomlog-report.domain";
-import { RoomlogCopilotDomain } from "./services/roomlog-copilot.domain";
+import {
+  RoomlogCopilotDomain,
+  type ManagerCopilotActionGateway
+} from "./services/roomlog-copilot.domain";
+import { resolveManagerTarget } from "./services/manager-target-resolver";
 import {
   buildManagerRealtimeInstructions,
   toRealtimeTools
@@ -4669,6 +4673,7 @@ export class RoomlogService implements OnModuleDestroy {
       throw new BadRequestException("Realtime 전사 내용이 필요합니다.");
     }
 
+    const approvalTurn = this.isIntakeApprovalTurn(session, userTranscript);
     const recordedMessages: IntakeMessage[] = [];
 
     if (userTranscript || attachmentUrls.length > 0) {
@@ -4685,6 +4690,32 @@ export class RoomlogService implements OnModuleDestroy {
       };
       session.messages.push(tenantMessage);
       recordedMessages.push(tenantMessage);
+    }
+
+    if (approvalTurn) {
+      const assistantMessage = this.createIntakeMessage(
+        session.id,
+        "AI_ASSISTANT",
+        "초안대로 민원을 접수했습니다. 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
+        "VOICE"
+      );
+      assistantMessage.realtimeEventId = realtimeEventId;
+      session.messages.push(assistantMessage);
+      recordedMessages.push(assistantMessage);
+      session.updatedAt = now();
+      const finalized = this.finalizeIntakeSession(tenantId, session.id);
+
+      return {
+        session: this.presentIntakeSession(session),
+        turnSummary: this.presentRealtimeTurnSummary(session, assistantMessage.messageText),
+        recordedMessages: this.presentIntakeMessages(recordedMessages),
+        deduplicated: false,
+        autoFinalized: {
+          complaint: finalized.complaint,
+          ticket: finalized.ticket,
+          analysis: finalized.analysis
+        }
+      };
     }
 
     const fallbackDraft = this.buildIntakeDraft(session);
@@ -5349,6 +5380,10 @@ export class RoomlogService implements OnModuleDestroy {
     return await this.copilot.chat(managerId, input);
   }
 
+  configureManagerCopilotActionGateway(gateway: ManagerCopilotActionGateway) {
+    this.copilot.setActionGateway(gateway);
+  }
+
   resolveManagerAgentPendingCommand(
     managerId: string,
     kind: NonNullable<CopilotChatResponse["pendingAction"]>["kind"],
@@ -5394,6 +5429,45 @@ export class RoomlogService implements OnModuleDestroy {
             error instanceof Error
               ? error.message
               : "독촉 대상 연체 청구서를 확인하지 못했습니다. 다시 대상을 지정해주세요.",
+          requiresConfirmation: true
+        };
+      }
+    }
+
+    if (kind === "messaging.send_announcement") {
+      try {
+        const title = input.title?.trim() ?? "";
+        const body = input.body?.trim() || input.text?.trim() || "";
+        if (!title || !body) {
+          throw new BadRequestException("공지 제목과 내용을 입력해주세요.");
+        }
+        const audience = this.messaging.resolveManagerAnnouncementAudience(
+          managerId,
+          input.target
+        );
+        if (audience.recipientCount === 0) {
+          throw new BadRequestException("공지 수신 세대가 없습니다.");
+        }
+
+        return {
+          status: "ready" as const,
+          commandInput: {
+            ...input,
+            command: "messaging.send_announcement",
+            target: audience.targetLabel,
+            title,
+            body
+          },
+          summary: `${audience.targetLabel} 대상 '${title}' 공지 발송`
+        };
+      } catch (error) {
+        return {
+          status: "blocked" as const,
+          domain: "messaging" as const,
+          summary:
+            error instanceof Error
+              ? error.message
+              : "공지 대상과 내용을 확인하지 못했습니다.",
           requiresConfirmation: true
         };
       }
@@ -6027,6 +6101,26 @@ export class RoomlogService implements OnModuleDestroy {
       matched = matched.filter((bill) => bill.billingMonth === billingMonth);
     }
 
+    if (matched.length > 1 && requestText) {
+      const resolution = resolveManagerTarget(
+        requestText,
+        matched.flatMap((bill) => {
+          const room = this.roomForBill(bill);
+          return room
+            ? [{
+                id: bill.id,
+                buildingName: room.buildingName,
+                unitId: this.displayUnitId(room)
+              }]
+            : [];
+        })
+      );
+
+      if (resolution.status === "resolved") {
+        matched = matched.filter((bill) => bill.id === resolution.candidate.id);
+      }
+    }
+
     if (matched.length === 1) {
       return matched[0];
     }
@@ -6036,7 +6130,7 @@ export class RoomlogService implements OnModuleDestroy {
         .slice(0, 4)
         .map(
           (bill) =>
-            `${this.tenantNameForBill(bill)} ${bill.unitId}호 ${this.managerAgentBillingMonthLabel(bill.billingMonth)}분`
+            `${this.tenantNameForBill(bill)} ${bill.unitId.replace(/\s*호$/u, "")}호 ${this.managerAgentBillingMonthLabel(bill.billingMonth)}분`
         )
         .join(", ");
       throw new BadRequestException(

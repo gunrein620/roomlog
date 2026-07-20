@@ -22,6 +22,7 @@ export const MANAGER_AGENT_TOOL_NAMES = [
   "messaging.list_threads",
   "messaging.draft_reply",
   "messaging.send_reply",
+  "messaging.send_announcement",
   "vendor.list",
   "vendor.search",
   "vendor.register",

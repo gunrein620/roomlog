@@ -68,7 +68,10 @@ export interface ManagerDunningActionPreview {
 
 export interface ManagerCopilotPendingAction {
   id: string;
-  kind: "billing.send_dunning" | "messaging.send_reply";
+  kind:
+    | "billing.send_dunning"
+    | "messaging.send_reply"
+    | "messaging.send_announcement";
   summary: string;
   dunningPreview?: ManagerDunningActionPreview;
 }
@@ -81,6 +84,7 @@ export interface ManagerCopilotChatMessage {
 export interface ManagerCopilotChatRequest {
   messages: ManagerCopilotChatMessage[];
   intent?: ManagerAssistantIntent;
+  command?: ManagerAgentCommandInput;
   confirmActionId?: string;
   cancelActionId?: string;
 }

@@ -1,6 +1,8 @@
 import type {
+  AgentPendingActionView,
   ManagerCopilotChatRequest,
   ManagerCopilotChatResponse,
+  ManagerCopilotPendingAction,
 } from "@roomlog/types";
 
 export async function requestManagerCopilotChat(
@@ -29,6 +31,49 @@ export async function requestManagerCopilotChat(
   }
 
   return body;
+}
+
+export async function requestManagerCurrentConfirmation(): Promise<
+  ManagerCopilotPendingAction | null
+> {
+  const response = await fetch("/api/manager/agent-confirmations/current", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    throw new Error(responseMessage(body) || "보류 작업을 확인하지 못했습니다.");
+  }
+
+  const pendingAction =
+    body && typeof body === "object" && "pendingAction" in body
+      ? (body as { pendingAction?: unknown }).pendingAction
+      : undefined;
+  return managerPendingActionFromConfirmation(pendingAction);
+}
+
+export function managerPendingActionFromConfirmation(
+  value: unknown,
+): ManagerCopilotPendingAction | null {
+  if (!value || typeof value !== "object") return null;
+  const action = value as Partial<AgentPendingActionView>;
+  if (
+    typeof action.confirmationId !== "string" ||
+    (action.tool !== "billing.send_dunning" &&
+      action.tool !== "messaging.send_reply" &&
+      action.tool !== "messaging.send_announcement") ||
+    !action.card ||
+    typeof action.card.target !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: action.confirmationId,
+    kind: action.tool,
+    summary: action.card.target,
+  };
 }
 
 export function isManagerCopilotChatResponse(

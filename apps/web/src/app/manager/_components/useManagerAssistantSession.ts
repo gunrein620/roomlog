@@ -1,12 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
 import type {
   ManagerAssistantMode,
   ManagerAssistantTranscriptEntry,
   ManagerCopilotChatResponse,
   ManagerCopilotPendingAction,
 } from "@roomlog/types";
-import { requestManagerCopilotChat } from "../../../lib/manager-copilot-api";
+import {
+  requestManagerCopilotChat,
+  requestManagerCurrentConfirmation,
+} from "../../../lib/manager-copilot-api";
 import {
   managerAssistantPendingTextCommand,
   toManagerCopilotMessages,
@@ -103,10 +107,32 @@ async function submitText(content: string) {
   const trimmed = content.trim();
   if (!trimmed || state.busy || state.notice) return false;
 
-  const pendingCommand = state.pendingAction
+  let pendingAction = state.pendingAction;
+  const pendingCommand = pendingAction
     ? managerAssistantPendingTextCommand(trimmed)
     : null;
-  if (state.pendingAction && pendingCommand !== "confirm") return false;
+  if (pendingAction && pendingCommand !== "confirm") return false;
+
+  if (pendingAction) {
+    try {
+      const serverPending = await requestManagerCurrentConfirmation();
+      pendingAction =
+        serverPending?.id === pendingAction.id ? pendingAction : serverPending;
+      dispatchManagerAssistantEvent({
+        type: "set_pending_action",
+        pendingAction,
+      });
+      if (!pendingAction) {
+        appendSystemError(
+          undefined,
+          "확인 대기 중인 발송이 없습니다. 대상을 포함해 다시 요청해 주세요.",
+        );
+        return false;
+      }
+    } catch {
+      // 확인 조회가 일시 실패하면 화면에 보존된 ID로 기존 요청을 이어간다.
+    }
+  }
 
   const userEntry: ManagerAssistantTranscriptEntry = {
     id: createEntryId(),
@@ -121,8 +147,8 @@ async function submitText(content: string) {
   try {
     const response = await requestManagerCopilotChat({
       messages: toManagerCopilotMessages(nextEntries),
-      ...(state.pendingAction
-        ? { confirmActionId: state.pendingAction.id }
+      ...(pendingAction
+        ? { confirmActionId: pendingAction.id }
         : {}),
     });
     applyCopilotResponse(response);
@@ -137,6 +163,30 @@ async function submitText(content: string) {
 
 export function useManagerAssistantSession() {
   const store = useManagerAssistantStore();
+
+  useEffect(() => {
+    let active = true;
+
+    void requestManagerCurrentConfirmation()
+      .then((serverPending) => {
+        if (!active) return;
+        const localPending = getManagerAssistantState().pendingAction;
+        dispatchManagerAssistantEvent({
+          type: "set_pending_action",
+          pendingAction:
+            serverPending && localPending?.id === serverPending.id
+              ? localPending
+              : serverPending,
+        });
+      })
+      .catch(() => {
+        // 일시적인 조회 실패 때는 세션에 남아 있는 확인 정보를 유지한다.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return {
     stage: store.stage,

@@ -24,6 +24,7 @@ import type {
   UserAccount
 } from "../roomlog.types";
 import type { Store } from "../roomlog.service";
+import { resolveManagerTarget } from "./manager-target-resolver";
 import { ANNOUNCEMENT_LANGUAGES, announcementSourceHash } from "./roomlog-announcement-support";
 
 type InitialThreadMessage = NonNullable<CreateMessagingThreadInput["initialMessage"]>;
@@ -476,48 +477,62 @@ export class RoomlogMessagingDomain {
       targetLabel = "전체";
       rooms = managedRooms;
     } else {
-      const buildingMatches = managedRooms.filter(
-        (room) =>
-          room.buildingName &&
-          (normalized.includes(room.buildingName) || room.buildingName.includes(normalized))
-      );
       const roomNoMatch = normalized.match(/(\d+)\s*호/);
 
       if (roomNoMatch) {
-        const roomNo = roomNoMatch[1];
-        const pool = buildingMatches.length ? buildingMatches : managedRooms;
-        // roomNo는 "302호"처럼 접미사를 포함할 수 있어 표시용 정규화 값으로 비교한다.
-        rooms = pool.filter((room) => this.displayUnitId(room) === roomNo);
+        const resolution = resolveManagerTarget(
+          normalized,
+          managedRooms.map((room) => ({
+            id: room.id,
+            buildingName: room.buildingName,
+            unitId: this.displayUnitId(room)
+          }))
+        );
 
-        if (rooms.length === 0) {
+        if (resolution.status === "not_found") {
           throw new BadRequestException(
             `'${normalized}' 대상 호실을 찾지 못했습니다. 건물명과 호수를 다시 확인해 주세요.`
           );
         }
-        if (rooms.length > 1) {
+        if (resolution.status === "ambiguous") {
+          const choices = resolution.candidates
+            .map((candidate) => `${candidate.buildingName} ${candidate.unitId}호`)
+            .join(", ");
           throw new BadRequestException(
-            `${roomNo}호가 여러 건물에 있습니다. 건물명을 함께 알려주세요.`
+            `${roomNoMatch[1]}호 후보가 여러 곳입니다(${choices}). 건물명을 함께 알려주세요.`
           );
         }
 
+        rooms = managedRooms.filter((room) => room.id === resolution.candidate.id);
         scope = "unit";
         targetLabel = `${rooms[0].buildingName} ${this.displayUnitId(rooms[0])}호`;
-      } else if (buildingMatches.length) {
-        const buildingNames = [...new Set(buildingMatches.map((room) => room.buildingName))];
+      } else {
+        const buildingNames = [...new Set(managedRooms.map((room) => room.buildingName))];
+        const resolution = resolveManagerTarget(
+          normalized,
+          buildingNames.map((buildingName) => ({
+            id: buildingName,
+            buildingName,
+            unitId: ""
+          }))
+        );
 
-        if (buildingNames.length > 1) {
+        if (resolution.status === "not_found") {
           throw new BadRequestException(
-            `'${normalized}'에 해당하는 건물이 여러 곳입니다(${buildingNames.join(", ")}). 하나를 지정해 주세요.`
+            `'${normalized}' 대상을 찾지 못했습니다. 전체, 건물명, 또는 '건물명 302호' 형식으로 알려주세요.`
+          );
+        }
+        if (resolution.status === "ambiguous") {
+          throw new BadRequestException(
+            `'${normalized}'에 해당하는 건물이 여러 곳입니다(${resolution.candidates
+              .map((candidate) => candidate.buildingName)
+              .join(", ")}). 하나를 지정해 주세요.`
           );
         }
 
         scope = "building";
-        targetLabel = buildingNames[0];
-        rooms = buildingMatches;
-      } else {
-        throw new BadRequestException(
-          `'${normalized}' 대상을 찾지 못했습니다. 전체, 건물명, 또는 '건물명 302호' 형식으로 알려주세요.`
-        );
+        targetLabel = resolution.candidate.buildingName;
+        rooms = managedRooms.filter((room) => room.buildingName === targetLabel);
       }
     }
 

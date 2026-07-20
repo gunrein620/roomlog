@@ -53,6 +53,7 @@ export type TenantIntakeFinalizeResult = {
 export type TenantRealtimeTurnResult = {
   session: TenantIntakeSession;
   deduplicated?: boolean;
+  autoFinalized?: TenantIntakeFinalizeResult;
 };
 
 export class TenantClientApiError extends Error {
