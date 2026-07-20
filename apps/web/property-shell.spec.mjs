@@ -923,13 +923,12 @@ test("trade update badge ignores messages sent by the current viewer", () => {
 
 test("owner registration state survives refresh via a versioned local draft with no fake prefills", () => {
   // QA 8 + 사전 입력 제거: 폼은 빈 값으로 시작하고, 작성/등록 상태는 localStorage draft로 유지된다.
+  // "임시저장됨" 상태 라벨은 사용자 결정(2026-07-19)으로 화면에서 제거 — 저장 동작 자체만 검증한다.
   assert.match(pageSource, /useState\(emptyOwnerForm\)/);
   assert.match(pageSource, /OWNER_DRAFT_STORAGE_KEY/);
   assert.match(pageSource, /parseOwnerDraft/);
   assert.match(pageSource, /serializeOwnerDraft/);
-  assert.match(pageSource, /임시저장됨/);
   assert.doesNotMatch(pageSource, /title: "방배 루미에르 402호",\s*\n\s*address: "서울특별시 서초구 방배동"/);
-  assert.match(cssSource, /\.owner-draft-status/);
 });
 
 test("login success consumes the pushed auth history entry so back does not reopen the login screen", () => {
@@ -975,8 +974,6 @@ test("borrows mature Zigbang and Dabang product patterns for trust and map searc
     "평균 응답",
     "오늘 현장확인",
     "3D 투어 가능",
-    "어디에서 방을 찾을까요",
-    "통합검색",
     "최근 검색",
     "최근 검색어가 없습니다",
     "인기 지역",
@@ -1203,7 +1200,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
 test("shows a landlord my page with property registration fields and media actions", () => {
   for (const label of [
     "집주인 마이페이지",
-    "내 집 등록",
+    "매물등록",
     "매물명",
     "주소",
     "주소 검색",
@@ -1217,11 +1214,10 @@ test("shows a landlord my page with property registration fields and media actio
     "관리비",
     "전용면적",
     "층수",
-    "사진과 3D방 자료",
+    "사진·3D 자료",
     "사진 업로드",
-    "3D 도면 만들기",
-    "도면 JSON 업로드",
-    "영상/스플랫 접수",
+    "눌러서 3D 도면을 만들어요",
+    "3D 투어용 영상·캡처 파일을 끌어다 놓거나 눌러서 올려요",
     "등록 요약",
     "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
     "매물 등록하기"
@@ -1229,7 +1225,7 @@ test("shows a landlord my page with property registration fields and media actio
     assert.match(pageSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /owner-submit-summary/);
+  assert.match(pageSource, /owner-lane-attach/);
   assert.match(pageSource, /detailAddress/);
   assert.match(pageSource, /세부주소 없음/);
   assert.match(pageSource, /ownerForm/);
@@ -1240,6 +1236,10 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(pageSource, /submitOwnerListing/);
   assert.match(pageSource, /id="owner-registration-form"/);
   assert.doesNotMatch(pageSource, /업로드 버튼 대기|전용 업로드 영역|자료 대기/);
+  // 도면 JSON 업로드는 7라운드에서 가시 UI를 없애고 3D 도면 박스에 숨은 드롭으로 옮겼다(개발자 전용,
+  // 시각 피드백 없음) — "도면 JSON 업로드" 라벨 대신 실제 처리 함수가 여전히 배선돼 있는지로 검증한다.
+  assert.match(pageSource, /handleFloorPlanJsonUpload/);
+  assert.match(pageSource, /handleFloorPlanJsonDrop/);
   assert.match(cssSource, /\.owner-preview-card/);
   assert.match(cssSource, /\.owner-preview-actions/);
   assert.match(cssSource, /\.owner-preview-actions button/);
@@ -1448,6 +1448,47 @@ test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
   assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);
   assert.match(homeAppSource, /key=\{listing\.listingNo\}/);
+  assert.match(homeAppSource, /HOME_LISTINGS_PAGE_SIZE/);
+  assert.match(homeAppSource, /homeFeedListings\.map/);
+  assert.match(homeAppSource, /visibleHomeListings\.length > 0/);
+  assert.match(homeAppSource, /listing-pagination/);
+  assert.match(cssSource, /\.listing-pagination/);
+  assert.match(homeAppSource, /className="home-footer"/);
+  assert.match(homeAppSource, /\["home", "saved", "inquiry", "sell", "living"\]\.includes\(activeTab\) \? appFooter : null/);
+  assert.match(homeAppSource, /크래프톤 정글/);
+  assert.match(homeAppSource, /https:\/\/jungle\.krafton\.com\//);
+  assert.match(homeAppSource, /https:\/\/github\.com\/gunrein620\/roomlog/);
+  assert.match(homeAppSource, /isFooterTeamOpen/);
+  assert.match(homeAppSource, /팀 카이사르/);
+  assert.match(homeAppSource, /고명석 · 김용 · 김정환 · 박건우 · 박승현 · 서원규/);
+  assert.match(homeAppSource, /Contact : 010-2965-7486/);
+  assert.match(cssSource, /\.home-footer/);
+  assert.match(cssSource, /\.home-footer-team/);
+  assert.match(cssSource, /\.home-footer-contact/);
+  assert.match(cssSource, /\.home-footer-location a,[\s\S]*color:\s*#ffffff/);
+});
+
+test("reuses the main footer on saved, inquiry, sell, and living tabs", () => {
+  assert.match(homeAppSource, /const appFooter = \(/);
+  assert.doesNotMatch(homeAppSource, /footer: ReactNode/);
+  assert.doesNotMatch(homeAppSource, /footer=\{appFooter\}/);
+  assert.match(homeAppSource, /\["home", "saved", "inquiry", "sell", "living"\]\.includes\(activeTab\) \? appFooter : null/);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs > \.home-footer/);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs > \.home-footer\s*{[^}]*margin-top:\s*auto/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*flex/s);
+});
+
+test("uses the Jungle campus address for default and current-location map labels", () => {
+  assert.match(pageSource, /JUNGLE_CAMPUS_ADDRESS = "경기도 용인시 처인구 영문로 55"/);
+  assert.match(pageSource, /JUNGLE_CAMPUS_CENTER = \{ lat: 37\.2697301353189, lng: 127\.207838838402 \}/);
+  assert.match(pageSource, /label: JUNGLE_CAMPUS_ADDRESS/);
+  assert.match(pageSource, /reverseGeocodeMapPoint/);
+  assert.match(pageSource, /reverseGeocode/);
+  assert.match(pageSource, /isNearJungleCampus/);
+  assert.match(pageSource, /fallbackAddress/);
+  assert.match(pageSource, /setSelectedArea\(locationLabel\)/);
+  assert.match(naverMapPreviewSource, /reverseGeocode/);
+  assert.match(naverMapPreviewSource, /NaverReverseGeocodeResponse/);
 });
 
 test("keeps the bottom app tabs fixed to the viewport", () => {
@@ -1464,7 +1505,7 @@ test("keeps the bottom app tabs fixed to the viewport", () => {
 test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /@media \(min-width:\s*1080px\)/);
   // 데스크톱은 전체폭 포털 셸(모바일 카드 프레임 제거)
-  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*block/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*flex/s);
   assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*100%/s);
   // 상단 가로 네비 + 히어로는 기본(모바일) 숨김, 데스크톱에서 노출
   assert.match(cssSource, /\.web-topbar,\s*\.web-hero-head\s*{[^}]*display:\s*none/s);
@@ -1492,7 +1533,7 @@ test("is configured as an installable PWA shell", () => {
   assert.match(layoutSource, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(layoutSource, /appleWebApp/);
   assert.match(layoutSource, /apple-touch-icon\.png/);
-  assert.match(layoutSource, /themeColor:\s*"#2f55ff"/);
+  assert.match(layoutSource, /themeColor:\s*"#20184a"/);
   assert.match(layoutSource, /PwaRegister/);
   assert.match(manifestSource, /display:\s*"standalone"/);
   assert.match(manifestSource, /start_url:\s*"\/"/);
@@ -1562,7 +1603,8 @@ test("links the landlord 3D floor plan action to the internal MitUNet page", () 
   assert.doesNotMatch(pageSource, /buildMitunetEditorUrl/);
   assert.doesNotMatch(pageSource, /window\.open/);
   assert.doesNotMatch(pageSource, /href="\/floor-plan-3d"/);
-  assert.match(pageSource, /3D 도면 만들기/);
+  // 진입은 빈 3D 박스 클릭 자체(내부 MitUNet 에디터로 이동) — 별도 "만들기" 버튼 없이 박스가 버튼이다.
+  assert.match(pageSource, /눌러서 3D 도면을 만들어요/);
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 

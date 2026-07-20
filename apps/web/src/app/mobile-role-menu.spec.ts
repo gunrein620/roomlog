@@ -9,6 +9,13 @@ const menuPath = join(__dirname, "_components/MobileRoleMenu.tsx");
 const menuSource = existsSync(menuPath) ? readFileSync(menuPath, "utf8") : "";
 const bottomTabsSource = homeSource.match(/const bottomTabs[\s\S]*?\n\];/)?.[0] ?? "";
 
+test("HomeApp declares the current-location label once", () => {
+  assert.equal(
+    (homeSource.match(/const CURRENT_LOCATION_AREA_LABEL\s*=/g) ?? []).length,
+    1,
+  );
+});
+
 test("mobile role menu keeps the bottom navigation to five slots", () => {
   assert.equal((bottomTabsSource.match(/key:\s*"/g) ?? []).length, 4);
   assert.doesNotMatch(bottomTabsSource, /key:\s*"(?:living|sell)"/);

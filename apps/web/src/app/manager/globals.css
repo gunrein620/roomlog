@@ -1172,7 +1172,7 @@ html:has(.manager-workspace) {
 }
 
 .manager-sidebar__close,
-.manager-assistant-dialog__header button {
+.manager-assistant-panel__header button {
   width: var(--touch-target);
   height: var(--touch-target);
   flex: 0 0 auto;
@@ -1185,7 +1185,7 @@ html:has(.manager-workspace) {
 }
 
 .manager-sidebar__close svg,
-.manager-assistant-dialog__header button svg,
+.manager-assistant-panel__header button svg,
 .manager-mobile-menu svg,
 .manager-assistant-launcher svg,
 .manager-assistant__submit svg,
@@ -1678,25 +1678,35 @@ html:has(.manager-workspace) {
   background: var(--surface-container);
 }
 
-.manager-assistant-dialog {
-  width: min(calc(100vw - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
-  height: min(calc(100dvh - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
-  max-width: none;
-  max-height: calc(100dvh - var(--space-xxl));
-  margin: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0;
+/* AI 비서 스플릿 뷰 — 본문(셸)과 사이드패널을 좌우로 나란히 배치한다. */
+.manager-workspace-split {
+  display: flex;
+  align-items: stretch;
+}
+
+.manager-workspace-split__content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.manager-assistant-panel {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-floating);
+  flex: 0 0 var(--manager-assistant-panel-width);
+  width: var(--manager-assistant-panel-width);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
   color: var(--on-surface);
   background: var(--surface-container-lowest);
   overflow: hidden;
 }
 
-.manager-assistant-dialog__header {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-floating);
+.manager-assistant-panel__header {
   min-height: calc(var(--touch-target) + var(--space-md));
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1706,20 +1716,20 @@ html:has(.manager-workspace) {
   background: var(--primary);
 }
 
-.manager-assistant-dialog__brand {
+.manager-assistant-panel__brand {
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
 }
 
-.manager-assistant-dialog__brand svg {
+.manager-assistant-panel__brand svg {
   width: var(--space-xl);
   height: var(--space-xl);
   flex: 0 0 auto;
 }
 
-.manager-assistant-dialog__brand strong {
+.manager-assistant-panel__brand strong {
   overflow: hidden;
   font-size: var(--fs-subtitle);
   font-weight: var(--fw-title);
@@ -1727,13 +1737,33 @@ html:has(.manager-workspace) {
   white-space: nowrap;
 }
 
-.manager-assistant-dialog__header button {
+.manager-assistant-panel__header button {
   color: var(--on-primary);
 }
 
-.manager-assistant-dialog > .manager-assistant {
-  border: 0;
-  border-radius: 0;
+/* 공용 .manager-ai-* 베이스(루트 globals.css에도 복제돼 세입자 다이얼로그가 사용)는 두고,
+   패널 내부에서만 flex 컬럼이 높이를 결정하도록 스코프 오버라이드한다. */
+.manager-assistant-panel .manager-ai-conversation {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+/* 모달 시절의 고정 max-height는 패널 flex 높이와 어긋나 마지막 항목(확인 카드 등)이
+   잘린다 — 패널에서는 그리드 행(minmax(0,1fr))이 높이를 결정하게 둔다. */
+.manager-assistant-panel .manager-ai-transcript {
+  min-height: 0;
+  max-height: none;
+}
+
+/* 좁은 화면에서는 본문을 절반으로 쪼갤 수 없어 오버레이 드로어로 폴백한다. */
+@media (max-width: 1024px) {
+  .manager-assistant-panel {
+    position: fixed;
+    inset: 0 0 0 auto;
+    width: min(100vw, calc(var(--content-aside-max) + var(--space-xxl)));
+    height: auto;
+  }
 }
 
 .manager-ai-conversation {
@@ -2091,7 +2121,6 @@ html:has(.manager-workspace) {
   overflow-y: auto;
 }
 
-.manager-assistant-dialog::backdrop,
 .manager-mobile-nav-dialog::backdrop {
   background: var(--inverse-surface);
   opacity: 0.48;
@@ -2105,7 +2134,7 @@ html:has(.manager-workspace) {
 .manager-assistant textarea:focus-visible,
 .manager-assistant-launcher:focus-visible,
 .manager-mobile-menu:focus-visible,
-.manager-assistant-dialog__header button:focus-visible {
+.manager-assistant-panel__header button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -2134,12 +2163,12 @@ html:has(.manager-workspace) {
     padding-left: var(--space-lg);
   }
 
-  .manager-assistant-dialog__header {
+  .manager-assistant-panel__header {
     min-height: calc(var(--touch-target) + var(--space-xs));
     padding: 0 var(--space-md);
   }
 
-  .manager-assistant-dialog__brand strong {
+  .manager-assistant-panel__brand strong {
     font-size: var(--fs-body);
   }
 
@@ -2751,7 +2780,7 @@ html:has(.manager-workspace) {
   text-align: center !important;
 }
 
-.manager-contract-priority {
+.manager-contract-status {
   min-width: 40px;
   min-height: 26px;
   display: inline-flex;
@@ -2765,19 +2794,16 @@ html:has(.manager-workspace) {
   white-space: nowrap;
 }
 
-.manager-contract-priority--sla,
-.manager-contract-priority--delete {
-  color: var(--error);
-  border-color: color-mix(in srgb, var(--error) 36%, var(--border));
-  background: color-mix(in srgb, var(--error) 8%, var(--surface-container-lowest));
-}
-
-.manager-contract-priority--check,
-.manager-contract-priority--pending,
-.manager-contract-priority--expire {
+.manager-contract-status--needs-check {
   color: var(--primary);
   border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
   background: color-mix(in srgb, var(--primary) 8%, var(--surface-container-lowest));
+}
+
+.manager-contract-status--confirmed {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 36%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface-container-lowest));
 }
 
 .manager-contract-dashboard__pagination {
@@ -2903,24 +2929,9 @@ html:has(.manager-workspace) {
   flex-wrap: wrap;
 }
 
-.manager-contract-dashboard__secondary-action {
-  min-height: var(--touch-target);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 var(--space-lg);
-  border: 1.5px solid var(--primary);
-  border-radius: var(--radius-btn);
-  color: var(--primary);
-  background: var(--surface-container-lowest);
-  font: inherit;
-  font-weight: var(--fw-title);
-  cursor: pointer;
-}
-
 .manager-contract-dashboard__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-md);
 }
 
@@ -2945,13 +2956,6 @@ html:has(.manager-workspace) {
   font-size: var(--fs-title);
   font-weight: var(--fw-title);
   line-height: var(--lh-title);
-}
-
-.manager-contract-dashboard__metric small {
-  color: var(--on-surface-variant);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-subtitle);
-  line-height: var(--lh-caption);
 }
 
 .manager-contract-dashboard__queue-panel {
@@ -3106,7 +3110,7 @@ html:has(.manager-workspace) {
   white-space: nowrap;
 }
 
-.manager-contract-priority {
+.manager-contract-status {
   min-width: 74px;
   min-height: 34px;
   border: 0;
@@ -3114,29 +3118,16 @@ html:has(.manager-workspace) {
   font-size: var(--fs-caption);
 }
 
-.manager-contract-priority--sla {
-  color: var(--error);
-  background: color-mix(in srgb, var(--error) 10%, var(--surface-container-lowest));
-}
-
-.manager-contract-priority--check,
-.manager-contract-priority--pending {
+.manager-contract-status--needs-check {
   color: color-mix(in srgb, var(--warning) 72%, var(--on-surface));
   background: color-mix(in srgb, var(--warning) 18%, var(--surface-container-lowest));
 }
 
-.manager-contract-priority--ready,
-.manager-contract-priority--confirmed {
+.manager-contract-status--confirmed {
   color: var(--success);
   background: color-mix(in srgb, var(--success) 12%, var(--surface-container-lowest));
 }
 
-.manager-contract-priority--expire {
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 8%, var(--surface-container-lowest));
-}
-
-.manager-contract-dashboard__secondary-action:focus-visible,
 .manager-contract-table__row-action:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -3253,53 +3244,23 @@ html:has(.manager-workspace) {
   font-weight: var(--fw-subtitle);
 }
 
-.manager-defect-dashboard__more-action {
-  width: var(--touch-target);
-  height: var(--touch-target);
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius);
-  color: var(--on-surface-variant);
-  background: transparent;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.manager-defect-dashboard__more-action[aria-expanded="true"] {
+.manager-defect-dashboard__detail-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-full);
   color: var(--primary);
-  background: var(--primary-container);
-}
-
-.manager-defect-dashboard__more-menu-list {
-  position: fixed;
-  z-index: var(--z-floating);
-  min-width: calc(var(--touch-target) * 4);
-  display: grid;
-  gap: var(--space-xs);
-  padding: var(--space-xs);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-container-lowest);
-  box-shadow: var(--shadow);
-}
-
-.manager-defect-dashboard__more-menu-list[data-positioned="false"] {
-  visibility: hidden;
-}
-
-.manager-defect-dashboard__more-menu-list a {
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius);
-  color: var(--on-surface);
+  background: transparent;
   text-decoration: none;
   white-space: nowrap;
   font-size: var(--fs-caption);
   font-weight: var(--fw-subtitle);
 }
 
-.manager-defect-dashboard__more-menu-list a:hover,
-.manager-defect-dashboard__more-menu-list a:focus-visible {
+.manager-defect-dashboard__detail-action:hover,
+.manager-defect-dashboard__detail-action:focus-visible {
   color: var(--on-primary-container);
   background: var(--primary-container);
 }
@@ -3364,8 +3325,7 @@ html:has(.manager-workspace) {
 .manager-defect-dashboard__filter-panel select:focus-visible,
 .manager-defect-dashboard__job-link:focus-visible,
 .manager-defect-dashboard__primary-action:focus-visible,
-.manager-defect-dashboard__more-action:focus-visible,
-.manager-defect-dashboard__more-menu-list a:focus-visible,
+.manager-defect-dashboard__detail-action:focus-visible,
 .manager-defect-dashboard__pagination button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -4223,6 +4183,58 @@ html:has(.manager-workspace) {
   width: 100%;
 }
 
+/* 계약서 등록 — OCR 처리 중 문서 위를 훑는 스캔 레이저 오버레이 */
+.contract-ocr-scan-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  pointer-events: none;
+}
+
+.contract-ocr-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: var(--primary);
+  box-shadow: 0 0 14px 3px color-mix(in srgb, var(--primary) 55%, transparent);
+  animation: contract-ocr-scan 2.4s ease-in-out infinite;
+}
+
+.contract-ocr-scanline::after {
+  content: "";
+  position: absolute;
+  inset: 3px 0 auto;
+  height: 56px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--primary) 22%, transparent),
+    transparent
+  );
+}
+
+@keyframes contract-ocr-scan {
+  0% {
+    top: 0;
+  }
+  50% {
+    top: calc(100% - 3px);
+  }
+  100% {
+    top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contract-ocr-scanline {
+    animation: none;
+    top: 40%;
+  }
+}
+
 @media (min-width: 861px) {
   .contract-register-upload-grid {
     max-width: 980px;
@@ -4687,6 +4699,48 @@ html:has(.manager-workspace) {
   line-height: var(--lh-body);
 }
 
+.manager-ticket-panel__selected-attachments {
+  display: flex;
+  gap: var(--space-xs);
+  overflow-x: auto;
+}
+
+.manager-ticket-panel__selected-attachments figure {
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(var(--touch-target) + var(--space-lg));
+  height: calc(var(--touch-target) + var(--space-lg));
+  margin: 0;
+}
+
+.manager-ticket-panel__selected-attachments img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+.manager-ticket-panel__selected-attachments button {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-xs);
+  width: calc(var(--touch-target) / 2);
+  height: calc(var(--touch-target) / 2);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  cursor: pointer;
+}
+
+.manager-ticket-panel__selected-attachments button svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
 .manager-ticket-panel__composer-actions {
   display: flex;
   align-items: center;
@@ -4694,9 +4748,62 @@ html:has(.manager-workspace) {
   gap: var(--space-md);
 }
 
-.manager-ticket-panel__composer-actions a {
+.manager-ticket-panel__composer-actions > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-panel__attach-button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-md);
   color: var(--on-surface-variant);
   font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.manager-ticket-panel__attach-button:hover {
+  background: var(--surface-container);
+}
+
+.manager-ticket-panel__attach-button svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-ticket-panel__attach-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.manager-ticket-panel__detail-link {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.manager-ticket-panel__detail-link:hover,
+.manager-ticket-panel__detail-link:focus-visible {
+  border-color: var(--primary);
+  background: var(--surface-container);
+  color: var(--primary);
 }
 
 .manager-ticket-panel__composer-actions button {

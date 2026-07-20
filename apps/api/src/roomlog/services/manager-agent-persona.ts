@@ -21,11 +21,13 @@ const managerAgentBaseInstructions = [
   "관리인이 티켓 처리, 청구 관리, 크레딧 잔액, 소통 업무를 음성 또는 텍스트로 빠르게 조회하고 조작하도록 돕습니다.",
   "실행은 반드시 run_manager_agent_command 도구로 서버 allowlist를 통과한 명령만 사용합니다.",
   "조회성 질문은 지레 불가로 답하지 말고 먼저 도구를 호출해 실데이터로 답합니다. 티켓 전체 현황은 ticket.summary, 조건 검색은 ticket.query, 납부·수납·미납·연체 현황은 billing.summary, 크레딧 잔액은 credit.balance, 민원·문의 확인은 messaging.list_threads와 ticket.query를 사용합니다.",
+  "관리 자산 질문 — 내 건물·매물·호실이 무엇인지, 계약된(계약완료) 집과 세입자·월세·만기, 미계약·공실 현황 — 은 portfolio.summary로 조회해 실데이터로 답합니다. 티켓 도구로 대신 답하지 않습니다.",
   "URL이나 링크를 직접 만들지 않습니다. 화면 이동은 화면 이름(예: 티켓 대시보드, 크레딧 관리)으로만 안내합니다.",
   "티켓 처리에서는 조건 조회와 다음 확인 지점 제안을 우선합니다.",
   "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
   "billing.send_dunning은 청구 전용 채널이며 항상 확인 카드로 보류한 뒤 관리인이 승인해야 발송합니다. 납부 신고 또는 미연결 입금이 있으면 발송을 차단하고 입금 확인을 안내합니다.",
-  "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉이나 공지 발송은 소통 채널로 보내지 않습니다.",
+  "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉은 소통 채널로 보내지 않습니다.",
+  "공지 발송 요청은 messaging.send_announcement 명령으로만 처리합니다 — 일반 답장(messaging.send_reply)으로 공지를 보내지 않습니다. 대상이 애매하면 전체 세대인지, 특정 건물인지, 특정 호실인지 먼저 되물어 확정합니다. 명령을 호출하기 전에 대상·제목·본문을 요약해 보여주고 발송해도 되는지 한 번 확인을 받습니다. 관리인이 명시적으로 승인(예: '보내', '진행해')한 그 다음 턴에만 명령을 호출하며, 호출하면 즉시 발송됩니다. 승인 없이 호출하지 않습니다. target에는 '전체', 건물명, 또는 '건물명 302호' 형식을 넣고, 제목은 title, 본문은 body로 전달합니다.",
   "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
 ];
 
@@ -62,7 +64,7 @@ export function managerAgentToolDefinitions(): ManagerAgentToolDefinition[] {
       type: "function",
       name: "run_manager_agent_command",
       description:
-        "룸로그 관리인 업무 명령을 서버 allowlist로 실행합니다. 티켓 조건 조회·전체 집계, 청구 요약, 크레딧 잔액 조회, 청구 전용 독촉 발송, 소통 조회, 답장 초안, 일반 답장 발송만 안전하게 처리합니다.",
+        "룸로그 관리인 업무 명령을 서버 allowlist로 실행합니다. 티켓 조건 조회·전체 집계, 청구 요약, 크레딧 잔액 조회, 관리 자산(건물·호실·계약·공실) 현황 조회, 청구 전용 독촉 발송, 소통 조회, 답장 초안, 일반 답장 발송, 확인 후 공지 발송만 안전하게 처리합니다.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -75,9 +77,11 @@ export function managerAgentToolDefinitions(): ManagerAgentToolDefinition[] {
               "billing.summary",
               "billing.send_dunning",
               "credit.balance",
+              "portfolio.summary",
               "messaging.list_threads",
               "messaging.draft_reply",
-              "messaging.send_reply"
+              "messaging.send_reply",
+              "messaging.send_announcement"
             ],
             description: "실행할 관리인 업무 명령"
           },
@@ -99,7 +103,16 @@ export function managerAgentToolDefinitions(): ManagerAgentToolDefinition[] {
           },
           body: {
             type: "string",
-            description: "AI가 준비했거나 관리인이 수정한 발송 문구"
+            description: "AI가 준비했거나 관리인이 수정한 발송 문구. 공지에서는 본문."
+          },
+          title: {
+            type: "string",
+            description: "공지 제목. messaging.send_announcement에서 필수."
+          },
+          target: {
+            type: "string",
+            description:
+              "공지 대상 — '전체', 건물명, 또는 '건물명 302호' 형식. 애매하면 명령 호출 전에 사용자에게 되물어 확정합니다."
           }
         },
         required: ["command"]

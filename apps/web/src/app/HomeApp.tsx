@@ -11,11 +11,14 @@ import {
   BriefcaseBusiness,
   Building,
   Building2,
+  Box,
   CalendarClock,
+  ChevronDown,
   ChevronRight,
   Copy,
   DoorOpen,
-  Heart,
+  Footprints,
+  Star,
   HomeIcon,
   House,
   Layers3,
@@ -85,6 +88,7 @@ import {
   isRemotePhoto,
   LISTING_PHOTO_PLACEHOLDER,
   listingDetailAddressLabel,
+  listingHas3DPlacement,
   listingRegisteredAgoLabel,
   mapListings,
   monthlyDealLabel,
@@ -104,7 +108,8 @@ import {
   NaverMapPreview,
   type MapMarkerInput,
   type NaverGeocodeResponse,
-  type NaverMapViewport
+  type NaverMapViewport,
+  type NaverReverseGeocodeResponse
 } from "./_components/NaverMapPreview";
 import { loadSavedListingNos, toggleSavedListingNo } from "../lib/saved-listings";
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
@@ -156,10 +161,6 @@ type MapListingGroup = {
   updated: string;
 };
 
-
-
-
-
 const protectedRoleConfig = {
   tenant: {
     sessionRole: "TENANT",
@@ -204,22 +205,62 @@ const categories = [
   { label: "투룸", Icon: Bed },
   { label: "오피스텔", Icon: BriefcaseBusiness },
   { label: "아파트", Icon: Building2 },
-  { label: "빌라", Icon: House },
-  { label: "단기임대", Icon: CalendarClock }
+  { label: "3D 투어", Icon: Layers3 }
 ];
 
 // 카테고리 ↔ 매물 매칭 — 홈 피드 필터와 카테고리 카드의 실제 매물 수가 같은 규칙을 쓴다.
 const listingMatchesCategory = (label: string, listing: Listing): boolean => {
   if (label === "전체") return true;
-  if (label === "원룸" || label === "오피스텔" || label === "아파트" || label === "빌라") {
+  if (label === "원룸" || label === "오피스텔" || label === "아파트") {
     return listing.roomType === label;
   }
   if (label === "투룸") return listing.spec.includes("투룸") || listing.spec.includes("복층");
-  if (label === "단기임대") return listing.tags.includes("단기") || listing.tags.includes("단기임대");
+  if (label === "3D 투어") {
+    return listing.badges.includes("3D 투어") || listing.tags.includes("3D") || listing.tags.includes("3D 투어");
+  }
   return false;
 };
 
-const quickFilters = ["월세", "전세", "관리비 포함", "반려동물", "주차", "풀옵션"];
+/* 거래유형(월세·전세)은 검색카드 탭이 단독 점유 — 여기엔 부가 조건만 남긴다 (중복 스택 제거) */
+const quickFilters = ["관리비 포함", "반려동물", "주차", "풀옵션"];
+
+// 홈 추천 피드 페이지 크기 — 3열 그리드 × 3줄.
+const HOME_LISTINGS_PAGE_SIZE = 9;
+
+// 검색바 거래유형 탭 — 택일. 필터 체인의 거래유형 OR 매칭(dealTypeFilters)과 같은 어휘를 쓴다.
+const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
+
+// 가격 게이지바 상한(만원) — 슬라이더 우측 끝 = 제한 없음.
+const PRICE_DEPOSIT_LIMIT = 50000; // 보증금 5억
+const PRICE_MONTHLY_LIMIT = 200; // 월세 200만
+
+// 축별 빠른 프리셋 — 각 칩은 자기 게이지만 세팅한다.
+const depositPresets = [
+  { label: "전체", value: PRICE_DEPOSIT_LIMIT },
+  { label: "1,000 이하", value: 1000 },
+  { label: "5,000 이하", value: 5000 },
+  { label: "1억 이하", value: 10000 }
+] as const;
+
+const monthlyPresets = [
+  { label: "전체", value: PRICE_MONTHLY_LIMIT },
+  { label: "40 이하", value: 40 },
+  { label: "60 이하", value: 60 },
+  { label: "100 이하", value: 100 }
+] as const;
+
+const formatDepositManwon = (manwon: number): string =>
+  manwon >= 10000
+    ? `${(manwon / 10000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억`
+    : `${manwon.toLocaleString("ko-KR")}만`;
+
+// 게이지 값 → 검색카드/요약 라벨. 두 게이지 모두 끝(제한 없음)이면 "전체".
+const priceRangeLabel = (deposit: number, monthly: number): string => {
+  const parts: string[] = [];
+  if (deposit < PRICE_DEPOSIT_LIMIT) parts.push(`보증금 ${formatDepositManwon(deposit)} 이하`);
+  if (monthly < PRICE_MONTHLY_LIMIT) parts.push(`월세 ${monthly}만 이하`);
+  return parts.join(" · ") || "전체";
+};
 
 const sortOptions = [
   { label: "정확도순", description: "실매물 확인, 응답률, 거리 기준으로 추천" },
@@ -252,18 +293,21 @@ const notificationItems = [
 
 // 하드코딩 데모 지표/추천/체크리스트 상수들 제거 — 데모 컨셉 정리(4d1010a8 후속)
 
+const JUNGLE_CAMPUS_ADDRESS = "경기도 용인시 처인구 영문로 55";
+const JUNGLE_CAMPUS_CENTER = { lat: 37.2697301353189, lng: 127.207838838402 };
+
 const CURRENT_LOCATION_AREA_LABEL = "내 위치 주변";
 
 const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   source: "default",
-  label: "서초구 방배동",
-  center: { lat: 37.4875, lng: 126.9931 },
+  label: JUNGLE_CAMPUS_ADDRESS,
+  center: JUNGLE_CAMPUS_CENTER,
   radiusM: 2500,
-  queryType: "neighborhood",
-  precision: "neighborhood"
+  queryType: "road",
+  precision: "address",
+  addressText: JUNGLE_CAMPUS_ADDRESS,
+  description: `도로명 기준 · 반경 2.5km · ${JUNGLE_CAMPUS_ADDRESS}`
 };
-// (중복 선언 제거 — CURRENT_LOCATION_AREA_LABEL은 위 255행에 이미 있다. 머지 과정에서 두 번
-//  들어가 web 전체가 "defined multiple times"로 컴파일 실패하고 있었다. 2026-07-20 확인)
 const MAP_SEARCH_RADIUS_M = 2500;
 const MAP_SEARCH_RADIUS_BY_PRECISION: Record<MapQueryPrecision, number> = {
   neighborhood: MAP_SEARCH_RADIUS_M,
@@ -339,9 +383,63 @@ function loadNaverMapService(): Promise<boolean> {
 }
 
 type NaverGeocodeAddress = NonNullable<NonNullable<NaverGeocodeResponse["v2"]>["addresses"]>[number];
+type NaverReverseGeocodeResult = NonNullable<NonNullable<NaverReverseGeocodeResponse["v2"]>["results"]>[number];
 
 function compactAddressLabel(value: string) {
   return value.trim().replace(/^대한민국\s*/, "").replace(/^서울특별시\s*/, "");
+}
+
+function reverseGeocodeResultLabel(result: NaverReverseGeocodeResult | undefined): string | null {
+  if (!result) return null;
+
+  const regionParts = [
+    result.region?.area1?.name,
+    result.region?.area2?.name,
+    result.region?.area3?.name,
+    result.region?.area4?.name
+  ]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  const landName = result.land?.name?.trim();
+  const landNumber = [result.land?.number1?.trim(), result.land?.number2?.trim()]
+    .filter(Boolean)
+    .join("-");
+  const landParts = [landName, landNumber].filter((part): part is string => Boolean(part));
+  const address = [...regionParts, ...landParts].join(" ").trim();
+
+  return address ? compactAddressLabel(address) : null;
+}
+
+async function reverseGeocodeMapPoint(center: MapPoint): Promise<string | null> {
+  const isReady = await loadNaverMapService();
+  const maps = window.naver?.maps;
+  const service = maps?.Service;
+  if (!isReady || !maps || !service?.reverseGeocode) return null;
+
+  const orderTypes = [service.OrderType?.ROAD_ADDR, service.OrderType?.ADDR].filter(Boolean).join(",");
+
+  return new Promise((resolve) => {
+    try {
+      service.reverseGeocode?.(
+        {
+          coords: new maps.LatLng(center.lat, center.lng),
+          orders: orderTypes || undefined
+        },
+        (status: string, response: NaverReverseGeocodeResponse) => {
+          if (status !== service.Status.OK) {
+            resolve(null);
+            return;
+          }
+
+          const results = response.v2?.results ?? [];
+          const roadResult = results.find((result) => result.name === "roadaddr");
+          resolve(reverseGeocodeResultLabel(roadResult ?? results[0]));
+        }
+      );
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 function addressParts(address?: { roadAddress?: string; jibunAddress?: string }) {
@@ -814,7 +912,7 @@ const groupMapListings = (listings: MapPanelItem[]): MapListingGroup[] => {
 const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: string }> = [
   { key: "home", label: "홈", Icon: HomeIcon, href: "#home-title" },
   { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
-  { key: "saved", label: "찜", Icon: Heart, href: "#saved-list" },
+  { key: "saved", label: "찜", Icon: Star, href: "#saved-list" },
   { key: "inquiry", label: "채팅", Icon: MessageCircle, href: "#inquiry" }
 ];
 
@@ -896,7 +994,7 @@ const getMapFilterSummary = (filter: string) => {
   }
 
   if (filter === "찜한 매물") {
-    return "관심목록 기준";
+    return "찜목록 기준";
   }
 
   return "시세 지도 기준";
@@ -994,7 +1092,7 @@ function SavedListingsSection({
         ) : (
           <article className="saved-empty-card">
             <strong>아직 찜한 매물이 없습니다</strong>
-            <p>추천 매물이나 지도 결과에서 하트를 누르면 여기에 모입니다.</p>
+            <p>추천 매물이나 지도 결과에서 별을 누르면 여기에 모입니다.</p>
           </article>
         )}
       </div>
@@ -1069,10 +1167,9 @@ function FilterBottomSheet({
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>
-            <span>필터</span>
-            <h2 id="filter-sheet-title">조건 좁히기</h2>
+            <h2 id="filter-sheet-title">매물 유형</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="필터 닫기">×</button>
+          <button type="button" onClick={onClose} aria-label="매물 유형 닫기">×</button>
         </header>
 
         <div className="filter-summary-card" aria-label="현재 필터 요약">
@@ -1083,28 +1180,7 @@ function FilterBottomSheet({
           <em>예상 {resultCount}개</em>
         </div>
 
-        <div className="filter-sheet-section">
-          <strong>거래 유형</strong>
-          <div className="filter-segment-grid">
-            {["월세", "전세", "단기", "매매"].map((dealType) => (
-              <button
-                className={activeQuickFilters.includes(dealType) ? "active" : ""}
-                type="button"
-                key={dealType}
-                onClick={() => {
-                  if (dealType === "단기" || dealType === "매매") {
-                    return;
-                  }
-
-                  onQuickFilterToggle(dealType);
-                }}
-              >
-                {dealType}
-              </button>
-            ))}
-          </div>
-        </div>
-
+        {/* 거래유형 섹션 제거 — 검색카드 탭이 단독 점유(택일), 시트의 다중 토글이 규칙을 깨뜨렸음 */}
         <div className="filter-sheet-section">
           <strong>매물 유형</strong>
           <div className="filter-option-grid">
@@ -1137,38 +1213,7 @@ function FilterBottomSheet({
           </div>
         </div>
 
-        <div className="filter-range-panel" aria-label="가격 범위">
-          <div>
-            <strong>가격 범위</strong>
-            <span>보증금 1,000만 이하 · 월세 130만 이하</span>
-          </div>
-          <div className="filter-range-bars">
-            <label>
-              <span>보증금</span>
-              <input type="range" min="0" max="5000" value="1000" readOnly aria-label="보증금 최대 1000만원" />
-            </label>
-            <label>
-              <span>월세</span>
-              <input type="range" min="0" max="200" value="130" readOnly aria-label="월세 최대 130만원" />
-            </label>
-          </div>
-        </div>
-
-        <div className="filter-price-grid">
-          <label>
-            보증금
-            <span>1,000만원 이하</span>
-          </label>
-          <label>
-            월세
-            <span>130만원 이하</span>
-          </label>
-          <label>
-            관리비
-            <span>포함 우선</span>
-          </label>
-        </div>
-
+        {/* 가격 범위 장식 패널 제거 — 전용 가격대 시트가 검색카드 옆에 실동작으로 존재 */}
         <button className="filter-apply-button" type="button" onClick={onApply}>
           조건 적용하고 {resultCount}개 보기
         </button>
@@ -1179,6 +1224,7 @@ function FilterBottomSheet({
 
 function SearchBottomSheet({
   isOpen,
+  currentArea,
   isResolving = false,
   isMapMode = false,
   queryCandidates = [],
@@ -1201,17 +1247,58 @@ function SearchBottomSheet({
   onSelectArea: (area: string) => void | Promise<void>;
   onSelectCandidate?: (keyword: string, candidate: MapResolvedQuery) => void;
 }) {
+  // 자유 텍스트 통합검색 — 지도 컨트롤 정리(298a976e) 때 함께 사라졌던 입력을 복원.
+  // 열 때마다 빈칸에서 시작하고, 현재 지역은 placeholder로만 보여준다.
+  const [searchValue, setSearchValue] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearchValue("");
+    }
+  }, [isOpen]);
+
+  const submitSearch = () => {
+    const keyword = searchValue.trim();
+
+    if (!keyword || isResolving) {
+      return;
+    }
+
+    void onSelectArea(keyword);
+  };
+
   if (!isOpen) {
     return null;
   }
 
   return (
     <div className="search-sheet-backdrop" role="presentation" onClick={onClose}>
-      <section className="search-sheet" role="dialog" aria-modal="true" aria-label="검색 결과" onClick={(event) => event.stopPropagation()}>
+      <section className="search-sheet" role="dialog" aria-modal="true" aria-labelledby="search-sheet-title" onClick={(event) => event.stopPropagation()}>
         <div className="sheet-handle" aria-hidden="true" />
-        <header className="search-sheet-close-row">
+        <header>
+          <div>
+            <span>통합검색</span>
+            <h2 id="search-sheet-title">어디에서 방을 찾을까요?</h2>
+          </div>
           <button type="button" onClick={onClose} aria-label="검색 닫기">×</button>
         </header>
+
+        <form
+          className="search-sheet-input"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitSearch();
+          }}
+        >
+          <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+          <input
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder={`동네, 역, 주소로 검색 (현재 ${currentArea})`}
+            aria-label="통합 검색어"
+          />
+          <button type="submit" disabled={isResolving}>{isResolving ? "확인 중" : "검색"}</button>
+        </form>
 
         {queryCandidates.length > 0 ? (
           <section className="search-result-candidates" aria-label="주소 검색 결과">
@@ -1349,6 +1436,117 @@ function SortBottomSheet({
   );
 }
 
+function PriceBottomSheet({
+  isOpen,
+  deposit,
+  monthly,
+  resultCount,
+  onClose,
+  onChange
+}: {
+  isOpen: boolean;
+  deposit: number;
+  monthly: number;
+  resultCount: number;
+  onClose: () => void;
+  onChange: (next: { deposit: number; monthly: number }) => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="filter-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="price-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <h2 id="price-sheet-title">가격대</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="가격대 닫기">×</button>
+        </header>
+
+        {/* 보증금 — 프리셋 4개 + 게이지 (칩은 자기 축만 세팅) */}
+        <div className="filter-sheet-section">
+          <strong>보증금 · {deposit >= PRICE_DEPOSIT_LIMIT ? "제한 없음" : `${formatDepositManwon(deposit)} 이하`}</strong>
+          <div className="filter-chip-cloud">
+            {depositPresets.map((preset) => (
+              <button
+                className={deposit === preset.value ? "active" : ""}
+                type="button"
+                key={preset.label}
+                onClick={() => onChange({ deposit: preset.value, monthly })}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div className="filter-range-bars">
+            <label>
+              <span>게이지로 세밀 조절 (끝 = 제한 없음)</span>
+              <input
+                type="range"
+                min={0}
+                max={PRICE_DEPOSIT_LIMIT}
+                step={1000}
+                value={deposit}
+                style={{ "--gauge-fill": `${(deposit / PRICE_DEPOSIT_LIMIT) * 100}%` } as CSSProperties}
+                onChange={(event) => onChange({ deposit: Number(event.target.value), monthly })}
+                aria-label="보증금 상한"
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* 월세 — 프리셋 4개 + 게이지 */}
+        <div className="filter-sheet-section">
+          <strong>월세 · {monthly >= PRICE_MONTHLY_LIMIT ? "제한 없음" : `${monthly}만원 이하`}</strong>
+          <div className="filter-chip-cloud">
+            {monthlyPresets.map((preset) => (
+              <button
+                className={monthly === preset.value ? "active" : ""}
+                type="button"
+                key={preset.label}
+                onClick={() => onChange({ deposit, monthly: preset.value })}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div className="filter-range-bars">
+            <label>
+              <span>게이지로 세밀 조절 (끝 = 제한 없음)</span>
+              <input
+                type="range"
+                min={0}
+                max={PRICE_MONTHLY_LIMIT}
+                step={10}
+                value={monthly}
+                style={{ "--gauge-fill": `${(monthly / PRICE_MONTHLY_LIMIT) * 100}%` } as CSSProperties}
+                onChange={(event) => onChange({ deposit, monthly: Number(event.target.value) })}
+                aria-label="월세 상한"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="price-sheet-actions">
+          <button
+            className="price-reset-button"
+            type="button"
+            onClick={() => onChange({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT })}
+          >
+            초기화
+          </button>
+          <button className="filter-apply-button" type="button" onClick={onClose}>
+            적용하고 {resultCount}개 보기
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function NotificationSheet({
   isOpen,
   onClose
@@ -1439,10 +1637,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [recentSearches, setRecentSearches] = useState(searchSuggestions.recent);
   const [activeCategory, setActiveCategory] = useState(categories[0].label);
   const [activeQuickFilters, setActiveQuickFilters] = useState<string[]>([]);
+  // 검색카드 가격대 — 게이지바 값(만원). 상한 끝값 = 제한 없음.
+  const [priceRange, setPriceRange] = useState({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT });
+  const [isPriceSheetOpen, setIsPriceSheetOpen] = useState(false);
   // 홈 검색창 키워드 — 매물명/위치/스펙/태그를 즉시 필터링한다 (QA: 검색창 직접 입력).
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeMapFilter, setActiveMapFilter] = useState("시세");
   const [activeSort, setActiveSort] = useState(sortOptions[0].label);
+  const [isFooterTeamOpen, setIsFooterTeamOpen] = useState(false);
+  const [homeListingPage, setHomeListingPage] = useState(1);
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
   const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
   // 찜은 localStorage와 동기화 — 상세 라우트(/listing/[id])와 같은 키를 써서 라우트를 오가도 유지된다.
@@ -1512,7 +1715,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setMapQueryStatus("idle");
     setMapLocationStatus("requesting");
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         if (requestId !== mapContextRequestIdRef.current) return;
 
         const center = {
@@ -1525,15 +1728,27 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           return;
         }
 
+        const currentAddress = await reverseGeocodeMapPoint(center);
+        if (requestId !== mapContextRequestIdRef.current) return;
+        const isNearJungleCampus = distanceBetweenMeters(center, JUNGLE_CAMPUS_CENTER) <= 5000;
+        const fallbackAddress = isNearJungleCampus ? JUNGLE_CAMPUS_ADDRESS : CURRENT_LOCATION_AREA_LABEL;
+        const locationLabel = currentAddress ?? fallbackAddress;
+
         setMapSearchContext({
           source: "user-location",
-          label: CURRENT_LOCATION_AREA_LABEL,
+          label: locationLabel,
           center,
-          radiusM: 3000
+          radiusM: 3000,
+          queryType: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "road" : undefined,
+          precision: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "address" : undefined,
+          addressText: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? locationLabel : undefined,
+          description: locationLabel !== CURRENT_LOCATION_AREA_LABEL
+            ? `현재 위치 기준 · 반경 3km · ${locationLabel}`
+            : undefined
         });
         setMapSearchMatchedListingNos([]);
         setHasResolvedMapContext(true);
-        setSelectedArea(CURRENT_LOCATION_AREA_LABEL);
+        setSelectedArea(locationLabel);
         setMapTopbarSearchValue("");
         setActiveMapResultTab("rooms");
         setMapLocationStatus("granted");
@@ -1576,7 +1791,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const mapAreaTitle =
     hasResolvedMapContext || mapQueryStatus === "fallback" ? selectedAreaTitle : "";
   const mapAreaDisplayTitle = mapAreaTitle || "지역 미선택";
-  const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
+  const activePriceLabel = priceRangeLabel(priceRange.deposit, priceRange.monthly);
+  const activeFilterSummary = [
+    activeCategory,
+    ...activeQuickFilters,
+    ...(activePriceLabel !== "전체" ? [activePriceLabel] : [])
+  ].join(" · ");
   const visibleHomeListings = allListings.filter((listing) => {
     const categoryMatches = listingMatchesCategory(activeCategory, listing);
     // 거래유형(월세/전세/매매/단기)끼리는 OR — 둘 다 켜면 "월세 또는 전세"다 (QA: every()로 AND 되던 버그).
@@ -1604,9 +1824,28 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         .toLowerCase()
         .includes(keyword);
 
-    return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches;
+    // 가격대 — 게이지 상한(만원). 끝값 = 제한 없음. 전세·매매는 monthlyRentManwon=0이라 월세 상한에 자동 통과.
+    const priceMatches =
+      (priceRange.deposit >= PRICE_DEPOSIT_LIMIT || listing.depositManwon <= priceRange.deposit) &&
+      (priceRange.monthly >= PRICE_MONTHLY_LIMIT || listing.monthlyRentManwon <= priceRange.monthly);
+
+    return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches && priceMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
+  // 홈 피드는 페이지 단위로 나누고, 카운트 표기는 전체 기준을 유지한다.
+  const homeListingPageCount = Math.max(1, Math.ceil(visibleHomeCount / HOME_LISTINGS_PAGE_SIZE));
+  const currentHomeListingPage = Math.min(homeListingPage, homeListingPageCount);
+  const homeListingPageStart = (currentHomeListingPage - 1) * HOME_LISTINGS_PAGE_SIZE;
+  const homeFeedListings = visibleHomeListings.slice(
+    homeListingPageStart,
+    homeListingPageStart + HOME_LISTINGS_PAGE_SIZE
+  );
+  useEffect(() => {
+    setHomeListingPage(1);
+  }, [activeCategory, activeQuickFilters, searchKeyword, priceRange]);
+  useEffect(() => {
+    if (homeListingPage > homeListingPageCount) setHomeListingPage(homeListingPageCount);
+  }, [homeListingPage, homeListingPageCount]);
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
   const mapFilterOptions = ["시세", "원룸·투룸", "보증금", "안전", "3D 가능", "찜한 매물"];
   // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
@@ -1761,7 +2000,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     : isRadiusEmptyMap
       ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : activeMapFilter === "찜한 매물"
-      ? `관심목록에 저장한 매물 ${visibleMapListings.length}개를 보여줍니다.`
+      ? `찜목록에 저장한 매물 ${visibleMapListings.length}개를 보여줍니다.`
     : `${activeSort} · ${mapFilterSummary} 조건으로 우선 매물 ${visibleMapListings.length}개를 먼저 보여줍니다.`;
   const mapEmptyTitle = isMapContextEmpty
     ? mapQueryStatus === "resolving" || mapLocationStatus === "requesting"
@@ -1787,7 +2026,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     : isRadiusEmptyMap
       ? `${isLocationScopedMap ? "현재 위치" : mapAreaDisplayTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : activeMapFilter === "찜한 매물"
-      ? "관심목록에 저장한 매물이 있으면 지도와 목록에 함께 표시됩니다."
+      ? "찜목록에 저장한 매물이 있으면 지도와 목록에 함께 표시됩니다."
     : `${activeSort} · ${mapFilterSummary} 조건에 맞는 매물이 없습니다.`;
   const mapViewportSpanM = mapViewportMaxSpanMeters(mapViewport);
   const mapPopupScopeRadiusM = isDistanceScopedMap ? mapSearchContext.radiusM : MAP_SEARCH_RADIUS_M;
@@ -1911,6 +2150,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setActiveQuickFilters((current) =>
       current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter]
     );
+  };
+
+  // 검색바 거래유형 = 택일 — 거래유형 슬롯을 비우고 선택한 것 하나만 넣는다(재클릭 = 해제).
+  const selectDealTypeExclusive = (deal: string) => {
+    setActiveQuickFilters((current) => {
+      const withoutDealTypes = current.filter((item) => !DEAL_TYPE_TABS.includes(item as (typeof DEAL_TYPE_TABS)[number]));
+      return current.includes(deal) ? withoutDealTypes : [...withoutDealTypes, deal];
+    });
   };
 
   const beginCategoryDrag = (event: PointerEvent<HTMLElement>) => {
@@ -2159,6 +2406,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     await runMapSearch(keyword, false);
   };
 
+  // 히어로 검색카드 실행 — 검색어는 타이핑 즉시 홈 피드(searchKeyword 필터)에 반영되므로,
+  // 버튼/Enter는 시트를 닫고 결과 섹션으로 이동만 한다. 모달·지도 전환 없이 피드가 곧 결과다.
+  const submitHeroSearch = () => {
+    setIsPriceSheetOpen(false);
+    setIsFilterSheetOpen(false);
+    document.querySelector(".home-screen > .section-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const submitMapTopbarSearch = async () => {
     const keyword = mapTopbarDisplaySearchValue.trim();
     if (!keyword) {
@@ -2328,6 +2583,32 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setIsDevRolePreview(false);
   };
 
+  const appFooter = (
+    <footer className="home-footer" aria-label="서비스 정보">
+      <div className="home-footer-location">
+        <a href="https://jungle.krafton.com/" target="_blank" rel="noreferrer">
+          크래프톤 정글
+        </a>
+        <strong>{selectedAreaTitle}</strong>
+        <button type="button" onClick={() => requestMapCurrentLocation(true)} disabled={mapLocationStatus === "requesting"}>
+          위치 업데이트
+        </button>
+      </div>
+      <div className="home-footer-links">
+        <a href="https://github.com/gunrein620/roomlog" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </div>
+      <div className="home-footer-team">
+        <button type="button" onClick={() => setIsFooterTeamOpen((isOpen) => !isOpen)} aria-expanded={isFooterTeamOpen}>
+          팀 카이사르
+        </button>
+        {isFooterTeamOpen ? <span className="home-footer-team-members">고명석 · 김용 · 김정환 · 박건우 · 박승현 · 서원규</span> : null}
+      </div>
+      <div className="home-footer-contact">Contact : 010-2965-7486</div>
+    </footer>
+  );
+
   if (authMode) {
     return (
       <WoozuLoginScreen
@@ -2357,20 +2638,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         <header className="web-topbar" aria-label="웹 상단 메뉴">
           <div className="web-topbar-inner">
             <button className="web-logo" type="button" onClick={() => activateTab("home")}>
-              <span className="web-logo-icon" aria-hidden="true">
-                <svg className="web-logo-roof" viewBox="0 0 140 68" fill="none">
-                  <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-                  <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                  <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                  <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                  <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                </svg>
-              </span>
-              집우집주<span>WOOZU</span>
+              {/* 로고 = 흰 테두리 정리된 trim 단일본 — 상단바가 전 탭 밤하늘 띠라 어디서든 어울린다 */}
+              <Image src="/uju-logo-trim.png" alt="집우집주" width={52} height={52} className="web-logo-img" priority />
             </button>
             <nav className="web-nav" aria-label="주요 메뉴">
               <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
-              <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
+              <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>찜목록</button>
               <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
                 채팅
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
@@ -2387,10 +2660,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 ) : null}
               </button>
               <button type="button" onClick={() => { window.location.href = "/manager/home/00"; }}>관리</button>
-              <button className={activeTab === "sell" ? "active" : ""} type="button" onClick={() => activateTab("sell")}>매물등록</button>
             </nav>
             <div className="web-topbar-actions">
-              {/* 역할은 상단 메뉴(세입자·관리·매물등록)에서 직접 진입한다 — 별도 역할 셀렉트/칩 없음. */}
+              {/* 매물 등록(박스 CTA) → 계정 영역이 맨 오른쪽 — 로그인 자리에 로그인 후 프로필이 그대로 들어온다 */}
+              <button className="web-sell-cta" type="button" onClick={() => activateTab("sell")}>매물 등록</button>
               {viewer ? (
                 <>
                   {/* 임대인 계정만: 재구성 완료(정합 필요)·실패(재업로드) 자산을 상단에서 상시 알린다. */}
@@ -2402,10 +2675,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                   </div>
                 </>
               ) : (
-                <>
-                  <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
-                  <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup"; }}>회원가입</button>
-                </>
+                /* 회원가입은 로그인 화면 안의 "일반 회원가입" 링크로 통합 — 상단바는 로그인만 */
+                <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
               )}
             </div>
           </div>
@@ -2414,6 +2685,13 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         <TourUploadBanner />
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
+          {/* 히어로가 앱헤더보다 먼저 — 모바일 첫 화면도 브랜드(별밤 밴드)로 연다. 데스크톱은 app-header가 숨겨져 영향 없음 */}
+          <div className="web-hero-head" aria-hidden="true">
+            <span className="web-hero-eyebrow">FIND YOUR SPACE</span>
+            <h1>방 구할 땐,<br /><span className="hero-woozu">우주</span>에서</h1>
+            <p className="web-hero-sub">사진과 다른 집은 그만. 3D로 먼저 둘러보세요.</p>
+          </div>
+
           <header className="app-header">
             <div>
               <p className="brand-kicker">{selectedAreaTitle} 주변</p>
@@ -2425,26 +2703,50 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             </button>
           </header>
 
-          <div className="web-hero-head" aria-hidden="true">
-            <h1>방 구할 땐, 우주에서</h1>
-            <p className="web-hero-sub">전월세부터 매매까지 | 방문 전 3D로 먼저 둘러보세요</p>
+          {/* 5b 검색바 — 전세·월세/매매 · 지역/유형/가격 · 핑크 검색 CTA. 각 필드는 기존 시트를 연다 */}
+          <div className="search-box" aria-label="매물 검색">
+            {/* 거래유형 = 택일 탭 (다시 누르면 해제 = 전체) — 필터 상태의 거래유형 슬롯을 단독 점유 */}
+            <div className="search-deal-tabs">
+              {DEAL_TYPE_TABS.map((deal) => (
+                <button
+                  key={deal}
+                  type="button"
+                  className={activeQuickFilters.includes(deal) ? "search-deal-tab active" : "search-deal-tab"}
+                  onClick={() => selectDealTypeExclusive(deal)}
+                >
+                  {deal}
+                </button>
+              ))}
+            </div>
+            <div className="search-fields">
+              <button type="button" className="search-field" onClick={() => setIsFilterSheetOpen(true)}>
+                <span className="search-field-label">매물 유형</span>
+                <span className="search-field-value">{activeCategory} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
+              </button>
+              <span className="search-field-divider" aria-hidden="true" />
+              <button type="button" className="search-field" onClick={() => setIsPriceSheetOpen(true)}>
+                <span className="search-field-label">가격대</span>
+                <span className="search-field-value">{activePriceLabel} <ChevronDown size={16} strokeWidth={2.4} aria-hidden="true" /></span>
+              </button>
+              <span className="search-field-divider" aria-hidden="true" />
+              {/* 검색 = 자유 텍스트 입력 — 타이핑 즉시 아래 홈 피드가 필터링된다(버튼·모달·지도 전환 없음). */}
+              <div className="search-field search-field--query">
+                <span className="search-field-label">검색</span>
+                <input
+                  className="search-field-input"
+                  value={searchKeyword}
+                  placeholder="예: 성수동, 역삼역, 방배 루미에르"
+                  aria-label="매물 검색어"
+                  onChange={(event) => setSearchKeyword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                    event.preventDefault();
+                    submitHeroSearch();
+                  }}
+                />
+              </div>
+            </div>
           </div>
-
-          <label className="search-box">
-            {/* 아이콘 클릭 = 지역 선택 시트, 입력창 = 바로 타이핑해 매물 필터 (QA: onFocus 시트가 타이핑을 막던 문제) */}
-            <button type="button" aria-label="지역 선택" onClick={() => setIsSearchSheetOpen(true)} style={{ display: "inline-flex", background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit" }}>
-              <Search size={20} strokeWidth={2.4} aria-hidden="true" />
-            </button>
-            <input
-              value={searchKeyword}
-              placeholder="매물명, 지역, 조건 검색"
-              aria-label="매물 검색"
-              onChange={(event) => setSearchKeyword(event.target.value)}
-            />
-            <button type="button" aria-label="필터" onClick={() => setIsFilterSheetOpen(true)}>
-              <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
-            </button>
-          </label>
 
           <nav
             ref={categoryStripRef}
@@ -2456,26 +2758,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             onPointerCancel={endCategoryDrag}
             onPointerLeave={endCategoryDrag}
           >
-            {categories.map((category) => {
-              const CategoryIcon = category.Icon;
-              // 하드코딩 수치 대신 지금 피드에 실제로 있는 매물 수를 보여준다.
-              const count = allListings.filter((listing) => listingMatchesCategory(category.label, listing)).length;
-
-              return (
-                <button
-                  className={activeCategory === category.label ? "category-card active" : "category-card"}
-                  type="button"
-                  key={category.label}
-                  onClick={() => selectCategory(category.label)}
-                >
-                  <i aria-hidden="true">
-                    <CategoryIcon size={18} strokeWidth={2.4} />
-                  </i>
-                  <span>{category.label}</span>
-                  <strong>{count.toLocaleString("ko-KR")}</strong>
-                </button>
-              );
-            })}
+            {/* 5b 카테고리 = 언더라인 텍스트 탭 (아이콘·카운트 제거) */}
+            {categories.map((category) => (
+              <button
+                className={activeCategory === category.label ? "category-tab active" : "category-tab"}
+                type="button"
+                key={category.label}
+                onClick={() => selectCategory(category.label)}
+              >
+                {category.label}
+              </button>
+            ))}
           </nav>
 
           <div className="quick-filter-row" aria-label="빠른 필터">
@@ -2491,35 +2784,41 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             ))}
           </div>
 
-          <div className="filter-feedback" role="status" aria-label={`선택 조건 ${activeFilterSummary}, 확인매물 ${visibleHomeCount}개`}>
-            <strong>{activeFilterSummary}</strong>
-            <span>확인매물 {visibleHomeCount}개를 보여주는 중</span>
-          </div>
-
+          {/* filter-feedback 바 제거 — 조건 요약은 app-header(모바일)·검색카드(데스크톱)가 이미 담당 */}
           <div className="section-title">
             <div>
-              <h2>추천 매물</h2>
+              {/* "3D로 미리 보는"은 전 매물 3D를 암시해 과장 — 브랜드 화자 큐레이션 문구로 */}
+              <h2>우주가 고른 추천 매물</h2>
               <p>{activeFilterSummary} 조건에 맞는 매물을 보여줍니다.</p>
             </div>
             <a href="#map-list" onClick={(event) => {
               event.preventDefault();
               activateTab("map");
-            }}>전체</a>
+            }}>전체보기 →</a>
           </div>
 
           <div className="listing-feed">
-            {visibleHomeListings.length > 0 ? (
+            {homeFeedListings.length > 0 ? (
               <>
-                {visibleHomeListings.map((listing) => (
+                {homeFeedListings.map((listing) => (
                   <article className="listing-card" key={listing.listingNo}>
                     <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
                       <div className="listing-photo">
                         <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />
-                        <div className="badge-row">
-                          {listing.badges.map((badge) => (
-                            <span key={badge}>{badge}</span>
-                          ))}
-                        </div>
+                        {/* 워킹뷰 스티커(시안) — 실제 기능이 있는 매물에만: 골드 버스트=1인칭 투어, pill=3D 가구 배치.
+                            텍스트 신뢰 배지(확인매물 등)는 계속 상세 전용 — 여기 스티커는 3D 차별점 표식만. */}
+                        {listing.has3DTour ? (
+                          <span className="thumb-sticker-walk" aria-label="1인칭 워킹뷰 가능">
+                            <Footprints size={17} strokeWidth={2.2} aria-hidden="true" />
+                            워킹뷰
+                          </span>
+                        ) : null}
+                        {listingHas3DPlacement(listing) ? (
+                          <span className="thumb-sticker-3d" aria-label="3D 가구 배치 가능">
+                            <Box size={13} strokeWidth={2} aria-hidden="true" />
+                            3D 배치
+                          </span>
+                        ) : null}
                       </div>
                       {/* 카드 본문은 가격·제목·핵심 스펙만 — 신뢰 배지는 사진 위, 나머지는 상세에서. */}
                       <div className="listing-body">
@@ -2538,7 +2837,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                       aria-label={`${listing.title} 찜하기`}
                       onClick={() => toggleSavedListing(listing.listingNo)}
                     >
-                      <Heart size={22} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                      <Star size={22} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
                     </button>
                   </article>
                 ))}
@@ -2551,6 +2850,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 <button type="button" onClick={() => {
                   setActiveCategory("오피스텔");
                   setActiveQuickFilters(["월세"]);
+                  setPriceRange({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT });
                 }}>
                   기본 조건으로 보기
                 </button>
@@ -2560,6 +2860,39 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
           {/* 하드코딩 데모 컨셉 섹션(내 조건 요약·AI중개사 추천·저장한 검색 조건·지역 지표) 제거 —
               가짜 수치가 실데이터처럼 보이던 문제. 실데이터가 생기면 그때 실계산으로 되살린다. */}
+          {visibleHomeListings.length > 0 ? (
+            <nav className="listing-pagination" aria-label="매물 페이지">
+              <button
+                type="button"
+                onClick={() => setHomeListingPage((page) => Math.max(1, page - 1))}
+                disabled={currentHomeListingPage === 1}
+                aria-label="이전 매물 페이지"
+              >
+                {"<"}
+              </button>
+              {Array.from({ length: homeListingPageCount }, (_, index) => index + 1).map((page) => (
+                <button
+                  className={currentHomeListingPage === page ? "active" : ""}
+                  type="button"
+                  key={page}
+                  onClick={() => setHomeListingPage(page)}
+                  aria-label={`매물 ${page}페이지`}
+                  aria-current={currentHomeListingPage === page ? "page" : undefined}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setHomeListingPage((page) => Math.min(homeListingPageCount, page + 1))}
+                disabled={currentHomeListingPage === homeListingPageCount}
+                aria-label="다음 매물 페이지"
+              >
+                {">"}
+              </button>
+            </nav>
+          ) : null}
+
           <article className="map-entry-card">
             <div className="map-entry-copy">
               <span>지도 기반 검색</span>
@@ -2803,7 +3136,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                         aria-label={`${listing.title} 저장`}
                         onClick={() => toggleSavedListing(listing.listingNo)}
                       >
-                        <Heart size={20} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                        <Star size={20} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
                       </button>
                     </article>
                   ))}
@@ -2876,23 +3209,33 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} composeListing={composeListing} />
+          <InquiryHubSection
+            onRequireLogin={() => openAuthScreen("login")}
+            focusThreadId={buyerFocusThreadId}
+            composeListing={composeListing}
+          />
         ) : null}
         {activeTab === "sell" ? (
-          <LandlordMyPage
-            onGoHome={() => {
-              // 등록 성공 팝업 확인 → 홈 피드로. 목록을 즉시 갱신해 방금 등록한 매물이 바로 보이게 한다.
-              void loadTradeListings();
-              activateTab("home");
-            }}
-          />
+          <>
+            <LandlordMyPage
+              onGoHome={() => {
+                // 등록 성공 팝업 확인 → 홈 피드로. 목록을 즉시 갱신해 방금 등록한 매물이 바로 보이게 한다.
+                void loadTradeListings();
+                activateTab("home");
+              }}
+            />
+          </>
         ) : null}
         {activeTab === "living" ? (
-          <TenantMyPage
-            onGoInquiry={() => activateTab("inquiry")}
-            onGoHome={() => activateTab("home")}
-          />
+          <>
+            <TenantMyPage
+              onGoInquiry={() => activateTab("inquiry")}
+              onGoHome={() => activateTab("home")}
+            />
+          </>
         ) : null}
+
+        {["home", "saved", "inquiry", "sell", "living"].includes(activeTab) ? appFooter : null}
 
         <nav className="bottom-tabs" aria-label="앱 하단 메뉴">
           {bottomTabs.map((item) => (
@@ -2953,6 +3296,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             setActiveSort(sort);
             setIsSortSheetOpen(false);
           }}
+        />
+        <PriceBottomSheet
+          isOpen={isPriceSheetOpen}
+          deposit={priceRange.deposit}
+          monthly={priceRange.monthly}
+          resultCount={visibleHomeCount}
+          onClose={() => setIsPriceSheetOpen(false)}
+          onChange={setPriceRange}
         />
         <NotificationSheet
           isOpen={isNotificationSheetOpen}

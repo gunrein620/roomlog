@@ -5893,6 +5893,69 @@ describe("RoomlogService", () => {
     assert.equal(guardedDunningResult.navigation, undefined);
   });
 
+  it("summarizes the manager portfolio with contracts and vacant rooms", async () => {
+    const service = new RoomlogService();
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "portfolio.summary",
+      text: "내가 계약한 매물이 뭐뭐 있지?"
+    });
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "portfolio");
+    assert.match(result.summary, /관리 중인 집 \d+곳/);
+    assert.match(result.summary, /계약 중 \d+곳/);
+    assert.equal(result.navigation?.href, "/manager/listing");
+
+    const data = result.data as {
+      totalRooms: number;
+      contracts: Array<{ unitId: string; tenantName: string; buildingName: string }>;
+      vacantRooms: Array<{ buildingName: string; roomNo: string }>;
+    };
+    assert.equal(typeof data.totalRooms, "number");
+    assert.ok(Array.isArray(data.contracts));
+    assert.ok(Array.isArray(data.vacantRooms));
+    for (const contract of data.contracts) {
+      assert.equal(typeof contract.unitId, "string");
+      assert.equal(typeof contract.tenantName, "string");
+      assert.equal(typeof contract.buildingName, "string");
+    }
+  });
+
+  it("sends manager announcements after conversational approval without a pending card", async () => {
+    const service = new RoomlogService();
+
+    // 대상을 못 찾으면 차단 사유를 돌려줘 모델이 되묻게 한다.
+    const unknownTarget = await service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_announcement",
+      target: "존재하지않는빌라",
+      title: "단수 안내",
+      body: "내일 단수 예정입니다."
+    });
+    assert.equal(unknownTarget.status, "blocked");
+    assert.match(unknownTarget.summary, /대상을 찾지 못했습니다/);
+
+    // 제목·내용 누락도 서버가 막는다 (assertAnnouncementContent).
+    const missingContent = await service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_announcement",
+      target: "전체"
+    });
+    assert.equal(missingContent.status, "blocked");
+
+    // 명확한 요청은 즉시 발송된다 (대화 승인은 페르소나 지침이 담당, 생활 카테고리 고정).
+    const executed = await service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_announcement",
+      target: "전체",
+      title: "단수 안내",
+      body: "6월 20일 14-15시 단수 예정입니다."
+    });
+    assert.equal(executed.status, "executed");
+    assert.equal(executed.domain, "messaging");
+    assert.match(executed.summary, /전체 \d+세대에 '단수 안내' 공지를 발송했습니다/);
+    const results = service.listManagerAnnouncementResults("landlord-demo");
+    assert.ok(results.some((result) => result.title === "단수 안내" && result.category === "life"));
+  });
+
   it("summarizes total ticket counts for the manager agent", async () => {
     const service = new RoomlogService();
 
@@ -6115,6 +6178,26 @@ describe("RoomlogService", () => {
         process.env.OPENAI_API_KEY = originalApiKey;
       }
     }
+  });
+
+  it("stores manager photo-only ticket replies and rejects an empty reply", () => {
+    const service = new RoomlogService();
+    const created = service.createComplaint("tenant-demo", {
+      title: "보일러 배관 사진 확인",
+      description: "보일러 아래 배관에 물방울이 맺힙니다.",
+      location: "301호 보일러실",
+    });
+
+    const sent = service.sendManagerTicketReply("landlord-demo", created.ticket.id, {
+      attachmentUrls: ["/api/files/manager-boiler.jpg"],
+    });
+
+    assert.equal(sent.message.messageText, "사진을 첨부했습니다.");
+    assert.deepEqual(sent.message.attachmentUrls, ["/api/files/manager-boiler.jpg"]);
+    assert.throws(
+      () => service.sendManagerTicketReply("landlord-demo", created.ticket.id, {}),
+      /답변 내용 또는 사진/,
+    );
   });
 
   it("links tenant additional info photos to the existing ticket and refreshes analysis", () => {

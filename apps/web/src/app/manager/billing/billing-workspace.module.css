@@ -68,6 +68,10 @@
   justify-content: flex-end;
 }
 
+.headerControlsEnd {
+  margin-left: auto;
+}
+
 .visuallyHidden {
   position: absolute;
   width: var(--space-xs);

@@ -220,12 +220,11 @@ function LinkButton({
   );
 }
 
-function PhoneTab({ active }: { active: "home" | "billing" | "messaging" | "settings" }) {
+function PhoneTab({ active }: { active: "home" | "billing" | "messaging" }) {
   const tabs = [
     { key: "home", label: "홈", href: MVOX_ROUTES["M-VOX-00"] },
     { key: "billing", label: "청구", href: MANAGER_CROSS.billing },
     { key: "messaging", label: "소통", href: MANAGER_CROSS.messaging },
-    { key: "settings", label: "설정", href: MHOME_ROUTES["M-HOME-06"] },
   ] as const;
 
   return (
@@ -236,7 +235,7 @@ function PhoneTab({ active }: { active: "home" | "billing" | "messaging" | "sett
         borderTop: "1px solid var(--border)",
         padding: "var(--space-sm) var(--page-margin)",
         display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
+        gridTemplateColumns: "repeat(3, 1fr)",
         gap: "var(--space-sm)",
         background: "var(--surface)",
       }}

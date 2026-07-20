@@ -16,6 +16,25 @@ function createTicket(service: RoomlogService, title: string) {
 }
 
 describe("RoomlogService vendor chat message scoping", () => {
+  it("uses the same photo-only message for tenant and manager chat", () => {
+    const service = new RoomlogService();
+    const { complaint, ticket } = createTicket(service, "사진 전용 채팅 문구");
+
+    const tenantResult = service.addTenantComplaintMessage(
+      "tenant-demo",
+      complaint.id,
+      { attachmentUrls: ["/api/files/tenant-photo.jpg"] }
+    );
+    const managerResult = service.sendManagerTicketReply(
+      "landlord-demo",
+      ticket.id,
+      { attachmentUrls: ["/api/files/manager-photo.jpg"] }
+    );
+
+    assert.equal(tenantResult.message.messageText, "사진을 첨부했습니다.");
+    assert.equal(managerResult.message.messageText, "사진을 첨부했습니다.");
+  });
+
   it("scopes tenant and manager messages to the active repair", () => {
     const service = new RoomlogService();
     const { complaint, ticket } = createTicket(service, "활성 수리 채팅 스코프");

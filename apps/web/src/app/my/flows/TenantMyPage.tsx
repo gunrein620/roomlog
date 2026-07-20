@@ -16,6 +16,11 @@ import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
 import { Bath, Bot, Check, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
 import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import {
+  resolveTicketChatAttachmentUrl,
+  uploadTicketChatImages,
+  validateTicketChatImages
+} from "@/lib/ticket-chat-attachments";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
   formatTenantLandlordUnreadCount,
@@ -156,6 +161,12 @@ type TenantAttachmentUploadResponse = {
 
 type RequestImagePreview = TenantComplaintDraftImage;
 
+type ComplaintChatImage = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
 type TenantAnnouncementState =
   | { status: "loading" | "empty" | "error"; announcement: null }
   | { status: "ready"; announcement: Announcement };
@@ -182,6 +193,31 @@ function tenancyDateLabel(iso?: string): string {
 
 function formatKrw(amount: number): string {
   return `${amount.toLocaleString("ko-KR")} KRW`;
+}
+
+function TenantComplaintMessageAttachments({ urls }: { urls: string[] }) {
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
+
+  return (
+    <div className="tenant-defect-chat-attachments">
+      {urls.map((url) => {
+        const resolvedUrl = resolveTicketChatAttachmentUrl(url);
+        const fileName = url.split(/[?#]/, 1)[0].split("/").filter(Boolean).at(-1) ?? "첨부 이미지";
+        return failedUrls.has(url) ? (
+          <a key={url} href={resolvedUrl} target="_blank" rel="noreferrer">{fileName}</a>
+        ) : (
+          <a key={url} href={resolvedUrl} target="_blank" rel="noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={resolvedUrl}
+              alt={`${fileName} 첨부 이미지`}
+              onError={() => setFailedUrls((current) => new Set(current).add(url))}
+            />
+          </a>
+        );
+      })}
+    </div>
+  );
 }
 
 function formatTenantRoomTitle(buildingName: string, roomNo: string): string {
@@ -216,6 +252,38 @@ function repairDateLabel(iso?: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "일자 확인 중";
   return iso.slice(0, 10).replaceAll("-", ".");
+}
+
+// 세입자 이력은 내부 처리 단계를 노출하지 않고, 세 단계로 일관되게 안내한다.
+const TENANT_REPAIR_HISTORY_TICKET_STATUS: Partial<Record<string, string>> = {
+  RECEIVED: "접수",
+  REVIEWING: "접수",
+  ADDITIONAL_INFO_REQUESTED: "접수",
+  VENDOR_ASSIGNMENT_PENDING: "접수",
+  VENDOR_ASSIGNED: "접수",
+  ESTIMATE_REVIEW: "접수",
+  REPAIR_IN_PROGRESS: "진행중",
+  COMPLETION_REPORTED: "진행중",
+  COMPLETED: "완료",
+};
+
+const TENANT_REPAIR_HISTORY_DISPLAY_STATUS: Record<string, string> = {
+  "진행": "접수",
+  "접수됨": "접수",
+  "수리중": "진행중",
+  "수리 중": "진행중",
+  "완료": "완료",
+};
+
+function tenantRepairHistoryStatus(item: TenantComplaintResponse): string {
+  const ticketStatus = item.ticket?.status?.trim();
+  if (ticketStatus) {
+    const mappedTicketStatus = TENANT_REPAIR_HISTORY_TICKET_STATUS[ticketStatus];
+    if (mappedTicketStatus) return mappedTicketStatus;
+  }
+
+  const rawStatus = item.displayStatus?.trim() || item.status?.trim();
+  return rawStatus ? (TENANT_REPAIR_HISTORY_DISPLAY_STATUS[rawStatus] ?? rawStatus) : "접수";
 }
 
 function dateTimeLocalValue(iso: string): string {
@@ -279,7 +347,7 @@ function normalizeTenantRepairRequest(item: TenantComplaintResponse): TenantRepa
     createdAt: item.createdAt,
     sourceChannel: item.sourceChannel,
     attachments,
-    status: item.displayStatus ?? item.status ?? "접수됨",
+    status: tenantRepairHistoryStatus(item),
     date: repairDateLabel(item.createdAt)
   };
 }
@@ -853,6 +921,8 @@ export default function TenantMyPage({
   const [repairDetailError, setRepairDetailError] = useState("");
   const [selectedComplaintDetail, setSelectedComplaintDetail] = useState<TenantComplaintResponse | null>(null);
   const [complaintChatDraft, setComplaintChatDraft] = useState("");
+  const [complaintChatImages, setComplaintChatImages] = useState<ComplaintChatImage[]>([]);
+  const complaintChatImagesRef = useRef<ComplaintChatImage[]>([]);
   const [isSendingComplaintMessage, setIsSendingComplaintMessage] = useState(false);
   const [requestUrgency, setRequestUrgency] = useState<1 | 2 | 3 | 4 | undefined>(undefined);
   const [requestAvailableTimes, setRequestAvailableTimes] = useState("");
@@ -1177,9 +1247,12 @@ export default function TenantMyPage({
         ? "공지사항을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요."
         : "임대인으로부터 전달된 새로운 소식이 없습니다.";
   const detailTicket = selectedComplaintDetail?.ticket;
-  const detailStatusLabel = selectedComplaintDetail?.displayStatus ?? selectedRepairRequest?.status ?? "";
+  const detailStatusLabel = selectedComplaintDetail
+    ? tenantRepairHistoryStatus(selectedComplaintDetail)
+    : selectedRepairRequest?.status ?? "";
   const detailMessages = (selectedComplaintDetail?.messages ?? []).filter(
-    (message) => (message.messageText ?? "").trim().length > 0
+    (message) =>
+      (message.messageText ?? "").trim().length > 0 || (message.attachmentUrls?.length ?? 0) > 0
   );
   const isTicketClosed = detailTicket?.status === "COMPLETED" || detailTicket?.status === "CANCELLED";
 
@@ -1268,16 +1341,17 @@ export default function TenantMyPage({
   const handleSendComplaintMessage = async () => {
     if (!selectedRepairRequest || isSendingComplaintMessage) return;
     const messageText = complaintChatDraft.trim();
-    if (!messageText) return;
+    if (!messageText && complaintChatImages.length === 0) return;
     setIsSendingComplaintMessage(true);
     setRepairDetailError("");
     try {
+      const attachmentUrls = await uploadTicketChatImages(complaintChatImages.map((image) => image.file));
       const res = await fetch(
         `/api/tenant/complaints/${encodeURIComponent(selectedRepairRequest.id)}/messages`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messageText })
+          body: JSON.stringify({ messageText, attachmentUrls })
         }
       );
       if (!res.ok) {
@@ -1285,12 +1359,43 @@ export default function TenantMyPage({
         throw new Error(data?.message || "메시지를 보내지 못했습니다.");
       }
       setComplaintChatDraft("");
+      clearComplaintChatImages();
       await refreshComplaintDetail(selectedRepairRequest.id);
     } catch (error) {
       setRepairDetailError(error instanceof Error ? error.message : "메시지를 보내지 못했습니다.");
     } finally {
       setIsSendingComplaintMessage(false);
     }
+  };
+
+  const handleComplaintChatImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    const validationError = validateTicketChatImages(files, complaintChatImages.length);
+    if (validationError) {
+      setRepairDetailError(validationError);
+      return;
+    }
+
+    setRepairDetailError("");
+    setComplaintChatImages((current) => [
+      ...current,
+      ...files.map((file) => ({
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        file,
+        previewUrl: URL.createObjectURL(file)
+      }))
+    ]);
+  };
+
+  const removeComplaintChatImage = (imageId: string) => {
+    setComplaintChatImages((current) => {
+      const removed = current.find((image) => image.id === imageId);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((image) => image.id !== imageId);
+    });
   };
 
   useEffect(() => {
@@ -1310,7 +1415,22 @@ export default function TenantMyPage({
     setSelectedRepairRequest(null);
     setSelectedComplaintDetail(null);
     setComplaintChatDraft("");
+    clearComplaintChatImages();
     setRepairDetailError("");
+  };
+
+  useEffect(() => {
+    complaintChatImagesRef.current = complaintChatImages;
+  }, [complaintChatImages]);
+
+  useEffect(() => () => {
+    complaintChatImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+  }, []);
+
+  const clearComplaintChatImages = () => {
+    complaintChatImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+    complaintChatImagesRef.current = [];
+    setComplaintChatImages([]);
   };
 
   useEffect(() => {
@@ -2087,35 +2207,57 @@ export default function TenantMyPage({
                           return (
                             <li key={`${message.createdAt ?? index}-${index}`} data-sender={message.senderRole ?? "SYSTEM"}>
                               <span>{senderLabel}</span>
-                              <p>{message.messageText}</p>
+                              {message.messageText?.trim() ? <p>{message.messageText}</p> : null}
+                              {message.attachmentUrls?.length ? (
+                                <TenantComplaintMessageAttachments urls={message.attachmentUrls} />
+                              ) : null}
                             </li>
                           );
                         })
                     )}
                   </ul>
                   {!isTicketClosed ? (
-                    <div className="tenant-defect-chat-input">
-                      <input
-                        type="text"
-                        value={complaintChatDraft}
-                        onChange={(event) => setComplaintChatDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                            event.preventDefault();
-                            void handleSendComplaintMessage();
-                          }
-                        }}
-                        maxLength={500}
-                        placeholder="관리자·업체에게 메시지 보내기"
-                        aria-label="진행 메시지 입력"
-                      />
-                      <button
-                        type="button"
-                        disabled={isSendingComplaintMessage || complaintChatDraft.trim().length === 0}
-                        onClick={() => void handleSendComplaintMessage()}
-                      >
-                        {isSendingComplaintMessage ? "전송 중" : "보내기"}
-                      </button>
+                    <div className="tenant-defect-chat-composer">
+                      {complaintChatImages.length > 0 ? (
+                        <div className="tenant-defect-chat-selected" aria-label="선택한 사진">
+                          {complaintChatImages.map((image) => (
+                            <figure key={image.id}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={image.previewUrl} alt={image.file.name} />
+                              <button type="button" aria-label={`${image.file.name} 삭제`} onClick={() => removeComplaintChatImage(image.id)}>
+                                <X aria-hidden="true" />
+                              </button>
+                            </figure>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="tenant-defect-chat-input">
+                        <label className="tenant-defect-chat-attach" aria-label="사진 첨부">
+                          <ImagePlus aria-hidden="true" />
+                          <input type="file" accept="image/*" multiple onChange={handleComplaintChatImageChange} />
+                        </label>
+                        <input
+                          type="text"
+                          value={complaintChatDraft}
+                          onChange={(event) => setComplaintChatDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                              event.preventDefault();
+                              void handleSendComplaintMessage();
+                            }
+                          }}
+                          maxLength={500}
+                          placeholder="관리자에게 메시지 보내기"
+                          aria-label="진행 메시지 입력"
+                        />
+                        <button
+                          type="button"
+                          disabled={isSendingComplaintMessage || !(complaintChatDraft.trim().length > 0 || complaintChatImages.length > 0)}
+                          onClick={() => void handleSendComplaintMessage()}
+                        >
+                          {isSendingComplaintMessage ? "전송 중" : "보내기"}
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                 </section>
@@ -2228,7 +2370,7 @@ export default function TenantMyPage({
               <div className="tenant-request-image-strip" aria-label="이미지 첨부">
                 <label className="tenant-request-image-input">
                   <ImagePlus size={24} strokeWidth={2.4} aria-hidden="true" />
-                  <span>이미지<br />(입력)</span>
+                  <span className="tenant-sr-only">이미지 첨부</span>
                   <input type="file" accept="image/*" multiple onChange={handleRequestImageChange} />
                 </label>
                 {requestImages.map((image) => (

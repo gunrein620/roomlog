@@ -5,6 +5,10 @@ import test from "node:test";
 
 const pageSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/vendors/page.tsx"), "utf8");
 const componentSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/_components.tsx"), "utf8");
+const workspaceStylesSource = readFileSync(
+  join(process.cwd(), "src/app/manager/vendor-mgmt/VendorWorkspace.module.css"),
+  "utf8",
+);
 const actionsSource = readFileSync(join(process.cwd(), "src/app/manager/vendor-mgmt/actions.ts"), "utf8");
 const apiClientSource = readFileSync(join(process.cwd(), "src/lib/vendor-mgmt-api.ts"), "utf8");
 const apiControllerSource = readFileSync(
@@ -26,7 +30,8 @@ const dialogStylesSource = existsSync(dialogStylesPath)
 
 test("manager vendor list opens registration in a modal instead of navigating", () => {
   assert.match(pageSource, /import \{ ManagerVendorRegistrationDialog \}/);
-  assert.match(pageSource, /actions=\{<ManagerVendorRegistrationDialog disabled=\{result\.source === "DEMO"\} \/>\}/);
+  assert.match(pageSource, /action=\{<ManagerVendorRegistrationDialog disabled=\{result\.source === "DEMO"\} \/>\}/);
+  assert.doesNotMatch(pageSource, /VendorScreenHeader/);
   assert.doesNotMatch(
     pageSource,
     /<LinkButton href=\{MANAGER_VENDOR_MGMT_PATHS\.search\}>업체 등록<\/LinkButton>/,
@@ -38,9 +43,25 @@ test("manager vendor list does not expose an archive control", () => {
   assert.doesNotMatch(pageSource, /renderManagement=/);
 });
 
+test("manager vendor list omits explanatory copy from the list header and count section", () => {
+  assert.doesNotMatch(pageSource, /운영팀이 검증한 업체 중 직접 등록한 협력업체와 진행 중인 작업을 관리합니다/);
+  assert.doesNotMatch(pageSource, /계정 연결과 운영 검증이 모두 완료된 업체만 하자 작업에 배정할 수 있습니다/);
+  assert.match(componentSource, /description\?: string/);
+  assert.match(componentSource, /\{description \? <p className=\{styles\.description\}>\{description\}<\/p> : null\}/);
+});
+
 test("manager vendor table does not expose account verification", () => {
   assert.doesNotMatch(componentSource, /계정·검증/);
   assert.doesNotMatch(componentSource, /accountStatusLabel\[vendor\.accountStatus\]/);
+});
+
+test("vendor detail action matches the compact registration status pill", () => {
+  const detailButtonRule = workspaceStylesSource.match(/\.detailButton\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(detailButtonRule, /var\(--touch-target\)/);
+  assert.match(
+    workspaceStylesSource,
+    /\.statusMuted,\s*\.detailButton\s*\{[\s\S]*?min-height:\s*28px;[\s\S]*?padding:\s*0 var\(--space-sm\);[\s\S]*?border-radius:\s*var\(--radius-full\);/,
+  );
 });
 
 test("registration dialog is accessible and submits all private vendor fields", () => {

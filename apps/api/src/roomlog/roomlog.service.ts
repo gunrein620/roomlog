@@ -10,7 +10,10 @@ import {
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
-import type { VendorRepairMessageRecord } from "./vendor-workflow.repository";
+import type {
+  VendorAssignmentNoticeRecord,
+  VendorRepairMessageRecord,
+} from "./vendor-workflow.repository";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -5466,6 +5469,44 @@ export class RoomlogService implements OnModuleDestroy {
       }
     }
 
+    if (command === "portfolio.summary") {
+      const rooms = this.store.rooms.filter((room) => room.landlordId === managerId);
+      const dashboard = this.getManagerContractDashboard(managerId);
+      const contracts = dashboard.rows.map((row) => ({
+        unitId: row.contract.unitId,
+        buildingName: row.buildingName,
+        tenantName: row.tenantName,
+        monthlyRent: row.contract.monthlyRent,
+        startDate: row.contract.startDate,
+        endDate: row.contract.endDate,
+        daysToExpire: row.daysToExpire,
+        status: row.statusLabel
+      }));
+      const contractedRoomIds = new Set(dashboard.rows.map((row) => row.contract.roomId));
+      const vacantRooms = rooms
+        .filter((room) => !contractedRoomIds.has(room.id))
+        .map((room) => ({
+          buildingName: room.buildingName,
+          roomNo: room.roomNo,
+          address: room.address
+        }));
+
+      return {
+        status: "executed",
+        domain: "portfolio",
+        summary: `관리 중인 집 ${rooms.length}곳 — 계약 중 ${contractedRoomIds.size}곳, 미계약 ${vacantRooms.length}곳입니다.`,
+        data: {
+          totalRooms: rooms.length,
+          contracts,
+          vacantRooms
+        },
+        navigation: {
+          label: "매물 관리",
+          href: "/manager/listing"
+        }
+      };
+    }
+
     if (command === "billing.summary") {
       const dashboard = this.getManagerBillDashboard(managerId);
       const collection = this.getManagerCollection(managerId);
@@ -5523,6 +5564,46 @@ export class RoomlogService implements OnModuleDestroy {
             error instanceof Error
               ? `${error.message} 독촉 발송을 중단했습니다.`
               : "독촉 대상과 가드 상태를 확인하지 못해 발송을 중단했습니다.",
+          requiresConfirmation: true
+        };
+      }
+    }
+
+    if (command === "messaging.send_announcement") {
+      const title = input.title?.trim() ?? "";
+      const announcementBody = body || text;
+
+      try {
+        const audience = this.messaging.resolveManagerAnnouncementAudience(
+          managerId,
+          input.target
+        );
+        const result = this.messaging.sendManagerAgentAnnouncement(managerId, {
+          scope: audience.scope,
+          targetLabel: audience.targetLabel,
+          targetRoomIds: audience.targetRoomIds,
+          title,
+          body: announcementBody
+        });
+
+        return {
+          status: "executed",
+          domain: "messaging",
+          summary: `${audience.targetLabel} ${result.counts.total}세대에 '${result.title}' 공지를 발송했습니다.`,
+          data: result,
+          navigation: {
+            label: "소통 허브",
+            href: "/manager/messaging/00"
+          }
+        };
+      } catch (error) {
+        return {
+          status: "blocked",
+          domain: "messaging",
+          summary:
+            error instanceof Error
+              ? `${error.message} 공지 발송을 중단했습니다.`
+              : "공지 대상과 내용을 확인하지 못해 발송을 중단했습니다.",
           requiresConfirmation: true
         };
       }
@@ -6167,15 +6248,14 @@ export class RoomlogService implements OnModuleDestroy {
     return this.store.tickets.map((ticket) => this.presentTicket(ticket));
   }
 
-  private async currentManagerReadStore() {
-    if (!this.storeProjector?.load) return this.store;
-
-    // projectStore()는 Postgres 반영을 큐에 걸고 바로 리턴한다. 그 직후 여기서 DB를 읽으면
-    // 방금 쓴 메시지·상태가 아직 없어 화면이 "한 박자 밀린다"(관리인 대화·레인 토글 증상).
-    // 밀린 쓰기를 먼저 흘려보내고 읽는다. 실패해도 읽기는 막지 않는다 — 그건 쓰기 경로의 책임.
-    await this.pendingPersistence.catch(() => undefined);
-
-    return (await this.storeProjector.load()) ?? createEmptyStore();
+  private currentManagerReadStore() {
+    // 인메모리 store가 쓰기의 1차 소스다 — 쓰기가 this.store를 먼저(동기) 갱신하고 Postgres로 미러링.
+    // 과거엔 여기서 storeProjector.load()로 DB 전체(~55개 테이블)를 재로드했고, 그 시절엔
+    // 밀린 쓰기가 DB에 닿기 전 읽으면 "한 박자 밀림"이 생겨 pendingPersistence를 await했다.
+    // 인메모리 직독으로 바꾼 지금은 둘 다 불필요하다: 재로드는 콜드 시 5~7초(대시보드 게이팅),
+    // pendingPersistence 대기는 전체 스토어 미러링 flush(실측 3~28초)에 읽기를 볼모로 잡았다.
+    // 인메모리는 flush와 무관하게 항상 최신이므로 그대로 반환한다.
+    return this.store;
   }
 
   listTicketsForManager(managerId: string, sourceStore: Store = this.store) {
@@ -6980,9 +7060,21 @@ export class RoomlogService implements OnModuleDestroy {
     let ticket = this.findTicket(ticketId);
     this.assertManagerCanAccessTicket(managerId, ticket);
     const messageText = input.messageText?.trim() ?? "";
+    if (input.attachmentUrls !== undefined && !Array.isArray(input.attachmentUrls)) {
+      throw new BadRequestException("첨부 사진 목록이 올바르지 않습니다.");
+    }
+    const attachmentUrls = [...new Set((input.attachmentUrls ?? []).map((url) => {
+      if (typeof url !== "string" || !url.trim()) {
+        throw new BadRequestException("첨부 사진 주소가 올바르지 않습니다.");
+      }
+      return url.trim();
+    }))];
 
-    if (!messageText) {
-      throw new BadRequestException("전송할 답변 내용이 필요합니다.");
+    if (attachmentUrls.length > 5) {
+      throw new BadRequestException("사진은 한 번에 최대 5장까지 보낼 수 있습니다.");
+    }
+    if (!messageText && attachmentUrls.length === 0) {
+      throw new BadRequestException("전송할 답변 내용 또는 사진이 필요합니다.");
     }
 
     if (input.action === "REQUEST_ADDITIONAL_INFO") {
@@ -7007,8 +7099,8 @@ export class RoomlogService implements OnModuleDestroy {
       ticket.complaintId,
       managerId,
       "LANDLORD",
-      messageText,
-      [],
+      messageText || "사진을 첨부했습니다.",
+      attachmentUrls,
       this.activeRepairIdForTicket(ticket.id)
     );
     this.persistStore();
@@ -7219,7 +7311,7 @@ export class RoomlogService implements OnModuleDestroy {
       complaint.id,
       tenantId,
       "TENANT",
-      messageText || "추가 사진을 제출했습니다.",
+      messageText || "사진을 첨부했습니다.",
       attachmentUrls,
       this.activeRepairIdForTicket(ticket.id)
     );
@@ -7334,6 +7426,16 @@ export class RoomlogService implements OnModuleDestroy {
    * (다음 persistStore 스냅샷은 같은 id upsert라 중복이 생기지 않는다.)
    */
   ingestVendorRepairMessage(record: VendorRepairMessageRecord) {
+    this.ingestWorkflowMessage(record);
+  }
+
+  ingestVendorAssignmentNotice(record: VendorAssignmentNoticeRecord) {
+    this.ingestWorkflowMessage(record);
+  }
+
+  private ingestWorkflowMessage(
+    record: VendorRepairMessageRecord | VendorAssignmentNoticeRecord
+  ) {
     const ticket = this.store.tickets.find((item) => item.id === record.ticketId);
     if (!ticket) return;
     if (this.store.messages.some((message) => message.id === record.id)) return;
@@ -13680,7 +13782,15 @@ export class RoomlogService implements OnModuleDestroy {
   private managerAgentBlockedCommand(command: string, text: string) {
     const normalized = `${command} ${text}`.toLowerCase();
 
-    if (/confirm_payment|payment\.confirm|match_deposit|deposit\.match|announcement\.send|send_announcement|결제\s*확정|입금\s*확정|입금\s*매칭|공지\s*발송/.test(normalized)) {
+    if (/confirm_payment|payment\.confirm|match_deposit|deposit\.match|결제\s*확정|입금\s*확정|입금\s*매칭/.test(normalized)) {
+      return true;
+    }
+
+    // 공지는 확인 카드로 보류되는 messaging.send_announcement 경로만 허용한다.
+    if (
+      command !== "messaging.send_announcement" &&
+      /announcement\.send|send_announcement|공지\s*발송/.test(normalized)
+    ) {
       return true;
     }
 
@@ -13702,6 +13812,10 @@ export class RoomlogService implements OnModuleDestroy {
 
     if (command.startsWith("credit.")) {
       return "credit";
+    }
+
+    if (command.startsWith("portfolio.")) {
+      return "portfolio";
     }
 
     if (command.startsWith("messaging.")) {

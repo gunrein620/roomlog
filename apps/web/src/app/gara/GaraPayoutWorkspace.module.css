@@ -98,14 +98,29 @@
   cursor: pointer;
 }
 
+.deleteButton {
+  min-height: var(--touch-target);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-btn);
+  padding: 0 var(--space-lg);
+  color: var(--error);
+  background: var(--surface-container-lowest);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .amountInput:focus-visible,
-.sendButton:focus-visible {
+.sendButton:focus-visible,
+.deleteButton:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .amountInput:disabled,
-.sendButton:disabled {
+.sendButton:disabled,
+.deleteButton:disabled {
   cursor: not-allowed;
   opacity: var(--disabled-opacity);
 }

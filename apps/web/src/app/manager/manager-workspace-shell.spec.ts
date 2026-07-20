@@ -85,18 +85,20 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(sectionNavSource, /aria-current/);
   assert.match(sectionNavSource, /<span>저장 목록<\/span>/);
   assert.doesNotMatch(sectionNavSource, /<span>임시 저장<\/span>/);
-  assert.match(assistant, /showModal\(\)/);
+  // AI 비서는 모달이 아니라 사이드패널 — 열림 상태는 전역 스토어(manager-assistant-store)가 들고
+  // 라우트 이동에도 대화가 유지된다.
+  assert.doesNotMatch(assistant, /showModal/);
+  assert.match(assistant, /openManagerAssistant/);
+  assert.match(assistant, /closeManagerAssistant/);
+  assert.match(assistant, /useManagerAssistantStore/);
+  assert.match(assistant, /aria-expanded=\{open\}/);
+  assert.match(assistant, /aria-controls="manager-assistant-panel"/);
+  assert.match(assistant, /id="manager-assistant-panel"/);
   assert.match(assistant, /aria-label="AI 관리 비서 닫기"/);
-  assert.match(assistant, /getBoundingClientRect\(\)/);
-  assert.match(assistant, /isDialogBackdropPoint/);
-  assert.match(assistant, /AI 상담 모드 선택/);
   assert.match(assistant, /Woo-zu AI 비서/);
-  assert.match(assistant, /상담 방식을 선택해 주세요/);
-  assert.match(assistant, /Woo-zu AI와 어떻게 대화하시겠어요\?/);
-  assert.match(assistant, /텍스트 채팅/);
-  assert.match(assistant, /음성 통화/);
-  assert.match(assistant, /manager-ai-mode-icon/);
-  assert.doesNotMatch(assistant, /Choose your consultation mode/);
+  // 모드 선택 단계는 제거 — 패널은 바로 텍스트 채팅으로 열리고, 전환은 하단 토글이 담당.
+  assert.doesNotMatch(assistant, /manager-ai-mode-picker/);
+  assert.match(assistant, /aria-label="AI 상담 모드 전환"/);
   assert.match(assistant, /role="log"/);
   assert.match(assistant, /aria-live="polite"/);
   assert.match(assistant, /ref=\{transcriptRef\}/);
@@ -132,11 +134,16 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(appShellSource, /isDialogBackdropPoint/);
   assert.match(
     managerCss,
-    /\.manager-assistant-dialog\s*\{[^}]*width:\s*min\(calc\(100vw - var\(--space-xxl\)\), calc\(var\(--content-aside-max\) \+ var\(--content-aside-max\)\)\);/,
+    /\.manager-assistant-panel\s*\{[^}]*flex:\s*0 0 var\(--manager-assistant-panel-width\);[^}]*width:\s*var\(--manager-assistant-panel-width\);/,
+  );
+  assert.match(managerCss, /\.manager-workspace-split\s*\{[^}]*display:\s*flex;/);
+  assert.match(
+    managerCss,
+    /\.manager-workspace-split__content\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-width:\s*0;/,
   );
   assert.match(
     managerCss,
-    /\.manager-assistant-dialog__header\s*\{[^}]*color:\s*var\(--on-primary\);[^}]*background:\s*var\(--primary\);/,
+    /\.manager-assistant-panel__header\s*\{[^}]*color:\s*var\(--on-primary\);[^}]*background:\s*var\(--primary\);/,
   );
   assert.match(managerCss, /\.manager-ai-mode-icon\s*\{/);
   assert.match(managerCss, /\.manager-ai-push-to-talk\s*\{/);
@@ -180,6 +187,7 @@ test("manager shell exposes one page heading and token-sized navigation targets"
 test("manager workspace uses canonical tokens without manager-local collisions", () => {
   assert.match(tokenSource, /--manager-sidebar-width:/);
   assert.match(tokenSource, /--manager-assistant-width:/);
+  assert.match(tokenSource, /--manager-assistant-panel-width:/);
   assert.match(tokenSource, /--focus-ring:/);
   const localBorderOverrides = managerCss.match(/^\s*--border:/gm) ?? [];
   assert.equal(localBorderOverrides.length, 1);

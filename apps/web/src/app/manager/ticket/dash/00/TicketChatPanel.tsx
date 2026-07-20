@@ -8,10 +8,15 @@
 //  - 상대가 보낸 메시지: 소켓 roomlog:ticket-message 페이로드를 그대로 붙인다.
 // 쓰기 직후 재조회는 Postgres 투영이 따라오기 전이라 "한 박자 밀린" 스레드를 돌려줬다.
 import Link from "next/link";
-import { X } from "lucide-react";
+import { ImagePlus, X } from "lucide-react";
+import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { TicketThreadMessage } from "@roomlog/types";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import {
+  uploadTicketChatImages,
+  validateTicketChatImages,
+} from "@/lib/ticket-chat-attachments";
 import {
   managerTicketMessageSenderLabel,
   ticketDashHref,
@@ -34,6 +39,12 @@ const ticketTypeLabel = {
   defect: "하자 민원",
   complaint: "일반 민원",
 } as const;
+
+type SelectedChatImage = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
 
 function formatMessageTime(createdAt: string) {
   const date = new Date(createdAt);
@@ -125,6 +136,8 @@ export function TicketChatPanel({
   const ticketId = row?.ticket.id;
   const [messages, setMessages] = useState<TicketThreadMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [selectedImages, setSelectedImages] = useState<SelectedChatImage[]>([]);
+  const selectedImagesRef = useRef<SelectedChatImage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
@@ -133,6 +146,12 @@ export function TicketChatPanel({
   const [isSwitchingLane, setIsSwitchingLane] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
 
+  function clearSelectedImages() {
+    selectedImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+    selectedImagesRef.current = [];
+    setSelectedImages([]);
+  }
+
   // 스레드 최초 적재 — 패널을 열 때 한 번만. 이후 갱신은 전부 소켓·응답으로 들어온다.
   useEffect(() => {
     if (!ticketId) return;
@@ -140,6 +159,7 @@ export function TicketChatPanel({
     let active = true;
     setMessages([]);
     setDraft("");
+    clearSelectedImages();
     setError("");
     setIsLoading(true);
 
@@ -158,6 +178,14 @@ export function TicketChatPanel({
       active = false;
     };
   }, [ticketId]);
+
+  useEffect(() => {
+    selectedImagesRef.current = selectedImages;
+  }, [selectedImages]);
+
+  useEffect(() => () => {
+    selectedImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+  }, []);
 
   useEffect(() => {
     setLane(row ? ticketLaneOf(row.ticket.status) : null);
@@ -197,18 +225,19 @@ export function TicketChatPanel({
 
   async function sendMessage() {
     const messageText = draft.trim();
-    if (!ticketId || !messageText || isSending) return;
+    if (!ticketId || (!messageText && selectedImages.length === 0) || isSending) return;
 
     setIsSending(true);
     setError("");
 
     try {
+      const attachmentUrls = await uploadTicketChatImages(selectedImages.map((image) => image.file));
       const response = await fetch(
         `/api/manager/tickets/${encodeURIComponent(ticketId)}/replies`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messageText }),
+          body: JSON.stringify({ messageText, attachmentUrls }),
         },
       );
 
@@ -225,11 +254,42 @@ export function TicketChatPanel({
       const sent = ticketMessageFor(ticketId, { ticketId, message: data?.message });
       if (sent) setMessages((current) => appendTicketMessage(current, sent));
       setDraft("");
+      clearSelectedImages();
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "메시지를 보내지 못했습니다.");
     } finally {
       setIsSending(false);
     }
+  }
+
+  function selectImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    const validationError = validateTicketChatImages(files, selectedImages.length);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError("");
+    setSelectedImages((current) => [
+      ...current,
+      ...files.map((file) => ({
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ]);
+  }
+
+  function removeImage(imageId: string) {
+    setSelectedImages((current) => {
+      const removed = current.find((image) => image.id === imageId);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((image) => image.id !== imageId);
+    });
   }
 
   async function switchLane(nextLane: TicketLane) {
@@ -366,11 +426,40 @@ export function TicketChatPanel({
               void sendMessage();
             }}
           />
+          {selectedImages.length > 0 ? (
+            <div className="manager-ticket-panel__selected-attachments" aria-label="선택한 사진">
+              {selectedImages.map((image) => (
+                <figure key={image.id}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={image.previewUrl} alt={image.file.name} />
+                  <button type="button" aria-label={`${image.file.name} 삭제`} onClick={() => removeImage(image.id)}>
+                    <X aria-hidden="true" />
+                  </button>
+                </figure>
+              ))}
+            </div>
+          ) : null}
           <div className="manager-ticket-panel__composer-actions">
-            <Link href={ticketDashHref("01", ticket.id)}>상세 처리 화면</Link>
-            <button type="button" disabled={!draft.trim() || isSending} onClick={() => void sendMessage()}>
-              {isSending ? "보내는 중" : "보내기"}
-            </button>
+            <Link
+              className="manager-ticket-panel__detail-link"
+              href={ticketDashHref("01", ticket.id)}
+            >
+              상세 처리 화면
+            </Link>
+            <div>
+              <label className="manager-ticket-panel__attach-button">
+                <ImagePlus aria-hidden="true" />
+                <span>사진</span>
+                <input type="file" accept="image/*" multiple onChange={selectImages} />
+              </label>
+              <button
+                type="button"
+                disabled={isSending || !(draft.trim() || selectedImages.length > 0)}
+                onClick={() => void sendMessage()}
+              >
+                {isSending ? "보내는 중" : "보내기"}
+              </button>
+            </div>
           </div>
         </footer>
       </aside>

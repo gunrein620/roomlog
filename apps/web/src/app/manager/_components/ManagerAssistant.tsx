@@ -10,13 +10,11 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
-  type MouseEvent,
   type PointerEvent,
 } from "react";
 import { MANAGER_BILLING_ROUTES } from "@/lib/billing-manager-nav";
 import {
   MAX_MANAGER_PROMPT_LENGTH,
-  isDialogBackdropPoint,
   managerAgentHref,
   type ManagerAssistantBriefingItem,
 } from "@/lib/manager-assistant";
@@ -24,6 +22,12 @@ import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { MANAGER_TICKET_ROUTES } from "@/lib/ticket-manager-nav";
 import { ManagerAssistantActionCard } from "./ManagerAssistantActionCard";
 import { shouldManagerAssistantStickToBottom } from "./manager-assistant-scroll";
+import {
+  closeManagerAssistant,
+  openManagerAssistant,
+  setManagerAssistantDraft,
+  useManagerAssistantStore,
+} from "./manager-assistant-store";
 import { useManagerAssistantSession } from "./useManagerAssistantSession";
 import { useManagerRealtimeSession } from "./useManagerRealtimeSession";
 
@@ -115,8 +119,33 @@ export function ManagerAssistantPanel({
   );
 }
 
+// 플로팅 FAB — 패널 열림 상태는 전역 스토어에 있어 라우트 이동에도 유지된다.
 export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const { open } = useManagerAssistantStore();
+  if (open) return null;
+
+  return (
+    <div className="manager-assistant-launcher-frame">
+      <div className="manager-assistant-launcher-frame__inner">
+        <button
+          type="button"
+          className="manager-assistant-launcher"
+          aria-label="AI 관리 비서 열기"
+          aria-expanded={open}
+          aria-controls="manager-assistant-panel"
+          onClick={openManagerAssistant}
+        >
+          <Bot aria-hidden="true" />
+          <span>AI 비서</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 우측 사이드패널(스플릿 뷰) — 기존 모달 다이얼로그의 채팅 UI를 그대로 옮겼다.
+// 대화·모드·초안은 스토어가 들고 있으므로 패널이 리마운트돼도 이어진다.
+export function ManagerAssistantSidePanel(_props: ManagerAssistantPanelProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const session = useManagerAssistantSession();
@@ -126,7 +155,7 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
   });
   const stopTalkingRef = useRef(realtime.stopTalking);
   stopTalkingRef.current = realtime.stopTalking;
-  const [draft, setDraft] = useState("");
+  const draft = useManagerAssistantStore().draft;
 
   useEffect(() => {
     const stopTalking = () => stopTalkingRef.current();
@@ -160,12 +189,6 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
     session.mode,
   ]);
 
-  function openAssistant() {
-    shouldStickToBottomRef.current = true;
-    dialogRef.current?.showModal();
-    window.requestAnimationFrame(scrollTranscriptToBottom);
-  }
-
   function updateTranscriptStickiness() {
     const transcript = transcriptRef.current;
     if (!transcript) return;
@@ -182,24 +205,30 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
 
   function closeAssistant() {
     realtime.disconnect();
-    dialogRef.current?.close();
+    closeManagerAssistant();
   }
+
+  // 모달 시절의 Esc 닫기와 동일한 동작을 패널에서도 유지한다.
+  const closeAssistantRef = useRef(closeAssistant);
+  closeAssistantRef.current = closeAssistant;
+  useEffect(() => {
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") closeAssistantRef.current();
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, []);
 
   function selectMode(mode: "text" | "voice") {
     if (mode === "text") realtime.disconnect();
     session.selectMode(mode);
   }
 
-  function closeOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
-    if (event.target !== event.currentTarget) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    if (isDialogBackdropPoint(event, bounds)) closeAssistant();
-  }
-
   async function submitTextMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const submitted = await session.submitText(draft);
-    if (submitted) setDraft("");
+    if (submitted) setManagerAssistantDraft("");
   }
 
   function submitTextFromKeyboard(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -238,35 +267,16 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
   }
 
   return (
-    <>
-      <div className="manager-assistant-launcher-frame">
-        <div className="manager-assistant-launcher-frame__inner">
-          <button
-            type="button"
-            className="manager-assistant-launcher"
-            aria-label="AI 관리 비서 열기"
-            aria-haspopup="dialog"
-            aria-controls="manager-assistant-dialog"
-            onClick={openAssistant}
-          >
-            <Bot aria-hidden="true" />
-            <span>AI 비서</span>
-          </button>
-        </div>
-      </div>
-      <dialog
-        ref={dialogRef}
-        id="manager-assistant-dialog"
-        className="manager-assistant-dialog"
-        aria-labelledby="manager-assistant-dialog-title"
-        onClick={closeOnBackdrop}
-        onClose={realtime.disconnect}
-      >
-        <header className="manager-assistant-dialog__header">
-          <span className="manager-assistant-dialog__brand">
-            <Bot aria-hidden="true" />
-            <strong id="manager-assistant-dialog-title">Woo-zu AI 비서</strong>
-          </span>
+    <aside
+      id="manager-assistant-panel"
+      className="manager-assistant-panel"
+      aria-labelledby="manager-assistant-panel-title"
+    >
+      <header className="manager-assistant-panel__header">
+        <span className="manager-assistant-panel__brand">
+          <Bot aria-hidden="true" />
+          <strong id="manager-assistant-panel-title">Woo-zu AI 비서</strong>
+        </span>
           <button
             type="button"
             aria-label="AI 관리 비서 닫기"
@@ -275,37 +285,7 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
             <X aria-hidden="true" />
           </button>
         </header>
-        {session.stage === "choose" ? (
-          <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
-            <div className="manager-ai-mode-picker__copy">
-              <h2>상담 방식을 선택해 주세요</h2>
-              <p>Woo-zu AI와 어떻게 대화하시겠어요?</p>
-            </div>
-            <div className="manager-ai-mode-cards">
-              <button
-                type="button"
-                onClick={() => selectMode("text")}
-              >
-                <span className="manager-ai-mode-icon" aria-hidden="true">
-                  <MessageSquare />
-                </span>
-                <strong>텍스트 채팅</strong>
-                <small>TEXT</small>
-              </button>
-              <button
-                type="button"
-                onClick={() => selectMode("voice")}
-              >
-                <span className="manager-ai-mode-icon" aria-hidden="true">
-                  <Headphones />
-                </span>
-                <strong>음성 통화</strong>
-                <small>CALL</small>
-              </button>
-            </div>
-          </section>
-        ) : (
-          <section className="manager-ai-conversation" aria-label="AI 관리 비서 대화">
+        <section className="manager-ai-conversation" aria-label="AI 관리 비서 대화">
             <div
               ref={transcriptRef}
               className="manager-ai-transcript"
@@ -376,7 +356,7 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
                           ? "AI 설정 후 사용할 수 있습니다"
                           : "처리할 관리 업무를 입력하세요"
                     }
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => setManagerAssistantDraft(event.target.value)}
                     onKeyDown={submitTextFromKeyboard}
                   />
                 </label>
@@ -454,8 +434,6 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
               </button>
             </div>
           </section>
-        )}
-      </dialog>
-    </>
+    </aside>
   );
 }

@@ -2,10 +2,11 @@
 
 // 내놓은 집(임대인) 등록 폼 — 사진 업로드, 3D 도면 연결, 매물 등록.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
+import type { ChangeEvent, DragEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Box, Braces, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
+import { Box, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
 import type { PlacedFurniture, WheretoputWall3D } from "@/app/floor-plan-3d/room-model/types";
@@ -18,7 +19,6 @@ const FloorPlan3DPreview = dynamic(
 import {
   OWNER_DRAFT_STORAGE_KEY,
   emptyOwnerForm,
-  formatDraftSavedAt,
   initialOwnerListings,
   parseOwnerDraft,
   saveOwnerDraft
@@ -359,6 +359,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   const [floorPlan3D, setFloorPlan3D] = useState<ListingFloorPlan3D | null>(null);
   const [tourSourceFile, setTourSourceFile] = useState<File | null>(null);
   const tourSourceInputRef = useRef<HTMLInputElement | null>(null);
+  // 사진/영상 패널이 드래그오버 중인지 — 패널 스코프 로컬 상태(문서 전역 드롭 동작은 건드리지 않는다).
+  const [isPhotoDragOver, setIsPhotoDragOver] = useState(false);
+  const [isTourDragOver, setIsTourDragOver] = useState(false);
   // 편집 모드: /sell?listingId=... 로 진입하면(주로 벨의 "제작 실패" 알림) 그 매물의 3D 재작업을 노출한다.
   const searchParams = useSearchParams();
   const editListingId = searchParams.get("listingId");
@@ -378,6 +381,48 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     const next = photoFiles.filter((_, i) => i !== index);
     setPhotoFiles(next);
     setPhotoCount(next.length);
+  };
+  // 사진 추가 — 파일 인풋 onChange와 패널 드롭이 공유하는 병합·중복제거 로직.
+  const addPhotoFiles = (incoming: File[]) => {
+    const added = incoming.filter((file) => file.type.startsWith("image/"));
+    if (added.length === 0) return;
+    const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
+    const seen = new Set(photoFiles.map(fileKey));
+    const merged = [...photoFiles, ...added.filter((file) => !seen.has(fileKey(file)))];
+    setPhotoFiles(merged);
+    setPhotoCount(merged.length);
+    setRegistrationStatus("작성 중");
+  };
+  const handlePhotoInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const added = event.target.files ? Array.from(event.target.files) : [];
+    // 같은 파일을 다시 고를 수 있도록 인풋 값을 비운다(초기화 안 하면 동일 파일 재선택이 안 먹는다).
+    event.target.value = "";
+    addPhotoFiles(added);
+  };
+  const handlePhotoDragOver = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setIsPhotoDragOver(true);
+  };
+  const handlePhotoDragLeave = () => setIsPhotoDragOver(false);
+  const handlePhotoDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setIsPhotoDragOver(false);
+    addPhotoFiles(Array.from(event.dataTransfer.files ?? []));
+  };
+  // 영상/스플랫은 단일 파일 — video/* MIME이거나 .spz·.zip 확장자(둘 다 표준 video MIME이 없어 이름으로 판별).
+  const isAcceptableTourFile = (file: File) => file.type.startsWith("video/") || /\.(zip|spz)$/i.test(file.name);
+  const handleTourDragOver = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setIsTourDragOver(true);
+  };
+  const handleTourDragLeave = () => setIsTourDragOver(false);
+  const handleTourDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setIsTourDragOver(false);
+    const file = Array.from(event.dataTransfer.files ?? []).find(isAcceptableTourFile);
+    if (!file) return;
+    setTourSourceFile(file);
+    setRegistrationStatus("작성 중");
   };
   const handleFloorPlanJsonUpload = (file: File | undefined) => {
     if (!file) return;
@@ -428,6 +473,18 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     }).catch(() => {
       setOwnerToast("도면 JSON을 읽지 못했습니다. 파일 내용을 확인해 주세요.");
     });
+  };
+  // 도면 JSON 드롭 — 가시 UI 없는 개발자 전용 숨은 기능이라 dragover에서도 시각 피드백을 넣지 않는다
+  // (무신호가 의도). preventDefault만 해서 drop이 실제로 발생하게 한다.
+  const handleFloorPlanJsonDragOver = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+  };
+  const handleFloorPlanJsonDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    const file = Array.from(event.dataTransfer.files ?? []).find(
+      (candidate) => candidate.type === "application/json" || /\.json$/i.test(candidate.name)
+    );
+    handleFloorPlanJsonUpload(file);
   };
   // 주소 지오코딩 결과 — 등록 페이로드의 lat/lng로 실린다(실패/미활성 시 null).
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -887,122 +944,144 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           </section>
         ) : null}
 
-        <section className="owner-card">
-          <div className="form-heading">
-            <div>
-              <span>STEP 01</span>
-              <h3 id="owner-registration-title">내 집 등록</h3>
+        {/* 두 레인 — 왼쪽 2/3 폼, 오른쪽 1/3 첨부(사진·3D·영상). 900px 이하에서는 세로 스택(owner-lanes CSS). */}
+        <div className="owner-lanes">
+          <section className="owner-card owner-lane-form">
+            <div className="form-heading">
+              <div>
+                <h3 id="owner-registration-title" className="owner-form-title">매물등록</h3>
+              </div>
             </div>
-            <strong>임대인 전용</strong>
-          </div>
 
-          {draftSavedAt ? (
-            <small className="owner-draft-status" role="status">
-              임시저장됨 · {formatDraftSavedAt(draftSavedAt)} — 새로고침해도 작성 내용이 유지됩니다.
-            </small>
-          ) : null}
-
-          {/* 넓은 폭을 활용해 필드를 여러 열로 흘려 세로 높이를 줄인다(데스크톱 3열 / 모바일 2열) */}
-          <div className="owner-step1-fields">
-            {/* 매물명 · 건물명은 한 행에서 반반(1:1)으로 — 건물명은 관리 화면의 건물별 보기 기준 */}
-            <div className="owner-step1-addr-row">
+            {/* 1열 기본 — 짝을 이루는 필드(전용면적|층수, 보증금|월세)만 owner-step1-pair로 묶는다.
+                owner-group-caption으로 필드 묶음의 의미를 나눈다. */}
+            <div className="owner-step1-fields">
+              <span className="owner-group-caption">기본 정보</span>
               <label>
                 매물명
                 <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
               </label>
-
-              <label>
-                건물명
+              <label className="owner-w-md">
+                건물명 (선택)
                 <input
                   value={ownerForm.buildingName}
                   onChange={(event) => updateOwnerForm("buildingName", event.target.value)}
-                  placeholder="예: 방배 루미에르 (선택)"
+                  placeholder="예: 방배 루미에르"
                 />
               </label>
-            </div>
 
-            {/* 주소 · 세부주소는 한 행에서 반반(1:1)으로 */}
-            <div className="owner-step1-addr-row">
+              <span className="owner-group-caption">위치</span>
               <label>
                 주소
                 <div className="owner-address-row">
+                  <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
                   <button className="owner-address-search-button" type="button" onClick={() => setIsPostcodeSearchOpen(true)}>
                     <Search aria-hidden="true" size={16} />
                     주소 검색
                   </button>
-                  <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
                 </div>
               </label>
-
-              <label>
-                세부주소
+              <label className="owner-w-md">
+                세부주소 (선택)
                 <input
                   value={ownerForm.detailAddress}
                   onChange={(event) => updateOwnerForm("detailAddress", event.target.value)}
                   placeholder="예: 402호, A동 1203호"
                 />
               </label>
-            </div>
 
-            <label>
-              매물유형
-              {/* 홈 카테고리(원룸·투룸 등)와 같은 목록 — 등록값이 카테고리 필터·카운트에 그대로 잡힌다 */}
-              <select value={ownerForm.roomType} onChange={(event) => updateOwnerForm("roomType", event.target.value)}>
-                {listingRoomTypes.map((roomType) => (
-                  <option key={roomType}>{roomType}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              거래유형
-              <select value={ownerForm.tradeType} onChange={(event) => updateOwnerForm("tradeType", event.target.value)}>
-                <option>월세</option>
-                <option>반전세</option>
-                <option>전세</option>
-                <option>매매</option>
-              </select>
-            </label>
-            <label>
-              입주가능일
-              {/* QA: 자유 텍스트 대신 달력에서 선택 — 기존 초안의 비날짜 값("즉시" 등)은 빈 값으로 보이지만 지우지 않는다 */}
-              <input
-                type="date"
-                value={ownerForm.moveIn}
-                onChange={(event) => updateOwnerForm("moveIn", event.target.value)}
-                aria-label="입주가능일 달력 선택"
-              />
-            </label>
+              <span className="owner-group-caption">공간</span>
+              <label className="owner-w-md">
+                매물유형
+                {/* 홈 카테고리(원룸·투룸 등)와 같은 목록 — 등록값이 카테고리 필터·카운트에 그대로 잡힌다 */}
+                <select value={ownerForm.roomType} onChange={(event) => updateOwnerForm("roomType", event.target.value)}>
+                  {listingRoomTypes.map((roomType) => (
+                    <option key={roomType}>{roomType}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="owner-step1-pair">
+                <label>
+                  전용면적
+                  <div className="owner-input-suffix">
+                    <input inputMode="decimal" value={ownerForm.area} onChange={(event) => updateOwnerForm("area", event.target.value)} placeholder="예: 24.5" />
+                    <span aria-hidden="true">m²</span>
+                  </div>
+                </label>
+                <label>
+                  층수 (선택)
+                  <input value={ownerForm.floor} onChange={(event) => updateOwnerForm("floor", event.target.value)} placeholder="예: 4층 / 16층" />
+                </label>
+              </div>
 
-            <label>
-              보증금
-              <input inputMode="numeric" value={ownerForm.deposit} onChange={(event) => updateOwnerForm("deposit", event.target.value)} placeholder="만원 단위" />
-            </label>
-            <label>
-              월세
-              <input inputMode="numeric" value={ownerForm.monthly} onChange={(event) => updateOwnerForm("monthly", event.target.value)} placeholder="만원 단위" />
-            </label>
+              <span className="owner-group-caption">거래 조건</span>
+              <label className="owner-w-md">
+                거래유형
+                <select value={ownerForm.tradeType} onChange={(event) => updateOwnerForm("tradeType", event.target.value)}>
+                  <option>월세</option>
+                  <option>반전세</option>
+                  <option>전세</option>
+                  <option>매매</option>
+                </select>
+              </label>
 
-            <label>
-              전세금
-              <input inputMode="numeric" value={ownerForm.jeonse} onChange={(event) => updateOwnerForm("jeonse", event.target.value)} placeholder="전세일 때 입력" />
-            </label>
-            <label>
-              관리비
-              <input inputMode="numeric" value={ownerForm.maintenance} onChange={(event) => updateOwnerForm("maintenance", event.target.value)} placeholder="만원 단위" />
-            </label>
+              {/* 가격 필드 — 거래유형에 따라 표시만 분기(제출 페이로드는 submitOwnerListing 그대로,
+                  숨긴 필드의 상태값도 유지된다). 매매는 전용 가격 필드가 없고 submitOwnerListing이
+                  deposit 값을 그대로 매매가로 보내므로, deposit 인풋을 "매매가" 라벨로 재사용한다. */}
+              {ownerForm.tradeType === "전세" ? (
+                <label className="owner-w-sm">
+                  전세금
+                  <div className="owner-input-suffix">
+                    <input inputMode="numeric" value={ownerForm.jeonse} onChange={(event) => updateOwnerForm("jeonse", event.target.value)} placeholder="예: 30000" />
+                    <span aria-hidden="true">만원</span>
+                  </div>
+                </label>
+              ) : ownerForm.tradeType === "매매" ? (
+                <label className="owner-w-sm">
+                  매매가
+                  <div className="owner-input-suffix">
+                    <input inputMode="numeric" value={ownerForm.deposit} onChange={(event) => updateOwnerForm("deposit", event.target.value)} placeholder="예: 50000" />
+                    <span aria-hidden="true">만원</span>
+                  </div>
+                </label>
+              ) : (
+                <div className="owner-step1-pair">
+                  <label>
+                    보증금
+                    <div className="owner-input-suffix">
+                      <input inputMode="numeric" value={ownerForm.deposit} onChange={(event) => updateOwnerForm("deposit", event.target.value)} placeholder="예: 1000" />
+                      <span aria-hidden="true">만원</span>
+                    </div>
+                  </label>
+                  <label>
+                    월세
+                    <div className="owner-input-suffix">
+                      <input inputMode="numeric" value={ownerForm.monthly} onChange={(event) => updateOwnerForm("monthly", event.target.value)} placeholder="예: 50" />
+                      <span aria-hidden="true">만원</span>
+                    </div>
+                  </label>
+                </div>
+              )}
+              <label className="owner-w-sm">
+                관리비 (선택)
+                <div className="owner-input-suffix">
+                  <input inputMode="numeric" value={ownerForm.maintenance} onChange={(event) => updateOwnerForm("maintenance", event.target.value)} placeholder="예: 5" />
+                  <span aria-hidden="true">만원</span>
+                </div>
+              </label>
+              <label className="owner-w-sm">
+                입주가능일 (선택)
+                {/* QA: 자유 텍스트 대신 달력에서 선택 — 기존 초안의 비날짜 값("즉시" 등)은 빈 값으로 보이지만 지우지 않는다 */}
+                <input
+                  type="date"
+                  value={ownerForm.moveIn}
+                  onChange={(event) => updateOwnerForm("moveIn", event.target.value)}
+                  aria-label="입주가능일 달력 선택"
+                />
+              </label>
 
-            <label>
-              전용면적
-              <input inputMode="decimal" value={ownerForm.area} onChange={(event) => updateOwnerForm("area", event.target.value)} placeholder="m²" />
-            </label>
-            <label>
-              층수
-              <input value={ownerForm.floor} onChange={(event) => updateOwnerForm("floor", event.target.value)} placeholder="예: 4층 / 16층" />
-            </label>
-
-            {/* 옵션 — 여기서 고른 항목이 매물 상세의 "옵션 정보"에 그대로 노출된다 */}
-            <div className="owner-step1-wide owner-option-field">
-              <span className="owner-option-label">옵션 (선택)</span>
+              {/* 옵션 — 여기서 고른 항목이 매물 상세의 "옵션 정보"에 그대로 노출된다 */}
+              <span className="owner-group-caption">옵션 (선택)</span>
               <div className="owner-option-chip-grid" role="group" aria-label="옵션 선택">
                 {optionItems.map((option) => {
                   const selected = ownerForm.options.includes(option);
@@ -1020,20 +1099,29 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 })}
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="owner-card owner-submit-summary" aria-label="사진과 3D방 자료">
-          <div className="form-heading">
-            <div>
-              <span>STEP 02</span>
-              <h3>사진과 3D방 자료</h3>
+          <aside className="owner-card owner-lane-attach" aria-label="사진·3D 자료">
+            <div className="form-heading">
+              <div>
+                <h3>사진·3D 자료</h3>
+              </div>
             </div>
-          </div>
 
-          <div className="owner-summary-media">
+            {/* 폼 레인의 owner-group-caption을 재사용 — 첫 캡션(사진)은 :first-child가 아니라서
+                (form-heading이 먼저 온다) --first modifier로 border/margin을 따로 리셋한다. */}
+            <span className="owner-group-caption owner-group-caption--first">사진</span>
+            {/* 사진 패널 — 빈 상태는 패널 자체가 클릭+드롭 액션존(label이 hidden input을 감싼다).
+                사진이 있으면 미리보기(prev/next/count)+썸네일 그리드로 바뀌고, 이때만 "사진 추가" 버튼이 뜬다.
+                드롭은 상태와 무관하게 항상 동작(있어도 병합) — 핸들러가 패널 자체에 붙어 있다. */}
             <div className="summary-media-col">
-              <figure className="summary-media-card summary-media-photos" aria-label="등록한 사진 미리보기">
+              <figure
+                className={`summary-media-card summary-media-photos${photoPreviewUrls.length > 0 ? "" : " is-empty"}${isPhotoDragOver ? " is-dragover" : ""}`}
+                aria-label="등록한 사진 미리보기"
+                onDragOver={handlePhotoDragOver}
+                onDragLeave={handlePhotoDragLeave}
+                onDrop={handlePhotoDrop}
+              >
                 {photoPreviewUrls.length > 0 ? (
                   <>
                     {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
@@ -1067,37 +1155,13 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                     ) : null}
                   </>
                 ) : (
-                  <div className="summary-media-empty">
+                  <label className="summary-media-empty summary-media-drop-trigger">
                     <Camera size={22} aria-hidden="true" />
-                    <span>사진을 추가하면 여기에서 넘겨볼 수 있어요</span>
-                  </div>
+                    <span>사진을 끌어다 놓거나 눌러서 올려요</span>
+                    <input type="file" multiple accept="image/*" aria-label="사진 업로드" onChange={handlePhotoInputChange} />
+                  </label>
                 )}
               </figure>
-
-              {/* 미리보기 바로 아래에서 사진을 추가한다 */}
-              <label className="summary-media-btn">
-                <Camera size={16} strokeWidth={2.2} aria-hidden="true" />
-                {photoCount > 0 ? `사진 추가 (${photoCount}장)` : "사진 업로드"}
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  aria-label="사진 업로드"
-                  onChange={(event) => {
-                    const added = event.target.files ? Array.from(event.target.files) : [];
-                    // 같은 파일을 다시 고를 수 있도록 인풋 값을 비운다(초기화 안 하면 동일 파일 재선택이 안 먹는다).
-                    event.target.value = "";
-                    if (added.length === 0) return;
-                    // 기존 선택에 덧붙인다 — 다시 고를 때 이전 사진이 사라지지 않도록. 동일 파일은 중복 제거.
-                    const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
-                    const seen = new Set(photoFiles.map(fileKey));
-                    const merged = [...photoFiles, ...added.filter((file) => !seen.has(fileKey(file)))];
-                    setPhotoFiles(merged);
-                    setPhotoCount(merged.length);
-                    setRegistrationStatus("작성 중");
-                  }}
-                />
-              </label>
 
               {photoPreviewUrls.length > 0 ? (
                 <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
@@ -1114,10 +1178,29 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                   ))}
                 </div>
               ) : null}
+
+              {/* 사진이 있을 때만, 목록 아래에서 — 패널이 이미 빈 상태의 업로드 버튼 역할을 하므로 중복 노출하지 않는다 */}
+              {photoCount > 0 ? (
+                <label className="summary-media-btn">
+                  <Camera size={16} strokeWidth={2.2} aria-hidden="true" />
+                  {`사진 추가 (${photoCount}장)`}
+                  <input type="file" multiple accept="image/*" aria-label="사진 업로드" onChange={handlePhotoInputChange} />
+                </label>
+              ) : null}
             </div>
 
+            <span className="owner-group-caption">3D 도면</span>
+            {/* 3D 패널 — 빈 박스 클릭 자체가 "3D 도면 만들기"(내부 MitUNet 에디터로 같은 탭 이동).
+                도면 있는 상태는 오빗 프리뷰라 박스를 클릭요소로 못 감싸서(드래그=카메라 조작),
+                박스 아래 작은 "다시 열기" 텍스트 버튼으로 에디터 재진입 경로만 남긴다.
+                도면 JSON은 카드 숨은 드롭으로만 지원(개발자용, dragover 시각 피드백은 일부러 없음). */}
             <div className="summary-media-col">
-              <div className="summary-media-card summary-media-3d" aria-label="3D 도면 미리보기">
+              <div
+                className={`summary-media-card summary-media-3d${floorPlan3D ? "" : " is-empty"}`}
+                aria-label="3D 도면 미리보기"
+                onDragOver={handleFloorPlanJsonDragOver}
+                onDrop={handleFloorPlanJsonDrop}
+              >
                 {floorPlan3D ? (
                   <FloorPlan3DPreview
                     controlsEnabled
@@ -1134,79 +1217,68 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                     onWallPointerDown={() => {}}
                   />
                 ) : (
-                  <div className="summary-media-empty">
+                  // 빈 박스 = 진입 버튼. openMitunetEditor가 폼 draft(localStorage)·사진(IndexedDB)을
+                  // 저장하고 같은 탭에서 내부 MitUNet 에디터로 이동하므로 새 탭이 필요 없다.
+                  <button type="button" className="summary-media-empty" onClick={openMitunetEditor}>
                     <Box size={22} aria-hidden="true" />
-                    <span>3D 도면을 만들면 여기에서 돌려볼 수 있어요</span>
-                  </div>
+                    <span>눌러서 3D 도면을 만들어요 ↗</span>
+                  </button>
                 )}
               </div>
 
-              {/* 미리보기 아래 2개 버튼 — 도면 만들기(에디터로 이동) / 도면 JSON 업로드 */}
-              <div className="summary-media-actions">
-                {/* 같은 RoomLog 탭에서 내부 MitUNet 페이지로 이동한다. 폼 draft는 localStorage,
-                    사진은 IndexedDB에 저장해 변환 완료 후 등록 화면으로 돌아와도 유지한다. */}
-                <button
-                  type="button"
-                  className="summary-media-btn"
-                  onClick={openMitunetEditor}
-                >
-                  <Box size={16} strokeWidth={2.2} aria-hidden="true" />
-                  {has3DRoom ? "새 3D 도면 만들기" : "3D 도면 만들기"}
+              {/* floorPlan3D 기준(has3DRoom이 아니라) — 박스가 실제로 프리뷰를 그리고 있을 때만 재진입 버튼을 보여줘야
+                  "복원 시 has3DRoom은 true인데 스냅샷이 없어 박스는 빈 상태"인 경우 버튼·빈 상태 안내가 동시에 뜨는 걸 막는다. */}
+              {floorPlan3D ? (
+                <button type="button" className="summary-media-json-link" onClick={openMitunetEditor}>
+                  <Box size={13} strokeWidth={2.2} aria-hidden="true" />
+                  다시 열기 ↗
                 </button>
-                <label className="summary-media-btn summary-media-btn--ghost">
-                  <Braces size={16} strokeWidth={2.2} aria-hidden="true" />
-                  도면 JSON 업로드
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    aria-label="도면 JSON 업로드"
-                    onChange={(event) => {
-                      handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                </label>
-              </div>
+              ) : null}
             </div>
-          </div>
-          <p>등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
-        </section>
 
-        <section className="owner-card" id="owner-tour-intake">
-          <div className="form-heading">
-            <div>
-              <span>STEP 03</span>
-              <h3>영상·스플랫 접수</h3>
-            </div>
-          </div>
-
-          <div className="upload-tile-list">
-            <label className={tourSourceFile ? "upload-tile is-connected" : "upload-tile"}>
-              <span className="upload-tile-icon" aria-hidden="true">
-                <Video size={20} strokeWidth={2.2} />
-              </span>
-              <span className="upload-tile-main">
-                <strong>영상/스플랫 접수</strong>
-                <span className="upload-tile-desc">캡처앱 zip(권장)이나 영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
-                <span className="upload-tile-status">
-                  {tourSourceFile ? `${tourSourceFile.name} · ${formatFileSize(tourSourceFile.size)}` : "선택된 파일 없음"}
-                </span>
-              </span>
-              <span className="upload-tile-cta">{tourSourceFile ? "변경" : "파일 선택"}</span>
-              <input
-                ref={tourSourceInputRef}
-                type="file"
-                accept="video/*,.spz,.zip"
+            <span className="owner-group-caption">투어 영상</span>
+            {/* 영상/스플랫 패널 — upload-tile 문법을 버리고 사진 패널과 같은 카드 문법(클릭+드롭)으로 통일.
+                단일 파일이라 드롭 시 첫 유효 파일만 받는다(isAcceptableTourFile). */}
+            <div className="summary-media-col" id="owner-tour-intake">
+              <label
+                className={`summary-media-card summary-media-tour${tourSourceFile ? "" : " is-empty"}${isTourDragOver ? " is-dragover" : ""}`}
                 aria-label="영상 또는 스플랫 파일 업로드"
-                onChange={(event) => {
-                  setTourSourceFile(event.currentTarget.files?.[0] ?? null);
-                  setRegistrationStatus("작성 중");
-                }}
-              />
-            </label>
-          </div>
-        </section>
+                onDragOver={handleTourDragOver}
+                onDragLeave={handleTourDragLeave}
+                onDrop={handleTourDrop}
+              >
+                {tourSourceFile ? (
+                  <div className="summary-media-tour-selected">
+                    <Video size={20} strokeWidth={2.2} aria-hidden="true" />
+                    <span className="summary-media-tour-name">
+                      {tourSourceFile.name} · {formatFileSize(tourSourceFile.size)}
+                    </span>
+                    <span className="summary-media-tour-cta">변경</span>
+                  </div>
+                ) : (
+                  <div className="summary-media-empty">
+                    <Video size={22} aria-hidden="true" />
+                    <span>3D 투어용 영상·캡처 파일을 끌어다 놓거나 눌러서 올려요</span>
+                    <small className="summary-media-hint">zip(권장)·영상은 제작 접수(수 시간 소요) · .spz는 바로 정합</small>
+                  </div>
+                )}
+                <input
+                  ref={tourSourceInputRef}
+                  type="file"
+                  accept="video/*,.spz,.zip"
+                  aria-label="영상 또는 스플랫 파일 업로드"
+                  onChange={(event) => {
+                    setTourSourceFile(event.currentTarget.files?.[0] ?? null);
+                    event.currentTarget.value = "";
+                    setRegistrationStatus("작성 중");
+                  }}
+                />
+              </label>
+            </div>
+          </aside>
+        </div>
 
+        <p className="owner-submit-note">등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
         <button className="submit-listing" type="button" onClick={submitOwnerListing} disabled={isSubmittingListing} aria-busy={isSubmittingListing}>
           {isSubmittingListing ? (
             <>

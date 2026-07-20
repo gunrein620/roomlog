@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { getFurnitureDimensions } from "../floor-plan-3d/furniture-placement";
 import type { PlacedFurniture } from "../floor-plan-3d/room-model/types";
-import { DEMO_SPLAT_FURNITURE, resolveSplatFurniture } from "./splat-furniture";
+import { DEMO_SPLAT_FURNITURE, LISTING_TOUR_FURNITURE_LATEST_KEY, resolveSplatFurniture } from "./splat-furniture";
 
 describe("splat furniture resolver", () => {
   it("turns furniture off from every URL off spelling", () => {
@@ -158,6 +158,40 @@ describe("splat furniture resolver", () => {
       assert.ok(z - footprint.halfZ >= -2);
       assert.ok(z + footprint.halfZ <= 2);
     }
+  });
+});
+
+// 가구 gap 수정 — 매물 상세 "3D 보기" 저장(공유 최신본 키)이 투어 가구 소스 후보로 잡힌다.
+describe("listing tour saved furniture bridge", () => {
+  it("reads the listing tour latest save when it is the newest candidate", () => {
+    const state = resolveSplatFurniture(
+      "",
+      fakeStorage({
+        floorPlanDraft: JSON.stringify({ furnitures: [testFurniture("draft")], savedAt: 10 }),
+        [LISTING_TOUR_FURNITURE_LATEST_KEY]: JSON.stringify({
+          furnitures: [testFurniture("listing-tour")],
+          savedAt: 20
+        })
+      })
+    );
+
+    assert.equal(state.source, "listing-tour");
+    assert.deepEqual(state.furnitures.map((furniture) => furniture.id), ["listing-tour"]);
+  });
+
+  it("still prefers a newer floor plan draft over an older listing tour save", () => {
+    const state = resolveSplatFurniture(
+      "",
+      fakeStorage({
+        floorPlanDraft: JSON.stringify({ furnitures: [testFurniture("draft")], savedAt: 30 }),
+        [LISTING_TOUR_FURNITURE_LATEST_KEY]: JSON.stringify({
+          furnitures: [testFurniture("listing-tour")],
+          savedAt: 20
+        })
+      })
+    );
+
+    assert.equal(state.source, "floor-plan-draft");
   });
 });
 

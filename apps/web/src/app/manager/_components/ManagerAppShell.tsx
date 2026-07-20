@@ -11,7 +11,12 @@ import {
 } from "@/lib/manager-assistant";
 import { useManagerMessagingUnreadCount } from "@/lib/manager-messaging-unread";
 import { useManagerTicketUnreadCount } from "@/lib/manager-ticket-unread";
-import { ManagerAssistantLauncher, ManagerAssistantPanel } from "./ManagerAssistant";
+import {
+  ManagerAssistantLauncher,
+  ManagerAssistantPanel,
+  ManagerAssistantSidePanel,
+} from "./ManagerAssistant";
+import { useManagerAssistantStore } from "./manager-assistant-store";
 import { ManagerCreditUtility } from "./ManagerCreditUtility";
 import creditStyles from "./ManagerCreditUtility.module.css";
 import { ManagerSectionNav } from "./ManagerSectionNav";
@@ -54,6 +59,10 @@ export function ManagerAppShell({
   const messagingUnreadCount = useManagerMessagingUnreadCount(pathname);
   const ticketUnreadCount = useManagerTicketUnreadCount(pathname);
   const fullAssistant = pathname.startsWith("/manager/agent/realtime");
+  // AI 비서 표시 조건. 열림 상태는 전역 스토어라 셸이 리마운트돼도(page 단위 마운트 도메인,
+  // 도메인 간 이동) 패널·대화가 유지된다.
+  const showAssistant = !showAssistantRail && !fullAssistant && !hideAssistantLauncher;
+  const assistantOpen = useManagerAssistantStore().open && showAssistant;
 
   // 접힘 상태는 화면(레이아웃) 간 이동에도 유지 — SSR 불일치를 피하려고 마운트 후에 복원한다.
   useEffect(() => {
@@ -130,19 +139,31 @@ export function ManagerAppShell({
 
   return (
     <>
-      <ManagerShell
-        title={title}
-        context={context}
-        hideHeader={hideHeader}
-        navCollapsed={navCollapsed}
-        theme={theme}
-        nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} messagingUnreadCount={messagingUnreadCount} ticketUnreadCount={ticketUnreadCount} /></Suspense>}
-        subnav={subnav ?? <Suspense fallback={null}><ManagerSectionNav /></Suspense>}
-        headerActions={headerActions}
-        rightRail={rail}
+      <div
+        className={`manager-workspace-split${assistantOpen ? " manager-workspace-split--open" : ""}`}
       >
-        {children}
-      </ManagerShell>
+        <div className="manager-workspace-split__content">
+          <ManagerShell
+            title={title}
+            context={context}
+            hideHeader={hideHeader}
+            navCollapsed={navCollapsed}
+            theme={theme}
+            nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} messagingUnreadCount={messagingUnreadCount} ticketUnreadCount={ticketUnreadCount} /></Suspense>}
+            subnav={subnav ?? <Suspense fallback={null}><ManagerSectionNav /></Suspense>}
+            headerActions={headerActions}
+            rightRail={rail}
+          >
+            {children}
+          </ManagerShell>
+        </div>
+        {assistantOpen ? (
+          <ManagerAssistantSidePanel
+            managerName={managerName}
+            contextLabel={typeof title === "string" ? title : "현재 관리자 화면"}
+          />
+        ) : null}
+      </div>
       {navCollapsed ? (
         <button
           type="button"
@@ -163,7 +184,7 @@ export function ManagerAppShell({
       >
         <Suspense fallback={null}><ManagerSidebar onNavigate={closeMobileNavigation} showCloseButton messagingUnreadCount={messagingUnreadCount} ticketUnreadCount={ticketUnreadCount} /></Suspense>
       </dialog>
-      {!showAssistantRail && !fullAssistant && !hideAssistantLauncher ? (
+      {showAssistant ? (
         <ManagerAssistantLauncher
           managerName={managerName}
           contextLabel={typeof title === "string" ? title : "현재 관리자 화면"}

@@ -120,6 +120,11 @@ export function ContractRegisterForm({
                 onChange={handleFileChange}
                 style={visuallyHiddenStyle}
               />
+              {pending && hasFile ? (
+                <span aria-hidden="true" className="contract-ocr-scan-overlay">
+                  <span className="contract-ocr-scanline" />
+                </span>
+              ) : null}
             </label>
 
             <div className="contract-register-upload-actions" style={uploadActionStyle}>
@@ -177,9 +182,9 @@ export function ContractRegisterForm({
           </div>
           <h3 style={guideTitleStyle}>이번 OCR이 읽는 항목</h3>
           <div style={guideListStyle}>
-            <OcrReadItem index="1" title="보증금 구조" note="기본 보증금, 전환보증금, 최종 보증금" badge="필수" emphasis />
-            <OcrReadItem index="2" title="특약" note="계약서에 없으면 문서에 없음으로 확정" badge="선택" />
-            <OcrReadItem index="3" title="자동연장·원상복구·수선 책임" note="있으면 원문 기준으로 저장, 없으면 숨김 처리" badge="선택" />
+            <OcrReadItem index="1" title="보증금 구조" badge="필수" emphasis />
+            <OcrReadItem index="2" title="특약" badge="선택" />
+            <OcrReadItem index="3" title="자동연장·원상복구·수선 책임" badge="선택" />
           </div>
         </Card>
       </div>
@@ -192,29 +197,24 @@ function isPdfFile(file: File) {
 }
 
 function pdfPreviewSrc(url: string) {
-  return url.includes("#") ? url : `${url}#toolbar=0&navpanes=0&view=FitH`;
+  return url.includes("#") ? url : `${url}#toolbar=0&navpanes=0&view=Fit`;
 }
 
 function OcrReadItem({
   index,
   title,
-  note,
   badge,
   emphasis = false,
 }: {
   index: string;
   title: string;
-  note: string;
   badge: string;
   emphasis?: boolean;
 }) {
   return (
     <div style={guideItemStyle}>
       <span style={guideIndexStyle}>{index}</span>
-      <div style={guideItemTextStyle}>
-        <strong style={guideItemTitleStyle}>{title}</strong>
-        <span>{note}</span>
-      </div>
+      <strong style={guideItemTitleStyle}>{title}</strong>
       <span style={emphasis ? requiredBadgeStyle : optionalBadgeStyle}>{badge}</span>
     </div>
   );
@@ -257,6 +257,7 @@ const dropzoneStyle = {
 } as const;
 
 const dropzonePreviewStyle = {
+  position: "relative",
   width: "100%",
   minHeight: 220,
   display: "grid",
@@ -280,9 +281,11 @@ const dropzoneHintStyle = {
   lineHeight: "var(--lh-body)",
 } as const;
 
+// 웹 전용 화면 — 계약서 한 장(A4 세로)이 통째로 보이도록 미리보기를 문서 비율로 키운다.
 const previewImageStyle = {
   width: "100%",
-  height: "100%",
+  height: "auto",
+  maxHeight: "none",
   objectFit: "contain",
   borderRadius: "var(--radius)",
   background: "var(--surface-container-lowest)",
@@ -290,8 +293,8 @@ const previewImageStyle = {
 
 const previewPdfStyle = {
   width: "100%",
-  minHeight: 320,
-  height: "100%",
+  aspectRatio: "210 / 297",
+  height: "auto",
   border: "1px solid var(--border)",
   borderRadius: "var(--radius)",
   background: "var(--surface-container-lowest)",
@@ -433,16 +436,8 @@ const guideIndexStyle = {
   fontWeight: 900,
 } as const;
 
-const guideItemTextStyle = {
-  minWidth: 0,
-  display: "grid",
-  gap: "var(--space-xs)",
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  lineHeight: "var(--lh-caption)",
-} as const;
-
 const guideItemTitleStyle = {
+  minWidth: 0,
   color: "var(--on-surface)",
   fontSize: "var(--fs-body)",
   lineHeight: "var(--lh-body)",

@@ -29,7 +29,7 @@ test("classification sample uses the deployed room and entry constraints", () =>
   assert.match(source, /연결된 열린 영역의 15% 이내/);
   assert.match(source, /현관 polygon을 6m² 이내/);
   assert.match(source, /공용 복도, 계단실, 엘리베이터 홀/);
-  assert.match(source, /세대 내부에 있는 바닥 영역만/);
+  assert.match(source, /세대 내부.*현관 바닥.*ENTRY/);
 });
 
 test("classification sample requests non-overlapping room polygons", () => {

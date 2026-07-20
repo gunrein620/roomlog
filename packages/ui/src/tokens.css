@@ -6,29 +6,29 @@
  */
 :root {
   /* --- color: surface (WOOZU 쿨그레이 스케일) --- */
-  --surface: #f5f6f8;
-  --surface-dim: #e9edf3;
+  --surface: #faf8fc;
+  --surface-dim: #f1eef9;
   --surface-container-lowest: #ffffff;
-  --surface-container-low: #f5f6f8;
-  --surface-container: #eef2f8;
-  --surface-container-high: #e9edf3;
-  --surface-container-highest: #e3e6ed;
-  --on-surface: #171923;
-  --on-surface-variant: #6f7787;
-  --inverse-surface: #171923;
-  --inverse-on-surface: #f5f6f8;
+  --surface-container-low: #f5f2fb;
+  --surface-container: #efecfa;
+  --surface-container-high: #e8e3f3;
+  --surface-container-highest: #e1dcef;
+  --on-surface: #20184a;
+  --on-surface-variant: #5a5478;
+  --inverse-surface: #20184a;
+  --inverse-on-surface: #faf8fc;
 
   /* --- color: outline / border --- */
-  --outline: #9aa1af;
-  --outline-variant: #e3e6ed;
-  --border: #e3e6ed; /* 카드·헤더·리스트 기본 경계 (= WOOZU --line) */
-  --table-row-divider: #edf0f5;
+  --outline: #9a95b0;
+  --outline-variant: #ece8f4;
+  --border: #ece8f4; /* 카드·헤더·리스트 기본 경계 (= WOOZU --line) */
+  --table-row-divider: #f0edf7;
 
   /* --- color: primary (action = WOOZU 블루) --- */
-  --primary: #2f55ff;
+  --primary: #20184a;
   --on-primary: #ffffff;
-  --primary-container: #eef2ff;
-  --on-primary-container: #173ad7;
+  --primary-container: #efecfa;
+  --on-primary-container: #17133a;
 
   /* --- color: feedback --- */
   --error: #ba1a1a;
@@ -44,8 +44,8 @@
   --on-warning-container: #6d4100;
 
   /* --- color: chip/badge --- */
-  --chip-bg: #eef2f8;
-  --chip-on: #47506a;
+  --chip-bg: #efecfa;
+  --chip-on: #4c4570;
 
   /* --- color: muted pastel accents (운영 정보의 유형 구분용) --- */
   --pastel-peach: #f5ded2;
@@ -67,9 +67,9 @@
   --nav-on-surface-muted: #a9a9b0;
 
   /* --- color: input --- */
-  --input-border: #e3e6ed;
-  --input-placeholder: #9aa1af;
-  --input-text: #171923;
+  --input-border: #ece8f4;
+  --input-placeholder: #9a95b0;
+  --input-text: #20184a;
 
   /* --- typography (WOOZU 본문과 동일 계열) --- */
   --font-sans: Arial, Helvetica, ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -80,9 +80,9 @@
   --fs-caption: 13px;    --fw-caption: 400;  --lh-caption: 19.5px;
 
   /* --- elevation (WOOZU 카드 그림자) --- */
-  --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
-  --shadow-soft: 0 8px 24px rgba(18, 24, 40, 0.08);
-  --focus-ring: 0 0 0 3px rgba(47, 85, 255, 0.28);
+  --shadow: 0 18px 44px rgba(26, 19, 48, 0.10);
+  --shadow-soft: 0 8px 24px rgba(26, 19, 48, 0.07);
+  --focus-ring: 0 0 0 3px rgba(32, 24, 74, 0.24);
   --disabled-opacity: 0.52;
 
   /* --- spacing (4/8/12/16/24/32) --- */
@@ -121,6 +121,8 @@
   --manager-sidebar-width: 256px;
   --manager-assistant-width: 320px;
   --manager-assistant-compact-width: 280px;
+  /* AI 비서 사이드패널(스플릿 뷰) — 화면 절반, 대형 모니터에선 상한 고정 */
+  --manager-assistant-panel-width: min(50vw, 760px);
   --manager-content-max: 1600px;
 
   /* --- stacking --- */
