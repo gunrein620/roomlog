@@ -74,10 +74,6 @@ export function NewConversationForm({
         className="manager-messaging-new-conversation"
         aria-label="새 대화"
         style={{
-          padding: "var(--space-md)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-card)",
-          background: "var(--surface-container-lowest)",
           color: "var(--on-surface-variant)",
         }}
       >
@@ -92,12 +88,7 @@ export function NewConversationForm({
       className="manager-messaging-new-conversation"
       aria-label="새 대화"
       style={{
-        padding: "var(--space-md)",
         display: "grid",
-        gap: "var(--space-sm)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius-card)",
-        background: "var(--surface-container-lowest)",
       }}
     >
       <div>
