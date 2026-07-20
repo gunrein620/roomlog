@@ -165,14 +165,20 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
   });
 }
 
-// 도면 에디터가 남긴 3D 스냅샷 키 — RoomlogFloorPlanEditor의 LISTING_FLOOR_PLAN_STORAGE_KEY와 동일해야 한다.
+// 기존 단일 키는 이전에 저장한 도면을 읽을 때만 사용한다. 새 도면은 요청 ID별 키에만 저장한다.
 const LISTING_FLOOR_PLAN_STORAGE_KEY = "roomlogListingFloorPlan3D";
 
+function getListingFloorPlanStorageKey(requestId: string | null) {
+  return requestId
+    ? `${LISTING_FLOOR_PLAN_STORAGE_KEY}:${requestId}`
+    : LISTING_FLOOR_PLAN_STORAGE_KEY;
+}
+
 /** 에디터가 저장한 3D 도면 스냅샷을 읽는다(없거나 벽 0개면 null). */
-function readListingFloorPlanSnapshot(): ListingFloorPlan3D | null {
+function readListingFloorPlanSnapshot(requestId: string | null): ListingFloorPlan3D | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
+    const raw = window.localStorage.getItem(getListingFloorPlanStorageKey(requestId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ListingFloorPlan3D;
     if (!parsed || !Array.isArray(parsed.walls3D)) return null;
@@ -322,7 +328,7 @@ function parseUploadedFloorPlanJson(value: unknown): { snapshot: ListingFloorPla
   };
 }
 
-function writeListingFloorPlanSnapshot(snapshot: ListingFloorPlan3D) {
+function writeListingFloorPlanSnapshot(snapshot: ListingFloorPlan3D, requestId: string) {
   const storageSnapshot = {
     name: snapshot.name,
     savedAt: Date.now(),
@@ -336,7 +342,7 @@ function writeListingFloorPlanSnapshot(snapshot: ListingFloorPlan3D) {
     furnitures: snapshot.furnitures,
     mitunet: snapshot.mitunet
   };
-  window.localStorage.setItem(LISTING_FLOOR_PLAN_STORAGE_KEY, JSON.stringify(storageSnapshot));
+  window.localStorage.setItem(getListingFloorPlanStorageKey(requestId), JSON.stringify(storageSnapshot));
 }
 
 function formatFileSize(bytes: number): string {
@@ -345,6 +351,9 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } = {}) {
+  const searchParams = useSearchParams();
+  const editListingId = searchParams.get("listingId");
+  const returnedFloorPlanRequestId = searchParams.get("floorPlanRequestId")?.trim() || null;
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
@@ -357,6 +366,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   // 등록 요약 사진 캐러셀의 현재 인덱스, 3D 도면 스냅샷.
   const [photoIndex, setPhotoIndex] = useState(0);
   const [floorPlan3D, setFloorPlan3D] = useState<ListingFloorPlan3D | null>(null);
+  const [floorPlanRequestId, setFloorPlanRequestId] = useState<string | null>(returnedFloorPlanRequestId);
   const [tourSourceFile, setTourSourceFile] = useState<File | null>(null);
   const tourSourceInputRef = useRef<HTMLInputElement | null>(null);
   const previewPointerStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -365,8 +375,6 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   const [isPhotoDragOver, setIsPhotoDragOver] = useState(false);
   const [isTourDragOver, setIsTourDragOver] = useState(false);
   // 편집 모드: /sell?listingId=... 로 진입하면(주로 벨의 "제작 실패" 알림) 그 매물의 3D 재작업을 노출한다.
-  const searchParams = useSearchParams();
-  const editListingId = searchParams.get("listingId");
   // 편집 대상 매물의 대표 3D 자산(id + 상태). FAILED면 재큐잉 UI, PROCESSING이면 제작 중 표시.
   const [editTourAsset, setEditTourAsset] = useState<{ id: string; status: SplatAssetStatus } | null>(null);
   const [isRequeuing, setIsRequeuing] = useState(false);
@@ -447,7 +455,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           mitunet
         };
         try {
-          writeListingFloorPlanSnapshot(snapshot);
+          writeListingFloorPlanSnapshot(snapshot, getOrCreateFloorPlanRequestId());
           setFloorPlan3D(snapshot);
           setHas3DRoom(true);
           setRegistrationStatus("작성 중");
@@ -465,7 +473,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
       }
 
       try {
-        writeListingFloorPlanSnapshot(result.snapshot);
+        writeListingFloorPlanSnapshot(result.snapshot, getOrCreateFloorPlanRequestId());
         setHas3DRoom(true);
         setRegistrationStatus("작성 중");
         setOwnerToast(`도면 벽 ${result.wallCount}개 연결됨 — 등록하면 상세에서 3D로 보입니다`);
@@ -491,6 +499,11 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   // 주소 지오코딩 결과 — 등록 페이로드의 lat/lng로 실린다(실패/미활성 시 null).
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [has3DRoom, setHas3DRoom] = useState(false);
+  const getOrCreateFloorPlanRequestId = () => {
+    const requestId = floorPlanRequestId ?? window.crypto.randomUUID();
+    if (!floorPlanRequestId) setFloorPlanRequestId(requestId);
+    return requestId;
+  };
   const [registrationStatus, setRegistrationStatus] = useState("작성 중");
   const [myListings, setMyListings] = useState(initialOwnerListings);
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
@@ -686,7 +699,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     }
 
     // 도면 에디터에서 실제로 3D를 만들고 돌아왔는지는 스냅샷 존재로 판단한다(클릭만으론 연결로 치지 않음).
-    const bootSnapshot = readListingFloorPlanSnapshot();
+    const bootFloorPlanRequestId = returnedFloorPlanRequestId ?? draft?.floorPlanRequestId ?? null;
+    setFloorPlanRequestId(bootFloorPlanRequestId);
+    const bootSnapshot = readListingFloorPlanSnapshot(bootFloorPlanRequestId);
     if (bootSnapshot) {
       setHas3DRoom(true);
       setFloorPlan3D(bootSnapshot);
@@ -705,12 +720,13 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   }, []);
 
   const openMitunetEditor = () => {
-    const requestId = window.crypto.randomUUID();
+    const requestId = getOrCreateFloorPlanRequestId();
     const editorPath = buildRoomlogMitunetEditorPath(window.location.origin, requestId);
     const savedAt = saveOwnerDraft(window.localStorage, {
       ownerForm,
       photoCount,
       has3DRoom,
+      floorPlanRequestId: requestId,
       registrationStatus: "작성 중",
       myListings
     });
@@ -747,7 +763,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   useEffect(() => {
     const syncFloorPlanConnection = () => {
       if (document.visibilityState !== "visible") return;
-      const snapshot = readListingFloorPlanSnapshot();
+      const snapshot = readListingFloorPlanSnapshot(floorPlanRequestId);
       if (snapshot) {
         setHas3DRoom(true);
         setFloorPlan3D(snapshot);
@@ -759,7 +775,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
       window.removeEventListener("visibilitychange", syncFloorPlanConnection);
       window.removeEventListener("focus", syncFloorPlanConnection);
     };
-  }, []);
+  }, [floorPlanRequestId]);
 
   // 사진 선택이 바뀌면 IndexedDB에 반영 — 도면 에디터로 갔다가 돌아와도 사진이 남게.
   // 최초 복원이 끝난 뒤에만 저장한다(복원 전 빈 배열로 저장분을 덮어쓰지 않도록).
@@ -773,9 +789,16 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   useEffect(() => {
     if (!isDraftLoaded) return;
 
-    const savedAt = saveOwnerDraft(window.localStorage, { ownerForm, photoCount, has3DRoom, registrationStatus, myListings });
+    const savedAt = saveOwnerDraft(window.localStorage, {
+      ownerForm,
+      photoCount,
+      has3DRoom,
+      floorPlanRequestId: floorPlanRequestId ?? undefined,
+      registrationStatus,
+      myListings
+    });
     setDraftSavedAt(savedAt);
-  }, [isDraftLoaded, ownerForm, photoCount, has3DRoom, registrationStatus, myListings]);
+  }, [isDraftLoaded, ownerForm, photoCount, has3DRoom, floorPlanRequestId, registrationStatus, myListings]);
   const submitOwnerListing = () => {
     // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
     if (isSubmittingListingRef.current) {
@@ -837,7 +860,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
         };
         payload.images = images;
         // 3D방 연결 상태이고 에디터 스냅샷이 있으면 매물에 도면을 실어 보낸다 → 상세 "3D 보기"에서 실제 렌더.
-        const floorPlanSnapshot = has3DRoom ? readListingFloorPlanSnapshot() : null;
+        const floorPlanSnapshot = has3DRoom ? readListingFloorPlanSnapshot(floorPlanRequestId) : null;
         if (floorPlanSnapshot) payload.floorPlan = floorPlanSnapshot;
 
         const response = await fetch("/api/trade/listings", {
@@ -881,7 +904,10 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
         setHas3DRoom(false);
         setGeoCoords(null);
         void clearOwnerPhotos();
-        if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(getListingFloorPlanStorageKey(floorPlanRequestId));
+        }
+        setFloorPlanRequestId(null);
         setRegistrationStatus("노출중");
         const listingSuccessMessage = "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
         // 등록 성공과 투어 접수 결과를 하나의 팝업 메시지로 합친다.

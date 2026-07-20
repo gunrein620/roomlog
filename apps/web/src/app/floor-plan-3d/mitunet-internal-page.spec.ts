@@ -41,11 +41,10 @@ test("serves the MitUNet viewer through a RoomLog route", () => {
 
 test("serves MitUNet viewer assets without exposing arbitrary local files", () => {
   assert.match(assetRouteSource, /resolveMitunetViewerFile/);
-  assert.match(assetRouteSource, /transformRoomLogIntegrationModule/);
   assert.match(assetRouteSource, /transformRoomLogReviewEditorModule/);
   assert.match(assetRouteSource, /review-editor\.mjs/);
-  assert.match(assetRouteSource, /roomlogListingFloorPlan3D/);
-  assert.match(assetRouteSource, /\/?flow=listing#my-page/);
+  assert.doesNotMatch(assetRouteSource, /transformRoomLogIntegrationModule/);
+  assert.doesNotMatch(assetRouteSource, /roomlogListingFloorPlan3D/);
   assert.doesNotMatch(assetRouteSource, /\/sell\?flow=listing#my-page/);
 });
 
@@ -62,8 +61,15 @@ test("keeps completion inside RoomLog instead of using legacy external-window me
   assert.doesNotMatch(proxySource, /NEXT_PUBLIC_MITUNET_EDITOR_URL/);
   assert.doesNotMatch(proxySource, /postMessage/);
   assert.doesNotMatch(proxySource, /\bopener\s*\./);
-  assert.match(proxySource, /window\.localStorage\.setItem/);
-  assert.match(proxySource, /window\.location\.href/);
+  assert.doesNotMatch(proxySource, /transformRoomLogIntegrationModule/);
+});
+
+test("keeps the RoomLog save action visible and explains why it cannot be used yet", () => {
+  assert.match(viewerSource, /id="roomlog-save-hint"/);
+  assert.match(viewerSource, /const roomLogFlowRequested/);
+  assert.match(viewerSource, /function roomLogSaveBlockReason\(\)/);
+  assert.match(viewerSource, /connectRoomLogButton\.hidden = !roomLogFlowRequested;/);
+  assert.match(viewerSource, /roomLogSaveHint\.textContent = roomLogSaveReason;/);
 });
 
 test("mounts MitUNet and furniture only from paths inside RoomLog", () => {

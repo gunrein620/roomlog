@@ -868,6 +868,22 @@
   }
   #connect-roomlog-btn { right: 28px; }
   #save-json-btn { right: 190px; }
+  #roomlog-save-hint {
+    position: fixed;
+    top: 62px;
+    right: 28px;
+    z-index: 22;
+    max-width: min(320px, calc(100vw - 56px));
+    padding: 8px 10px;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: var(--shadow-soft);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+    text-align: right;
+  }
   #editor-tools {
     position: fixed;
     top: 96px;
@@ -1627,6 +1643,7 @@
     #view-controls { bottom: 16px; max-width: calc(100vw - 32px); overflow-x: auto; }
     #save-json-btn { right: 150px; }
     #connect-roomlog-btn { right: 16px; }
+    #roomlog-save-hint { right: 16px; max-width: calc(100vw - 32px); }
   }
   @media (max-width: 720px) {
     #editor-tools {
@@ -1727,9 +1744,10 @@
     <i data-lucide="download" aria-hidden="true"></i><span>Save JSON</span>
   </button>
 
-  <button class="btn primary with-icon" id="connect-roomlog-btn" title="Connect this 3D plan to RoomLog" hidden disabled>
-    <i data-lucide="link" aria-hidden="true"></i><span>RoomLog에 연결</span>
+  <button class="btn primary with-icon" id="connect-roomlog-btn" title="3D 도면을 저장하고 매물 등록으로 돌아가기" hidden disabled>
+    <i data-lucide="link" aria-hidden="true"></i><span>3D 도면 저장하기</span>
   </button>
+  <p id="roomlog-save-hint" role="status" hidden></p>
 
   <div id="demo-controls" hidden>
     <div class="label">Sample</div>
@@ -2866,6 +2884,7 @@ const uploadButton = document.getElementById("upload-btn");
 const startSampleButton = document.getElementById("start-sample-btn");
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
+const roomLogSaveHint = document.getElementById("roomlog-save-hint");
 const furnishButton = document.getElementById("furnish-btn");
 const furniturePanel = document.getElementById("furniture-panel");
 const furniturePanelOpenButton = document.getElementById("furniture-panel-open");
@@ -2945,6 +2964,8 @@ let currentSourceName = "";
 let currentView = "3d";
 let inFlight = false;
 let roomLogContext = null;
+let roomLogIntegrationReady = false;
+const roomLogFlowRequested = new URLSearchParams(window.location.search).get("integration") === "roomlog";
 let activeCameraView = "perspective";
 let cameraPresetTransitionId = 0;
 let cameraPresetTransitionActive = false;
@@ -3912,6 +3933,21 @@ function positionEditorContextPanel(activeToolButton) {
   editorContextPanel.style.setProperty("--context-trigger-height", `${Math.round(rect.height)}px`);
 }
 
+function roomLogSaveBlockReason() {
+  if (!roomLogFlowRequested) return "";
+  if (!roomLogIntegrationReady) return "매물 등록 연결 정보를 확인하는 중입니다.";
+  if (!roomLogContext) return "매물 등록 연결 정보를 확인하지 못했습니다. 매물 등록 화면에서 다시 열어주세요.";
+  if (inFlight) return "도면을 처리하는 중입니다. 완료되면 저장할 수 있어요.";
+  if (!currentComposedPlan || reviewEditor?.document?.needsCompose()) {
+    return "도면을 렌더링한 뒤 저장할 수 있어요.";
+  }
+  if (!["3d", "furnishing"].includes(currentView)) {
+    return "3D 보기에서 렌더링 결과를 확인한 뒤 저장할 수 있어요.";
+  }
+  if (pendingFurniture) return "배치 중인 가구를 확정하거나 취소한 뒤 저장할 수 있어요.";
+  return "";
+}
+
 function updateEditorControls() {
   const reviewDocument = reviewEditor?.document;
   const hasDocument = Boolean(reviewDocument);
@@ -3947,10 +3983,14 @@ function updateEditorControls() {
   const canSave = ["3d", "furnishing"].includes(currentView) &&
     Boolean(currentComposedPlan) &&
     !reviewDocument?.needsCompose();
+  const roomLogSaveReason = roomLogSaveBlockReason();
   saveJsonButton.hidden = !canSave;
   saveJsonButton.disabled = !canSave || inFlight || Boolean(pendingFurniture);
-  connectRoomLogButton.hidden = !roomLogContext || !canSave;
-  connectRoomLogButton.disabled = !roomLogContext || !canSave || inFlight || Boolean(pendingFurniture);
+  connectRoomLogButton.hidden = !roomLogFlowRequested;
+  connectRoomLogButton.disabled = Boolean(roomLogSaveReason);
+  connectRoomLogButton.title = roomLogSaveReason || "3D 도면을 저장하고 매물 등록으로 돌아가기";
+  roomLogSaveHint.hidden = !roomLogFlowRequested || !roomLogSaveReason;
+  roomLogSaveHint.textContent = roomLogSaveReason;
   viewButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   document.body.classList.toggle("is-busy", inFlight);
   reviewCanvas.setAttribute("aria-busy", String(inFlight));
@@ -4518,10 +4558,9 @@ function wireReviewControls() {
         roomLogContext,
         currentComposedPlan,
         currentSourceName,
-        window.opener,
         currentFurniturePlacements(),
       );
-      setStatus("RoomLog에 3D 도면을 연결했습니다. RoomLog 탭으로 돌아가세요.");
+      setStatus("3D 도면을 저장하고 매물 등록 화면으로 돌아갑니다.");
       roomLogContext = null;
       updateEditorControls();
     } catch (error) {
@@ -4646,8 +4685,10 @@ async function initializeRoomLogIntegration() {
     );
   } catch {
     roomLogContext = null;
+  } finally {
+    roomLogIntegrationReady = true;
+    updateEditorControls();
   }
-  updateEditorControls();
 }
 
 async function enableStaticDemoMode() {
@@ -4685,6 +4726,8 @@ async function initializeViewer() {
     await initializeRoomLogIntegration();
   } else {
     await enableStaticDemoMode();
+    roomLogIntegrationReady = true;
+    updateEditorControls();
   }
 }
 window.addEventListener("load", renderIcons);

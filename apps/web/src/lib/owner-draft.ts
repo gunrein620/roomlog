@@ -38,6 +38,8 @@ export type OwnerListingDraft = {
   ownerForm: OwnerFormValues;
   photoCount: number;
   has3DRoom: boolean;
+  /** The browser-local 3D snapshot belongs only to this registration draft. */
+  floorPlanRequestId?: string;
   registrationStatus: string;
   myListings: OwnerListing[];
 };
@@ -157,6 +159,9 @@ export function parseOwnerDraft(raw: string | null): OwnerListingDraft | null {
     ownerForm: normalizedForm,
     photoCount: draft.photoCount,
     has3DRoom: draft.has3DRoom,
+    ...(typeof draft.floorPlanRequestId === "string" && draft.floorPlanRequestId.trim()
+      ? { floorPlanRequestId: draft.floorPlanRequestId.trim() }
+      : {}),
     registrationStatus: draft.registrationStatus,
     myListings: dedupedListings
   };

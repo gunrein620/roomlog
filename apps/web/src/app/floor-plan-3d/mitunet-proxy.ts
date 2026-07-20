@@ -94,25 +94,6 @@ export function transformMitunetViewerHtml(html: string) {
     );
 }
 
-export function transformRoomLogIntegrationModule(source: string, storageKey: string, returnPath: string) {
-  return source.replace(
-    /export function sendRoomLogCompletion\([^)]*\) \{[\s\S]*?\n\}/,
-    `export function sendRoomLogCompletion(context, plan, sourceName, opener, furnitures = []) {
-  const message = buildRoomLogCompletion(context, plan, sourceName, furnitures);
-  const storageValue = {
-    name: message.payload.name,
-    savedAt: Date.now(),
-    walls3D: [],
-    furnitures: message.payload.furnitures,
-    mitunet: message.payload,
-  };
-  window.localStorage.setItem(${JSON.stringify(storageKey)}, JSON.stringify(storageValue));
-  window.location.href = new URL(${JSON.stringify(returnPath)}, context.returnOrigin).toString();
-  return message;
-}`,
-  );
-}
-
 export function transformRoomLogReviewEditorModule(source: string) {
   return source.replace(
     "this.calibration = estimateCalibrationFromDoors(this.document.openings);",
