@@ -12,6 +12,7 @@ import {
   recordTenantRealtimeTurn,
   sendTenantIntakeMessage,
   type TenantIntakeFinalizeResult,
+  type TenantIntakeDraft,
   type TenantIntakeResponsibilityHint,
   type TenantIntakeSession,
 } from "@/lib/tenant-intake-api";
@@ -53,6 +54,7 @@ export function useTenantAiAssistant({
     { id: "tenant-ai-welcome", sender: "assistant", text: TENANT_AI_GREETING },
   ]);
   const [busy, setBusy] = useState(false);
+  const [draftForRequest, setDraftForRequest] = useState<TenantIntakeDraft | null>(null);
   const [filedComplaint, setFiledComplaint] = useState<{
     id: string;
     responsibilityHint?: TenantIntakeResponsibilityHint;
@@ -161,6 +163,10 @@ export function useTenantAiAssistant({
       if (result.autoFinalized) {
         // 세입자가 접수를 요청해 서버가 이번 턴에서 바로 민원을 생성한 경우.
         announceComplaintFiled(result.autoFinalized);
+        return true;
+      }
+      if (result.session.draft.title.trim() && result.session.draft.summary.trim()) {
+        setDraftForRequest(result.session.draft);
         return true;
       }
       appendMessage("assistant", result.assistantMessage.messageText);
@@ -371,6 +377,8 @@ export function useTenantAiAssistant({
   return {
     messages,
     busy,
+    draftForRequest,
+    consumeDraftForRequest: () => setDraftForRequest(null),
     filedComplaint,
     startTextSession,
     submitText,

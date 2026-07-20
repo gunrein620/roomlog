@@ -20,6 +20,8 @@ export type TenantIntakeDraft = {
   category?: string;
   detailCategory?: string;
   priority?: number;
+  occurredAt?: string;
+  availableTimes?: string;
   responsibilityHint?: TenantIntakeResponsibilityHint;
   readyToFinalize: boolean;
   requiredInfo: string[];

@@ -69,7 +69,15 @@ services:
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://api.woo-zu.com}
       # GPU_KEEP_WARM=1: 오케스트레이터가 인스턴스를 절대 stop하지 않음(사람이 수동 관리).
       # stop=NVMe 초기화로 docker 이미지가 날아가 bootstrap이 재실패하는 함정 회피 — 데모 기간 권장.
-      GPU_KEEP_WARM: ${GPU_KEEP_WARM:-}
+      #
+      # 기본값을 1로 둔다(2026-07-20). deploy.yml이 GPU_KEEP_WARM을 시크릿 목록에 갖고 있지 않아
+      # PROD_ENV 블롭에 직접 써넣지 않는 한 prod .env에 실릴 경로가 없었다 — 즉 이 기본값이 사실상
+      # 유일한 스위치다. 그 상태로 실제 인스턴스가 기동 56분 만에 idle-stop됐고(i-061e16af461c7c5df,
+      # 2026-07-19 14:25 start → 15:21 stop) NVMe가 초기화돼 docker 이미지·가중치가 날아갔다.
+      #
+      # ⚠️ 이건 비용 안전장치를 끄는 설정이다. 데모가 끝나면 idle-stop을 되살릴 것 — 코드를 되돌릴
+      # 필요 없이 PROD_ENV에 GPU_KEEP_WARM=0을 넣으면 이 기본값을 이긴다.
+      GPU_KEEP_WARM: ${GPU_KEEP_WARM:-1}
       # 임차인 가구 USDZ→GLB 변환 워커(services/mesh-worker) — CPU 전용, GPU 인스턴스가 아니라 항상
       # 켜져 있는 컨테이너. GPU_WORKER_SECRET을 그대로 공유한다(콜백 인증을 이원화하지 않는다).
       MESH_WORKER_URL: ${MESH_WORKER_URL:-http://mesh-worker:5001}

@@ -1453,6 +1453,29 @@ export default function TenantMyPage({
     setRequestImages([]);
   };
 
+  useEffect(() => {
+    const draft = ai.draftForRequest;
+    if (!draft) return;
+
+    const isDefect = draft.category === "하자" || /누수|곰팡이|벽지|바닥|에어컨|보일러|도어락/.test(
+      draft.detailCategory ?? ""
+    );
+    setRequestError("");
+    setRequestDraft({
+      category: isDefect ? "하자" : "민원",
+      title: draft.title,
+      occurredAt: draft.occurredAt ? dateTimeLocalValue(draft.occurredAt) : "",
+      description: draft.summary
+    });
+    setRequestUrgency(draft.priority && [1, 2, 3, 4].includes(draft.priority) ? draft.priority as 1 | 2 | 3 | 4 : undefined);
+    setRequestAvailableTimes(draft.availableTimes ?? "");
+    clearRequestImages();
+    setIsLoadingRequestDraft(false);
+    setIsRequestSheetOpen(true);
+    ai.consumeDraftForRequest();
+    aiDialogRef.current?.close();
+  }, [ai.draftForRequest]);
+
   const closeRequestSheet = (resetDraft = false) => {
     setIsLoadingRequestDraft(false);
     setIsRequestSheetOpen(false);
