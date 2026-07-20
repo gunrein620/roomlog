@@ -2543,6 +2543,51 @@ p {
   position: relative;
 }
 
+.map-location-notice {
+  position: absolute;
+  z-index: var(--z-floating);
+  right: var(--space-md);
+  bottom: var(--space-md);
+  left: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-soft);
+  color: var(--on-surface);
+}
+
+.map-location-notice strong,
+.map-location-notice p {
+  display: block;
+}
+
+.map-location-notice strong {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-title);
+}
+
+.map-location-notice p {
+  margin-top: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.map-location-notice button {
+  flex: 0 0 auto;
+  min-height: var(--control-compact-size);
+  padding: 0 var(--space-md);
+  border: 0;
+  border-radius: var(--radius-btn);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: var(--fw-title);
+}
+
 .map-unresolved-state {
   display: grid;
   min-height: 420px;

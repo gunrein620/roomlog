@@ -1450,6 +1450,44 @@ test("uses the Naver Maps SDK path instead of a mock map drawing", () => {
   assert.doesNotMatch(cssSource, /naver-map-fallback|map-entry-visual|map-mini-pin|draw-line|naver-place-label/);
 });
 
+test("keeps the map visible and explains current-location failures", () => {
+  assert.doesNotMatch(homeAppSource, /\{hasVisibleMapContext\s*\?\s*\(\s*<NaverMapPreview/);
+  assert.match(homeAppSource, /<NaverMapPreview[\s\S]*?className="map-stage"/);
+  assert.match(homeAppSource, /위치 권한을 허용해 주세요/);
+  assert.match(homeAppSource, /현재 위치를 확인할 수 없습니다/);
+  assert.match(homeAppSource, /다시 시도/);
+  assert.match(homeAppSource, /const currentLocationNotice/);
+  assert.match(cssSource, /\.map-location-notice\s*\{/);
+});
+
+test("uses desktop-tolerant geolocation settings", () => {
+  assert.match(homeAppSource, /enableHighAccuracy:\s*false/);
+  assert.match(homeAppSource, /timeout:\s*20000/);
+  assert.match(homeAppSource, /maximumAge:\s*1000 \* 60 \* 5/);
+});
+
+test("moves the map only after the current-location action", () => {
+  assert.doesNotMatch(
+    homeAppSource,
+    /useEffect\(\(\) => \{\s*if \(activeTab !== "map" \|\| hasResolvedMapContext\) return;\s*requestMapCurrentLocation\(\);/
+  );
+  assert.match(homeAppSource, /onClick=\{\(\) => requestMapCurrentLocation\(true\)\}/);
+  assert.match(naverMapPreviewSource, /map\.setCenter\(nextCenter\)/);
+});
+
+test("re-centers the map when the same current location is requested again", () => {
+  assert.match(homeAppSource, /const \[mapCenterFocusRequestId, setMapCenterFocusRequestId\] = useState\(0\)/);
+  assert.match(homeAppSource, /setMapCenterFocusRequestId\(requestId\)/);
+  assert.match(homeAppSource, /centerFocusRequestId=\{mapCenterFocusRequestId\}/);
+  assert.match(naverMapPreviewSource, /centerFocusRequestId\?: number/);
+  assert.match(naverMapPreviewSource, /centerFocusRequestId, closeCenterInfoWindow/);
+});
+
+test("shows the current-location marker label only once", () => {
+  assert.match(naverMapPreviewSource, /if \(detail\) content\.append\(detailElement\);/);
+  assert.match(naverMapPreviewSource, /title === "현재 위치" \? "" : "현재 위치"/);
+});
+
 test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
   assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);
