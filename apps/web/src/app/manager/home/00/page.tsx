@@ -8,7 +8,6 @@ import { InstrumentPanel } from "./InstrumentPanel";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
-import { BuildingsSection } from "./sections/BuildingsSection";
 import { ReportSection } from "./sections/ReportSection";
 
 export default async function Page({
@@ -99,8 +98,6 @@ export default async function Page({
             <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
           </section>
         </div>
-
-        <BuildingsSection />
       </div>
 
       <style>{`

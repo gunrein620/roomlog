@@ -29,3 +29,7 @@ test("manager home omits the repair expense ledger section", () => {
   assert.doesNotMatch(pageSource, /RepairExpenseSection/);
   assert.doesNotMatch(pageSource, /repairExpenses/);
 });
+
+test("manager home omits the demo building management section", () => {
+  assert.doesNotMatch(pageSource, /BuildingsSection/);
+});
