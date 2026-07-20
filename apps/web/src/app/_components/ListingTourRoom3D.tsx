@@ -211,7 +211,10 @@ export default function ListingTourRoom3D({
 
     fetchTenantFurniture()
       .then((furnitures) => {
-        if (!cancelled) setTenantFurnitures(furnitures);
+        // RoomPlan 스캔은 방 안 물체를 감지하는 즉시 meshUrl 없이 행을 만든다. Object Capture로
+        // 실물을 찍어 변환까지 끝난(meshJobState === "DONE") 것만 배치 가능한 실물 모델이 있다 —
+        // 그 전 단계 항목을 그대로 두면 회색 박스만 수십 개 나열된다.
+        if (!cancelled) setTenantFurnitures(furnitures.filter((furniture) => furniture.meshJobState === "DONE"));
       })
       .catch((reason: unknown) => {
         if (cancelled) return;
