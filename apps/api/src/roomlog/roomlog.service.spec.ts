@@ -677,7 +677,7 @@ describe("RoomlogService", () => {
     assert.equal((service as any).stageForDaysOverdue(31), "SEVERE");
   });
 
-  it("builds ledger rows from stored deposits, linked bills, and confirmed costs", () => {
+  it("builds ledger rows from stored deposits, linked bills, and confirmed costs", async () => {
     const service = new RoomlogService();
     const store = (service as any).store;
     const timestamp = "2026-07-14T09:00:00.000Z";
@@ -718,7 +718,7 @@ describe("RoomlogService", () => {
       },
     );
 
-    const result = service.listManagerBillDeposits("landlord-demo");
+    const result = await service.listManagerBillDeposits("landlord-demo");
     const linkedDeposit = result.ledgerRows.find(
       (row) => row.direction === "deposit" && row.linkedBill,
     );
@@ -737,6 +737,43 @@ describe("RoomlogService", () => {
       result.ledgerRows.some((row) => row.id === "cost-ledger-draft"),
       false,
     );
+  });
+
+  it("merges completed Gara credit payouts into the manager transaction ledger", async () => {
+    const service = new RoomlogService({
+      financialCostReader: {
+        listManagerCosts: async () => [],
+        isFinanceOwnedCost: async () => false,
+        listManagerTransactionRows: async () => [
+          {
+            id: "credit-ledger-gara-100000",
+            direction: "withdrawal",
+            occurredAt: "2026-07-20T09:30:00.000Z",
+            amount: 100_000,
+            statusLabel: "지급 완료",
+            partyName: "기동하우스 업체",
+            itemLabel: "업체 크레딧 지급",
+            source: "credit_vendor_payout",
+          },
+        ],
+      } as any,
+    });
+
+    const result = await service.listManagerBillDeposits("landlord-demo");
+    const payout = result.ledgerRows.find(
+      (row) => row.id === "credit-ledger-gara-100000",
+    );
+
+    assert.deepEqual(payout, {
+      id: "credit-ledger-gara-100000",
+      direction: "withdrawal",
+      occurredAt: "2026-07-20T09:30:00.000Z",
+      amount: 100_000,
+      statusLabel: "지급 완료",
+      partyName: "기동하우스 업체",
+      itemLabel: "업체 크레딧 지급",
+      source: "credit_vendor_payout",
+    });
   });
 
   it("backfills manager billing dummy rows when a persisted demo snapshot has empty billing tables", () => {

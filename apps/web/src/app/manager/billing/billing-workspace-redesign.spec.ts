@@ -182,6 +182,13 @@ test("transaction deposit detail uses one plain-language bill summary and a date
   );
 });
 
+test("transaction withdrawal detail labels credit-funded vendor payouts distinctly", () => {
+  assert.match(transactionLedgerSource, /row\.source === "credit_vendor_payout"/);
+  assert.match(transactionLedgerSource, /크레딧 원장 · 업체 지급/);
+  assert.match(transactionLedgerSource, /label="지급 업체"/);
+  assert.match(transactionLedgerSource, /row\.partyName \?\? "업체 정보 없음"/);
+});
+
 test("collection timing chart uses factual months, daily ticks, and a visible section divider", () => {
   assert.match(collectionSource, /billingMonthDayCount\(data\.timing\.currentMonth\)/);
   assert.match(collectionSource, /visibleTimingPoints/);
