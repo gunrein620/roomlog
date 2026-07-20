@@ -11,6 +11,9 @@ struct RoomScanView: View {
     @State private var phase: RoomScanPhase = .scanning
     /// "정밀 스캔"으로 넘어갈 대상(nil이 아니면 ObjectCaptureScanView를 시트로 띄운다).
     @State private var objectCaptureTarget: TenantFurnitureSummary?
+    /// 이번 세션에서 실제로 정밀 스캔(Object Capture 업로드)까지 마친 항목 id.
+    /// 화면을 나갈 때 여기 없는 RoomPlan 감지 항목은 서버에서 지운다(discardUncaptured).
+    @State private var capturedFurnitureIds: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -42,11 +45,14 @@ struct RoomScanView: View {
         .interactiveDismissDisabled(phase.blocksDismissal)
         .onDisappear {
             captureController.cancel()
+            discardUncapturedFurniture()
         }
         .sheet(item: $objectCaptureTarget) { furniture in
             // 프로젝트 deploymentTarget이 이미 iOS 17이라(project.yml) 별도 #available 분기 불필요.
-            ObjectCaptureScanView(furniture: furniture)
-                .environmentObject(account)
+            ObjectCaptureScanView(furniture: furniture, onCaptured: {
+                capturedFurnitureIds.insert(furniture.id)
+            })
+            .environmentObject(account)
         }
     }
 
@@ -293,6 +299,25 @@ struct RoomScanView: View {
             }.resume()
         } catch {
             phase = .failure("요청 본문을 만들지 못했습니다: \(error.localizedDescription)")
+        }
+    }
+
+    /// 화면을 나갈 때(완료 버튼·상단 닫기·스와이프 전부 여기로 모인다 — onDisappear) RoomPlan이
+    /// 감지했지만 정밀 스캔(Object Capture 업로드)까지 이어지지 않은 항목을 서버에서 지운다.
+    /// 안 그러면 스캔 한 번마다 감지된 물체 수만큼 meshUrl 없는 회색 박스가 영구히 쌓인다.
+    /// 응답을 기다리지 않는 fire-and-forget — 실패해도 다음 스캔에서 다시 시도되는 게 아니라
+    /// 그냥 남아 있을 뿐이라 사용자 흐름을 막을 이유가 없다.
+    private func discardUncapturedFurniture() {
+        guard case .success(let items) = phase else { return }
+        let uncaptured = items.filter { !capturedFurnitureIds.contains($0.id) }
+        guard !uncaptured.isEmpty, let token = account.accessToken else { return }
+
+        for item in uncaptured {
+            guard let url = account.endpoint("/api/tenant-furniture/\(item.id)") else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            URLSession.shared.dataTask(with: request).resume()
         }
     }
 
