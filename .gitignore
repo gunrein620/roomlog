@@ -41,3 +41,10 @@ apps/web/public/samples/dryrun.ply
 
 # Codex E2E 검증 스크래치(스크린샷 등)
 artifacts/
+
+# E2E 캡처 산출물 (18MB — 위 dryrun.ply와 같은 이유로 레포에 넣지 않는다)
+apps/web/public/samples/room-e2e.spz
+apps/web/public/samples/room-e2e.tuning.json
+
+# Xcode 개인 IDE 상태 — 창 위치·열린 파일 같은 사람별 상태라 커밋하면 매번 충돌한다
+**/xcuserdata/
