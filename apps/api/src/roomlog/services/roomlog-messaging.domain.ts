@@ -240,10 +240,12 @@ export class RoomlogMessagingDomain {
   }
 
   listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext): MessagingThread[] {
-    return this.store.messagingThreads
+    const accessibleThreads = this.store.messagingThreads
       .filter((thread) => this.canManagerAccessRoom(managerId, thread.roomId))
       .filter((thread) => !context || thread.context === context)
-      .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt))
+      .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt));
+
+    return this.uniqueConversationThreads(accessibleThreads)
       .map((thread) => this.presentManagerThread(managerId, thread));
   }
 
@@ -260,13 +262,7 @@ export class RoomlogMessagingDomain {
           return [];
         }
 
-        const existingGeneralThreadId = this.store.messagingThreads.find(
-          (thread) =>
-            thread.roomId === roomId &&
-            thread.tenantId === tenantId &&
-            thread.context === "general" &&
-            !thread.contextRef
-        )?.id;
+        const existingGeneralThreadId = this.findTenantGeneralThread(tenantId, roomId)?.id;
 
         return [{
           roomId,
@@ -295,13 +291,7 @@ export class RoomlogMessagingDomain {
       throw new ForbiddenException("해당 세대 임차인과만 대화를 시작할 수 있습니다.");
     }
 
-    const existing = this.store.messagingThreads.find(
-      (thread) =>
-        thread.roomId === input.roomId &&
-        thread.tenantId === input.tenantId &&
-        thread.context === "general" &&
-        !thread.contextRef
-    );
+    const existing = this.findTenantGeneralThread(input.tenantId, input.roomId);
     if (existing) {
       return this.presentManagerThread(managerId, existing);
     }
@@ -869,6 +859,34 @@ export class RoomlogMessagingDomain {
           !thread.contextRef
       )
       .sort((left, right) => this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt))[0];
+  }
+
+  private uniqueConversationThreads(threads: MessagingThread[]) {
+    const seenGeneralThreads = new Set<string>();
+
+    return threads.filter((thread) => {
+      const key = this.generalConversationKey(thread);
+      if (!key) {
+        return true;
+      }
+
+      if (seenGeneralThreads.has(key)) {
+        return false;
+      }
+
+      seenGeneralThreads.add(key);
+      return true;
+    });
+  }
+
+  private generalConversationKey(
+    thread: Pick<MessagingThread, "roomId" | "tenantId" | "context" | "contextRef">
+  ) {
+    if (thread.context !== "general" || thread.contextRef?.trim()) {
+      return "";
+    }
+
+    return `${thread.roomId}\u0000${thread.tenantId}`;
   }
 
   private assertNoPaymentDunning(context: MessagingThreadContext, body: string) {

@@ -58,6 +58,9 @@ export function NewConversationForm({
   const buildings = Array.from(new Set(recipients.map((recipient) => recipient.buildingName)));
   const availableRecipients = recipientsForBuilding(recipients, selectedBuilding);
   const selectedRecipient = findConversationRecipient(recipients, selectedKey);
+  const selectedRecipientLabel = selectedRecipient
+    ? `${selectedRecipient.buildingName} · ${selectedRecipient.unitId}호 · ${selectedRecipient.tenantName}`
+    : "대상 없음";
 
   function changeBuilding(buildingName: string) {
     const nextRecipients = recipientsForBuilding(recipients, buildingName);
@@ -68,10 +71,10 @@ export function NewConversationForm({
   if (recipients.length === 0) {
     return (
       <section
+        className="manager-messaging-new-conversation"
         aria-label="새 대화"
         style={{
-          marginBottom: "var(--space-lg)",
-          padding: "var(--space-lg)",
+          padding: "var(--space-md)",
           border: "1px solid var(--border)",
           borderRadius: "var(--radius-card)",
           background: "var(--surface-container-lowest)",
@@ -86,25 +89,32 @@ export function NewConversationForm({
 
   return (
     <section
+      className="manager-messaging-new-conversation"
       aria-label="새 대화"
       style={{
-        marginBottom: "var(--space-lg)",
-        padding: "var(--space-lg)",
+        padding: "var(--space-md)",
         display: "grid",
-        gap: "var(--space-md)",
+        gap: "var(--space-sm)",
         border: "1px solid var(--border)",
         borderRadius: "var(--radius-card)",
         background: "var(--surface-container-lowest)",
       }}
     >
       <div>
-        <h2 style={{ margin: 0, fontSize: "var(--fs-subtitle)" }}>새 대화</h2>
-        <p style={{ margin: "var(--space-xs) 0 0", color: "var(--on-surface-variant)" }}>
-          계약 연결된 세입자를 선택해 일반 대화를 시작합니다.
+        <h2 style={{ margin: 0, fontSize: "var(--fs-body)", fontWeight: 900 }}>새 대화</h2>
+        <p
+          style={{
+            margin: "var(--space-xs) 0 0",
+            color: "var(--on-surface-variant)",
+            fontSize: "var(--fs-caption)",
+            lineHeight: 1.5,
+          }}
+        >
+          계약 연결된 세입자에게 바로 일반 대화를 시작합니다.
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "var(--space-md)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "var(--space-sm)" }}>
         <label style={fieldStyle}>
           계약 건물
           <select
@@ -114,7 +124,9 @@ export function NewConversationForm({
             style={controlStyle}
           >
             {buildings.map((building) => (
-              <option key={building} value={building}>{building}</option>
+              <option key={building} value={building}>
+                {building}
+              </option>
             ))}
           </select>
         </label>
@@ -137,6 +149,16 @@ export function NewConversationForm({
             })}
           </select>
         </label>
+      </div>
+
+      <div className="manager-messaging-compose-summary" aria-live="polite">
+        <span>선택 대상</span>
+        <strong>{selectedRecipientLabel}</strong>
+        <small>
+          {selectedRecipient?.existingGeneralThreadId
+            ? "기존 일반 대화가 있습니다."
+            : "새 일반 대화를 시작합니다."}
+        </small>
       </div>
 
       {selectedRecipient?.existingGeneralThreadId ? (
@@ -167,7 +189,7 @@ export function NewConversationForm({
               aria-label="첫 메시지"
               placeholder="세입자에게 보낼 첫 메시지를 입력해주세요."
               required
-              rows={3}
+              rows={2}
               style={{
                 ...controlStyle,
                 padding: "var(--space-md)",
