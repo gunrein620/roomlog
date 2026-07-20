@@ -6076,6 +6076,85 @@ describe("RoomlogService", () => {
     assert.match(result.summary, /플로우테스트2 102호/);
   });
 
+  it("prefers the only announcement candidate that has an active recipient", async () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+    const occupiedRoom = state.rooms.find((item) => item.id === "room-301");
+    const vacantRoom = state.rooms.find((item) => item.id === "room-601");
+
+    assert.ok(occupiedRoom);
+    assert.ok(vacantRoom);
+    occupiedRoom.buildingName = "관리자-세입자 플로우테스트3";
+    occupiedRoom.roomNo = "103호";
+    vacantRoom.buildingName = "관리자-세입자 플로우테스트";
+    vacantRoom.roomNo = "103호";
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_announcement",
+      target: "103호",
+      title: "에어컨 교체 안내",
+      body: "오늘 에어컨 교체 작업이 진행됩니다."
+    });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.summary, /플로우테스트3 103호/);
+  });
+
+  it("uses a voice follow-up to choose between two reachable announcement rooms", async () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+    const firstRoom = state.rooms.find((item) => item.id === "room-301");
+    const secondRoom = state.rooms.find((item) => item.id === "room-302");
+
+    assert.ok(firstRoom);
+    assert.ok(secondRoom);
+    firstRoom.buildingName = "관리자-세입자 플로우테스트";
+    firstRoom.roomNo = "103호";
+    secondRoom.buildingName = "관리자-세입자 플로우테스트3";
+    secondRoom.roomNo = "103호";
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_announcement",
+      target: "103호",
+      text: "뒤에 거",
+      title: "에어컨 교체 안내",
+      body: "오늘 에어컨 교체 작업이 진행됩니다."
+    });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.summary, /플로우테스트3 103호/);
+  });
+
+  it("prepares and executes every eligible dunning bill with one approval payload", async () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+    const eligibleBills = state.bills
+      .filter((bill) => ["room-411", "room-412"].includes(bill.roomId))
+      .map((bill) => bill.id);
+
+    const prepared = service.resolveManagerAgentPendingCommand(
+      "landlord-demo",
+      "billing.send_dunning",
+      {
+        command: "billing.send_dunning",
+        text: "두 개 전부 다 독촉 문자 보내줘",
+        billIds: eligibleBills
+      }
+    );
+
+    assert.equal(prepared.status, "ready");
+    if (prepared.status !== "ready") return;
+    assert.deepEqual(prepared.commandInput.billIds, eligibleBills);
+
+    const result = await service.runManagerAgentCommand(
+      "landlord-demo",
+      prepared.commandInput
+    );
+
+    assert.equal(result.status, "executed");
+    assert.match(result.summary, /2건.*발송/);
+  });
+
   it("summarizes total ticket counts for the manager agent", async () => {
     const service = new RoomlogService();
 

@@ -246,7 +246,7 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     only(
       args,
       kind === "billing.send_dunning"
-        ? ["billRef", "text", "channel", "body"]
+        ? ["billRef", "billRefs", "text", "channel", "body"]
         : kind === "messaging.send_reply"
           ? ["threadRef", "text", "body"]
           : ["target", "title", "body", "text"],
@@ -259,6 +259,14 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     if (kind === "billing.send_dunning" && args.billRef !== undefined) {
       commandInput.billId = this.refs.read(principal, "bill", args.billRef).resourceId;
     }
+    if (kind === "billing.send_dunning" && args.billRefs !== undefined) {
+      if (!Array.isArray(args.billRefs) || args.billRefs.length === 0) {
+        throw new BadRequestException("독촉 청구 목록이 올바르지 않습니다.");
+      }
+      commandInput.billIds = args.billRefs.map(
+        (billRef) => this.refs.read(principal, "bill", billRef).resourceId
+      );
+    }
     if (kind === "messaging.send_reply" && args.threadRef !== undefined) {
       commandInput.threadId = this.refs.read(principal, "thread", args.threadRef).resourceId;
     }
@@ -269,6 +277,8 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     );
     if (resolved.status !== "ready") throw new BadRequestException(resolved.summary);
     const preview = "dunningPreview" in resolved ? resolved.dunningPreview : undefined;
+    const previews =
+      "dunningPreviews" in resolved ? resolved.dunningPreviews : undefined;
     const thread = kind === "messaging.send_reply" && resolved.commandInput.threadId
       ? this.roomlog.getManagerMessagingThread(principal.userId, resolved.commandInput.threadId)
       : undefined;
@@ -284,6 +294,8 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
               : "임차인 답장 발송 확인",
         target: preview
           ? `${preview.billingMonth} ${preview.tenantName}`
+          : previews?.length
+            ? `${previews.map((item) => `${item.unitId}호`).join(", ")} 총 ${previews.length}건`
           : kind === "messaging.send_announcement"
             ? String(resolved.commandInput.target ?? resolved.summary)
             : resolved.summary,

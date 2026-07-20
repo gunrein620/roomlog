@@ -16,6 +16,7 @@ export interface ManagerAgentCommandInput {
   command: string;
   text?: string;
   billId?: string;
+  billIds?: string[];
   channel?: string;
   threadId?: string;
   body?: string;
@@ -74,6 +75,7 @@ export interface ManagerCopilotPendingAction {
     | "messaging.send_announcement";
   summary: string;
   dunningPreview?: ManagerDunningActionPreview;
+  dunningPreviews?: ManagerDunningActionPreview[];
 }
 
 export interface ManagerCopilotChatMessage {

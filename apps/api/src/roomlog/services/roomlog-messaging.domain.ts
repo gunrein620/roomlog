@@ -452,7 +452,8 @@ export class RoomlogMessagingDomain {
   // 애매하거나 못 찾으면 BadRequest로 이유를 돌려줘, 에이전트가 사용자에게 되묻게 한다.
   resolveManagerAnnouncementAudience(
     managerId: string,
-    target?: string
+    target?: string,
+    followupText?: string
   ): {
     scope: MessagingAnnouncementScope;
     targetLabel: string;
@@ -467,6 +468,13 @@ export class RoomlogMessagingDomain {
 
     const normalized = (target ?? "").trim();
     const wantsAll = !normalized || /^(전체|전부|모두|모든\s*세대|전\s*세대|all)$/i.test(normalized);
+    const recipientRoomIds = new Set(
+      this.recipientsForDraft({
+        targetRoomIds: managedRooms.map((room) => room.id)
+      } as MessagingAnnouncementDraft).map(({ room }) => room.id)
+    );
+    const recipientRooms = managedRooms.filter((room) => recipientRoomIds.has(room.id));
+    const resolvableRooms = recipientRooms.length > 0 ? recipientRooms : managedRooms;
 
     let scope: MessagingAnnouncementScope;
     let targetLabel: string;
@@ -482,11 +490,12 @@ export class RoomlogMessagingDomain {
       if (roomNoMatch) {
         const resolution = resolveManagerTarget(
           normalized,
-          managedRooms.map((room) => ({
+          resolvableRooms.map((room) => ({
             id: room.id,
             buildingName: room.buildingName,
             unitId: this.displayUnitId(room)
-          }))
+          })),
+          followupText
         );
 
         if (resolution.status === "not_found") {
@@ -503,18 +512,19 @@ export class RoomlogMessagingDomain {
           );
         }
 
-        rooms = managedRooms.filter((room) => room.id === resolution.candidate.id);
+        rooms = resolvableRooms.filter((room) => room.id === resolution.candidate.id);
         scope = "unit";
         targetLabel = `${rooms[0].buildingName} ${this.displayUnitId(rooms[0])}호`;
       } else {
-        const buildingNames = [...new Set(managedRooms.map((room) => room.buildingName))];
+        const buildingNames = [...new Set(resolvableRooms.map((room) => room.buildingName))];
         const resolution = resolveManagerTarget(
           normalized,
           buildingNames.map((buildingName) => ({
             id: buildingName,
             buildingName,
             unitId: ""
-          }))
+          })),
+          followupText
         );
 
         if (resolution.status === "not_found") {
@@ -532,7 +542,7 @@ export class RoomlogMessagingDomain {
 
         scope = "building";
         targetLabel = resolution.candidate.buildingName;
-        rooms = managedRooms.filter((room) => room.buildingName === targetLabel);
+        rooms = resolvableRooms.filter((room) => room.buildingName === targetLabel);
       }
     }
 

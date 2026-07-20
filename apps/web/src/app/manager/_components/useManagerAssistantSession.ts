@@ -29,9 +29,11 @@ type MakeId = () => string;
 export function copilotResponseEvents(
   response: ManagerCopilotChatResponse,
   makeId: MakeId = createEntryId,
+  options: { includeReply?: boolean } = {},
 ): ManagerAssistantSessionEvent[] {
-  const events: ManagerAssistantSessionEvent[] = [
-    {
+  const events: ManagerAssistantSessionEvent[] = [];
+  if (options.includeReply !== false) {
+    events.push({
       type: "append",
       entry: {
         id: makeId(),
@@ -39,12 +41,12 @@ export function copilotResponseEvents(
         role: "assistant",
         content: response.reply,
       },
-    },
-    {
-      type: "set_pending_action",
-      pendingAction: response.pendingAction ?? null,
-    },
-  ];
+    });
+  }
+  events.push({
+    type: "set_pending_action",
+    pendingAction: response.pendingAction ?? null,
+  });
 
   for (const receipt of response.receipts ?? []) {
     events.push({
@@ -88,7 +90,10 @@ function appendSystemError(error: unknown, fallback: string) {
   });
 }
 
-function applyCopilotResponse(response: ManagerCopilotChatResponse) {
+function applyCopilotResponse(
+  response: ManagerCopilotChatResponse,
+  options: { includeReply?: boolean } = {},
+) {
   const status = copilotResponseStatus(response);
   setManagerAssistantNotice(status.notice);
 
@@ -97,7 +102,7 @@ function applyCopilotResponse(response: ManagerCopilotChatResponse) {
     return;
   }
 
-  for (const event of copilotResponseEvents(response)) {
+  for (const event of copilotResponseEvents(response, createEntryId, options)) {
     dispatchManagerAssistantEvent(event);
   }
 }

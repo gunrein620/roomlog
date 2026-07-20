@@ -28,7 +28,10 @@ type ManagerRealtimeClientSecretResult = {
 
 export interface ManagerRealtimeSessionOptions {
   appendEntry(entry: ManagerAssistantTranscriptEntry): void;
-  applyCopilotResponse(response: ManagerCopilotChatResponse): void;
+  applyCopilotResponse(
+    response: ManagerCopilotChatResponse,
+    options?: { includeReply?: boolean },
+  ): void;
   initialBillId?: string;
 }
 
@@ -190,12 +193,13 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
 
   async function executeCommand(input: ManagerAgentCommandInput): Promise<ManagerAgentCommandResult> {
     try {
+      const commandInput = managerRealtimeInputWithTranscript(
+        input,
+        lastUserTranscriptRef.current,
+      );
       const disposition = managerRealtimeCommandDisposition(
         getManagerAssistantState().pendingAction,
-        {
-          ...input,
-          text: lastUserTranscriptRef.current || input.text,
-        },
+        commandInput,
       );
 
       if (disposition.kind === "confirm_pending") {
@@ -203,7 +207,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
           messages: [],
           confirmActionId: disposition.actionId,
         });
-        options.applyCopilotResponse(response);
+        options.applyCopilotResponse(response, { includeReply: false });
         return {
           status: response.receipts?.length ? "executed" : "blocked",
           domain: "billing",
@@ -218,13 +222,13 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
           intent: {
             type: "billing.send_dunning",
             source: "assistant",
-            billId: input.billId || options.initialBillId,
-            prompt: input.text,
-            channel: input.channel,
-            messageText: input.body,
+            billId: commandInput.billId || options.initialBillId,
+            prompt: commandInput.text,
+            channel: commandInput.channel,
+            messageText: commandInput.body,
           },
         });
-        options.applyCopilotResponse(response);
+        options.applyCopilotResponse(response, { includeReply: false });
         return {
           status: response.pendingAction ? "draft_only" : "blocked",
           domain: "billing",
@@ -236,9 +240,9 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       if (disposition.kind === "prepare_announcement") {
         const response = await requestManagerCopilotChat({
           messages: [],
-          command: input,
+          command: commandInput,
         });
-        options.applyCopilotResponse(response);
+        options.applyCopilotResponse(response, { includeReply: false });
         return {
           status: response.pendingAction ? "draft_only" : "blocked",
           domain: "messaging",
@@ -250,12 +254,11 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       const response = await fetch("/api/manager/agent/realtime/command", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify(commandInput),
       });
       const body = await response.json().catch(() => undefined);
       if (!response.ok) throw new Error(responseMessage(body) || "명령을 실행하지 못했습니다.");
       const result = body as ManagerAgentCommandResult;
-      appendMessage("assistant", result.summary);
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : "명령 실행 중 오류가 발생했습니다.";
@@ -288,6 +291,16 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
     disconnect,
     startTalking,
     stopTalking,
+  };
+}
+
+export function managerRealtimeInputWithTranscript(
+  input: ManagerAgentCommandInput,
+  latestTranscript: string,
+): ManagerAgentCommandInput {
+  return {
+    ...input,
+    text: latestTranscript.trim() || input.text,
   };
 }
 

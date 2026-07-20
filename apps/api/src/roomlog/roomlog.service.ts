@@ -90,6 +90,7 @@ import {
   RoomlogCopilotDomain,
   type ManagerCopilotActionGateway
 } from "./services/roomlog-copilot.domain";
+import { resolveManagerDunningTargets } from "./services/manager-dunning-target-resolver";
 import { resolveManagerTarget } from "./services/manager-target-resolver";
 import {
   buildManagerRealtimeInstructions,
@@ -290,6 +291,22 @@ import {
   UserAccount,
   UserRole
 } from "./roomlog.types";
+
+export function managerBillingCollectionState(daysOverdue: number) {
+  return daysOverdue > 0 ? "overdue" : "unpaid";
+}
+
+export function cleanManagerAgentReplyText(text: string) {
+  return text
+    .replace(/```(?:json|text)?/gi, "")
+    .replace(/```/g, "")
+    .replace(/\/manager\/billing(?:[/?#][^\s]*)?/giu, "청구 관리 화면")
+    .replace(/\/manager\/[^\s)]+/giu, "관리 화면")
+    .replace(/(청구 관리 화면|관리 화면)\s+에서/gu, "$1에서")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 1200);
+}
 
 export type SignupInput = {
   email: string;
@@ -5391,23 +5408,14 @@ export class RoomlogService implements OnModuleDestroy {
   ) {
     if (kind === "billing.send_dunning") {
       try {
-        const bill = this.findManagerAgentDunningBill(managerId, input);
-        this.assertManagerDunningAllowed(bill);
-        const draft = this.presentDunningDraft(bill);
-        const channel = draft.channel;
-        const messageText = input.body?.trim() || draft.draftText;
+        const bills = this.findManagerAgentDunningBills(managerId, input);
+        const previews = bills.map((bill) => {
+          this.assertManagerDunningAllowed(bill);
+          const draft = this.presentDunningDraft(bill);
+          const channel = draft.channel;
+          const messageText = input.body?.trim() || draft.draftText;
 
-        return {
-          status: "ready" as const,
-          commandInput: {
-            ...input,
-            command: "billing.send_dunning",
-            billId: bill.id,
-            channel,
-            body: messageText
-          },
-          summary: this.managerAgentDunningPendingSummary(managerId, bill, draft),
-          dunningPreview: {
+          return {
             billId: draft.billId,
             buildingName: draft.buildingName,
             unitId: draft.unitId,
@@ -5419,7 +5427,32 @@ export class RoomlogService implements OnModuleDestroy {
             channel,
             messageText,
             guard: draft.guard
-          } satisfies ManagerDunningActionPreview
+          } satisfies ManagerDunningActionPreview;
+        });
+        const firstPreview = previews[0];
+
+        return {
+          status: "ready" as const,
+          commandInput: {
+            ...input,
+            command: "billing.send_dunning",
+            billId: bills.length === 1 ? bills[0].id : undefined,
+            billIds: bills.map((bill) => bill.id),
+            channel: firstPreview.channel,
+            body: bills.length === 1 ? firstPreview.messageText : input.body?.trim()
+          },
+          summary:
+            previews.length === 1
+              ? this.managerAgentDunningPendingSummary(
+                  managerId,
+                  bills[0],
+                  this.presentDunningDraft(bills[0])
+                )
+              : `${previews
+                  .map((preview) => `${preview.unitId}호 ${preview.tenantName}`)
+                  .join(", ")} 총 ${previews.length}건에 독촉 발송`,
+          dunningPreview: previews.length === 1 ? firstPreview : undefined,
+          dunningPreviews: previews
         };
       } catch (error) {
         return {
@@ -5443,7 +5476,8 @@ export class RoomlogService implements OnModuleDestroy {
         }
         const audience = this.messaging.resolveManagerAnnouncementAudience(
           managerId,
-          input.target
+          input.target,
+          input.text
         );
         if (audience.recipientCount === 0) {
           throw new BadRequestException("공지 수신 세대가 없습니다.");
@@ -5672,32 +5706,69 @@ export class RoomlogService implements OnModuleDestroy {
 
     if (command === "billing.send_dunning") {
       try {
-        const bill = this.findManagerAgentDunningBill(managerId, input);
-        const draft = this.presentDunningDraft(bill);
-        const channel = draft.channel;
-        const messageText = body || draft.draftText;
+        const bills = this.findManagerAgentDunningBills(managerId, input);
+        const sent: Array<Record<string, unknown>> = [];
+        const failed: Array<{ billId: string; reason: string }> = [];
 
-        const delivery = this.sendManagerDunning(managerId, bill.id, {
-          text: messageText,
-          channel
-        });
+        for (const bill of bills) {
+          try {
+            const draft = this.presentDunningDraft(bill);
+            const channel = draft.channel;
+            const messageText = body || draft.draftText;
+            const delivery = this.sendManagerDunning(managerId, bill.id, {
+              text: messageText,
+              channel
+            });
+            sent.push({
+              billId: draft.billId,
+              threadId: delivery.threadId,
+              unitId: draft.unitId,
+              tenantName: draft.tenantName,
+              channel,
+              text: messageText,
+              guard: draft.guard
+            });
+          } catch (error) {
+            failed.push({
+              billId: bill.id,
+              reason:
+                error instanceof Error
+                  ? error.message
+                  : "청구 상태를 다시 확인하지 못했습니다."
+            });
+          }
+        }
+
+        if (sent.length === 0) {
+          throw new BadRequestException(
+            failed.map((item) => item.reason).join(" ") ||
+              "독촉을 발송할 수 있는 청구가 없습니다."
+          );
+        }
+
+        const first = sent[0] as {
+          threadId: string;
+          unitId: string;
+          tenantName: string;
+        };
+        const summary =
+          bills.length === 1 && failed.length === 0
+            ? `${first.unitId}호 ${first.tenantName}님의 소통 채팅으로 연체 독촉 메시지를 발송했습니다.`
+            : `독촉 ${sent.length}건을 소통 채팅으로 발송했습니다.${
+                failed.length ? ` ${failed.length}건은 상태 확인으로 제외했습니다.` : ""
+              }`;
 
         return {
           status: "executed",
           domain: "billing",
-          summary: `${draft.unitId}호 ${draft.tenantName}님의 소통 채팅으로 연체 독촉 메시지를 발송했습니다.`,
-          data: {
-            billId: draft.billId,
-            threadId: delivery.threadId,
-            unitId: draft.unitId,
-            tenantName: draft.tenantName,
-            channel,
-            text: messageText,
-            guard: draft.guard
-          },
+          summary,
+          data:
+            bills.length === 1 && failed.length === 0
+              ? first
+              : { sent, failed },
           navigation: {
             label: "소통 채팅에서 확인",
-            href: `/manager/messaging/04?id=${encodeURIComponent(delivery.threadId)}`
+            href: `/manager/messaging/04?id=${encodeURIComponent(first.threadId)}`
           }
         };
       } catch (error) {
@@ -5720,7 +5791,8 @@ export class RoomlogService implements OnModuleDestroy {
       try {
         const audience = this.messaging.resolveManagerAnnouncementAudience(
           managerId,
-          input.target
+          input.target,
+          input.text
         );
         const result = this.messaging.sendManagerAgentAnnouncement(managerId, {
           scope: audience.scope,
@@ -5935,7 +6007,9 @@ export class RoomlogService implements OnModuleDestroy {
       "제공되지 않은 호수, 금액, 상태, 메시지 대상, 발송 결과를 추측하지 마세요.",
       "질문이 특정 항목을 묻는다면 전체 요약 대신 해당 항목을 우선 답하세요. 예: 미납 호수와 금액을 물으면 unitId와 unpaidAmount를 열거합니다.",
       "청구 요약에서 현재월 미납을 묻는 경우 currentMonthUnpaidBills만 열거하고 collection.unpaidAmount와 합계가 맞는지 확인하세요.",
+      "daysOverdue가 0이면 '미납'이라고만 표현하고 절대로 '연체'라고 부르지 마세요. daysOverdue가 1 이상인 청구만 연체입니다.",
       "실행 결과가 발송 또는 mutation이면 실행 여부와 대상만 간결히 말하고, 필요한 확인 화면은 navigation.label로 안내합니다.",
+      "내부 URL이나 /manager/... 경로를 답변에 쓰지 말고 navigation.label 같은 화면 이름만 말하세요.",
       "blocked 또는 requiresConfirmation이면 자동 처리하지 말고 확인이 필요한 이유를 말하세요.",
       "한국어로 1~3문장, 필요하면 '- '로 시작하는 짧은 줄바꿈 목록으로 답하세요. 마크다운 문법(#, **)은 렌더링되지 않으니 쓰지 마세요."
     ].join("\n");
@@ -5951,17 +6025,30 @@ export class RoomlogService implements OnModuleDestroy {
     if (result.domain === "billing") {
       const dashboard = data.dashboard as { summary?: unknown; bills?: TeamBillRow[] } | undefined;
       const collection = data.collection as TeamCollection | undefined;
-      const bills = (Array.isArray(dashboard?.bills) ? dashboard.bills : []).map((bill) => ({
-        billId: bill.billId,
-        unitId: bill.unitId,
-        tenantName: bill.tenantName,
-        billingMonth: bill.billingMonth,
-        status: bill.status,
-        totalAmount: bill.totalAmount,
-        paidAmount: bill.paidAmount,
-        unpaidAmount: Math.max(0, bill.totalAmount - bill.paidAmount),
-        dueDate: bill.dueDate
-      }));
+      const bills = (Array.isArray(dashboard?.bills) ? dashboard.bills : []).map(
+        (bill) => {
+          const storedBill = this.store.bills.find(
+            (item) => item.id === bill.billId
+          );
+          const daysOverdue = storedBill
+            ? this.daysOverdueForBill(storedBill)
+            : 0;
+
+          return {
+            billId: bill.billId,
+            unitId: bill.unitId,
+            tenantName: bill.tenantName,
+            billingMonth: bill.billingMonth,
+            status: bill.status,
+            totalAmount: bill.totalAmount,
+            paidAmount: bill.paidAmount,
+            unpaidAmount: Math.max(0, bill.totalAmount - bill.paidAmount),
+            dueDate: bill.dueDate,
+            daysOverdue,
+            collectionState: managerBillingCollectionState(daysOverdue)
+          };
+        }
+      );
       const currentMonthBills = collection?.billingMonth
         ? bills.filter((bill) => bill.billingMonth === collection.billingMonth)
         : bills;
@@ -6010,13 +6097,7 @@ export class RoomlogService implements OnModuleDestroy {
   }
 
   private cleanManagerAgentReplyText(text: string) {
-    const cleaned = text
-      .replace(/```(?:json|text)?/gi, "")
-      .replace(/```/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-
-    return cleaned.slice(0, 1200);
+    return cleanManagerAgentReplyText(text);
   }
 
   private managerAgentDunningPendingSummary(
@@ -6075,33 +6156,52 @@ export class RoomlogService implements OnModuleDestroy {
     return this.listManagerMessagingThreads(managerId)[0]?.id;
   }
 
-  private findManagerAgentDunningBill(managerId: string, input: ManagerAgentCommandInput) {
-    const explicitBillId = input.billId?.trim();
+  private findManagerAgentDunningBills(
+    managerId: string,
+    input: ManagerAgentCommandInput
+  ) {
+    const explicitBillIds = [
+      ...(input.billIds ?? []),
+      ...(input.billId ? [input.billId] : [])
+    ]
+      .map((billId) => billId.trim())
+      .filter((billId, index, billIds) => billId && billIds.indexOf(billId) === index);
 
-    if (explicitBillId) {
-      return this.findManagerBill(managerId, explicitBillId);
+    if (explicitBillIds.length > 0) {
+      return explicitBillIds.map((billId) =>
+        this.findManagerBill(managerId, billId)
+      );
     }
 
     const requestText = `${input.text ?? ""} ${input.body ?? ""}`.trim();
     const unitId = this.extractUnitIdFromAgentText(requestText);
     const billingMonth = this.extractBillingMonthFromAgentText(requestText);
     const candidates = this.managerBills(managerId)
-      .filter((bill) => this.canSendManagerDunning(bill))
+      .filter(
+        (bill) =>
+          this.canSendManagerDunning(bill) &&
+          this.managerDunningIsCurrentlyAllowed(bill)
+      )
       .sort((left, right) => this.daysOverdueForBill(right) - this.daysOverdueForBill(left));
-    let matched = candidates;
+    const resolution = resolveManagerDunningTargets(
+      requestText,
+      candidates.map((bill) => {
+        const room = this.roomForBill(bill);
+        return {
+          id: bill.id,
+          buildingName: room?.buildingName ?? "",
+          unitId: room ? this.displayUnitId(room) : bill.unitId,
+          tenantName: this.tenantNameForBill(bill),
+          billingMonth: bill.billingMonth,
+          daysOverdue: this.daysOverdueForBill(bill)
+        };
+      })
+    );
+    let matched = candidates.filter((bill) =>
+      resolution.candidates.some((candidate) => candidate.id === bill.id)
+    );
 
-    if (unitId) {
-      matched = matched.filter((bill) => this.unitsEqual(bill.unitId, unitId));
-    } else {
-      const tenantMatches = matched.filter((bill) => requestText.includes(this.tenantNameForBill(bill)));
-      if (tenantMatches.length) matched = tenantMatches;
-    }
-
-    if (billingMonth) {
-      matched = matched.filter((bill) => bill.billingMonth === billingMonth);
-    }
-
-    if (matched.length > 1 && requestText) {
+    if (resolution.status === "ambiguous" && matched.length > 1 && requestText) {
       const resolution = resolveManagerTarget(
         requestText,
         matched.flatMap((bill) => {
@@ -6121,8 +6221,11 @@ export class RoomlogService implements OnModuleDestroy {
       }
     }
 
-    if (matched.length === 1) {
-      return matched[0];
+    if (
+      matched.length > 0 &&
+      (resolution.status === "resolved" || matched.length === 1)
+    ) {
+      return matched;
     }
 
     if (matched.length > 1) {
@@ -6138,11 +6241,20 @@ export class RoomlogService implements OnModuleDestroy {
       );
     }
 
-    if (unitId || billingMonth) {
+    if (unitId || billingMonth || resolution.status === "not_found") {
       throw new BadRequestException("지정한 호실과 청구월에 맞는 연체 청구서를 찾을 수 없습니다.");
     }
 
     throw new BadRequestException("독촉 대상 연체 청구서를 찾을 수 없습니다.");
+  }
+
+  private managerDunningIsCurrentlyAllowed(bill: Bill) {
+    try {
+      this.assertManagerDunningAllowed(bill);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private extractUnitIdFromAgentText(text: string) {
