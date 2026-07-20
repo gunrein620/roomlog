@@ -5,6 +5,7 @@ import { test } from "node:test";
 // 라우트 분리 1·2단계 — 상세는 /listing/[id], 탭은 /map /saved /inquiry /my 라우트가 됐고
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
 const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
+const homeRouteSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
 const tenantMyPageSource = readFileSync(new URL("./src/app/my/flows/TenantMyPage.tsx", import.meta.url), "utf8");
 const landlordMyPageSource = readFileSync(new URL("./src/app/my/flows/LandlordMyPage.tsx", import.meta.url), "utf8");
 const roomRendererSource = readFileSync(
@@ -1486,6 +1487,22 @@ test("re-centers the map when the same current location is requested again", () 
 test("shows the current-location marker label only once", () => {
   assert.match(naverMapPreviewSource, /if \(detail\) content\.append\(detailElement\);/);
   assert.match(naverMapPreviewSource, /title === "현재 위치" \? "" : "현재 위치"/);
+});
+
+test("hydrates home recommendations from the server-fetched public listing feed", () => {
+  assert.match(homeRouteSource, /export const dynamic = "force-dynamic"/);
+  assert.match(homeRouteSource, /serverFetch<TradeListing\[\]>\("\/trade\/listings\/public"\)/);
+  assert.match(homeRouteSource, /initialTradeListings=\{initialTradeListings\}/);
+  assert.match(
+    homeAppSource,
+    /initialTradeListings = null[\s\S]*useState<TradeListing\[\]>\(initialTradeListings \?\? \[\]\)/,
+  );
+  assert.match(
+    homeAppSource,
+    /initialTradeListings === null \? "loading" : "ready"/,
+  );
+  assert.match(homeAppSource, /if \(initialTradeListings === null\) load\(\);/);
+  assert.match(homeAppSource, /tradeListingsStatus === "loading"/);
 });
 
 test("home recommendations use only the public trade listing feed", () => {
