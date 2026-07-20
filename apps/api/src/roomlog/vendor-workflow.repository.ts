@@ -122,7 +122,30 @@ export interface VendorAssignmentNoticeRecord {
 
 export type VendorAssignmentResult = VendorJobDetail & {
   assignmentNotice?: VendorAssignmentNoticeRecord;
+  assignmentSync?: VendorAssignmentSyncRecord;
 };
+
+/**
+ * 업체 배정 결과의 인메모리 스토어 동기화 레코드 — 배정도 Prisma 직행 쓰기라서
+ * 티켓 상태·배정 업체·수리 요청을 같은 id로 스토어에 되돌려 관리자 대시보드
+ * (스토어 읽기)가 재하이드레이션 없이 즉시 보게 한다.
+ */
+export interface VendorAssignmentSyncRecord {
+  ticketId: string;
+  repairId: string;
+  vendorId: string;
+  managerId: string;
+  requestNote: string;
+  updatedAt: string;
+  /** 스토어 vendors에 없는 업체(수동 등록 등)를 이름 해석 가능하게 upsert하기 위한 식별 정보. */
+  vendor: {
+    businessName: string;
+    contactPerson: string;
+    phone: string;
+    serviceArea: string;
+    createdByManagerId?: string;
+  };
+}
 
 export interface VendorRepairMessageResult {
   view: VendorJobMessageView;

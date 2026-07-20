@@ -2381,7 +2381,7 @@ export class RoomlogController {
     rejectCallerIdentity(body, ["managerId", "actorUserId"]);
     const user = this.requireRole(authorization, ["LANDLORD"]);
     const result = await this.requireVendorWorkflowDomain().assignVendor(user.id, ticketId, body);
-    const { assignmentNotice, ...job } = result;
+    const { assignmentNotice, assignmentSync: _assignmentSync, ...job } = result;
     if (assignmentNotice) {
       this.realtime.broadcast("roomlog:ticket-message", {
         ticketId,

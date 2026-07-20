@@ -33,6 +33,7 @@ import {
   type DecisionCommit,
   type VendorAssignmentNoticeRecord,
   type VendorAssignmentResult,
+  type VendorAssignmentSyncRecord,
   type VendorRepairMessageRecord,
   type VendorWorkflowRepository
 } from "../vendor-workflow.repository";
@@ -41,6 +42,7 @@ import {
 export interface VendorRepairMessageStoreSync {
   ingestVendorRepairMessage?(record: VendorRepairMessageRecord): void;
   ingestVendorAssignmentNotice?(record: VendorAssignmentNoticeRecord): void;
+  ingestVendorAssignment?(record: VendorAssignmentSyncRecord): void;
 }
 
 export interface AssignVendorInput {
@@ -196,6 +198,9 @@ export class RoomlogVendorWorkflowDomain {
         vendorId,
         requestNote
       });
+      if (result.assignmentSync) {
+        this.vendorAccounts.ingestVendorAssignment?.(result.assignmentSync);
+      }
       if (result.assignmentNotice) {
         this.vendorAccounts.ingestVendorAssignmentNotice?.(result.assignmentNotice);
       }

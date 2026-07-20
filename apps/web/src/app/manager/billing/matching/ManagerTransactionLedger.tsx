@@ -504,6 +504,19 @@ function DetailField({ label, children }: { label: string; children: ReactNode }
 }
 
 function WithdrawalDetail({ row }: { row: ManagerTransactionLedgerRow }) {
+  if (row.source === "credit_vendor_payout") {
+    return (
+      <section className={styles.detailGroup}>
+        <h3 className={styles.detailGroupTitle}>출금 정보</h3>
+        <dl className={styles.detailFields} data-columns="4">
+          <DetailField label="원장 구분">크레딧 원장 · 업체 지급</DetailField>
+          <DetailField label="지급 업체">{row.partyName ?? "업체 정보 없음"}</DetailField>
+          <DetailField label="처리 상태">{row.statusLabel}</DetailField>
+        </dl>
+      </section>
+    );
+  }
+
   const cost = row.cost;
   if (!cost) {
     return (

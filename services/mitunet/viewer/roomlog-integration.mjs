@@ -178,12 +178,24 @@ export function buildRoomLogCompletion(context, plan, sourceName = "", furniture
   };
 }
 
-export function sendRoomLogCompletion(context, plan, sourceName, opener, furnitures = []) {
-  if (!opener || opener.closed || typeof opener.postMessage !== "function") {
-    throw new Error("The RoomLog window is no longer available");
+export function sendRoomLogCompletion(context, plan, sourceName, furnitures = []) {
+  const message = buildRoomLogCompletion(context, plan, sourceName, furnitures);
+  if (!globalThis.window?.localStorage) {
+    throw new Error("RoomLog storage is not available in this browser");
   }
 
-  const message = buildRoomLogCompletion(context, plan, sourceName, furnitures);
-  opener.postMessage(message, context.returnOrigin);
+  const storageValue = {
+    name: message.payload.name,
+    savedAt: Date.now(),
+    walls3D: [],
+    furnitures: message.payload.furnitures,
+    mitunet: message.payload,
+  };
+  const storageKey = `roomlogListingFloorPlan3D:${context.requestId}`;
+  window.localStorage.setItem(storageKey, JSON.stringify(storageValue));
+
+  const returnUrl = new URL("/?flow=listing#my-page", context.returnOrigin);
+  returnUrl.searchParams.set("floorPlanRequestId", context.requestId);
+  window.location.href = returnUrl.toString();
   return message;
 }

@@ -271,6 +271,7 @@ export interface TeamDepositsResponse {
 
 export interface TeamTransactionLedgerRow {
   id?: string;
+  source?: string;
   direction?: string;
   occurredAt?: string;
   amount?: number;
@@ -589,12 +590,17 @@ function toManagerTransactionLedgerRow(
   row: TeamTransactionLedgerRow,
 ): ManagerTransactionLedgerRow {
   const direction = enumKey(row.direction) === "WITHDRAWAL" ? "withdrawal" : "deposit";
+  const source = enumKey(row.source);
   const relation = enumKey(row.linkedBillRelation);
   const costStatus = enumKey(row.cost?.status);
   const costType = enumKey(row.cost?.type).toLocaleLowerCase("en-US");
   const costScope = enumKey(row.cost?.scope).toLocaleLowerCase("en-US");
   return {
     id: stringOr(row.id),
+    source:
+      source === "COST" || source === "CREDIT_VENDOR_PAYOUT"
+        ? source.toLocaleLowerCase("en-US") as "cost" | "credit_vendor_payout"
+        : undefined,
     direction,
     occurredAt: stringOr(row.occurredAt),
     amount: numberOr(row.amount),

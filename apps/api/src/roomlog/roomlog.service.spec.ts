@@ -677,7 +677,7 @@ describe("RoomlogService", () => {
     assert.equal((service as any).stageForDaysOverdue(31), "SEVERE");
   });
 
-  it("builds ledger rows from stored deposits, linked bills, and confirmed costs", () => {
+  it("builds ledger rows from stored deposits, linked bills, and confirmed costs", async () => {
     const service = new RoomlogService();
     const store = (service as any).store;
     const timestamp = "2026-07-14T09:00:00.000Z";
@@ -718,7 +718,7 @@ describe("RoomlogService", () => {
       },
     );
 
-    const result = service.listManagerBillDeposits("landlord-demo");
+    const result = await service.listManagerBillDeposits("landlord-demo");
     const linkedDeposit = result.ledgerRows.find(
       (row) => row.direction === "deposit" && row.linkedBill,
     );
@@ -737,6 +737,43 @@ describe("RoomlogService", () => {
       result.ledgerRows.some((row) => row.id === "cost-ledger-draft"),
       false,
     );
+  });
+
+  it("merges completed Gara credit payouts into the manager transaction ledger", async () => {
+    const service = new RoomlogService({
+      financialCostReader: {
+        listManagerCosts: async () => [],
+        isFinanceOwnedCost: async () => false,
+        listManagerTransactionRows: async () => [
+          {
+            id: "credit-ledger-gara-100000",
+            direction: "withdrawal",
+            occurredAt: "2026-07-20T09:30:00.000Z",
+            amount: 100_000,
+            statusLabel: "지급 완료",
+            partyName: "기동하우스 업체",
+            itemLabel: "업체 크레딧 지급",
+            source: "credit_vendor_payout",
+          },
+        ],
+      } as any,
+    });
+
+    const result = await service.listManagerBillDeposits("landlord-demo");
+    const payout = result.ledgerRows.find(
+      (row) => row.id === "credit-ledger-gara-100000",
+    );
+
+    assert.deepEqual(payout, {
+      id: "credit-ledger-gara-100000",
+      direction: "withdrawal",
+      occurredAt: "2026-07-20T09:30:00.000Z",
+      amount: 100_000,
+      statusLabel: "지급 완료",
+      partyName: "기동하우스 업체",
+      itemLabel: "업체 크레딧 지급",
+      source: "credit_vendor_payout",
+    });
   });
 
   it("backfills manager billing dummy rows when a persisted demo snapshot has empty billing tables", () => {
@@ -2648,7 +2685,7 @@ describe("RoomlogService", () => {
     }
   });
 
-  it("upgrades OpenAI replies that miss Roomlog thread and handoff context", async () => {
+  it("keeps concise OpenAI replies without swapping in the local template", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalFetch = globalThis.fetch;
     const service = new RoomlogService();
@@ -2711,14 +2748,12 @@ describe("RoomlogService", () => {
         inputMode: "CHAT"
       });
 
-      assert.match(result.assistantMessage.messageText, /상담 스레드/);
-      assert.match(result.assistantMessage.messageText, /접수 상태|접수 초안/);
-      assert.match(result.assistantMessage.messageText, /관리자/);
-      assert.match(result.assistantMessage.messageText, /사진|방문 가능 시간/);
-      assert.notEqual(
+      // 간결성 우선: 안전 안내를 갖춘 모델 답변은 로컬 템플릿으로 갈아치우지 않고 그대로 채택한다.
+      assert.equal(
         result.assistantMessage.messageText,
         "물이 계속 떨어진다면 전기 스위치나 콘센트 주변은 만지지 마세요. 문제 부위 근접 사진과 공간 전체 사진을 올려주시고 방문 가능한 시간도 알려주세요. 물이 지금도 떨어지는지 확인해 주세요?"
       );
+      assert.doesNotMatch(result.assistantMessage.messageText, /제가 이해한 내용|지금 할 일/);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalApiKey) {
@@ -2746,15 +2781,14 @@ describe("RoomlogService", () => {
       });
       const reply = result.assistantMessage.messageText;
 
-      assert.match(reply, /제가 이해한 내용/);
-      assert.match(reply, /지금 할 일/);
-      assert.match(reply, /필요한 사진|사진/);
-      assert.match(reply, /접수 상태/);
+      // 폴백 템플릿도 간결 형식: 요약 한 줄 + 안전 안내 + 접수 유도 한 줄.
+      assert.match(reply, /접수 준비가 끝났어요|확인했어요/);
       assert.match(reply, /전기|전등|스위치|콘센트/);
       assert.match(reply, /만지지 말/);
       assert.match(reply, /근접 사진|공간 전체|천장 전체/);
       assert.match(reply, /오늘 저녁 8시 이후/);
-      assert.match(reply, /상담 스레드/);
+      assert.match(reply, /접수해줘/);
+      assert.doesNotMatch(reply, /제가 이해한 내용|지금 할 일|접수 상태/);
       assert.equal(result.session.draft.readyToFinalize, true);
     } finally {
       if (originalApiKey) {
@@ -3765,6 +3799,29 @@ describe("RoomlogService", () => {
       service.getIntakeSession("tenant-demo", session.id).ticketId,
       fileReply.autoFinalized.ticket.id
     );
+  });
+
+  it("waits for a shown draft before a short approval can finalize an intake", async () => {
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    const firstReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "301호 화장실 누수 계속 오늘 7시 진행해",
+      attachmentUrls: ["/uploads/leak.jpg"],
+      inputMode: "CHAT"
+    });
+
+    assert.equal(firstReply.autoFinalized, undefined);
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "ACTIVE");
+    assert.equal(firstReply.session.draft.readyToFinalize, true);
+
+    const approvalReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "진행해",
+      inputMode: "CHAT"
+    });
+
+    assert.ok(approvalReply.autoFinalized);
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "FINALIZED");
   });
 
   it("detects duplicate intake candidates and can attach a consultation to an existing ticket", async () => {

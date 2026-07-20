@@ -1,15 +1,20 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import type { Cost } from "../roomlog.types";
+import type { Cost, TeamTransactionLedgerRow } from "../roomlog.types";
 
 export interface FinancialCostReader {
   listManagerCosts(managerId: string): Promise<Cost[]>;
+  listManagerTransactionRows(managerId: string): Promise<TeamTransactionLedgerRow[]>;
   isFinanceOwnedCost(costId: string): Promise<boolean>;
   close?(): Promise<void>;
 }
 
 export class NoopFinancialCostReader implements FinancialCostReader {
   async listManagerCosts(): Promise<Cost[]> {
+    return [];
+  }
+
+  async listManagerTransactionRows(): Promise<TeamTransactionLedgerRow[]> {
     return [];
   }
 
@@ -65,6 +70,46 @@ export class PrismaFinancialCostReader implements FinancialCostReader {
         createdAt: cost.createdAt.toISOString(),
         updatedAt: cost.updatedAt.toISOString()
       }));
+  }
+
+  async listManagerTransactionRows(managerId: string): Promise<TeamTransactionLedgerRow[]> {
+    const payouts = await this.prisma.garaVendorPayoutRequest.findMany({
+      where: {
+        managerId,
+        status: "CREDIT_DEBITED",
+        ledgerEntry: {
+          is: {
+            signedAmount: { lt: 0 },
+            type: { in: ["AUTO_DEBIT", "MANUAL_DEBIT"] }
+          }
+        }
+      },
+      include: {
+        ledgerEntry: true,
+        vendor: { select: { businessName: true } }
+      }
+    });
+
+    return payouts.flatMap((payout) => {
+      const ledger = payout.ledgerEntry;
+      if (!ledger) return [];
+
+      const amount = -ledger.signedAmount;
+      if (amount > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new RangeError("Gara 업체 지급 금액이 안전한 정수 범위를 초과합니다.");
+      }
+
+      return [{
+        id: ledger.id,
+        source: "credit_vendor_payout",
+        direction: "withdrawal",
+        occurredAt: ledger.createdAt.toISOString(),
+        amount: Number(amount),
+        statusLabel: "지급 완료",
+        partyName: payout.vendor.businessName,
+        itemLabel: "업체 크레딧 지급"
+      }];
+    });
   }
 
   async isFinanceOwnedCost(costId: string): Promise<boolean> {

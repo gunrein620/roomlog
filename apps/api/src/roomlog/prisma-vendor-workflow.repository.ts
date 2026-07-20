@@ -704,6 +704,23 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         const job = await this.projectJob(tx, repair.id);
         return {
           ...job,
+          assignmentSync: {
+            ticketId: ticket.id,
+            repairId: repair.id,
+            vendorId: command.vendorId,
+            managerId: command.managerId,
+            requestNote,
+            updatedAt: repair.createdAt.toISOString(),
+            vendor: {
+              businessName: candidate.businessName,
+              contactPerson: candidate.contactPerson,
+              phone: candidate.phone,
+              serviceArea: candidate.serviceArea,
+              ...(candidate.createdByManagerId
+                ? { createdByManagerId: candidate.createdByManagerId }
+                : {})
+            }
+          },
           assignmentNotice: {
             id: assignmentNotice.id,
             ticketId: assignmentNotice.ticketId,

@@ -5,8 +5,7 @@ const cleanPath = value => String(value ?? "").replace(/^\/+/, "");
 
 export function normalizeFurnitureCatalog(manifest) {
   return (Array.isArray(manifest?.items) ? manifest.items : [])
-    .filter(item => item?.relativePath && item?.fileName && item?.category
-      && typeof item.thumbnailUrl === "string" && item.thumbnailUrl.trim())
+    .filter(item => item?.relativePath && item?.fileName && item?.category)
     .map(item => ({
       category: String(item.catalogCategoryLabel || item.catalogCategory || item.category),
       displayName: typeof item.displayNameKo === "string" && item.displayNameKo.trim()

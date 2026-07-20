@@ -53,6 +53,15 @@ describe("owner listing draft persistence", () => {
     assert.equal(restored.has3DRoom, true);
   });
 
+  it("keeps the 3D floor-plan request id with its owner draft", () => {
+    const restored = parseOwnerDraft(
+      serializeOwnerDraft({ ...sampleState, floorPlanRequestId: "floor-plan-request-123" }),
+    );
+
+    assert.ok(restored);
+    assert.equal(restored.floorPlanRequestId, "floor-plan-request-123");
+  });
+
   it("fills detailAddress for legacy drafts that do not have it yet", () => {
     const { detailAddress: _detailAddress, ...legacyOwnerForm } = sampleState.ownerForm;
     const raw = JSON.stringify({ version: 1, savedAt: "2026-07-05T12:34:56.000Z", ...sampleState, ownerForm: legacyOwnerForm });
