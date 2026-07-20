@@ -19,6 +19,7 @@ struct ObjectCaptureScanView: View {
     let furniture: TenantFurnitureSummary
 
     @State private var flow: Flow = .checkingSupport
+    @State private var nameDraft = ""
 
     var body: some View {
         NavigationStack {
@@ -79,6 +80,9 @@ struct ObjectCaptureScanView: View {
                 progress: progress
             )
 
+        case .naming(let usdzURL):
+            nameEntryView(usdzURL: usdzURL)
+
         case .uploading(let progress):
             statusView(message: uploadStatusText, detail: nil, progress: progress)
 
@@ -126,7 +130,7 @@ struct ObjectCaptureScanView: View {
                     }
                 }
                 try? FileManager.default.removeItem(at: imagesDirectory)
-                await MainActor.run { upload(usdzURL: usdzURL) }
+                await MainActor.run { beginNaming(usdzURL: usdzURL) }
             } catch {
                 try? FileManager.default.removeItem(at: imagesDirectory)
                 await MainActor.run {
@@ -177,7 +181,25 @@ struct ObjectCaptureScanView: View {
 
     // MARK: 업로드
 
-    private func upload(usdzURL: URL) {
+    private func beginNaming(usdzURL: URL) {
+        if let label = furniture.label,
+           !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            nameDraft = label
+        } else {
+            nameDraft = furniture.category
+        }
+        flow = .naming(usdzURL)
+    }
+
+    private func confirmName(usdzURL: URL) {
+        let trimmedName = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        upload(
+            usdzURL: usdzURL,
+            label: trimmedName.isEmpty ? furniture.label : trimmedName
+        )
+    }
+
+    private func upload(usdzURL: URL, label: String?) {
         guard let token = account.accessToken else {
             flow = .failed("로그인이 만료되었습니다. 설정에서 다시 로그인하세요.")
             return
@@ -187,7 +209,7 @@ struct ObjectCaptureScanView: View {
             usdzURL: usdzURL,
             furnitureId: furniture.id,
             category: furniture.category,
-            label: furniture.label,
+            label: label,
             baseURLString: account.baseURLString,
             token: token
         ))
@@ -218,6 +240,68 @@ struct ObjectCaptureScanView: View {
     }
 
     // MARK: 상태 화면
+
+    private func nameEntryView(usdzURL: URL) -> some View {
+        ZStack {
+            Woozu.night.ignoresSafeArea()
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 20) {
+                        Image(systemName: "tag")
+                            .font(.system(size: 32, weight: .light))
+                            .foregroundStyle(Woozu.secondarySoft)
+
+                        VStack(spacing: 8) {
+                            Text("이름을 정해 주세요")
+                                .font(.system(.title2, design: .serif))
+                                .foregroundStyle(Woozu.surfaceMuted)
+                            Text("방금 촬영한 대상의 이름을 입력해 주세요.")
+                                .font(.subheadline)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(Woozu.secondarySoft)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("이름")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Woozu.secondarySoft)
+                            TextField("예: 거실 소파", text: $nameDraft)
+                                .font(.body)
+                                .foregroundStyle(Woozu.onAccent)
+                                .submitLabel(.done)
+                                .onSubmit { confirmName(usdzURL: usdzURL) }
+                                .padding(12)
+                                .background(
+                                    Woozu.surfaceMuted,
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                )
+                                .accessibilityLabel("촬영한 대상 이름")
+                        }
+
+                        VStack(spacing: 8) {
+                            Button("확인") { confirmName(usdzURL: usdzURL) }
+                                .buttonStyle(WoozuPrimaryButtonStyle())
+                            Button {
+                                upload(usdzURL: usdzURL, label: furniture.label)
+                            } label: {
+                                Text("건너뛰기")
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Woozu.secondarySoft)
+                        }
+                    }
+                    .padding(24)
+                    .frame(maxWidth: 360)
+                    .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                    .padding(.horizontal, 16)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+        }
+    }
 
     private func brandedNotice(icon: String, title: String, message: String) -> some View {
         ZStack {
@@ -311,6 +395,7 @@ private enum Flow: Equatable {
     case loginRequired
     case capturing
     case reconstructing(Double)
+    case naming(URL)
     case uploading(Double)
     case succeeded
     case failed(String)
