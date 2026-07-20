@@ -1,6 +1,7 @@
 import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 import { getUser } from "@/lib/session";
+import { getManagerRentalReport } from "@/lib/rental-report-api";
 import { AlertStatTiles } from "./AlertStatTiles";
 import { HomeCards } from "./HomeCards";
 import { InstrumentPanel } from "./InstrumentPanel";
@@ -11,9 +12,18 @@ import { assembleManagerDashboard } from "./dashboard-data";
 import { BuildingsSection } from "./sections/BuildingsSection";
 import { ReportSection } from "./sections/ReportSection";
 
-export default async function Page() {
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ reportMonths?: string | string[] }>;
+}) {
   const user = await getUser();
-  const dashboard = await assembleManagerDashboard(user);
+  const params = await searchParams;
+  const reportMonths = params.reportMonths === "6" ? 6 : 12;
+  const [dashboard, rentalReport] = await Promise.all([
+    assembleManagerDashboard(user),
+    getManagerRentalReport(reportMonths).catch(() => null)
+  ]);
   const managerName = user?.name ?? "관리인";
 
   const warnings = {
@@ -73,7 +83,7 @@ export default async function Page() {
 
         <AlertStatTiles warnings={warnings} />
 
-        <ReportSection repairExpenses={dashboard.repairExpenses} />
+        <ReportSection report={rentalReport} periodMonths={reportMonths} />
 
         <RepairExpenseSection repairExpenses={dashboard.repairExpenses} />
 

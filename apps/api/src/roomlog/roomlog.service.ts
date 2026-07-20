@@ -26,6 +26,8 @@ import {
 import { dirname, join } from "node:path";
 import type {
   ResceneVendorActivation,
+  RentalReport,
+  RentalReportPeriodMonths,
   TicketType,
   VendorAccountView,
   VendorActivationClaimResult,
@@ -3652,6 +3654,77 @@ export class RoomlogService implements OnModuleDestroy {
       confirmingAmount,
       orphanAmount,
       recentDeposits
+    };
+  }
+
+  async getManagerRentalReport(
+    managerId: string,
+    periodMonths: RentalReportPeriodMonths = 12
+  ): Promise<RentalReport> {
+    if (periodMonths !== 6 && periodMonths !== 12) {
+      throw new BadRequestException("리포트 기간은 6개월 또는 12개월만 조회할 수 있습니다.");
+    }
+
+    const { rooms } = this.resolveManagerBillingScope(managerId);
+    const roomIds = new Set(rooms.map((room) => room.id));
+    const latestMonth = this.currentBillingMonthInSeoul();
+    const months = this.billingMonthsBetween(
+      this.shiftBillingMonth(latestMonth, 1 - periodMonths),
+      latestMonth
+    );
+    const bills = this.managerBills(managerId).filter((bill) => {
+      const room = this.roomForManagerBill(managerId, bill);
+      return room && roomIds.has(room.id);
+    });
+    const costs = await this.listManagerCosts(managerId);
+    const supersededCostIds = new Set(
+      costs
+        .filter((cost) => cost.status === "amended" && cost.supersedesId)
+        .map((cost) => cost.supersedesId as string)
+    );
+    const repairCosts = costs.filter(
+      (cost) =>
+        cost.type === "repair" &&
+        (cost.status === "confirmed" || cost.status === "amended") &&
+        cost.repairPayment !== "unpaid" &&
+        !supersededCostIds.has(cost.id)
+    );
+    const tickets = this.store.tickets.filter((ticket) => roomIds.has(ticket.roomId));
+
+    return {
+      periodMonths,
+      points: months.map((month) => {
+        const monthBills = bills.filter(
+          (bill) => bill.billingMonth === month && !["CANCELED", "CORRECTED"].includes(bill.status)
+        );
+        const receivedTickets = tickets.filter(
+          (ticket) => this.monthKey(ticket.createdAt) === month
+        );
+        const completedTicketIds = new Set(
+          this.store.history
+            .filter(
+              (event) =>
+                event.toStatus === "COMPLETED" &&
+                this.monthKey(event.createdAt) === month &&
+                receivedTickets.some((ticket) => ticket.id === event.ticketId)
+            )
+            .map((event) => event.ticketId)
+        );
+
+        return {
+          month,
+          // 수익은 청구서 합계가 아니라 실제 수납 완료액이다. 부분 수납도 실제 금액만 포함한다.
+          collectedAmount: monthBills.reduce((sum, bill) => sum + bill.paidAmount, 0),
+          repairCostAmount: repairCosts
+            .filter((cost) => this.monthKey(cost.date) === month)
+            .reduce((sum, cost) => sum + cost.amount, 0),
+          occupancyRate: this.occupancyRateAtMonthEnd(rooms, month),
+          ticketResolutionRate:
+            receivedTickets.length > 0
+              ? completedTicketIds.size / receivedTickets.length
+              : null
+        };
+      })
     };
   }
 
@@ -9782,6 +9855,45 @@ export class RoomlogService implements OnModuleDestroy {
     const year = parts.find((part) => part.type === "year")?.value;
     const month = parts.find((part) => part.type === "month")?.value;
     return `${year}-${month}`;
+  }
+
+  private occupancyRateAtMonthEnd(rooms: Room[], month: string) {
+    if (rooms.length === 0) return null;
+
+    const monthEnd = this.billingMonthEnd(month);
+    const occupiedRoomCount = rooms.filter((room) =>
+      this.store.contracts.some(
+        (contract) =>
+          this.unitMatchesRoom(contract.unitId, room) &&
+          this.contractIsValidAtMonthEnd(contract, monthEnd)
+      )
+    ).length;
+
+    return occupiedRoomCount / rooms.length;
+  }
+
+  private contractIsValidAtMonthEnd(contract: Contract, monthEnd: string) {
+    if (
+      contract.review !== "confirmed" ||
+      !["active", "expiring_soon", "expired"].includes(contract.lifecycle)
+    ) {
+      return false;
+    }
+
+    const startDate = contract.startDate?.slice(0, 10);
+    if (!startDate || startDate > monthEnd) return false;
+
+    const endDate = contract.endDate?.slice(0, 10);
+    if (endDate) return endDate >= monthEnd;
+
+    // 만료 상태인데 종료일이 없으면 과거 유효 기간을 추정하지 않는다.
+    return contract.lifecycle !== "expired";
+  }
+
+  private billingMonthEnd(month: string) {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    return `${month}-${String(lastDay).padStart(2, "0")}`;
   }
 
   private todayInSeoul() {

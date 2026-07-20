@@ -1571,6 +1571,17 @@ export class RoomlogController {
     );
   }
 
+  @Get("manager/rental-report")
+  getManagerRentalReport(
+    @Headers("authorization") authorization?: string,
+    @Query("months") months?: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const periodMonths = months === "6" ? 6 : months === "12" || !months ? 12 : Number.NaN;
+
+    return this.roomlogService.getManagerRentalReport(user.id, periodMonths as 6 | 12);
+  }
+
   @Get("manager/bills/deposits")
   async listManagerBillDeposits(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
