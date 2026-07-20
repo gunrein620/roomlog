@@ -130,6 +130,11 @@ const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
   ? readFileSync(messageAutoRefreshPath, "utf8")
   : "";
 const managerMessagingListSource = readFileSync(new URL("./src/app/manager/messaging/00/page.tsx", import.meta.url), "utf8");
+const managerMessagingNewConversationSource = readFileSync(
+  new URL("./src/app/manager/messaging/00/NewConversationForm.tsx", import.meta.url),
+  "utf8",
+);
+const managerGlobalsCssSource = readFileSync(new URL("./src/app/manager/globals.css", import.meta.url), "utf8");
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
 const managerMessagingReviewActionPath = new URL("./src/app/manager/messaging/02/actions.ts", import.meta.url);
 const managerMessagingReviewActionSource = existsSync(managerMessagingReviewActionPath)
@@ -469,6 +474,19 @@ test("opens manager message compose only from real API thread ids", () => {
   assert.doesNotMatch(managerContractPageSource, /th_mgr_302/);
   assert.doesNotMatch(managerContractApiSource, /th_mgr_302/);
   assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
+});
+
+test("manager messaging hub keeps conversations primary with a side composer", () => {
+  assert.match(managerMessagingListSource, /manager-messaging-workspace/);
+  assert.match(managerMessagingListSource, /manager-messaging-thread-list/);
+  assert.match(managerMessagingListSource, /manager-messaging-composer-panel/);
+  assert.match(managerMessagingListSource, /<section className="manager-messaging-thread-list">[\s\S]*<aside className="manager-messaging-composer-panel"/);
+  assert.match(managerMessagingNewConversationSource, /manager-messaging-new-conversation/);
+  assert.match(managerMessagingNewConversationSource, /gridTemplateColumns:\s*"1fr"/);
+  assert.doesNotMatch(managerMessagingNewConversationSource, /repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(managerGlobalsCssSource, /\.manager-messaging-workspace\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(320px, 400px\)/s);
+  assert.match(managerGlobalsCssSource, /\.manager-messaging-composer-panel\s*{[^}]*position:\s*sticky/s);
+  assert.match(managerGlobalsCssSource, /@media \(max-width:\s*1180px\)[\s\S]*\.manager-messaging-workspace\s*{[^}]*grid-template-columns:\s*1fr/s);
 });
 
 test("manager contract forms submit date-only values and show correction save errors", () => {

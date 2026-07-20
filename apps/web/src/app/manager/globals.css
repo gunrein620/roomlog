@@ -1689,6 +1689,280 @@ html:has(.manager-workspace) {
   min-width: 0;
 }
 
+.manager-messaging-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+.manager-messaging-thread-list {
+  min-width: 0;
+}
+
+.manager-messaging-composer-panel {
+  position: sticky;
+  top: var(--space-lg);
+  min-width: 0;
+}
+
+.manager-messaging-new-conversation {
+  box-shadow: none;
+}
+
+.manager-messaging-compose-summary {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+}
+
+.manager-messaging-compose-summary span,
+.manager-messaging-compose-summary small {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: 1.35;
+}
+
+.manager-messaging-compose-summary strong {
+  overflow-wrap: anywhere;
+  color: var(--on-surface);
+  font-size: var(--fs-caption);
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.manager-messaging-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.manager-messaging-summary-tile {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+}
+
+.manager-messaging-summary-tile span {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+}
+
+.manager-messaging-summary-tile strong {
+  color: var(--on-surface);
+  font-size: var(--fs-title);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.manager-messaging-summary-tile.is-emphasis {
+  border-color: var(--primary);
+  background: var(--primary-container);
+}
+
+.manager-messaging-summary-tile.is-emphasis strong,
+.manager-messaging-summary-tile.is-emphasis span {
+  color: var(--on-primary-container);
+}
+
+.manager-messaging-status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-lg);
+}
+
+.manager-messaging-status-filter {
+  min-height: calc(var(--touch-target) - var(--space-xs));
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.manager-messaging-status-filter strong {
+  color: inherit;
+  font-size: inherit;
+}
+
+.manager-messaging-status-filter:hover,
+.manager-messaging-status-filter:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.manager-messaging-status-filter.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.manager-messaging-thread-table {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.manager-messaging-thread-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.35fr) minmax(130px, 0.5fr) minmax(156px, 0.5fr);
+  gap: var(--space-md);
+  align-items: center;
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+}
+
+.manager-messaging-thread-row.is-needs-reply {
+  border-color: var(--primary);
+}
+
+.manager-messaging-thread-row__meta,
+.manager-messaging-thread-row__body,
+.manager-messaging-thread-row__time {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.manager-messaging-thread-row__badges {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.manager-messaging-thread-row__unread {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--primary-container);
+  color: var(--primary);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+}
+
+.manager-messaging-thread-row__unread span:first-child {
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+}
+
+.manager-messaging-thread-row__body strong {
+  overflow: hidden;
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+  font-weight: 900;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-messaging-thread-row__body span {
+  overflow: hidden;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-messaging-thread-row__time {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+}
+
+.manager-messaging-thread-row__time .is-unconfirmed {
+  color: var(--primary);
+}
+
+.manager-messaging-thread-row__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.manager-messaging-thread-row__open {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-btn);
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.manager-messaging-thread-row__open:hover,
+.manager-messaging-thread-row__open:focus-visible {
+  background: var(--primary-container);
+  color: var(--primary);
+}
+
+@media (max-width: 1180px) {
+  .manager-messaging-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-messaging-composer-panel {
+    position: static;
+  }
+
+  .manager-messaging-thread-row {
+    grid-template-columns: minmax(170px, 0.8fr) minmax(0, 1.2fr) minmax(150px, auto);
+  }
+
+  .manager-messaging-thread-row__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .manager-messaging-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manager-messaging-thread-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .manager-messaging-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-messaging-thread-row__actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .manager-assistant-panel {
   position: sticky;
   top: 0;
