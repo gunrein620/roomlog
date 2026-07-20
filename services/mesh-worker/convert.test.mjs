@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertScalePreserved } from "./convert.mjs";
+import { assertScalePreserved, runConversionJob } from "./convert.mjs";
 
 function boxWithExtents(extents) {
   return { min: [0, 0, 0], max: extents };
@@ -46,4 +46,44 @@ test("변 길이가 0인 bbox는 scale-check 에러로 거부한다", () => {
       return true;
     }
   );
+});
+
+test("변환 실패는 failure 콜백을 한 번 보내고 실패 결과를 반환한다", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  const callbackCalls = [];
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
+  });
+  console.error = () => {};
+  globalThis.fetch = async (url, init) => {
+    if (String(url) === "https://cdn.example/missing.usdz") {
+      return new Response("missing", { status: 404 });
+    }
+    callbackCalls.push({ url: String(url), init });
+    return new Response(null, { status: 204 });
+  };
+
+  const result = await runConversionJob({
+    furnitureId: "tf-failure",
+    usdzUrl: "https://cdn.example/missing.usdz",
+    glbUploadUrl: "https://s3.example/put",
+    glbUploadHeaders: {},
+    glbPublicUrl: "https://cdn.example/out.glb",
+    callbackBase: "https://api.example/api",
+    workerSecret: "worker-secret"
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: "[download] USDZ 다운로드가 404를 반환했습니다(https://cdn.example/missing.usdz)."
+  });
+  assert.equal(callbackCalls.length, 1);
+  assert.equal(
+    callbackCalls[0].url,
+    "https://api.example/api/tenant-furniture/tf-failure/mesh-conversion/failure"
+  );
+  assert.equal(callbackCalls[0].init.headers["x-worker-secret"], "worker-secret");
+  assert.deepEqual(JSON.parse(callbackCalls[0].init.body), { error: result.error });
 });

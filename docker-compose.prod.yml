@@ -78,8 +78,9 @@ services:
       # ⚠️ 이건 비용 안전장치를 끄는 설정이다. 데모가 끝나면 idle-stop을 되살릴 것 — 코드를 되돌릴
       # 필요 없이 PROD_ENV에 GPU_KEEP_WARM=0을 넣으면 이 기본값을 이긴다.
       GPU_KEEP_WARM: ${GPU_KEEP_WARM:-1}
-      # 임차인 가구 USDZ→GLB 변환 워커(services/mesh-worker) — CPU 전용, GPU 인스턴스가 아니라 항상
-      # 켜져 있는 컨테이너. GPU_WORKER_SECRET을 그대로 공유한다(콜백 인증을 이원화하지 않는다).
+      # 임차인 가구 USDZ→GLB 변환 워커(services/mesh-worker). ssm이면 GPU 박스에 SSM으로 보내고,
+      # 비우면 아래 MESH_WORKER_URL의 기존 HTTP 경로를 쓴다. 콜백 인증은 GPU_WORKER_SECRET을 공유한다.
+      MESH_WORKER_DISPATCH: ${MESH_WORKER_DISPATCH:-}
       MESH_WORKER_URL: ${MESH_WORKER_URL:-http://mesh-worker:5001}
     ports:
       - "4000:4000"

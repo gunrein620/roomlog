@@ -166,8 +166,9 @@ async function postCallback(callbackBase, workerSecret, furnitureId, path, body)
 }
 
 /**
- * 잡 1건을 처리한다. 성공/실패 어느 쪽이든 API에 콜백을 보내는 것으로 끝난다 — 이 함수 자체는
- * 예외를 던지지 않는다(호출부인 server.mjs는 로그만 남기면 된다). 콜백 전송 자체가 실패하면(네트워크
+ * 잡 1건을 처리한다. 작업 디렉터리를 만든 뒤의 파이프라인 오류는 실패 콜백을 보내고 예외 대신
+ * 성공 여부를 반환한다(기존 server.mjs는 반환값을 무시하고, 일회성 cli.mjs만 종료 코드 결정에 쓴다).
+ * 작업 디렉터리 생성 같은 준비 단계의 예상 밖 오류는 호출부로 전파된다. 콜백 전송 자체가 실패하면(네트워크
  * 끊김 등) 그건 로그로만 남긴다 — 그 이상 재시도하지 않는다(오케스트레이터 없는 단순 파이프라인이라
  * 재큐잉 로직이 없다; 이 워커가 재기동되지 않는 한 해당 잡은 CONVERTING에 멈춘 채 API 쪽에서
  * 사람이 재시도를 유도해야 한다 — docs/mesh-conversion-worker.md에 명시).
@@ -192,6 +193,7 @@ export async function runConversionJob(job) {
     console.log(`[mesh-worker] furniture=${furnitureId} 변환 성공 (${uploadedBytes} bytes) — 완료 콜백 전송`);
 
     await postCallback(callbackBase, workerSecret, furnitureId, "complete", { glbUrl: glbPublicUrl });
+    return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[mesh-worker] furniture=${furnitureId} 변환 실패: ${message}`);
@@ -200,6 +202,8 @@ export async function runConversionJob(job) {
     } catch (callbackErr) {
       console.error(`[mesh-worker] furniture=${furnitureId} 실패 콜백 전송조차 실패: ${callbackErr.message}`);
     }
+    // 실패 콜백은 위에서 이미 보냈다. CLI는 이 결과만 보고 exit 1로 끝내며 콜백을 중복 전송하지 않는다.
+    return { ok: false, error: message };
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => {});
   }

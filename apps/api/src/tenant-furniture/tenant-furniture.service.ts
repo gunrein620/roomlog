@@ -259,8 +259,8 @@ export class TenantFurnitureService {
     resolve(process.env.LOCAL_UPLOAD_DIR || "uploads"),
     process.env.PUBLIC_UPLOAD_BASE_URL || "/api/files"
   );
-  // MESH_WORKER_URL/PUBLIC_API_BASE_URL/GPU_WORKER_SECRET 중 하나라도 비면 dispatch() 즉시 실패
-  // (UnconfiguredMeshConversionDispatcher) — 로컬 dev 기본값. 테스트는 이 필드를 직접 교체한다.
+  // env에 따라 SSM 또는 기존 HTTP 경로를 고른다. 선택한 경로의 필수값이 비면 dispatch() 즉시 실패하는
+  // UnconfiguredMeshConversionDispatcher를 쓴다. 테스트는 이 필드를 직접 교체한다.
   private readonly meshConversionDispatcher: MeshConversionDispatcher = createMeshConversionDispatcher(
     process.env
   );
@@ -502,9 +502,10 @@ export class TenantFurnitureService {
 
   /**
    * USDZ→GLB 변환 잡 훅 — 상태를 CONVERTING으로 올린 뒤 mesh-worker에 실제 변환 잡을 디스패치한다
-   * ("잡 레코드" = 이 가구 행 자체, 별도 테이블 없음). GPU 재구성과 달리 이 변환은 CPU 작업(Blender
-   * headless)이라 GPU 인스턴스 기동/정지 수명주기가 없다 — mesh-worker는 항상 켜져 있는 경량 컨테이너
-   * (mesh-conversion-dispatcher.ts 참고, reconstruction 패턴을 그대로 복사하지 않은 이유).
+   * ("잡 레코드" = 이 가구 행 자체, 별도 테이블 없음). 변환은 CPU 작업(Blender headless)이며,
+   * 디스패처는 GPU 인스턴스의 기동/정지 수명주기를 맡지 않는다. HTTP는 상시 컨테이너에, SSM은 켜져
+   * 있고 online인 GPU 박스에서 레포·NVMe·이미지를 먼저 복구한 뒤 일회성 컨테이너에 보낸다
+   * (mesh-conversion-dispatcher.ts).
    * 디스패치 자체가 실패하면(워커 미배선·presign 불가 등) CONVERTING에 조용히 머무르지 않고 즉시
    * FAILED로 떨어뜨린다 — "빈 상태·오류를 데모로 은폐 금지" 원칙. 기존 meshUrl(업그레이드 전 값)은
    * 건드리지 않는다.
