@@ -16739,6 +16739,126 @@ p {
   box-shadow: var(--focus-ring);
 }
 
+.tenant-ai-workspace {
+  --tenant-ai-panel-width: var(--manager-assistant-panel-width);
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tenant-ai-workspace--open {
+  grid-template-columns: minmax(0, 1fr) var(--tenant-ai-panel-width);
+}
+
+.tenant-ai-workspace > .tenant-portal-screen {
+  min-width: 0;
+}
+
+.service-frame.with-bottom-tabs:has(.tenant-ai-workspace--open) {
+  width: min(
+    100%,
+    calc(var(--content-readable-max) + var(--tenant-ai-panel-width))
+  );
+  max-width: none;
+}
+
+.tenant-ai-workspace--open .tenant-ai-assist-button {
+  display: none;
+}
+
+.tenant-ai-assistant-panel {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-floating);
+  height: 100dvh;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  overflow: hidden;
+}
+
+.tenant-ai-assistant-panel__header {
+  min-height: calc(var(--touch-target) + var(--space-md));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 0 var(--space-lg);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.tenant-ai-assistant-panel__header > span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.tenant-ai-assistant-panel__header > span svg,
+.tenant-ai-assistant-panel__header button svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.tenant-ai-assistant-panel__header strong {
+  overflow: hidden;
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tenant-ai-assistant-panel__header button {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--on-primary);
+  background: transparent;
+}
+
+.tenant-ai-assistant-panel__header button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tenant-ai-assistant-panel .manager-ai-conversation {
+  min-height: 0;
+  height: auto;
+  flex: 1;
+}
+
+.tenant-ai-assistant-panel .manager-ai-transcript {
+  min-height: 0;
+  max-height: none;
+}
+
+@media (max-width: 1024px) {
+  .tenant-ai-workspace--open {
+    display: block;
+  }
+
+  .tenant-ai-workspace--open > .tenant-portal-screen {
+    display: none;
+  }
+
+  .tenant-ai-assistant-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 @media (max-width: 480px) {
   .manager-assistant-dialog__header {
     min-height: calc(var(--touch-target) + var(--space-xs));

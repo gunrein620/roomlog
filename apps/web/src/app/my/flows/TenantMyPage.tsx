@@ -4,17 +4,13 @@
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import type {
   ChangeEvent,
-  FormEvent,
-  KeyboardEvent as ReactKeyboardEvent,
-  MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent
+  FormEvent
 } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
-import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
-import { isDialogBackdropPoint } from "@/lib/manager-assistant";
+import { Bath, Bot, ChevronRight, FileText, ImagePlus, Megaphone, MessageCircle, Snowflake, X } from "lucide-react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import {
   resolveTicketChatAttachmentUrl,
@@ -34,8 +30,11 @@ import {
 } from "./tenant-current-bill";
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
-import { TenantVendorConnectionCard } from "./TenantVendorConnectionCard";
-import { tenantVendorConnectionEligible } from "./tenant-vendor-connection";
+import { TenantAiAssistantPanel } from "./TenantAiAssistantPanel";
+import {
+  openTenantAiAssistant,
+  useTenantAiAssistantStore,
+} from "./tenant-ai-assistant-store";
 import {
   createTenantComplaintDraftMutationGuard,
   deleteTenantComplaintDraft,
@@ -171,9 +170,6 @@ type ComplaintChatImage = {
 type TenantAnnouncementState =
   | { status: "loading" | "empty" | "error"; announcement: null }
   | { status: "ready"; announcement: Announcement };
-
-type TenantAiMode = "text" | "call";
-type TenantAiStage = "choose" | "text" | "voice";
 
 function formatTenantRequestDescription(draft: TenantIntakeDraft): string {
   const detailCategory = draft.detailCategory?.trim() || draft.category?.trim();
@@ -938,11 +934,7 @@ export default function TenantMyPage({
   const [isSendingComplaintMessage, setIsSendingComplaintMessage] = useState(false);
   const [requestUrgency, setRequestUrgency] = useState<1 | 2 | 3 | 4 | undefined>(undefined);
   const [requestAvailableTimes, setRequestAvailableTimes] = useState("");
-  const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
-  const [aiMode, setAiMode] = useState<TenantAiMode>("text");
-  const [aiDraft, setAiDraft] = useState("");
-  const aiDialogRef = useRef<HTMLDialogElement>(null);
-  const aiMessagesRef = useRef<HTMLDivElement>(null);
+  const tenantAiSession = useTenantAiAssistantStore();
   const [tenantToast, setTenantToast] = useState("");
 
   const showToast = (message: string) => {
@@ -1030,12 +1022,6 @@ export default function TenantMyPage({
       void loadRepairRequests();
     }
   });
-
-  useEffect(() => {
-    const container = aiMessagesRef.current;
-    if (!container) return;
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-  }, [ai.messages.length, ai.busy]);
 
   const openLandlordConversation = async () => {
     if (!tenancy || tenancy === "loading") {
@@ -1485,7 +1471,6 @@ export default function TenantMyPage({
     setIsLoadingRequestDraft(false);
     setIsRequestSheetOpen(true);
     ai.consumeDraftForRequest();
-    aiDialogRef.current?.close();
   }, [ai.draftForRequest]);
 
   const closeRequestSheet = (resetDraft = false) => {
@@ -1642,71 +1627,9 @@ export default function TenantMyPage({
     }
   };
 
-  const handleAiSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const nextMessage = aiDraft.trim();
-    if (!nextMessage || aiStage === "choose" || aiMode !== "text" || ai.busy) return;
-
-    setAiDraft("");
-    void ai.submitText(nextMessage);
-  };
-
-  const submitAiFromKeyboard = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || ai.busy) {
-      return;
-    }
-    event.preventDefault();
-    event.currentTarget.form?.requestSubmit();
-  };
-
-  const selectAiMode = (nextMode: TenantAiMode) => {
-    setAiMode(nextMode);
-    setAiStage(nextMode === "text" ? "text" : "voice");
-    if (nextMode === "text") {
-      ai.voice.disconnect();
-      void ai.startTextSession();
-    } else {
-      setAiDraft("");
-    }
-  };
-
   const openAiAssistant = () => {
-    setAiStage("choose");
-    aiDialogRef.current?.showModal();
-  };
-
-  const closeAiAssistant = () => {
-    ai.voice.disconnect();
-    aiDialogRef.current?.close();
-  };
-
-  // 관리자 비서와 동일한 백드롭 클릭 닫기 — 다이얼로그 사각형 밖 클릭만 닫는다.
-  const closeAiOnBackdrop = (event: ReactMouseEvent<HTMLDialogElement>) => {
-    if (event.target !== event.currentTarget) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    if (isDialogBackdropPoint(event, bounds)) closeAiAssistant();
-  };
-
-  // Push to Talk — 누르고 있는 동안만 송신(포인터·키보드 모두 지원, 관리자 비서와 동일).
-  const startAiPushToTalk = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    ai.voice.startTalking();
-  };
-
-  const stopAiPushToTalk = () => {
-    ai.voice.stopTalking();
-  };
-
-  const startAiPushToTalkFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (event.repeat || (event.key !== " " && event.key !== "Enter")) return;
-    event.preventDefault();
-    ai.voice.startTalking();
-  };
-
-  const stopAiPushToTalkFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== " " && event.key !== "Enter") return;
-    event.preventDefault();
-    ai.voice.stopTalking();
+    openTenantAiAssistant();
+    void ai.startTextSession();
   };
 
   const landlordUnreadBadge = formatTenantLandlordUnreadCount(landlordUnreadCount);
@@ -1715,7 +1638,8 @@ export default function TenantMyPage({
     : "임대인에게 문의하기";
 
   return (
-    <section className="screen tenant-screen tenant-portal-screen" id="my-page" aria-labelledby="tenant-title">
+    <div className={`tenant-ai-workspace${tenantAiSession.open ? " tenant-ai-workspace--open" : ""}`}>
+      <section className="screen tenant-screen tenant-portal-screen" id="my-page" aria-labelledby="tenant-title">
       <h2 id="tenant-title" className="visually-hidden">세입자 마이페이지</h2>
 
       {tenantToast ? <p className="mypage-toast" role="status">{tenantToast}</p> : null}
@@ -1923,184 +1847,11 @@ export default function TenantMyPage({
         type="button"
         onClick={openAiAssistant}
         aria-label="AI 생활 도우미 열기"
-        aria-haspopup="dialog"
-        aria-controls="tenant-ai-assistant-dialog"
+        aria-controls="tenant-ai-assistant-panel"
+        aria-expanded={tenantAiSession.open}
       >
         <Bot size={30} strokeWidth={2.3} aria-hidden="true" />
       </button>
-
-      {/* 관리자 AI 비서(ManagerAssistantLauncher)와 동일한 다이얼로그 UI — 데이터만 세입자 intake 세션 */}
-      <dialog
-        ref={aiDialogRef}
-        id="tenant-ai-assistant-dialog"
-        className="manager-assistant-dialog"
-        aria-labelledby="tenant-ai-dialog-title"
-        onClick={closeAiOnBackdrop}
-        onClose={ai.voice.disconnect}
-      >
-        <header className="manager-assistant-dialog__header">
-          <span className="manager-assistant-dialog__brand">
-            <Bot aria-hidden="true" />
-            <strong id="tenant-ai-dialog-title">Woo-zu AI 비서</strong>
-          </span>
-          <button
-            type="button"
-            aria-label="AI 생활 도우미 닫기"
-            onClick={closeAiAssistant}
-          >
-            <X aria-hidden="true" />
-          </button>
-        </header>
-        {aiStage === "choose" ? (
-          <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
-            <div className="manager-ai-mode-picker__copy">
-              <h2>상담 방식을 선택해 주세요</h2>
-              <p>Woo-zu AI와 어떻게 대화하시겠어요?</p>
-            </div>
-            <div className="manager-ai-mode-cards">
-              <button type="button" onClick={() => selectAiMode("text")}>
-                <span className="manager-ai-mode-icon" aria-hidden="true">
-                  <MessageSquare />
-                </span>
-                <strong>텍스트 채팅</strong>
-                <small>TEXT</small>
-              </button>
-              <button type="button" onClick={() => selectAiMode("call")}>
-                <span className="manager-ai-mode-icon" aria-hidden="true">
-                  <Headphones />
-                </span>
-                <strong>음성 통화</strong>
-                <small>CALL</small>
-              </button>
-            </div>
-          </section>
-        ) : (
-          <section className="manager-ai-conversation" aria-label="AI 생활 도우미 대화">
-            <div
-              ref={aiMessagesRef}
-              className="manager-ai-transcript"
-              role="log"
-              aria-live="polite"
-            >
-              {ai.messages.map((message) =>
-                message.sender === "receipt" ? (
-                  <p key={message.id} className="manager-ai-receipt">
-                    {message.text}
-                  </p>
-                ) : (
-                  <div
-                    key={message.id}
-                    className={`manager-ai-message manager-ai-message--${
-                      message.sender === "tenant" ? "user" : message.sender
-                    }`}
-                  >
-                    {message.sender !== "tenant" ? (
-                      <span className="manager-ai-message__avatar" aria-hidden="true">
-                        <Bot />
-                      </span>
-                    ) : null}
-                    <p>{message.text}</p>
-                  </div>
-                ),
-              )}
-              {ai.filedComplaint && tenantVendorConnectionEligible(
-                ai.filedComplaint.responsibilityHint,
-              ) ? (
-                <TenantVendorConnectionCard
-                  complaintId={ai.filedComplaint.id}
-                  onRequested={() => void loadRepairRequests()}
-                />
-              ) : null}
-            </div>
-            {aiMode === "text" ? (
-              <form className="manager-ai-composer" onSubmit={handleAiSubmit}>
-                <label>
-                  <span>대화 입력</span>
-                  <textarea
-                    value={aiDraft}
-                    rows={3}
-                    disabled={ai.busy}
-                    placeholder={ai.busy ? "AI 응답을 기다리는 중..." : "불편한 점을 알려주세요"}
-                    onChange={(event) => setAiDraft(event.target.value)}
-                    onKeyDown={submitAiFromKeyboard}
-                  />
-                </label>
-                <button
-                  type="submit"
-                  aria-label="AI 생활 도우미에 메시지 전송"
-                  disabled={ai.busy || !aiDraft.trim()}
-                >
-                  <Send aria-hidden="true" />
-                  <span>{ai.busy ? "전송 중" : "전송"}</span>
-                </button>
-              </form>
-            ) : (
-              <div className="manager-ai-voice-controls">
-                <p role="status" aria-live="polite">
-                  <span className={`manager-ai-voice-status manager-ai-voice-status--${ai.voice.status}`} />
-                  {ai.voice.statusLabel}
-                </p>
-                {ai.voice.status === "connected" ? (
-                  <>
-                    <button
-                      type="button"
-                      className="manager-ai-push-to-talk"
-                      aria-pressed={ai.voice.isTalking}
-                      onPointerDown={startAiPushToTalk}
-                      onPointerUp={stopAiPushToTalk}
-                      onPointerCancel={stopAiPushToTalk}
-                      onLostPointerCapture={stopAiPushToTalk}
-                      onKeyDown={startAiPushToTalkFromKeyboard}
-                      onKeyUp={stopAiPushToTalkFromKeyboard}
-                      onBlur={stopAiPushToTalk}
-                    >
-                      <Mic aria-hidden="true" />
-                      {ai.voice.isTalking ? "말하는 중…" : "Push to Talk"}
-                    </button>
-                    <button type="button" className="is-disconnect" onClick={ai.voice.disconnect}>
-                      <PhoneOff aria-hidden="true" />
-                      통화 종료
-                    </button>
-                  </>
-                ) : ai.voice.status === "connecting" ? (
-                  <button type="button" className="is-disconnect" onClick={ai.voice.disconnect}>
-                    <PhoneOff aria-hidden="true" />
-                    통화 종료
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => void ai.voice.connect()}>
-                    <Mic aria-hidden="true" />
-                    통화 시작
-                  </button>
-                )}
-                <small>
-                  {ai.voice.status === "connected"
-                    ? "버튼을 누르고 있는 동안만 음성이 전달됩니다."
-                    : "통화 시작을 누른 뒤 마이크 권한을 허용해 주세요."}
-                </small>
-              </div>
-            )}
-            <div className="manager-ai-mode-toggle" aria-label="AI 상담 모드 전환">
-              <button
-                type="button"
-                aria-pressed={aiMode === "text"}
-                onClick={() => selectAiMode("text")}
-              >
-                <MessageSquare aria-hidden="true" />
-                텍스트
-              </button>
-              <button
-                type="button"
-                aria-pressed={aiMode === "call"}
-                onClick={() => selectAiMode("call")}
-              >
-                <Headphones aria-hidden="true" />
-                음성
-              </button>
-            </div>
-          </section>
-        )}
-      </dialog>
 
       {landlordChatThread ? (
         <TenantLandlordChatModal
@@ -2410,6 +2161,13 @@ export default function TenantMyPage({
           </section>
         </div>
       ) : null}
-    </section>
+      </section>
+      {tenantAiSession.open ? (
+        <TenantAiAssistantPanel
+          ai={ai}
+          onComplaintRefresh={() => void loadRepairRequests()}
+        />
+      ) : null}
+    </div>
   );
 }
