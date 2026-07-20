@@ -3,7 +3,7 @@
 // 가구 1점의 3D 미리보기 — meshUrl 있으면 GLB 로드, 없거나 로드 실패하면 sizeMm 기준 회색 박스.
 // 로딩/에셋 패턴은 splat-tour/splat-furniture-layer.tsx · floor-plan-3d/room-scene의
 // useGLTF + Suspense(fallback=박스) 관례를 그대로 따른다. 새 npm 의존성 없음.
-// 박스는 표시 전용이며, 배치 충돌 판정의 권위(sizeMm)는 여전히 placement-model.ts/collision.ts가 갖는다.
+// 박스는 표시 전용이며, 배치 충돌 판정의 권위(sizeMm)는 여전히 floor-plan-3d/room-model/collision.ts가 갖는다.
 
 import { Component, Suspense, useEffect, useMemo, type ReactNode } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
