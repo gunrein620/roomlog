@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var showsSettings = false
     @State private var showsRoomScan = false
     @State private var showsUnifiedCapture = false
+    @State private var pausedDepthSessionForCaptures = false
+    @State private var pausedDepthSessionForSettings = false
 
     var body: some View {
         Group {
@@ -17,10 +19,10 @@ struct ContentView: View {
                 unsupportedView
             }
         }
-        .sheet(isPresented: $showsCaptures) {
+        .sheet(isPresented: $showsCaptures, onDismiss: resumeDepthSessionAfterCaptures) {
             CaptureListView()
         }
-        .sheet(isPresented: $showsSettings) {
+        .sheet(isPresented: $showsSettings, onDismiss: resumeDepthSessionAfterSettings) {
             SettingsView(engine: engine)
         }
         .sheet(isPresented: $showsRoomScan, onDismiss: resumeDepthSession) {
@@ -103,7 +105,7 @@ struct ContentView: View {
                     systemName: "folder",
                     accessibilityLabel: "캡처 목록 열기"
                 ) {
-                    showsCaptures = true
+                    presentCaptures()
                 }
 
                 circleActionButton(
@@ -111,7 +113,7 @@ struct ContentView: View {
                     accessibilityLabel: "설정 열기",
                     isDisabled: isRecording
                 ) {
-                    showsSettings = true
+                    presentSettings()
                 }
             }
         }
@@ -305,6 +307,45 @@ struct ContentView: View {
             return
         }
         engine.startSession()
+    }
+
+    private func presentCaptures() {
+        pausedDepthSessionForCaptures = pauseDepthSessionForSheet()
+        showsCaptures = true
+    }
+
+    private func presentSettings() {
+        pausedDepthSessionForSettings = pauseDepthSessionForSheet()
+        showsSettings = true
+    }
+
+    private func pauseDepthSessionForSheet() -> Bool {
+        // SwiftUI sheet은 배경 뷰를 언마운트하지 않아 ARPreviewView의 depth 세션이 계속 돈다.
+        // 녹화·저장 중에는 pauseSession()이 촬영을 중단하므로 pause하면 안 된다.
+        guard CaptureEngine.isDeviceSupported, !isRecording, !isSaving else {
+            return false
+        }
+
+        engine.pauseSession()
+        return true
+    }
+
+    private func resumeDepthSessionAfterCaptures() {
+        guard pausedDepthSessionForCaptures else {
+            return
+        }
+
+        pausedDepthSessionForCaptures = false
+        resumeDepthSession()
+    }
+
+    private func resumeDepthSessionAfterSettings() {
+        guard pausedDepthSessionForSettings else {
+            return
+        }
+
+        pausedDepthSessionForSettings = false
+        resumeDepthSession()
     }
 
     private func circleActionButton(
