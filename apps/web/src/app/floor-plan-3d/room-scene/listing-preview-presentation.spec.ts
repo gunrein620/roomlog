@@ -9,6 +9,7 @@ const viewerSource = readFileSync(
 );
 const landlordSource = readFileSync(join(process.cwd(), "src/app/my/flows/LandlordMyPage.tsx"), "utf8");
 const listingTourSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
+const listingDetailSource = readFileSync(join(process.cwd(), "src/app/_components/ListingDetailView.tsx"), "utf8");
 const globalCss = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
 
 describe("listing-only 3D preview", () => {
@@ -58,6 +59,20 @@ describe("listing-only 3D preview", () => {
     assert.match(
       globalCss,
       /\.hero-stage \.listing-tour-furniture-category-tabs\s*\{[\s\S]*?scrollbar-width: thin/
+    );
+  });
+
+  it("places tour and furniture simulation actions below the listing options", () => {
+    assert.match(
+      listingDetailSource,
+      /detail-panel-options[\s\S]*?detail-panel-tour-actions[\s\S]*?1인칭 투어[\s\S]*?가구배치 시뮬레이션/
+    );
+    assert.match(listingDetailSource, /furnitureEditorOpenRequest/);
+    assert.match(listingTourSource, /furnitureEditorOpenRequest\?: number/);
+    assert.doesNotMatch(listingTourSource, /className="hero-furniture-toggle"/);
+    assert.match(
+      globalCss,
+      /\.detail-panel-tour-actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/
     );
   });
 });

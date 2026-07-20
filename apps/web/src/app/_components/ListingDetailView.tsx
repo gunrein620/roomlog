@@ -6,6 +6,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
+  Armchair,
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
@@ -55,6 +56,7 @@ export function ListingDetailView({
   onStartChat: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
+  const [furnitureEditorOpenRequest, setFurnitureEditorOpenRequest] = useState(0);
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   // 무대 레이아웃 통합으로 갤러리 탭 상태는 사라짐 — 대표 사진은 첫 장, 나머지는 라이트박스가 담당.
@@ -184,25 +186,12 @@ export function ListingDetailView({
       {has3DHero && listing.floorPlan3D ? (
         /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스). */
         <div className="detail-3d-hero" id="detail-3d-hero" aria-label={`${listing.title} 3D 도면 미리보기`}>
-          <ListingTourRoom3D floorPlan={listing.floorPlan3D} listingId={listing.listingNo} variant="hero" />
-          <div className="hero-tour-cta-wrap">
-            {/* 1인칭 진입 — 기존 하단 바와 동일한 정직 게이트(자산 있음/없음/데모)를 그대로 쓴다. */}
-            {splatAssetId ? (
-              <a className="hero-tour-cta" href={`/splat-tour?asset=${splatAssetId}`}>
-                <span className="hero-tour-cta-icon" aria-hidden="true"><Play size={12} strokeWidth={3} fill="currentColor" /></span>
-                1인칭으로 둘러보기
-              </a>
-            ) : isTradeDirectListing ? (
-              <span className="hero-tour-cta disabled" role="note" title="이 매물은 1인칭 투어가 준비되어 있지 않습니다">
-                1인칭 투어 {splatChecked ? "준비 안 됨" : "확인 중"}
-              </span>
-            ) : (
-              <a className="hero-tour-cta" href="/splat-tour">
-                <span className="hero-tour-cta-icon" aria-hidden="true"><Play size={12} strokeWidth={3} fill="currentColor" /></span>
-                1인칭으로 둘러보기 (데모)
-              </a>
-            )}
-          </div>
+          <ListingTourRoom3D
+            floorPlan={listing.floorPlan3D}
+            furnitureEditorOpenRequest={furnitureEditorOpenRequest}
+            listingId={listing.listingNo}
+            variant="hero"
+          />
           <div className="hero-filmstrip" aria-label={`${listing.title} 사진 모음`}>
             {listing.gallery.slice(0, 4).map((image, index) => (
               <button
@@ -418,6 +407,34 @@ export function ListingDetailView({
           <p>집주인이 등록한 옵션이 없습니다.</p>
         )}
       </div>
+
+      {has3DHero ? (
+        <div className="detail-panel-tour-actions" aria-label="3D 둘러보기">
+          {splatAssetId ? (
+            <a href={`/splat-tour?asset=${splatAssetId}`}>
+              <Play aria-hidden size={18} strokeWidth={2.4} />
+              1인칭 투어
+            </a>
+          ) : isTradeDirectListing ? (
+            <span className="disabled" role="note" title="이 매물은 1인칭 투어가 준비되어 있지 않습니다">
+              <Play aria-hidden size={18} strokeWidth={2.4} />
+              1인칭 투어 {splatChecked ? "준비 안 됨" : "확인 중"}
+            </span>
+          ) : (
+            <a href="/splat-tour">
+              <Play aria-hidden size={18} strokeWidth={2.4} />
+              1인칭 투어
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => setFurnitureEditorOpenRequest((request) => request + 1)}
+          >
+            <Armchair aria-hidden size={18} strokeWidth={2.4} />
+            가구배치 시뮬레이션
+          </button>
+        </div>
+      ) : null}
 
       {/* 태그 줄 제거 — 등록 폼에 특징 태그 입력이 없다. 데모는 하드코딩 더미였고,
           직접등록은 거래유형·방종류·옵션의 재조합이라 캡션·스펙표·옵션 칩과 전부 중복. */}
