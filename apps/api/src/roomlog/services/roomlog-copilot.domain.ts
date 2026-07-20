@@ -83,6 +83,18 @@ export function isExplicitApproval(message?: string): boolean {
   );
 }
 
+export function isExplicitDunningSendRequest(message?: string): boolean {
+  const normalized = (message ?? "").trim();
+
+  if (!normalized) return false;
+  if (/(취소|보류|말고|문구만|초안|작성|현황|조회|알려)/u.test(normalized)) return false;
+
+  return (
+    /(독촉|미납|연체|월세|납부)/u.test(normalized) &&
+    /(보내|발송|전송|문자)/u.test(normalized)
+  );
+}
+
 export class RoomlogCopilotDomain {
   constructor(
     private readonly runManagerAgentCommand: (
@@ -114,6 +126,26 @@ export class RoomlogCopilotDomain {
 
     if (input.intent) {
       return await this.prepareIntent(managerId, input.intent);
+    }
+
+    const lastUserMessage = [...(input.messages ?? [])]
+      .reverse()
+      .find((message) => message.role === "user")?.content;
+
+    if (isExplicitDunningSendRequest(lastUserMessage)) {
+      const prepared = await this.createPendingAction(managerId, "billing.send_dunning", {
+        command: "billing.send_dunning",
+        text: lastUserMessage
+      });
+      const summary = this.resultSummary(prepared.content);
+
+      return {
+        mode: "openai",
+        reply: prepared.pendingAction
+          ? `${prepared.pendingAction.summary} 내용을 확인한 뒤 발송해 주세요.`
+          : summary || "독촉을 준비하지 못했습니다. 대상 청구를 다시 확인해 주세요.",
+        pendingAction: prepared.pendingAction
+      };
     }
 
     if (!process.env.OPENAI_API_KEY) {
@@ -325,7 +357,6 @@ export class RoomlogCopilotDomain {
         input: {
           command: this.stringValue(parsed.command),
           text: this.optionalStringValue(parsed.text),
-          billId: this.optionalStringValue(parsed.billId),
           channel: this.optionalStringValue(parsed.channel),
           threadId: this.optionalStringValue(parsed.threadId),
           body: this.optionalStringValue(parsed.body),

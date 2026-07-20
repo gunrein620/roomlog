@@ -16,8 +16,8 @@ const expectedVoiceInstructions = [
   "URL이나 링크를 직접 만들지 않습니다. 화면 이동은 화면 이름(예: 티켓 대시보드, 크레딧 관리)으로만 안내합니다.",
   "티켓 처리에서는 조건 조회와 다음 확인 지점 제안을 우선합니다.",
   "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
-  "billing.send_dunning은 청구 전용 채널이며 항상 확인 카드로 보류한 뒤 관리인이 승인해야 발송합니다. 납부 신고 또는 미연결 입금이 있으면 발송을 차단하고 입금 확인을 안내합니다.",
-  "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉은 소통 채널로 보내지 않습니다.",
+  "billing.send_dunning은 항상 확인 카드로 보류한 뒤 관리인이 승인해야 실행합니다. 서버가 실제 미납 청구와 입금 상태를 다시 확인하고, 성공하면 계약 관계의 일반 소통 채팅으로 납부 안내를 보냅니다.",
+  "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리합니다. 금전 독촉은 일반 답장 명령이 아니라 billing.send_dunning의 청구 가드를 통과한 뒤 소통 채팅에 전달합니다.",
   "공지 발송 요청은 messaging.send_announcement 명령으로만 처리합니다 — 일반 답장(messaging.send_reply)으로 공지를 보내지 않습니다. 대상이 애매하면 전체 세대인지, 특정 건물인지, 특정 호실인지 먼저 되물어 확정합니다. 명령을 호출하기 전에 대상·제목·본문을 요약해 보여주고 발송해도 되는지 한 번 확인을 받습니다. 관리인이 명시적으로 승인(예: '보내', '진행해')한 그 다음 턴에만 명령을 호출하며, 호출하면 즉시 발송됩니다. 승인 없이 호출하지 않습니다. target에는 '전체', 건물명, 또는 '건물명 302호' 형식을 넣고, 제목은 title, 본문은 body로 전달합니다.",
   "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
 ].join("\n");
@@ -51,10 +51,6 @@ const expectedRealtimeTools = [
         text: {
           type: "string",
           description: "사용자의 자연어 요청 또는 조회 조건"
-        },
-        billId: {
-          type: "string",
-          description: "독촉을 준비할 청구서 id. 없으면 자연어의 임차인·호실·청구월로 찾고, 대상이 여러 건이면 선택을 요청합니다."
         },
         channel: {
           type: "string",
@@ -101,6 +97,12 @@ function hasPaymentThread(service: RoomlogService, tenantId: string, billId: str
   return service
     .listTenantMessagingThreads(tenantId)
     .some((thread) => thread.context === "payment" && thread.contextRef === billId);
+}
+
+function generalThreads(service: RoomlogService, tenantId: string) {
+  return service
+    .listTenantMessagingThreads(tenantId)
+    .filter((thread) => thread.context === "general" && !thread.contextRef);
 }
 
 describe("manager copilot chat domain", () => {
@@ -216,6 +218,58 @@ describe("manager copilot chat domain", () => {
     }
   });
 
+  it("prepares an explicit room dunning send before asking the model", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      throw new Error("model should not be called");
+    }) as typeof fetch;
+
+    try {
+      const result = await service.chatManagerCopilot("landlord-demo", {
+        messages: [{ role: "user", content: "411호 월세 독촉문자 보내" }]
+      });
+
+      assert.equal(result.pendingAction?.kind, "billing.send_dunning");
+      assert.equal(result.pendingAction?.dunningPreview?.unitId, "411");
+      assert.equal(fetchCalls, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("prepares a payment reminder for a published unpaid bill before its due time", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    try {
+      const result = await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        intent: {
+          type: "billing.send_dunning",
+          source: "overdue",
+          billId: "bill-demo-current-304",
+          prompt: "304호 월세 납부문자 보내"
+        }
+      });
+
+      assert.equal(result.pendingAction?.kind, "billing.send_dunning");
+      assert.equal(result.pendingAction?.dunningPreview?.unitId, "304");
+      assert.ok(result.pendingAction?.dunningPreview?.unpaidAmount);
+    } finally {
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
   it("returns a pending action for send tools without executing the send", async () => {
     const service = new RoomlogService();
     const originalApiKey = process.env.OPENAI_API_KEY;
@@ -267,12 +321,13 @@ describe("manager copilot chat domain", () => {
       });
 
       assert.equal(result.mode, "openai");
-      assert.equal(result.reply, "발송 전에 확인이 필요합니다.");
+      assert.match(result.reply, /내용을 확인한 뒤 발송/);
       assert.equal(result.pendingAction?.kind, "billing.send_dunning");
       assert.match(result.pendingAction?.summary ?? "", /정예린/);
       assert.match(result.pendingAction?.summary ?? "", /정글빌라 411호/);
       assert.match(result.pendingAction?.summary ?? "", /월분 청구/);
       assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), false);
+      assert.equal(chatCalls, 0);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
@@ -313,7 +368,44 @@ describe("manager copilot chat domain", () => {
       });
 
       assert.equal(confirmed.receipts?.[0]?.kind, "billing.send_dunning");
-      assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), true);
+      const [generalThread] = generalThreads(service, "tenant-billing-411");
+      assert.ok(generalThread);
+      assert.match(generalThread.lastMessage, /납부기한/);
+      assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), false);
+    } finally {
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("reuses the existing contract general chat for a confirmed dunning send", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const conversation = service.getTenantLandlordConversation("tenant-billing-411");
+    const existing = service.createTenantMessagingThread("tenant-billing-411", {
+      roomId: conversation.roomId,
+      context: "general",
+      body: "기존 계약 대화입니다."
+    });
+
+    try {
+      const pending = await service.chatManagerCopilot("landlord-demo", {
+        messages: [{ role: "user", content: "411호 월세 독촉문자 보내" }]
+      });
+      assert.ok(pending.pendingAction?.id);
+
+      await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        confirmActionId: pending.pendingAction.id
+      });
+
+      const threads = generalThreads(service, "tenant-billing-411");
+      assert.equal(threads.length, 1);
+      assert.equal(threads[0].id, existing.id);
+      const detail = service.getTenantMessagingThread("tenant-billing-411", existing.id);
+      assert.equal(detail.messages?.at(-1)?.sender, "manager");
+      assert.match(detail.messages?.at(-1)?.body ?? "", /미납|청구|납부/);
     } finally {
       if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
       else delete process.env.OPENAI_API_KEY;
@@ -448,8 +540,9 @@ describe("manager copilot chat domain", () => {
       assert.equal(confirmed.receipts?.[0]?.kind, "billing.send_dunning");
       assert.match(confirmed.receipts?.[0]?.summary ?? "", /정예린/);
       assert.match(confirmed.receipts?.[0]?.summary ?? "", /정글빌라 411호/);
-      assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), true);
-      assert.equal(chatCalls, 2);
+      assert.equal(generalThreads(service, "tenant-billing-411").length, 1);
+      assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), false);
+      assert.equal(chatCalls, 0);
       assert.equal(responseCalls, 0);
     } finally {
       globalThis.fetch = originalFetch;
@@ -794,7 +887,7 @@ describe("manager copilot chat domain", () => {
 
     try {
       const pending = await service.chatManagerCopilot("landlord-demo", {
-        messages: [{ role: "user", content: "임차인에게 독촉 답장 보내줘" }]
+        messages: [{ role: "user", content: "임차인에게 답장 보내줘" }]
       });
       assert.ok(pending.pendingAction?.id);
 

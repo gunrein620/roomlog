@@ -4023,7 +4023,7 @@ export class RoomlogService implements OnModuleDestroy {
     managerId: string,
     billId: string,
     input: SendDunningInput
-  ): { ok: true } {
+  ): { ok: true; threadId: string } {
     const bill = this.findManagerBill(managerId, billId);
     const text = input.text?.trim();
     const channel = input.channel?.trim();
@@ -4038,9 +4038,9 @@ export class RoomlogService implements OnModuleDestroy {
 
     this.assertManagerDunningAllowed(bill);
 
-    this.recordManagerDunningMessage(managerId, bill, text, channel);
+    const thread = this.recordManagerDunningMessage(managerId, bill, text);
 
-    return { ok: true };
+    return { ok: true, threadId: thread.id };
   }
 
   private assertManagerDunningAllowed(bill: Bill) {
@@ -4048,8 +4048,8 @@ export class RoomlogService implements OnModuleDestroy {
       throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
     }
 
-    if (!this.canAutoOverdue(bill)) {
-      throw new BadRequestException("납부기한이 지난 공개 청구서만 독촉할 수 있습니다.");
+    if (!this.canSendManagerDunning(bill)) {
+      throw new BadRequestException("공개된 미납 청구서에만 납부 안내를 보낼 수 있습니다.");
     }
 
     const guard = this.dunningGuardForBill(bill);
@@ -4073,70 +4073,51 @@ export class RoomlogService implements OnModuleDestroy {
     }
   }
 
-  private recordManagerDunningMessage(managerId: string, bill: Bill, text: string, channel: string) {
+  private recordManagerDunningMessage(managerId: string, bill: Bill, text: string) {
     const room = this.store.rooms.find(
-      (item) => item.landlordId === managerId && this.unitMatchesRoom(bill.unitId, item)
+      (item) =>
+        item.landlordId === managerId &&
+        (bill.roomId ? item.id === bill.roomId : this.unitMatchesRoom(bill.unitId, item))
     );
 
     if (!room) {
-      return;
+      throw new BadRequestException("독촉을 전달할 관리 호실을 찾을 수 없습니다.");
     }
 
     const tenantId = Object.entries(this.store.tenantRooms).find(([, roomId]) => roomId === room.id)?.[0];
 
     if (!tenantId) {
-      return;
+      throw new BadRequestException("독촉을 전달할 계약 세입자를 찾을 수 없습니다.");
     }
 
-    const createdAt = now();
-    const contextLabel = `${bill.billingMonth} 청구 독촉`;
-    let thread = this.store.messagingThreads.find(
-      (item) =>
-        item.roomId === room.id &&
-        item.tenantId === tenantId &&
-        item.context === "payment" &&
-        item.contextRef === bill.id
-    );
+    const existing = this.messaging
+      .listManagerMessagingThreads(managerId, "general")
+      .find(
+        (thread) =>
+          thread.roomId === room.id &&
+          thread.tenantId === tenantId &&
+          !thread.contextRef
+      );
 
-    if (!thread) {
-      thread = {
-        id: id("mth"),
+    if (existing) {
+      return this.messaging.addManagerMessagingThreadMessage(
+        managerId,
+        existing.id,
+        {
+          body: text,
+          kind: "text"
+        }
+      );
+    }
+
+    return this.messaging.startManagerConversation(
+      managerId,
+      {
         roomId: room.id,
-        unitId: this.displayUnitId(room),
         tenantId,
-        context: "payment",
-        contextRef: bill.id,
-        contextLabel,
-        lastMessage: text,
-        unreadCount: 0,
-        managerUnreadCount: 0,
-        pendingRequest: false,
-        archivedNotice: true,
-        createdAt,
-        updatedAt: createdAt
-      };
-      this.store.messagingThreads.push(thread);
-    }
-
-    thread.contextLabel = thread.contextLabel || contextLabel;
-    thread.lastMessage = text;
-    thread.unreadCount += 1;
-    thread.pendingRequest = false;
-    thread.archivedNotice = true;
-    thread.updatedAt = createdAt;
-
-    this.store.messagingMessages.push({
-      id: id("msg"),
-      threadId: thread.id,
-      senderUserId: managerId,
-      sender: "manager",
-      kind: "text",
-      body: text,
-      originalBody: channel,
-      attachmentUrls: [],
-      createdAt
-    });
-    this.persistStore();
+        body: text
+      }
+    );
   }
 
   listTenantContracts(tenantId: string): Contract[] {
@@ -5555,7 +5536,7 @@ export class RoomlogService implements OnModuleDestroy {
         const channel = draft.channel;
         const messageText = body || draft.draftText;
 
-        this.sendManagerDunning(managerId, bill.id, {
+        const delivery = this.sendManagerDunning(managerId, bill.id, {
           text: messageText,
           channel
         });
@@ -5563,9 +5544,10 @@ export class RoomlogService implements OnModuleDestroy {
         return {
           status: "executed",
           domain: "billing",
-          summary: `${draft.unitId}호 ${draft.tenantName}님에게 ${channel}로 연체 독촉 메시지를 발송했습니다.`,
+          summary: `${draft.unitId}호 ${draft.tenantName}님의 소통 채팅으로 연체 독촉 메시지를 발송했습니다.`,
           data: {
             billId: draft.billId,
+            threadId: delivery.threadId,
             unitId: draft.unitId,
             tenantName: draft.tenantName,
             channel,
@@ -5573,8 +5555,8 @@ export class RoomlogService implements OnModuleDestroy {
             guard: draft.guard
           },
           navigation: {
-            label: "연체 관리에서 확인",
-            href: "/manager/billing/overdue"
+            label: "소통 채팅에서 확인",
+            href: `/manager/messaging/04?id=${encodeURIComponent(delivery.threadId)}`
           }
         };
       } catch (error) {
@@ -5963,7 +5945,7 @@ export class RoomlogService implements OnModuleDestroy {
     const unitId = this.extractUnitIdFromAgentText(requestText);
     const billingMonth = this.extractBillingMonthFromAgentText(requestText);
     const candidates = this.managerBills(managerId)
-      .filter((bill) => this.canAutoOverdue(bill))
+      .filter((bill) => this.canSendManagerDunning(bill))
       .sort((left, right) => this.daysOverdueForBill(right) - this.daysOverdueForBill(left));
     let matched = candidates;
 
@@ -10184,6 +10166,13 @@ export class RoomlogService implements OnModuleDestroy {
   private canAutoOverdue(bill: Bill) {
     return (
       this.isBillPastDue(bill) &&
+      this.unpaidAmount(bill) > 0 &&
+      !["DRAFT", "PAID", "CORRECTED", "CANCELED"].includes(bill.status)
+    );
+  }
+
+  private canSendManagerDunning(bill: Bill) {
+    return (
       this.unpaidAmount(bill) > 0 &&
       !["DRAFT", "PAID", "CORRECTED", "CANCELED"].includes(bill.status)
     );

@@ -5942,7 +5942,7 @@ describe("RoomlogService", () => {
     assert.equal(dunningResult.status, "executed");
     assert.equal(dunningResult.domain, "billing");
     assert.match(dunningResult.summary, /411호.*독촉.*발송/);
-    assert.equal(dunningResult.navigation?.href, "/manager/billing/overdue");
+    assert.match(dunningResult.navigation?.href ?? "", /^\/manager\/messaging\/04\?id=/);
 
     assert.equal(guardedDunningResult.status, "blocked");
     assert.equal(guardedDunningResult.domain, "billing");
@@ -6108,7 +6108,7 @@ describe("RoomlogService", () => {
     assert.equal(lastMessage?.body, body);
   });
 
-  it("records realtime dunning sends in the tenant-visible payment thread", async () => {
+  it("records realtime dunning sends in the tenant-visible contract general chat", async () => {
     const service = new RoomlogService();
 
     const result = await service.runManagerAgentCommand("landlord-demo", {
@@ -6116,23 +6116,27 @@ describe("RoomlogService", () => {
       text: "411호 연체 독촉 메시지 바로 보내줘"
     });
     const tenantThreads = service.listTenantMessagingThreads("tenant-billing-411");
-    const paymentThread = tenantThreads.find(
-      (thread) => thread.context === "payment" && thread.contextRef === "bill-demo-overdue-411"
+    const generalThread = tenantThreads.find(
+      (thread) => thread.context === "general" && !thread.contextRef
     );
 
     assert.equal(result.status, "executed");
-    assert.ok(paymentThread, "독촉 발송은 임차인 payment 메시지함에 기록되어야 한다.");
-    assert.equal(paymentThread.lastMessage, (result.data as any).text);
-    assert.equal(paymentThread.unreadCount, 1);
+    assert.ok(generalThread, "독촉 발송은 계약 관계의 일반 소통 채팅에 기록되어야 한다.");
+    assert.equal(generalThread.lastMessage, (result.data as any).text);
+    assert.equal(generalThread.unreadCount, 1);
+    assert.equal(
+      tenantThreads.some((thread) => thread.context === "payment"),
+      false
+    );
 
-    const detail = service.getTenantMessagingThread("tenant-billing-411", paymentThread.id);
+    const detail = service.getTenantMessagingThread("tenant-billing-411", generalThread.id);
     const lastMessage = detail.messages?.at(-1);
 
     assert.equal(lastMessage?.sender, "manager");
     assert.match(lastMessage?.body ?? "", /미납|청구|독촉/);
   });
 
-  it("blocks guarded dunning requests before creating a tenant-visible payment thread", async () => {
+  it("blocks guarded dunning requests before creating a tenant-visible contract chat", async () => {
     const service = new RoomlogService();
 
     const result = await service.runManagerAgentCommand("landlord-demo", {
@@ -6140,14 +6144,14 @@ describe("RoomlogService", () => {
       text: "302호 독촉 메시지 보내"
     });
     const tenantThreads = service.listTenantMessagingThreads("tenant-billing-302");
-    const paymentThread = tenantThreads.find(
-      (thread) => thread.context === "payment" && thread.contextRef === "bill-demo-guarded-302"
+    const generalThread = tenantThreads.find(
+      (thread) => thread.context === "general" && !thread.contextRef
     );
 
     assert.equal(result.status, "blocked");
     assert.equal(result.domain, "billing");
     assert.match(result.summary, /납부 신고|입금내역/);
-    assert.equal(paymentThread, undefined, "입금 확인 중인 청구에는 독촉 스레드를 만들면 안 된다.");
+    assert.equal(generalThread, undefined, "입금 확인 중인 청구에는 소통 채팅을 만들면 안 된다.");
   });
 
   it("blocks realtime manager messages that look like payment dunning", async () => {
