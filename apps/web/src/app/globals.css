@@ -3688,8 +3688,8 @@ p {
   bottom: auto;
   left: auto;
   z-index: 7;
-  width: min(390px, calc(100% - 28px));
-  max-height: min(620px, calc(100% - 76px));
+  width: min(240px, calc(100% - 28px));
+  max-height: min(350px, calc(100% - 76px));
   overflow: hidden;
   padding: 12px;
   border: 1px solid rgba(203, 191, 245, 0.22);
@@ -3729,7 +3729,7 @@ p {
 }
 
 .hero-stage .hero-furniture-catalog-scroll {
-  max-height: 260px;
+  max-height: 112px;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 2px;
@@ -3738,6 +3738,23 @@ p {
 .hero-stage .hero-furniture-catalog-scroll .listing-tour-furniture-grid {
   max-height: none;
   overflow: visible;
+}
+
+/* 카테고리만 독립적으로 넘길 수 있게, 히어로 드로어에서는 스크롤바를 감추지 않는다. */
+.hero-stage .listing-tour-furniture-category-tabs {
+  padding-bottom: 5px;
+  scrollbar-color: rgba(203, 191, 245, 0.52) transparent;
+  scrollbar-width: thin;
+}
+
+.hero-stage .listing-tour-furniture-category-tabs::-webkit-scrollbar {
+  display: block;
+  height: 4px;
+}
+
+.hero-stage .listing-tour-furniture-category-tabs::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(203, 191, 245, 0.52);
 }
 
 .hero-stage .listing-tour-furniture-head strong {
@@ -13845,12 +13862,12 @@ p {
   }
 
   .hero-stage .hero-furniture-drawer {
-    width: calc(100% - 28px);
+    width: min(240px, calc(100% - 28px));
     max-height: calc(100% - 76px);
   }
 
   .hero-stage .hero-furniture-catalog-scroll {
-    max-height: min(220px, 36vh);
+    max-height: min(112px, 24vh);
   }
 
   .bottom-tabs {
