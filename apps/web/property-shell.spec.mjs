@@ -1475,6 +1475,14 @@ test("moves the map only after the current-location action", () => {
   assert.match(naverMapPreviewSource, /map\.setCenter\(nextCenter\)/);
 });
 
+test("re-centers the map when the same current location is requested again", () => {
+  assert.match(homeAppSource, /const \[mapCenterFocusRequestId, setMapCenterFocusRequestId\] = useState\(0\)/);
+  assert.match(homeAppSource, /setMapCenterFocusRequestId\(requestId\)/);
+  assert.match(homeAppSource, /centerFocusRequestId=\{mapCenterFocusRequestId\}/);
+  assert.match(naverMapPreviewSource, /centerFocusRequestId\?: number/);
+  assert.match(naverMapPreviewSource, /centerFocusRequestId, closeCenterInfoWindow/);
+});
+
 test("shows the current-location marker label only once", () => {
   assert.match(naverMapPreviewSource, /if \(detail\) content\.append\(detailElement\);/);
   assert.match(naverMapPreviewSource, /title === "현재 위치" \? "" : "현재 위치"/);

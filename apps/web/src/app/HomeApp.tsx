@@ -1618,6 +1618,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [mapSearchContext, setMapSearchContext] = useState<MapSearchContext>(DEFAULT_MAP_CONTEXT);
   const [hasResolvedMapContext, setHasResolvedMapContext] = useState(false);
   const [mapViewport, setMapViewport] = useState<NaverMapViewport | null>(null);
+  const [mapCenterFocusRequestId, setMapCenterFocusRequestId] = useState(0);
   const [mapLocationStatus, setMapLocationStatus] = useState<MapLocationStatus>("idle");
   const [mapQueryStatus, setMapQueryStatus] = useState<MapQueryStatus>("idle");
   const [mapQueryCandidates, setMapQueryCandidates] = useState<MapResolvedQuery[]>([]);
@@ -1740,6 +1741,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         setSelectedArea(CURRENT_LOCATION_AREA_LABEL);
         setMapTopbarSearchValue("");
         setActiveMapResultTab("rooms");
+        setMapCenterFocusRequestId(requestId);
         setMapLocationStatus("granted");
 
         void reverseGeocodeMapPoint(center).then((currentAddress) => {
@@ -3009,6 +3011,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <NaverMapPreview
               className="map-stage"
               center={mapSearchContext.center}
+              centerFocusRequestId={mapCenterFocusRequestId}
               showCenterMarker={isDistanceScopedMap}
               address={isSearchScopedMap ? mapSearchContext.addressText ?? mapAreaDisplayTitle : null}
               title={isLocationScopedMap ? "현재 위치" : mapAreaDisplayTitle}

@@ -234,6 +234,7 @@ function centerMarkerDetail(title: string | undefined, addressKey: string): stri
 export function NaverMapPreview({
   className = "",
   center,
+  centerFocusRequestId,
   showCenterMarker = true,
   address,
   title,
@@ -243,6 +244,8 @@ export function NaverMapPreview({
   className?: string;
   /** 특정 매물 좌표 — 있으면 그 위치를 중심으로 단일 마커를 찍는다(없으면 데모 마커). */
   center?: { lat: number; lng: number } | null;
+  /** 같은 좌표라도 재중심 이동을 요청할 때 증가시키는 키. */
+  centerFocusRequestId?: number;
   /** 지도 탭은 중심 이동만 필요할 수 있어 현재 위치/상세 마커 표시를 분리한다. */
   showCenterMarker?: boolean;
   address?: string | null;
@@ -459,7 +462,7 @@ export function NaverMapPreview({
     });
     centerMarkerRef.current = marker;
     openCenterInfoWindow(maps, map, marker, title || "이 매물", centerMarkerDetail(title, addressKey));
-  }, [addressKey, centerKey, closeCenterInfoWindow, loadState, openCenterInfoWindow, showCenterMarker, title]);
+  }, [addressKey, centerKey, centerFocusRequestId, closeCenterInfoWindow, loadState, openCenterInfoWindow, showCenterMarker, title]);
 
   useEffect(() => {
     if (centerKey || !addressKey || loadState !== "ready") return;
