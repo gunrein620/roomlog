@@ -8,11 +8,17 @@ const viewerSource = readFileSync(
   "utf8"
 );
 const landlordSource = readFileSync(join(process.cwd(), "src/app/my/flows/LandlordMyPage.tsx"), "utf8");
+const listingTourSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
 const globalCss = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
 
 describe("listing-only 3D preview", () => {
-  it("uses a closer fitted camera and omits the outside scene", () => {
+  it("uses the same saved-plan presentation in registration and listing detail", () => {
     assert.match(landlordSource, /<FloorPlan3DPreview[\s\S]*?controlsEnabled[\s\S]*?fitDistanceScale=\{0\.9\}[\s\S]*?listingPreview[\s\S]*?previewFit/);
+    assert.match(listingTourSource, /<RoomlogThreeFloorPlanView[\s\S]*?fitDistanceScale=\{0\.9\}[\s\S]*?listingPreview[\s\S]*?previewFit/);
+    assert.doesNotMatch(listingTourSource, /cameraPosition=\{\[9, 7\.5, 11\]\}/);
+    assert.doesNotMatch(listingTourSource, /sceneBackground=\{variant === "hero" \? null : undefined\}/);
+    assert.doesNotMatch(listingTourSource, /furnitureVerticalScale=\{sceneHorizontalScale\}/);
+    assert.doesNotMatch(listingTourSource, /horizontalScale=\{sceneHorizontalScale\}/);
     assert.match(viewerSource, /listingPreview\?: boolean/);
     assert.match(viewerSource, /<RoomCameraAutoFit bounds=\{wallBounds\} distanceScale=\{fitDistanceScale\} previewFit=\{previewFit\}/);
     assert.match(viewerSource, /showGround=\{!listingPreview\}/);

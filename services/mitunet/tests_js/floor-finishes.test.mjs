@@ -118,6 +118,22 @@ test("a low-confidence rejected door is not allowed to wall off open space", () 
   );
 });
 
+test("keeps a narrow floor strip between parallel walls when a broken boundary leaks outside", () => {
+  const polygons = {
+    wall: [
+      rectangle(10, 5, 12, 35),
+      rectangle(24, 5, 26, 35),
+      rectangle(10, 33, 26, 35),
+    ],
+    door: [],
+    window: [],
+  };
+
+  const mask = buildInteriorMask(polygons, 40, 40);
+  assert.equal(maskContains(mask, 40, 40, 18, 20), true);
+  assert.equal(maskContains(mask, 40, 40, 28, 20), false);
+});
+
 test("real demo geometry retains a plausible enclosed floor area", () => {
   for (const key of ["1191", "4068", "3676"]) {
     const demo = readDemo(key);

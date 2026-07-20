@@ -42,7 +42,7 @@ test("rewrites relative demo sample paths to the mitunet-assets route", () => {
 test("keeps RoomLog completion behavior in the source module instead of runtime source replacement", () => {
   assert.match(
     integrationSource,
-    /sendRoomLogCompletion\(context, plan, sourceName, furnitures = \[\]\)/,
+    /sendRoomLogCompletion\([\s\S]*?previewMode = "floor",[\s\S]*?previewImageB64/,
   );
   assert.match(integrationSource, /const storageKey = `roomlogListingFloorPlan3D:\$\{context\.requestId\}`;/);
   assert.match(integrationSource, /window\.localStorage\.setItem\(storageKey, JSON\.stringify\(storageValue\)\);/);

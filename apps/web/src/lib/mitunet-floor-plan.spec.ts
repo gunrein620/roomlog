@@ -120,6 +120,31 @@ test("imports room floor materials from a saved MitUNet project", () => {
   assert.notEqual(parsed?.floorMaterials, floorMaterials);
 });
 
+test("keeps a saved source-plan surface for the listing preview", () => {
+  const parsed = normalizeMitunetPayload({
+    canvasSize: [2, 2],
+    contentRect: [0, 0, 2, 2],
+    polygons: smallPolygons,
+    sourceImageB64: "cGxhbg==",
+    surfaceMode: "source",
+  });
+
+  assert.equal(parsed?.surfaceMode, "source");
+  assert.equal(parsed?.sourceImageB64, "cGxhbg==");
+});
+
+test("uses the saved source plan in the preview even when an older handoff omitted its mode", () => {
+  const parsed = normalizeMitunetPayload({
+    canvasSize: [2, 2],
+    contentRect: [0, 0, 2, 2],
+    polygons: smallPolygons,
+    sourceImageB64: "cGxhbg==",
+  });
+
+  assert.equal(parsed?.surfaceMode, "source");
+  assert.equal(parsed?.sourceImageB64, "cGxhbg==");
+});
+
 test("drops invalid optional room floor materials without rejecting the wall plan", () => {
   const parsed = normalizeMitunetPayload({
     canvasSize: [2, 2],

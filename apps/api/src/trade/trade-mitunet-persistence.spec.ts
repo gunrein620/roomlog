@@ -46,6 +46,18 @@ describe("TradeService MitUNet persistence", () => {
     assert.deepEqual(restarted.listListings()[0]?.floorPlan?.mitunet, mitunet);
   });
 
+  it("persists the source-plan surface after the listing is registered", () => {
+    const filePath = storePath();
+    const service = new TradeService(filePath);
+    const sourcePlan = { ...mitunet, surfaceMode: "source" as const, sourceImageB64: "cGxhbg==" };
+    service.createListing(owner, {
+      ...baseInput,
+      floorPlan: { walls3D: [], furnitures: [], mitunet: sourcePlan }
+    });
+
+    assert.deepEqual(new TradeService(filePath).listListings()[0]?.floorPlan?.mitunet, sourcePlan);
+  });
+
   it("rejects a malformed MitUNet payload instead of silently dropping it", () => {
     const service = new TradeService(storePath());
     const malformed = { ...mitunet, polygons: { ...mitunet.polygons, wall: [] } };

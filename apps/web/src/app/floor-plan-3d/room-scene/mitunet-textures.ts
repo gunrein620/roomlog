@@ -88,3 +88,39 @@ export function createFloorTexture(plan: MitunetFloorPlan) {
   texture.needsUpdate = true;
   return texture;
 }
+
+export async function createSourcePlanTexture(plan: MitunetFloorPlan) {
+  if (plan.surfaceMode !== "source" || !plan.sourceImageB64) return null;
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const source = new Image();
+    source.onload = () => resolve(source);
+    source.onerror = () => reject(new Error("Saved source plan image could not be decoded"));
+    source.src = `data:image/png;base64,${plan.sourceImageB64}`;
+  });
+  const [width, height] = plan.canvasSize;
+  const [left, top, innerWidth, innerHeight] = plan.contentRect;
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  const mask = buildRoomlogInteriorMask(plan.polygons, width, height);
+  for (let y = 0; y < canvas.height; y += 1) {
+    const sourceY = Math.min(height - 1, top + Math.floor(y * innerHeight / canvas.height));
+    for (let x = 0; x < canvas.width; x += 1) {
+      const sourceX = Math.min(width - 1, left + Math.floor(x * innerWidth / canvas.width));
+      if (!mask[sourceY * width + sourceX]) pixels.data[(y * canvas.width + x) * 4 + 3] = 0;
+    }
+  }
+  context.putImageData(pixels, 0, 0);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = true;
+  texture.needsUpdate = true;
+  return texture;
+}

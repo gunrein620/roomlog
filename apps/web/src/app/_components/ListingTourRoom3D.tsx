@@ -20,10 +20,6 @@ import {
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
 import { listingTourFurnitureStorageKey } from "../splat-tour/splat-furniture";
-import {
-  normalizeTourScenePoint,
-  resolveTourSceneScale
-} from "../floor-plan-3d/room-scene/mitunet-geometry";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 import { fetchTenantFurniture, TenantFurnitureApiError } from "@/lib/tenant-furniture-api";
 import {
@@ -59,8 +55,6 @@ export type ListingFloorPlan3D = {
   name?: string;
   mitunet?: MitunetFloorPlan;
 };
-
-const TOUR_HORIZONTAL_SCALE = 1.85;
 
 function readSavedFurnitures(listingId: string) {
   if (typeof window === "undefined") return null;
@@ -105,7 +99,6 @@ export default function ListingTourRoom3D({
   variant?: "sheet" | "hero";
 }) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
-  const sceneHorizontalScale = resolveTourSceneScale(floorPlan.mitunet, TOUR_HORIZONTAL_SCALE);
   const [isPlacementOpen, setIsPlacementOpen] = useState(false);
   // hero 패널 접기 — 시안의 우상단 "가구 배치" 토글. 모바일에선 도면이 좁아 기본 접힘이 낫지만
   // 데스크톱 첫인상엔 패널이 보여야 해서 열림 기본, 사용자가 토글로 제어한다.
@@ -258,7 +251,7 @@ export default function ListingTourRoom3D({
   }
 
   function normalizedScenePoint(point: { x: number; z: number }) {
-    return normalizeTourScenePoint(point, sceneHorizontalScale);
+    return point;
   }
 
   function handleFurnitureCategoryScroll() {
@@ -470,24 +463,22 @@ export default function ListingTourRoom3D({
   return (
     <div className={variant === "hero" ? "listing-tour-room3d hero-stage" : "listing-tour-room3d"}>
       <RoomlogThreeFloorPlanView
-        cameraPosition={[9, 7.5, 11]}
         controlsEnabled={!isFurnitureDragging}
         frameloop="always"
         furnitureData={placedFurnitures}
-        furnitureVerticalScale={sceneHorizontalScale}
         hideHint
-        horizontalScale={sceneHorizontalScale}
         mitunetPlan={floorPlan.mitunet}
         orbitMinDistance={1.6}
         orbitZoomEnabled={variant !== "hero"}
-        fitDistanceScale={variant === "hero" ? TOUR_HORIZONTAL_SCALE * 1.1 : undefined}
-        sceneBackground={variant === "hero" ? null : undefined}
+        fitDistanceScale={0.9}
+        listingPreview
         onFloorPointerDown={handleFloorPointerDown}
         onFloorPointerMove={handleFloorPointerMove}
         onFurniturePointerDown={handleFurniturePointerDown}
         onPendingCancel={cancelPendingFurniturePlacement}
         onPendingConfirm={confirmPendingFurniturePlacement}
         pendingFurnitureCanBeDeleted={isPendingFurnitureEditing}
+        previewFit
         onPendingDelete={deletePendingFurniture}
         onPendingRotate={rotatePendingFurniture}
         onWallPointerDown={handleWallPointerDown}

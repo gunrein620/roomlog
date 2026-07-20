@@ -72,6 +72,14 @@ test("keeps the RoomLog save action visible and explains why it cannot be used y
   assert.match(viewerSource, /roomLogSaveHint\.textContent = roomLogSaveReason;/);
 });
 
+test("saves the current 3D or Floor surface for the RoomLog preview", () => {
+  assert.match(
+    viewerSource,
+    /const previewMode = currentView === "furnishing" \? "floor" : "source"/,
+  );
+  assert.match(viewerSource, /await buildRoomLogPreviewImage\(currentComposedPlan\?\.input_image_b64\)/);
+});
+
 test("mounts MitUNet and furniture only from paths inside RoomLog", () => {
   for (const source of [composeSource, productionComposeSource]) {
     assert.match(source, /\.\/services\/mitunet/);
@@ -167,7 +175,7 @@ test("keeps the furniture catalog below the 3D toolbar with eight compact items 
   );
 });
 
-test("uses the furniture catalog as a slide drawer without leaving Floor", () => {
+test("keeps furniture placement available in both 3D and Floor while the slide drawer starts closed", () => {
   assert.match(
     viewerSource,
     /id="furniture-panel-open"[^>]*aria-label="가구 배치 열기"[^>]*>[\s\S]*?data-lucide="armchair"[\s\S]*?<span>가구 배치<\/span>/,
@@ -189,11 +197,49 @@ test("uses the furniture catalog as a slide drawer without leaving Floor", () =>
     /function setFurniturePanelOpen\(open\)\s*\{[\s\S]*?clearTimeout\(furniturePanelCloseTimer\);[\s\S]*?requestAnimationFrame\(\(\) => furniturePanel\.classList\.add\("is-open"\)\);[\s\S]*?furniturePanelCloseTimer = window\.setTimeout/,
   );
   assert.match(viewerSource, /furniturePanelCloseButton\.addEventListener\("click", \(\) => setFurniturePanelOpen\(false\)\);/);
-  assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => setFurniturePanelOpen\(true\)\);/);
   assert.match(
     viewerSource,
-    /async function showFloorView\(\)\s*\{[\s\S]*?if \(currentView === "furnishing"\) \{[\s\S]*?setFurniturePanelOpen\(true\);[\s\S]*?return;/,
+    /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{[\s\S]*?setFurniturePanelOpen\(true\);[\s\S]*?void loadFurnitureCatalogForPlacement\(\);[\s\S]*?\}\);/,
   );
+  assert.match(
+    viewerSource,
+    /function setFurniturePlacementVisibility\(visible\)\s*\{[\s\S]*?furnitureGroup\.visible = visible;[\s\S]*?placementPreviewGroup\.visible = visible;[\s\S]*?document\.body\.classList\.toggle\("view-furnishing", visible\);/,
+  );
+  assert.match(
+    viewerSource,
+    /function leaveFurnishingStage\(\)\s*\{[\s\S]*?currentView = "3d";[\s\S]*?setFurniturePlacementVisibility\(true\);[\s\S]*?setFurniturePanelOpen\(false\);/,
+  );
+  assert.match(
+    viewerSource,
+    /currentView = "furnishing";[\s\S]*?setFurniturePanelOpen\(false\);/,
+  );
+  assert.match(
+    viewerSource,
+    /function isFurniturePlacementView\(\)\s*\{\s*return currentView === "3d" \|\| currentView === "furnishing";\s*\}/,
+  );
+  assert.match(viewerSource, /function updateFurniturePreview\([\s\S]*?if \(!isFurniturePlacementView\(\) \|\| !pendingFurniture/);
+  assert.match(viewerSource, /sceneCanvas\.addEventListener\("click", event => \{\s*if \(!isFurniturePlacementView\(\)\) return;/);
+  assert.match(viewerSource, /window\.addEventListener\("keydown", event => \{\s*if \(!isFurniturePlacementView\(\)\) return;/);
+});
+
+test("keeps the original plan inside the walls while making its outer margin transparent in 3D", () => {
+  assert.match(
+    viewerSource,
+    /function buildInputImagePlane\(b64, contentRect, scale, cx, cy, interiorMask, maskWidth, maskHeight\)/,
+  );
+  assert.match(
+    viewerSource,
+    /if \(!interiorMask\[sourceY \* maskWidth \+ sourceX\]\) imageData\.data\[pixelOffset \+ 3\] = 0;/,
+  );
+  assert.match(
+    viewerSource,
+    /buildInputImagePlane\([\s\S]*?interiorMask, width, height,/,
+  );
+  assert.match(
+    viewerSource,
+    /function setFurnishingVisibility\(furnishing\)\s*\{[\s\S]*?setPlanFloorSurfaceVisible\(furnishing\);/,
+  );
+  assert.match(viewerSource, /setCanvasViewState\(view\);[\s\S]*?setPlanFloorSurfaceVisible\(false\);/);
 });
 
 test("keeps the original-plan tool rail compact within a short desktop viewport", () => {
@@ -246,5 +292,5 @@ test("styles wall and scale context panels as compact rounded tool cards", () =>
   );
   assert.match(viewerSource, /#editor-context-panel \.scale-input-row input\s*\{[\s\S]*?height:\s*32px;/);
   assert.match(viewerSource, /#editor-context-panel \.brush-control\s*\{[\s\S]*?height:\s*32px;/);
-  assert.match(viewerSource, /#editor-context-panel\s*\{[\s\S]*?border-radius:\s*16px;/);
+  assert.match(viewerSource, /#editor-context-panel\s*\{[\s\S]*?border-radius:\s*(?:16px|var\(--radius-btn\));/);
 });

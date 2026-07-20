@@ -6,6 +6,7 @@ import { decodeRoomFloorLabels } from "./room-floor-zones.mjs";
 
 const FURNITURE_ASSET_BASE_URL = "/floor-plan-3d/furniture-assets/";
 const UNCALIBRATED_FURNITURE_SCALE = 0.55 / 2.7;
+const MAX_PREVIEW_IMAGE_BASE64_LENGTH = 4_000_000;
 const FURNITURE_PASTELS = [
   "#93B7F2",
   "#F4AE62",
@@ -41,6 +42,20 @@ function cloneFloorMaterials(value) {
   }
   decodeRoomFloorLabels(value);
   return JSON.parse(JSON.stringify(value));
+}
+
+function previewSurface(plan, mode, previewImageB64) {
+  if (mode !== "source") return { surfaceMode: "floor" };
+  const sourceImageB64 = previewImageB64 ?? plan?.input_image_b64;
+  if (
+    typeof sourceImageB64 !== "string"
+    || sourceImageB64.length === 0
+    || sourceImageB64.length > MAX_PREVIEW_IMAGE_BASE64_LENGTH
+    || !/^[A-Za-z0-9+/]+={0,2}$/.test(sourceImageB64)
+  ) {
+    return { surfaceMode: "floor" };
+  }
+  return { sourceImageB64, surfaceMode: "source" };
 }
 
 function copyTuple(value, length, fallback) {
@@ -152,7 +167,14 @@ function mapFurniturePlacements(furnitures, hasPhysicalScale) {
   });
 }
 
-export function buildRoomLogCompletion(context, plan, sourceName = "", furnitures = []) {
+export function buildRoomLogCompletion(
+  context,
+  plan,
+  sourceName = "",
+  furnitures = [],
+  previewMode = "floor",
+  previewImageB64,
+) {
   if (!context) throw new Error("RoomLog integration is not active");
   if (!Array.isArray(plan?.polygons?.wall) || plan.polygons.wall.length === 0) {
     throw new Error("A rendered wall plan is required");
@@ -161,6 +183,7 @@ export function buildRoomLogCompletion(context, plan, sourceName = "", furniture
   const millimetersPerPixel = Number(plan?.calibration?.millimetersPerPixel);
   const hasPhysicalScale = Number.isFinite(millimetersPerPixel) && millimetersPerPixel > 0;
   const floorMaterials = cloneFloorMaterials(plan.floor_materials);
+  const surface = previewSurface(plan, previewMode, previewImageB64);
   return {
     type: ROOMLOG_MESSAGE_TYPE,
     schema: ROOMLOG_MESSAGE_SCHEMA,
@@ -173,13 +196,28 @@ export function buildRoomLogCompletion(context, plan, sourceName = "", furniture
       millimetersPerPixel: hasPhysicalScale ? millimetersPerPixel : null,
       polygons: clonePolygons(plan.polygons),
       furnitures: mapFurniturePlacements(furnitures, hasPhysicalScale),
+      ...surface,
       ...(floorMaterials ? { floorMaterials } : {}),
     },
   };
 }
 
-export function sendRoomLogCompletion(context, plan, sourceName, furnitures = []) {
-  const message = buildRoomLogCompletion(context, plan, sourceName, furnitures);
+export function sendRoomLogCompletion(
+  context,
+  plan,
+  sourceName,
+  furnitures = [],
+  previewMode = "floor",
+  previewImageB64,
+) {
+  const message = buildRoomLogCompletion(
+    context,
+    plan,
+    sourceName,
+    furnitures,
+    previewMode,
+    previewImageB64,
+  );
   if (!globalThis.window?.localStorage) {
     throw new Error("RoomLog storage is not available in this browser");
   }

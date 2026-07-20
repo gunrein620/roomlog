@@ -67,7 +67,7 @@ export function resolveFurnitureToolbarMode({
   hasSelectedFurniture = false,
   hasPendingFurniture = false,
 } = {}) {
-  if (currentView !== "furnishing") return "hidden";
+  if (currentView !== "3d" && currentView !== "furnishing") return "hidden";
   if (hasPendingFurniture) return "pending";
   return hasSelectedFurniture ? "selection" : "hidden";
 }

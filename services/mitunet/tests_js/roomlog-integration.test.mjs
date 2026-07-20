@@ -57,6 +57,36 @@ test("builds a minimal versioned completion message", () => {
   assert.equal("input_image_b64" in message.payload, false);
 });
 
+test("preserves the current 3D surface in the RoomLog preview payload", () => {
+  const context = readRoomLogContext(locationLike, ["http://localhost:3000"]);
+  const planWithPreviewImage = { ...plan, input_image_b64: "cGxhbg==" };
+  const sourcePreview = buildRoomLogCompletion(context, planWithPreviewImage, "home.png", [], "source");
+  const floorPreview = buildRoomLogCompletion(context, plan, "home.png", [], "floor");
+
+  assert.equal(sourcePreview.payload.surfaceMode, "source");
+  assert.equal(sourcePreview.payload.sourceImageB64, planWithPreviewImage.input_image_b64);
+  assert.equal(floorPreview.payload.surfaceMode, "floor");
+  assert.equal("sourceImageB64" in floorPreview.payload, false);
+});
+
+test("uses the compacted 3D preview image instead of dropping an oversized source image", () => {
+  const context = readRoomLogContext(locationLike, ["http://localhost:3000"]);
+  const oversizedPlan = { ...plan, input_image_b64: "A".repeat(4_000_001) };
+  const compactPreview = "c2F2ZWQtcHJldmlldw==";
+
+  const message = buildRoomLogCompletion(
+    context,
+    oversizedPlan,
+    "home.png",
+    [],
+    "source",
+    compactPreview,
+  );
+
+  assert.equal(message.payload.surfaceMode, "source");
+  assert.equal(message.payload.sourceImageB64, compactPreview);
+});
+
 test("rejects a plan without wall polygons", () => {
   const context = readRoomLogContext(locationLike, ["http://localhost:3000"]);
   assert.throws(

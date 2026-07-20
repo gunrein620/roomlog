@@ -3,6 +3,7 @@ export const MITUNET_VERSION = 1 as const;
 export const MAX_POLYGONS_PER_CLASS = 2_000;
 export const MAX_POINTS_PER_RING = 2_000;
 export const MAX_HOLES_PER_POLYGON = 100;
+const MAX_SOURCE_IMAGE_BASE64_LENGTH = 4_000_000;
 
 export type MitunetPoint = [number, number];
 export type MitunetRing = MitunetPoint[];
@@ -38,6 +39,8 @@ export type MitunetFloorMaterialMap = {
   zones: MitunetFloorMaterialZone[];
 };
 
+export type MitunetSurfaceMode = "floor" | "source";
+
 export type MitunetFloorPlan = {
   schema: typeof MITUNET_SCHEMA;
   version: typeof MITUNET_VERSION;
@@ -47,6 +50,8 @@ export type MitunetFloorPlan = {
   millimetersPerPixel: number | null;
   polygons: MitunetPolygonGroups;
   floorMaterials?: MitunetFloorMaterialMap;
+  sourceImageB64?: string;
+  surfaceMode?: MitunetSurfaceMode;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -194,6 +199,18 @@ function normalizeFloorMaterials(
   };
 }
 
+function normalizeSourceImageB64(value: unknown): string | undefined {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > MAX_SOURCE_IMAGE_BASE64_LENGTH
+    || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
 export function buildRoomlogMitunetEditorPath(roomlogOrigin: string, requestId: string): string {
   const url = new URL("/floor-plan-3d/mitunet", roomlogOrigin);
   url.searchParams.set("integration", "roomlog");
@@ -220,6 +237,12 @@ export function normalizeMitunetPayload(value: unknown): MitunetFloorPlan | null
   const rawScale = Number(value.millimetersPerPixel);
   const millimetersPerPixel = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : null;
   const floorMaterials = normalizeFloorMaterials(value.floorMaterials, canvasSize);
+  const sourceImageB64 = normalizeSourceImageB64(value.sourceImageB64);
+  const surfaceMode: MitunetSurfaceMode = value.surfaceMode === "floor"
+    ? "floor"
+    : sourceImageB64
+      ? "source"
+      : "floor";
 
   return {
     schema: MITUNET_SCHEMA,
@@ -231,7 +254,9 @@ export function normalizeMitunetPayload(value: unknown): MitunetFloorPlan | null
     contentRect,
     millimetersPerPixel,
     polygons: { wall, door, window },
+    surfaceMode,
     ...(floorMaterials ? { floorMaterials } : {}),
+    ...(sourceImageB64 && surfaceMode === "source" ? { sourceImageB64 } : {}),
   };
 }
 
