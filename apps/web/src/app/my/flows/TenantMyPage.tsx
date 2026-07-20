@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
-import { Bath, Bot, Check, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
+import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
 import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import {
@@ -1023,7 +1023,7 @@ export default function TenantMyPage({
     const container = aiMessagesRef.current;
     if (!container) return;
     container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-  }, [ai.messages.length, ai.busy, ai.readyToFinalize]);
+  }, [ai.messages.length, ai.busy]);
 
   const openLandlordConversation = async () => {
     if (!tenancy || tenancy === "loading") {
@@ -1972,27 +1972,6 @@ export default function TenantMyPage({
                 <p className="manager-ai-notice" role="status">
                   AI가 내용을 정리하고 있어요...
                 </p>
-              ) : null}
-              {ai.readyToFinalize ? (
-                <section className="manager-assistant-action-card" aria-label="민원 접수 확인">
-                  <div className="manager-assistant-action-card__heading">
-                    <span className="manager-assistant-action-card__eyebrow">접수 전 확인</span>
-                    <strong className="manager-assistant-action-card__title">
-                      상담 내용이 정리되었습니다. 이대로 관리자에게 민원을 접수할까요?
-                    </strong>
-                  </div>
-                  <div className="manager-assistant-action-card__actions">
-                    <button
-                      type="button"
-                      onClick={() => void ai.finalizeComplaint()}
-                      disabled={ai.busy}
-                      className="manager-assistant-action-card__button manager-assistant-action-card__button--primary"
-                    >
-                      <Check size={16} aria-hidden="true" />
-                      민원 접수
-                    </button>
-                  </div>
-                </section>
               ) : null}
               {ai.filedComplaint && tenantVendorConnectionEligible(
                 ai.filedComplaint.responsibilityHint,

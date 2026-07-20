@@ -4,13 +4,11 @@
 // 텍스트: intake 세션 메시지 턴(OpenAI Responses, 키 없으면 로컬 폴백 초안).
 // 음성: OpenAI Realtime WebRTC + Push to Talk(버튼을 누른 동안만 마이크 전달, 관리자 비서와 동일 UX)
 //       — 턴 전사를 같은 세션에 기록한다.
-// 접수 준비(readyToFinalize)가 되면 finalize로 실제 민원/티켓을 생성한다.
-// 텍스트 턴에서 세입자가 접수를 명시 요청하면(autoFinalized) 서버가 같은 턴에 자동 접수한다.
+// AI가 보여준 초안 뒤 세입자가 짧게 승인하면 서버가 실제 민원/티켓을 생성한다.
 import { useEffect, useRef, useState } from "react";
 import {
   createTenantIntakeSession,
   createTenantRealtimeClientSecret,
-  finalizeTenantIntakeSession,
   recordTenantRealtimeTurn,
   sendTenantIntakeMessage,
   type TenantIntakeFinalizeResult,
@@ -55,7 +53,6 @@ export function useTenantAiAssistant({
     { id: "tenant-ai-welcome", sender: "assistant", text: TENANT_AI_GREETING },
   ]);
   const [busy, setBusy] = useState(false);
-  const [readyToFinalize, setReadyToFinalize] = useState(false);
   const [filedComplaint, setFiledComplaint] = useState<{
     id: string;
     responsibilityHint?: TenantIntakeResponsibilityHint;
@@ -114,10 +111,6 @@ export function useTenantAiAssistant({
     appendMessage("system", error instanceof Error ? error.message : fallback);
   }
 
-  function applySessionDraft(session: TenantIntakeSession) {
-    setReadyToFinalize(session.status === "ACTIVE" && session.draft.readyToFinalize);
-  }
-
   // 세션은 텍스트·음성이 공유한다. 이미 있으면 재사용, 없으면 생성 후 백엔드 인사말을 이어붙인다.
   async function ensureSession(): Promise<TenantIntakeSession> {
     if (sessionPromiseRef.current) return sessionPromiseRef.current;
@@ -132,7 +125,6 @@ export function useTenantAiAssistant({
           }
         }
       }
-      applySessionDraft(session);
       return session;
     })();
 
@@ -166,13 +158,12 @@ export function useTenantAiAssistant({
     try {
       const session = await ensureSession();
       const result = await sendTenantIntakeMessage(session.id, trimmed);
-      appendMessage("assistant", result.assistantMessage.messageText);
       if (result.autoFinalized) {
         // 세입자가 접수를 요청해 서버가 이번 턴에서 바로 민원을 생성한 경우.
         announceComplaintFiled(result.autoFinalized);
         return true;
       }
-      applySessionDraft(result.session);
+      appendMessage("assistant", result.assistantMessage.messageText);
       return true;
     } catch (error) {
       appendError(error, "AI 응답을 받지 못했습니다.");
@@ -201,26 +192,7 @@ export function useTenantAiAssistant({
     );
     sessionIdRef.current = null;
     sessionPromiseRef.current = null;
-    setReadyToFinalize(false);
     onComplaintFiled?.();
-  }
-
-  // 접수: 세션 초안을 실제 민원/티켓으로 확정한다. 이후 대화는 새 세션으로 시작한다.
-  async function finalizeComplaint(): Promise<boolean> {
-    const sessionId = sessionIdRef.current;
-    if (!sessionId || busy) return false;
-
-    setBusy(true);
-    try {
-      const result = await finalizeTenantIntakeSession(sessionId);
-      announceComplaintFiled(result);
-      return true;
-    } catch (error) {
-      appendError(error, "민원 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function connectVoice() {
@@ -348,7 +320,7 @@ export function useTenantAiAssistant({
     }
   }
 
-  // 완료된 음성 턴을 서버 intake 세션에 기록해 초안(접수 준비 여부)을 갱신한다.
+  // 완료된 음성 턴을 서버 intake 세션에 기록한다.
   async function persistVoiceTurn(
     sessionId: string,
     flush: { eventId: string; userTranscript: string; assistantTranscript: string },
@@ -364,7 +336,6 @@ export function useTenantAiAssistant({
         assistantTranscript: flush.assistantTranscript,
         eventId: flush.eventId,
       });
-      applySessionDraft(result.session);
       succeeded = true;
     } catch {
       // 전사 기록 실패 — 다음 턴에서 재시도되며, 대화 자체는 이어진다.
@@ -400,11 +371,9 @@ export function useTenantAiAssistant({
   return {
     messages,
     busy,
-    readyToFinalize,
     filedComplaint,
     startTextSession,
     submitText,
-    finalizeComplaint,
     voice: {
       status: voiceStatus,
       activity: voiceActivity,

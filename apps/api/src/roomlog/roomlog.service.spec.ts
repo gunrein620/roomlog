@@ -3764,6 +3764,29 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("waits for a shown draft before a short approval can finalize an intake", async () => {
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    const firstReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "301호 화장실 누수 계속 오늘 7시 진행해",
+      attachmentUrls: ["/uploads/leak.jpg"],
+      inputMode: "CHAT"
+    });
+
+    assert.equal(firstReply.autoFinalized, undefined);
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "ACTIVE");
+    assert.equal(firstReply.session.draft.readyToFinalize, true);
+
+    const approvalReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "진행해",
+      inputMode: "CHAT"
+    });
+
+    assert.ok(approvalReply.autoFinalized);
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "FINALIZED");
+  });
+
   it("detects duplicate intake candidates and can attach a consultation to an existing ticket", async () => {
     const service = new RoomlogService();
     const original = service.createComplaint("tenant-demo", {

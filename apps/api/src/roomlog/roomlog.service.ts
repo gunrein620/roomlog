@@ -4511,6 +4511,8 @@ export class RoomlogService implements OnModuleDestroy {
       throw new BadRequestException("상담 메시지 또는 사진이 필요합니다.");
     }
 
+    const approvalTurn = this.isIntakeApprovalTurn(session, messageText);
+
     session.messages.push({
       ...this.createIntakeMessage(
         session.id,
@@ -4521,6 +4523,28 @@ export class RoomlogService implements OnModuleDestroy {
       transcriptText: input.transcriptText,
       attachmentUrls
     });
+
+    if (approvalTurn) {
+      const assistantMessage = this.createIntakeMessage(
+        session.id,
+        "AI_ASSISTANT",
+        "초안대로 민원을 접수했습니다. 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
+        "CHAT"
+      );
+      session.messages.push(assistantMessage);
+      session.updatedAt = now();
+      const finalized = this.finalizeIntakeSession(tenantId, session.id);
+
+      return {
+        session: this.presentIntakeSession(session),
+        assistantMessage,
+        autoFinalized: {
+          complaint: finalized.complaint,
+          ticket: finalized.ticket,
+          analysis: finalized.analysis
+        }
+      };
+    }
 
     const fallbackDraft = this.buildIntakeDraft(session);
     const generatedTurn = await this.generateIntakeTurn(session, fallbackDraft);
@@ -4535,77 +4559,24 @@ export class RoomlogService implements OnModuleDestroy {
     session.updatedAt = now();
     this.persistStore();
 
-    const autoFinalized = this.maybeAutoFinalizeIntake(tenantId, session);
-
-    return { session: this.presentIntakeSession(session), assistantMessage, autoFinalized };
+    return { session: this.presentIntakeSession(session), assistantMessage };
   }
 
-  // 접수는 세입자의 "짧은 명시 승인" 턴에만 실행한다(초안 제시 → 수정 → 승인 플로우, 7/20 결정).
-  // 설명이 섞인 긴 요청 턴에는 접수하지 않고 모델이 초안을 보여주며 승인을 요청한다.
-  // 수동 "민원 접수" 버튼 경로(finalizeIntakeSession 직접 호출)는 그대로 유지된다.
-  private maybeAutoFinalizeIntake(tenantId: string, session: IntakeSession) {
-    const senders = session.messages.map((message) => message.sender);
-    const lastTenantIndex = senders.lastIndexOf("TENANT");
+  private isIntakeApprovalTurn(session: IntakeSession, messageText: string) {
+    const approval = messageText.trim();
+    if (!session.draft.readyToFinalize || !approval || approval.length > 25) return false;
+    if (/(지\s*마|말아|말고|취소|안\s*돼|안돼|않|중단|보류)/.test(approval)) return false;
 
-    if (lastTenantIndex < 0) {
-      return undefined;
-    }
-
-    const lastTenantMessage = session.messages[lastTenantIndex];
-    const normalized = (
-      lastTenantMessage.transcriptText ||
-      lastTenantMessage.messageText ||
-      ""
-    ).trim();
-
-    if (!normalized || normalized.length > 25) return undefined;
-    if (/(지\s*마|말아|말고|취소|안\s*돼|안돼|않|중단|보류)/.test(normalized)) return undefined;
-
-    // "접수해줘"/"민원 넣어줘"/"승인"/"진행해"는 단독으로 승인.
-    const strongApproval = this.detectFilingIntent(normalized) || /(승인|진행)/.test(normalized);
-    // "응"/"네" 같은 일반 긍정은 직전 AI 메시지가 접수 여부를 물었을 때만 승인으로 본다 —
-    // 다른 질문("지금도 새나요?")에 대한 "응"으로 접수해버리는 오발동 방지.
-    const previousAssistantMessage = session.messages
-      .slice(0, lastTenantIndex)
+    const lastAssistantMessage = session.messages
       .filter((message) => message.sender === "AI_ASSISTANT")
-      .at(-1);
-    const assistantAskedApproval = /접수할까요|이대로 접수|접수 준비가 끝났|접수해줘/.test(
-      previousAssistantMessage?.messageText ?? ""
-    );
-    const weakApproval = /(응|어|네|넵|예|그래|좋아|괜찮|ㅇㅋ|ㅇㅇ|해줘|ok|okay|yes)/i.test(
-      normalized
-    );
-
-    if (!strongApproval && !(weakApproval && assistantAskedApproval)) {
-      return undefined;
+      .at(-1)?.messageText;
+    if (!/접수할까요|이대로 접수|접수 준비가 끝났|접수해줘/.test(lastAssistantMessage ?? "")) {
+      return false;
     }
 
-    const location = session.draft.location?.trim() ?? "";
-    const hasMinimumDraft = Boolean(
-      session.draft.title?.trim() &&
-        session.draft.summary?.trim() &&
-        location &&
-        !/확인 필요|미확인/.test(location)
+    return /(승인|진행|접수|민원|응|어|네|넵|예|그래|좋아|괜찮|ㅇㅋ|ㅇㅇ|ok|okay|yes)/i.test(
+      approval
     );
-
-    if (!hasMinimumDraft) {
-      return undefined;
-    }
-
-    session.draft.readyToFinalize = true;
-    session.draft.filingIntent = true;
-
-    try {
-      const finalized = this.finalizeIntakeSession(tenantId, session.id);
-      return {
-        complaint: finalized.complaint,
-        ticket: finalized.ticket,
-        analysis: finalized.analysis
-      };
-    } catch {
-      // 자동 접수에 실패해도 상담은 유지 — 기존 수동 접수 버튼 경로로 폴백한다.
-      return undefined;
-    }
   }
 
   async recordRealtimeTurn(
