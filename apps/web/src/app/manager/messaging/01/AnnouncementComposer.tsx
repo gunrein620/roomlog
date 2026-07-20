@@ -292,7 +292,7 @@ export function AnnouncementComposer({
           </div>
         </section>
 
-        <section className={styles.card}>
+        <section className={`${styles.card} ${styles.targetCard}`}>
           <h2 className={styles.sectionTitle}>
             <span className={styles.sectionDot} /> 대상
           </h2>
@@ -365,7 +365,7 @@ export function AnnouncementComposer({
           </div>
         </section>
 
-        <section className={styles.card}>
+        <section className={`${styles.card} ${styles.contentCard}`}>
           <h2 className={styles.sectionTitle}>
             <span className={styles.sectionDot} /> 내 용
           </h2>
@@ -416,25 +416,12 @@ export function AnnouncementComposer({
             ) : null}
             {feedback ? <p className={styles.feedback} role="status">{feedback}</p> : null}
 
-            <div className={styles.actionRow}>
-              <Button
-                className={styles.reviewButton}
-                type="button"
-                disabled={saving}
-                onClick={() => handleSave("review")}
-              >
-                {saving ? "저장 중..." : "▷ 검토하고 발송으로"}
-              </Button>
-              <Button type="button" variant="secondary" disabled={saving} onClick={() => handleSave("save")}>
-                임시 저장
-              </Button>
-            </div>
           </div>
         </section>
       </div>
 
       <aside className={styles.rightColumn}>
-        <section className={styles.card}>
+        <section className={`${styles.card} ${styles.translationPanel}`}>
           <div className={styles.translationHeader}>
             <h2>{category === "urgent" ? "긴급 다국어 검수" : "다국어 번역"}</h2>
             <span aria-hidden="true">文A</span>
@@ -502,6 +489,25 @@ export function AnnouncementComposer({
                 </article>
               );
             })}
+          </div>
+        </section>
+        <section className={`${styles.card} ${styles.submitPanel}`} aria-label="공지 저장 및 검수">
+          <div className={styles.submitCopy}>
+            <strong>발송 준비</strong>
+            <span>{hasValidTarget ? target.targetLabel : "공지 대상을 먼저 선택하세요."}</span>
+          </div>
+          <div className={styles.actionRow}>
+            <Button
+              className={styles.reviewButton}
+              type="button"
+              disabled={saving}
+              onClick={() => handleSave("review")}
+            >
+              {saving ? "저장 중..." : "검토하고 발송으로"}
+            </Button>
+            <Button type="button" variant="secondary" disabled={saving} onClick={() => handleSave("save")}>
+              임시 저장
+            </Button>
           </div>
         </section>
       </aside>
