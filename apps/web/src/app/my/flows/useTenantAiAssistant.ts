@@ -12,9 +12,6 @@ import {
   recordTenantRealtimeTurn,
   sendTenantIntakeMessage,
   type TenantIntakeFinalizeResult,
-  type TenantIntakeDraft,
-  type TenantIntakeResponsibilityHint,
-  type TenantIntakeSession,
 } from "@/lib/tenant-intake-api";
 import {
   emptyRealtimeTurnState,
@@ -33,15 +30,17 @@ import {
   type TenantVoiceActivity,
   type TenantVoiceConnectionState,
 } from "./tenant-ai-voice";
-
-export type TenantAiChatMessage = {
-  id: string;
-  sender: "assistant" | "tenant" | "system" | "receipt";
-  text: string;
-};
-
-const TENANT_AI_GREETING =
-  "안녕하세요! 우주(Woo-zu) AI 어시스턴트입니다. 생활 중 불편한 점을 알려주시면 정리해서 관리자에게 접수까지 도와드릴게요.";
+import {
+  appendTenantAiMessage,
+  consumeTenantAiDraftForRequest,
+  getTenantAiAssistantState,
+  setTenantAiBusy,
+  setTenantAiDraftForRequest,
+  setTenantAiFiledComplaint,
+  setTenantAiSessionId,
+  useTenantAiAssistantStore,
+  type TenantAiChatMessage,
+} from "./tenant-ai-assistant-store";
 
 export function useTenantAiAssistant({
   roomId,
@@ -50,29 +49,27 @@ export function useTenantAiAssistant({
   roomId?: string;
   onComplaintFiled?: () => void;
 }) {
-  const [messages, setMessages] = useState<TenantAiChatMessage[]>([
-    { id: "tenant-ai-welcome", sender: "assistant", text: TENANT_AI_GREETING },
-  ]);
-  const [busy, setBusy] = useState(false);
-  const [draftForRequest, setDraftForRequest] = useState<TenantIntakeDraft | null>(null);
-  const [filedComplaint, setFiledComplaint] = useState<{
-    id: string;
-    responsibilityHint?: TenantIntakeResponsibilityHint;
-  } | null>(null);
+  const {
+    messages,
+    busy,
+    draftForRequest,
+    filedComplaint,
+  } = useTenantAiAssistantStore();
   const [voiceStatus, setVoiceStatus] = useState<TenantVoiceConnectionState>("idle");
   const [voiceActivity, setVoiceActivity] = useState<TenantVoiceActivity>("idle");
   const [isTalking, setIsTalking] = useState(false);
 
   const roomIdRef = useRef(roomId);
   roomIdRef.current = roomId;
-  const sessionIdRef = useRef<string | null>(null);
-  const sessionPromiseRef = useRef<Promise<TenantIntakeSession> | null>(null);
+  const sessionPromiseRef = useRef<Promise<string> | null>(null);
   // 접수 완료 후 이어지는 대화는 새 세션으로 시작하는데, 이때 서버 인사말을 다시
   // 이어붙이면 대화 중간에 인사가 또 나온다 — 실제 대화가 시작된 뒤에는 생략한다.
-  const hasConversationRef = useRef(false);
+  const hasConversationRef = useRef(
+    messages.some((message) => message.sender === "tenant"),
+  );
 
   useEffect(() => {
-    setFiledComplaint(null);
+    setTenantAiFiledComplaint(null);
   }, [roomId]);
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -103,10 +100,7 @@ export function useTenantAiAssistant({
     const trimmed = text.trim();
     if (!trimmed) return;
     if (sender === "tenant") hasConversationRef.current = true;
-    setMessages((current) => [
-      ...current,
-      { id: createMessageId(), sender, text: trimmed },
-    ]);
+    appendTenantAiMessage(sender, trimmed);
   }
 
   function appendError(error: unknown, fallback: string) {
@@ -114,12 +108,14 @@ export function useTenantAiAssistant({
   }
 
   // 세션은 텍스트·음성이 공유한다. 이미 있으면 재사용, 없으면 생성 후 백엔드 인사말을 이어붙인다.
-  async function ensureSession(): Promise<TenantIntakeSession> {
+  async function ensureSessionId(): Promise<string> {
+    const restoredSessionId = getTenantAiAssistantState().sessionId;
+    if (restoredSessionId) return restoredSessionId;
     if (sessionPromiseRef.current) return sessionPromiseRef.current;
 
     const promise = (async () => {
       const session = await createTenantIntakeSession(roomIdRef.current);
-      sessionIdRef.current = session.id;
+      setTenantAiSessionId(session.id);
       if (!hasConversationRef.current) {
         for (const message of session.messages) {
           if (message.sender === "AI_ASSISTANT") {
@@ -127,7 +123,7 @@ export function useTenantAiAssistant({
           }
         }
       }
-      return session;
+      return session.id;
     })();
 
     sessionPromiseRef.current = promise;
@@ -141,13 +137,13 @@ export function useTenantAiAssistant({
 
   async function startTextSession() {
     if (sessionPromiseRef.current) return;
-    setBusy(true);
+    setTenantAiBusy(true);
     try {
-      await ensureSession();
+      await ensureSessionId();
     } catch (error) {
       appendError(error, "AI 상담을 시작하지 못했습니다.");
     } finally {
-      setBusy(false);
+      setTenantAiBusy(false);
     }
   }
 
@@ -160,17 +156,17 @@ export function useTenantAiAssistant({
       "assistant",
       "말씀해 주신 내용으로 접수 초안을 작성하겠습니다. 잠시만 기다려 주세요.",
     );
-    setBusy(true);
+    setTenantAiBusy(true);
     try {
-      const session = await ensureSession();
-      const result = await sendTenantIntakeMessage(session.id, trimmed);
+      const sessionId = await ensureSessionId();
+      const result = await sendTenantIntakeMessage(sessionId, trimmed);
       if (result.autoFinalized) {
         // 세입자가 접수를 요청해 서버가 이번 턴에서 바로 민원을 생성한 경우.
         announceComplaintFiled(result.autoFinalized);
         return true;
       }
       if (result.session.draft.title.trim() && result.session.draft.summary.trim()) {
-        setDraftForRequest(result.session.draft);
+        setTenantAiDraftForRequest(result.session.draft);
         return true;
       }
       appendMessage("assistant", result.assistantMessage.messageText);
@@ -179,7 +175,7 @@ export function useTenantAiAssistant({
       appendError(error, "AI 응답을 받지 못했습니다.");
       return false;
     } finally {
-      setBusy(false);
+      setTenantAiBusy(false);
     }
   }
 
@@ -187,7 +183,7 @@ export function useTenantAiAssistant({
   function announceComplaintFiled(result: TenantIntakeFinalizeResult) {
     const title = result.complaint?.title;
     if (result.complaint?.id) {
-      setFiledComplaint({
+      setTenantAiFiledComplaint({
         id: result.complaint.id,
         ...(result.analysis?.responsibilityHint
           ? { responsibilityHint: result.analysis.responsibilityHint }
@@ -200,7 +196,7 @@ export function useTenantAiAssistant({
         ? `접수 완료 · ${title} — 처리 상태는 민원/하자 이력에서 확인할 수 있어요.`
         : "접수 완료 · 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
     );
-    sessionIdRef.current = null;
+    setTenantAiSessionId(null);
     sessionPromiseRef.current = null;
     onComplaintFiled?.();
   }
@@ -211,12 +207,12 @@ export function useTenantAiAssistant({
     setVoiceActivity("idle");
 
     try {
-      const session = await ensureSession();
+      const sessionId = await ensureSessionId();
       const stream = await requestMicrophone();
       setAudioTracksEnabled(stream, false);
       streamRef.current = stream;
 
-      const secret = await createTenantRealtimeClientSecret(session.id);
+      const secret = await createTenantRealtimeClientSecret(sessionId);
       if (secret.mode !== "openai" || !secret.clientSecret?.value) {
         closeVoiceResources();
         setIsTalking(false);
@@ -256,7 +252,7 @@ export function useTenantAiAssistant({
         appendMessage("system", "음성 연결이 열렸습니다. 불편한 점을 편하게 말씀해 주세요.");
       };
       channel.onmessage = (event) => {
-        handleVoiceEvent(session.id, String(event.data));
+        handleVoiceEvent(sessionId, String(event.data));
       };
 
       const offer = await peer.createOffer();
@@ -382,7 +378,7 @@ export function useTenantAiAssistant({
     messages,
     busy,
     draftForRequest,
-    consumeDraftForRequest: () => setDraftForRequest(null),
+    consumeDraftForRequest: consumeTenantAiDraftForRequest,
     filedComplaint,
     startTextSession,
     submitText,
@@ -397,10 +393,6 @@ export function useTenantAiAssistant({
       stopTalking,
     },
   };
-}
-
-function createMessageId() {
-  return `tenant-ai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function setAudioTracksEnabled(stream: MediaStream | null, enabled: boolean) {
