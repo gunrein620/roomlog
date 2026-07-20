@@ -13,6 +13,23 @@ export function createFurnitureModel(item: FurnitureCatalogItem, position: [numb
   };
 }
 
+/**
+ * The MitUNet renderer stores GLB floor furniture at its bottom edge, unlike
+ * the legacy box renderer which stores its centre point. Keep that coordinate
+ * convention when a listing-detail user adds furniture to a MitUNet scene.
+ */
+export function createMitunetFloorFurnitureDraft(item: FurnitureCatalogItem, sceneScale: number): PlacedFurniture {
+  const draft = createFurnitureModel(item);
+  const scale = Number.isFinite(sceneScale) && sceneScale > 0 ? sceneScale : 1;
+  const dimensions = getFurnitureDimensions({ ...draft, scale });
+
+  return {
+    ...draft,
+    position: [0, item.modelUrl ? 0.006 : dimensions.height / 2, 0],
+    scale
+  };
+}
+
 export function moveFurnitureDraftToPoint(
   furniture: PlacedFurniture,
   point: { x: number; z: number },
@@ -27,7 +44,7 @@ export function moveFurnitureDraftToPoint(
 
   return {
     ...furniture,
-    position: [Number(constrainedPoint.x.toFixed(2)), furniture.length[1] / 2000, Number(constrainedPoint.z.toFixed(2))]
+    position: [Number(constrainedPoint.x.toFixed(2)), furniture.position[1], Number(constrainedPoint.z.toFixed(2))]
   };
 }
 

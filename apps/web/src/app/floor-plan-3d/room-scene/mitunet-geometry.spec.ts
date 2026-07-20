@@ -42,6 +42,19 @@ describe("createMitunetSceneLayout", () => {
     assert.deepEqual(layout.door[0].outer[0].map(round), [-0.25, -0.6]);
   });
 
+  it("uses the viewer's furniture scale for uncalibrated plans", () => {
+    const helpers = geometry as unknown as {
+      resolveMitunetFurnitureSceneScale?: (source: MitunetFloorPlan) => number;
+    };
+
+    assert.equal(typeof helpers.resolveMitunetFurnitureSceneScale, "function");
+    assert.equal(helpers.resolveMitunetFurnitureSceneScale?.(plan), 0.55 / 2.7);
+    assert.equal(
+      helpers.resolveMitunetFurnitureSceneScale?.({ ...plan, millimetersPerPixel: 5 }),
+      1
+    );
+  });
+
   it("keeps MitUNet at scene scale one and normalizes legacy tour coordinates", () => {
     const helpers = geometry as unknown as {
       normalizeTourScenePoint?: (

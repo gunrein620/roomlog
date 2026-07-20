@@ -3682,20 +3682,62 @@ p {
 }
 
 /* 좌측 가구 패널 — sheet의 흰 바텀시트를 hero에선 다크 글래스로 재스킨 */
-.hero-stage .listing-tour-furniture {
-  top: 66px;
-  right: auto;
+.hero-stage .hero-furniture-drawer {
+  top: 62px;
+  right: 14px;
   bottom: auto;
-  left: 14px;
+  left: auto;
   z-index: 7;
-  width: min(252px, calc(100% - 28px));
-  max-height: calc(100% - 200px);
-  padding: 14px;
+  width: min(390px, calc(100% - 28px));
+  max-height: min(620px, calc(100% - 76px));
+  overflow: hidden;
+  padding: 12px;
   border: 1px solid rgba(203, 191, 245, 0.22);
   border-radius: 16px;
   background: rgba(18, 14, 42, 0.82);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(14px);
+}
+
+.hero-stage .hero-furniture-drawer .listing-tour-furniture-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.hero-furniture-selected-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: rgba(203, 191, 245, 0.1);
+  color: rgba(235, 229, 255, 0.9);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.hero-furniture-selected-summary > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-furniture-catalog-scroll {
+  min-height: 0;
+}
+
+.hero-stage .hero-furniture-catalog-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.hero-stage .hero-furniture-catalog-scroll .listing-tour-furniture-grid {
+  max-height: none;
+  overflow: visible;
 }
 
 .hero-stage .listing-tour-furniture-head strong {
@@ -13802,8 +13844,13 @@ p {
     min-height: 240px;
   }
 
-  .hero-stage .listing-tour-furniture {
-    width: 258px;
+  .hero-stage .hero-furniture-drawer {
+    width: calc(100% - 28px);
+    max-height: calc(100% - 76px);
+  }
+
+  .hero-stage .hero-furniture-catalog-scroll {
+    max-height: min(220px, 36vh);
   }
 
   .bottom-tabs {

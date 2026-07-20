@@ -6,6 +6,7 @@ import { Armchair } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  createMitunetFloorFurnitureDraft,
   createFurnitureModel,
   finalizeFurnitureDraft,
   FURNITURE_CATALOG,
@@ -19,6 +20,7 @@ import {
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
+import { resolveMitunetFurnitureSceneScale } from "../floor-plan-3d/room-scene/mitunet-geometry";
 import { listingTourFurnitureStorageKey } from "../splat-tour/splat-furniture";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 import { fetchTenantFurniture, TenantFurnitureApiError } from "@/lib/tenant-furniture-api";
@@ -88,6 +90,21 @@ function tenantFurnitureCatalogItem(furniture: TenantFurniture): FurnitureCatalo
   };
 }
 
+function normalizeMitunetListingFurniture(
+  furniture: PlacedFurniture,
+  mitunetPlan: MitunetFloorPlan | undefined
+): PlacedFurniture {
+  if (!mitunetPlan || !furniture.modelUrl || furniture.source === "furniture-glb-dataset") {
+    return furniture;
+  }
+
+  return {
+    ...furniture,
+    position: [furniture.position[0], 0.006, furniture.position[2]],
+    scale: resolveMitunetFurnitureSceneScale(mitunetPlan)
+  };
+}
+
 export default function ListingTourRoom3D({
   floorPlan,
   listingId,
@@ -100,9 +117,8 @@ export default function ListingTourRoom3D({
 }) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
   const [isPlacementOpen, setIsPlacementOpen] = useState(false);
-  // hero 패널 접기 — 시안의 우상단 "가구 배치" 토글. 모바일에선 도면이 좁아 기본 접힘이 낫지만
-  // 데스크톱 첫인상엔 패널이 보여야 해서 열림 기본, 사용자가 토글로 제어한다.
-  const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(true);
+  // hero 패널 접기 — 우상단 "가구 편집" 버튼으로 여닫고, 도면을 가리지 않도록 기본은 닫아 둔다.
+  const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [furnitureCategoryFilter, setFurnitureCategoryFilter] = useState("전체");
   const [furnitureLimit, setFurnitureLimit] = useState(30);
@@ -146,6 +162,7 @@ export default function ListingTourRoom3D({
     return catalog;
   }, [catalogQuery, furnitureCatalog, furnitureCategoryFilter]);
   const visibleFurnitureCatalog = useMemo(() => filteredCatalog.slice(0, furnitureLimit), [filteredCatalog, furnitureLimit]);
+  const selectedFurniture = pendingFurniture ?? placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null;
 
   useEffect(() => {
     if (!isPlacementOpen) return;
@@ -190,7 +207,11 @@ export default function ListingTourRoom3D({
   useEffect(() => {
     try {
       const savedFurnitures = readSavedFurnitures(listingId);
-      setPlacedFurnitures((savedFurnitures ?? floorPlan.furnitures) as unknown as PlacedFurniture[]);
+      setPlacedFurnitures(
+        ((savedFurnitures ?? floorPlan.furnitures) as unknown as PlacedFurniture[]).map((furniture) =>
+          normalizeMitunetListingFurniture(furniture, floorPlan.mitunet)
+        )
+      );
       setHasSavedFurnitureLayout(savedFurnitures !== null);
       setSaveMessage(savedFurnitures ? "저장된 가구 배치를 불러왔습니다." : "가구 배치 편집을 열어 옵션 위치를 확인할 수 있습니다.");
     } catch {
@@ -290,7 +311,11 @@ export default function ListingTourRoom3D({
     pendingTenantFurnitureSourceRef.current = null;
     pendingFurniturePlacedOnceRef.current = false;
     setIsPendingFurnitureEditing(false);
-    setPendingFurniture(createFurnitureModel(item));
+    setPendingFurniture(
+      floorPlan.mitunet
+        ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
+        : createFurnitureModel(item)
+    );
     setSelectedFurnitureId(null);
     setIsPlacementOpen(true);
     setSaveMessage(`${item.name}을 선택했습니다. 3D 바닥을 눌러 위치를 잡고 끌어서 옮기세요.`);
@@ -302,7 +327,9 @@ export default function ListingTourRoom3D({
     pendingTenantFurnitureSourceRef.current = furniture.source;
     pendingFurniturePlacedOnceRef.current = false;
     setPendingFurniture({
-      ...createFurnitureModel(item),
+      ...(floorPlan.mitunet
+        ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
+        : createFurnitureModel(item)),
       sizeMm: furniture.sizeMm,
       source: furniture.source
     });
@@ -472,7 +499,6 @@ export default function ListingTourRoom3D({
         hideHint
         mitunetPlan={floorPlan.mitunet}
         orbitMinDistance={1.6}
-        orbitZoomEnabled={variant !== "hero"}
         fitDistanceScale={0.9}
         listingPreview
         onFloorPointerDown={handleFloorPointerDown}
@@ -505,43 +531,25 @@ export default function ListingTourRoom3D({
       ) : null}
 
       {variant !== "hero" || isHeroPanelOpen ? (
-      <section className="listing-tour-furniture" aria-label="3D 가구 배치">
+      <section className={variant === "hero" ? "listing-tour-furniture hero-furniture-drawer" : "listing-tour-furniture"} aria-label="3D 가구 배치">
         <div className="listing-tour-furniture-head">
           <div>
             <strong>
               가구 배치
               {variant === "hero" ? <em className="hero-furniture-count">{placedFurnitures.length}</em> : null}
             </strong>
-            <span>{saveMessage}</span>
+            {variant !== "hero" ? <span>{saveMessage}</span> : null}
           </div>
           <button type="button" onClick={isPlacementOpen ? closeFurnitureEditor : openFurnitureEditor}>
             {isPlacementOpen ? "닫기" : "가구 편집"}
           </button>
         </div>
 
-        {variant === "hero" ? (
-          <ul className="hero-furniture-list" aria-label="배치된 가구 목록">
-            {placedFurnitures.map((furniture) => (
-              <li key={furniture.id}>
-                {/* hover(데스크톱)·탭(터치) 모두 지원 — 도면에서 해당 가구가 파랗게 밝아진다 */}
-                <button
-                  className={selectedFurnitureId === furniture.id ? "active" : ""}
-                  type="button"
-                  onMouseEnter={() => setSelectedFurnitureId(furniture.id)}
-                  onMouseLeave={() => setSelectedFurnitureId((current) => (current === furniture.id ? null : current))}
-                  onFocus={() => setSelectedFurnitureId(furniture.id)}
-                  onBlur={() => setSelectedFurnitureId((current) => (current === furniture.id ? null : current))}
-                  onClick={() => setSelectedFurnitureId((current) => (current === furniture.id ? null : furniture.id))}
-                >
-                  <span className="hero-furniture-dot" style={{ backgroundColor: furniture.color }} aria-hidden="true" />
-                  <span className="hero-furniture-name">{furniture.name}</span>
-                </button>
-              </li>
-            ))}
-            {placedFurnitures.length === 0 ? (
-              <li className="hero-furniture-empty">아직 배치된 가구가 없어요 — 배치하기로 넣어보세요</li>
-            ) : null}
-          </ul>
+        {variant === "hero" && selectedFurniture ? (
+          <div className="hero-furniture-selected-summary">
+            <span className="hero-furniture-dot" style={{ backgroundColor: selectedFurniture.color }} aria-hidden="true" />
+            <span>{selectedFurniture.name}</span>
+          </div>
         ) : null}
 
         {isPlacementOpen ? (
@@ -610,7 +618,7 @@ export default function ListingTourRoom3D({
                 </button>
               ))}
             </div>
-            {furnitureCategoryScroll.max > 0 ? (
+            {variant !== "hero" && furnitureCategoryScroll.max > 0 ? (
               <input
                 aria-label="가구 카테고리 가로 스크롤"
                 className="listing-tour-furniture-category-scrollbar"
@@ -622,6 +630,7 @@ export default function ListingTourRoom3D({
                 value={furnitureCategoryScroll.left}
               />
             ) : null}
+            <div className="hero-furniture-catalog-scroll">
             <div className="listing-tour-furniture-grid">
               {visibleFurnitureCatalog.map((item) => {
                 const imageUrl = furnitureImageUrl(item);
@@ -657,9 +666,10 @@ export default function ListingTourRoom3D({
                 가구 더 보기 ({visibleFurnitureCatalog.length}/{filteredCatalog.length})
               </button>
             ) : null}
-            <p className="listing-tour-furniture-hint">
+            </div>
+            {variant !== "hero" ? <p className="listing-tour-furniture-hint">
               가구를 놓거나 배치된 가구를 클릭해 끌어서 옮기고, 가구 위 버튼으로 ✓확정·⟳회전·✕취소·🗑삭제하세요.
-            </p>
+            </p> : null}
             <div className="listing-tour-furniture-actions">
               <button onClick={saveFurnitureLayout} type="button">
                 저장

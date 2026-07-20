@@ -8,6 +8,7 @@ import {
   normalizeCatalogItem
 } from "./catalog";
 import {
+  createMitunetFloorFurnitureDraft,
   createFurnitureModel,
   finalizeFurnitureDraft,
   createLandlordOptionFurniture,
@@ -100,6 +101,15 @@ describe("furniture placement catalog", () => {
     assert.equal(finalizedFurniture.locked, true);
     assert.deepEqual(finalizedFurniture.position, movedDraft.position);
     assert.deepEqual(finalizedFurniture.rotation, rotatedDraft.rotation);
+  });
+
+  it("keeps GLB furniture on the MitUNet floor while preserving its scene scale when moved", () => {
+    const draft = createMitunetFloorFurnitureDraft(IKEA_FURNITURE_CATALOG[4], 0.55 / 2.7);
+    const movedDraft = moveFurnitureDraftToPoint(draft, { x: 1.234, z: -0.456 });
+
+    assert.equal(draft.scale, 0.55 / 2.7);
+    assert.deepEqual(draft.position, [0, 0.006, 0]);
+    assert.deepEqual(movedDraft.position, [1.23, 0.006, -0.46]);
   });
 
   it("rotates furniture one quarter turn in either direction", () => {
