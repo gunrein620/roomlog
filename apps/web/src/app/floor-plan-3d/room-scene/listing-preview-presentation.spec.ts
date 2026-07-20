@@ -19,6 +19,7 @@ describe("listing-only 3D preview", () => {
     assert.doesNotMatch(listingTourSource, /sceneBackground=\{variant === "hero" \? null : undefined\}/);
     assert.doesNotMatch(listingTourSource, /furnitureVerticalScale=\{sceneHorizontalScale\}/);
     assert.doesNotMatch(listingTourSource, /horizontalScale=\{sceneHorizontalScale\}/);
+    assert.doesNotMatch(listingTourSource, /orbitZoomEnabled=\{variant !== "hero"\}/);
     assert.match(viewerSource, /listingPreview\?: boolean/);
     assert.match(viewerSource, /<RoomCameraAutoFit bounds=\{wallBounds\} distanceScale=\{fitDistanceScale\} previewFit=\{previewFit\}/);
     assert.match(viewerSource, /showGround=\{!listingPreview\}/);
@@ -39,5 +40,12 @@ describe("listing-only 3D preview", () => {
       globalCss,
       /\.summary-media-3d\.is-listing-preview \.floor-plan-3d-preview\s*\{[\s\S]*?cursor: pointer/
     );
+  });
+
+  it("anchors the hero furniture drawer below its toggle and scrolls only its catalog", () => {
+    assert.match(listingTourSource, /"listing-tour-furniture hero-furniture-drawer"/);
+    assert.match(listingTourSource, /className="hero-furniture-catalog-scroll"/);
+    assert.match(listingTourSource, /variant !== "hero" && furnitureCategoryScroll\.max > 0/);
+    assert.doesNotMatch(listingTourSource, /hero-furniture-list/);
   });
 });

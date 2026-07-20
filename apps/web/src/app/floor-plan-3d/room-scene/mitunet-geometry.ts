@@ -17,6 +17,17 @@ export type MitunetSceneLayout = {
 // Mirrors TARGET_PLAN_SIZE in the MitUNet viewer (viewer/index.html); both
 // renderers must frame an uncalibrated plan identically.
 const UNCALIBRATED_LONG_SIDE_METERS = 8;
+// Mirrors furnitureSceneScale in the MitUNet viewer. Without physical
+// calibration, the whole plan is represented as an eight-metre stand-in.
+const UNCALIBRATED_FURNITURE_SCENE_SCALE = 0.55 / 2.7;
+
+export function resolveMitunetFurnitureSceneScale(plan: MitunetFloorPlan) {
+  const millimetersPerPixel = Number(plan.millimetersPerPixel);
+
+  return Number.isFinite(millimetersPerPixel) && millimetersPerPixel > 0
+    ? 1
+    : UNCALIBRATED_FURNITURE_SCENE_SCALE;
+}
 
 export function createMitunetSceneLayout(plan: MitunetFloorPlan): MitunetSceneLayout {
   const outerPoints = [plan.polygons.wall, plan.polygons.door, plan.polygons.window]

@@ -374,11 +374,14 @@ function FurnitureBoxMesh({
   onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
 }) {
   const dimensions = getFurnitureDimensions(furniture);
+  const position: [number, number, number] = furniture.modelUrl
+    ? [furniture.position[0], furniture.position[1] + dimensions.height / 2, furniture.position[2]]
+    : furniture.position;
 
   return (
     <mesh
       onPointerDown={(event) => onPointerDown(furniture, event)}
-      position={furniture.position}
+      position={position}
       // 배치 대기(드래그 추적 중) 가구는 커서 아래 바닥의 pointer 이벤트를 가리지 않게 레이캐스트를 끈다.
       raycast={isPending ? () => null : undefined}
       rotation={furniture.rotation}
