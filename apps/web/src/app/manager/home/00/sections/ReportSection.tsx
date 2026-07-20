@@ -1,105 +1,98 @@
 import Link from "next/link";
-import { Badge } from "@roomlog/ui";
-import { MANAGER_CROSS } from "@/lib/manager-home-nav";
-import type { DashboardRepairExpenseSummary } from "../dashboard-calculations";
+import type { RentalReport, RentalReportPeriodMonths } from "@roomlog/types";
 
-// M-HOME-02(임대 현황 리포트) 데모 콘텐츠 — 통합 대시보드의 차트 밴드.
-// 흰 미니 막대 카드(수익·수리비가 별자리 카드와 중복)를 걷어내고, 네 지표 전부를
-// 계기판과 같은 다크 별자리 카드 한 줄로 통일했다. id="report"는 옛 앵커 링크 호환용.
+// M-HOME-02(임대 현황 리포트) — API 집계 결과를 그대로 표현한다.
+// id="report"는 옛 앵커 링크 호환용.
 
-type MonthValue = { m: string; v: number };
+type MonthValue = { m: string; v: number | null };
 
-const REVENUE_DATA: MonthValue[] = [
-  { m: "1월", v: 1480 },
-  { m: "2월", v: 1520 },
-  { m: "3월", v: 1560 },
-  { m: "4월", v: 1540 },
-  { m: "5월", v: 1620 },
-  { m: "6월", v: 1600 },
-  { m: "7월", v: 1680 },
-  { m: "8월", v: 1710 },
-  { m: "9월", v: 1690 },
-  { m: "10월", v: 1780 },
-  { m: "11월", v: 1830 },
-  { m: "12월", v: 1860 },
-];
+function labelMonth(month: string) {
+  return `${Number(month.slice(5, 7))}월`;
+}
 
-const OCCUPANCY_DATA: MonthValue[] = [
-  { m: "1월", v: 84 },
-  { m: "2월", v: 85 },
-  { m: "3월", v: 87 },
-  { m: "4월", v: 86 },
-  { m: "5월", v: 88 },
-  { m: "6월", v: 89 },
-  { m: "7월", v: 90 },
-  { m: "8월", v: 91 },
-  { m: "9월", v: 92 },
-  { m: "10월", v: 93 },
-  { m: "11월", v: 95 },
-  { m: "12월", v: 96 },
-];
-
-const TICKET_DATA: MonthValue[] = [
-  { m: "1월", v: 48 },
-  { m: "2월", v: 55 },
-  { m: "3월", v: 52 },
-  { m: "4월", v: 61 },
-  { m: "5월", v: 58 },
-  { m: "6월", v: 66 },
-  { m: "7월", v: 63 },
-  { m: "8월", v: 72 },
-  { m: "9월", v: 69 },
-  { m: "10월", v: 75 },
-  { m: "11월", v: 78 },
-  { m: "12월", v: 82 },
-];
-
-// 별자리 스펙트럼 — 계기판 아크와 같은 계열(페리윙클·바이올렛·라벤더화이트·핑크)에서 카드마다 차등.
-const EMPTY_REPAIR_DATA: MonthValue[] = Array.from({ length: 12 }, (_, index) => ({
-  m: `${index + 1}월`,
-  v: 0
-}));
+function reportFallback(periodMonths: RentalReportPeriodMonths): MonthValue[] {
+  return Array.from({ length: periodMonths }, (_, index) => ({
+    m: `${index + 1}월`,
+    v: null
+  }));
+}
 
 export function ReportSection({
-  repairExpenses
+  report,
+  periodMonths
 }: {
-  repairExpenses: DashboardRepairExpenseSummary | null;
+  report: RentalReport | null;
+  periodMonths: RentalReportPeriodMonths;
 }) {
+  const fallback = reportFallback(periodMonths);
+  const points = report?.points;
   const charts = [
-    { chartId: "revenue", title: "월별 수익 추이", data: REVENUE_DATA, accent: "#a9c4ff", unit: "만원" },
+    {
+      chartId: "revenue",
+      title: "월별 실제 수납액",
+      data: points
+        ? points.map((point) => ({ m: labelMonth(point.month), v: point.collectedAmount / 10_000 }))
+        : fallback,
+      accent: "#a9c4ff",
+      unit: "만원"
+    },
     {
       chartId: "repair",
       title: "월별 수리비",
-      data: repairExpenses?.monthlyTrend ?? EMPTY_REPAIR_DATA,
+      data: points
+        ? points.map((point) => ({ m: labelMonth(point.month), v: point.repairCostAmount / 10_000 }))
+        : fallback,
       accent: "#d9b8f5",
-      unit: "만원",
-      unavailable: !repairExpenses
+      unit: "만원"
     },
-    { chartId: "occupancy", title: "공실률·입주율", data: OCCUPANCY_DATA, accent: "#f2edff", unit: "%", axisMax: 100 },
-    { chartId: "tickets", title: "민원처리율", data: TICKET_DATA, accent: "#f6a9cd", unit: "%", axisMax: 100 },
+    {
+      chartId: "occupancy",
+      title: "입주율",
+      data: points
+        ? points.map((point) => ({
+            m: labelMonth(point.month),
+            v: point.occupancyRate === null ? null : point.occupancyRate * 100
+          }))
+        : fallback,
+      accent: "#f2edff",
+      unit: "%",
+      axisMax: 100
+    },
+    {
+      chartId: "tickets",
+      title: "민원처리율",
+      data: points
+        ? points.map((point) => ({
+            m: labelMonth(point.month),
+            v: point.ticketResolutionRate === null ? null : point.ticketResolutionRate * 100
+          }))
+        : fallback,
+      accent: "#f6a9cd",
+      unit: "%",
+      axisMax: 100
+    }
   ] as const;
 
   return (
     <section id="report" aria-labelledby="report-section-title" className="manager-report-section">
       <div className="manager-report-head">
         <h2 id="report-section-title">임대 현황 리포트</h2>
-        <span className="manager-report-demo">일부 데모</span>
+        {!report ? <span className="manager-report-demo">확인 필요</span> : null}
         <div className="manager-report-filters">
-          <Badge>6M</Badge>
-          <Badge emphasis>1Y</Badge>
-          <Badge>PDF/CSV</Badge>
+          <Link className={periodMonths === 6 ? "is-selected" : undefined} href="?reportMonths=6#report">
+            6M
+          </Link>
+          <Link className={periodMonths === 12 ? "is-selected" : undefined} href="?reportMonths=12#report">
+            1Y
+          </Link>
+          <a href={`/api/manager/rental-report.csv?months=${periodMonths}`}>CSV</a>
         </div>
       </div>
 
       <div className="manager-report-charts">
         {charts.map((chart) => (
-          <ConstellationCard key={chart.chartId} {...chart} />
+          <ConstellationCard key={chart.chartId} {...chart} unavailable={!report} />
         ))}
-      </div>
-
-      <div className="manager-report-drills">
-        <Link href={`${MANAGER_CROSS.billing}/overdue`}>미납 드릴다운</Link>
-        <Link href={MANAGER_CROSS.ticketDash}>수리비 드릴다운</Link>
       </div>
 
       <style>{`
@@ -138,6 +131,25 @@ export function ReportSection({
           gap: var(--space-xs);
           flex-wrap: wrap;
           justify-content: flex-end;
+        }
+
+        .manager-report-filters a {
+          display: inline-flex;
+          align-items: center;
+          min-height: 28px;
+          padding: 4px var(--space-sm);
+          border: 1px solid transparent;
+          border-radius: var(--radius-full);
+          background: var(--chip-bg);
+          color: var(--chip-on);
+          font-size: var(--fs-caption);
+          font-weight: 700;
+          line-height: var(--lh-caption);
+          text-decoration: none;
+        }
+
+        .manager-report-filters a.is-selected {
+          border-color: var(--primary);
         }
 
         /* 별자리 카드 4장 한 줄 — 계기판(다크 은하)과 한 덩어리로 읽히는 차트 밴드 */
@@ -210,19 +222,6 @@ export function ReportSection({
           display: block;
         }
 
-        .manager-report-drills {
-          display: flex;
-          gap: var(--space-md);
-          flex-wrap: wrap;
-        }
-
-        .manager-report-drills a {
-          color: var(--primary);
-          font-weight: 800;
-          font-size: var(--fs-caption);
-          text-decoration: none;
-        }
-
         @media (max-width: 1160px) {
           .manager-report-charts {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -277,7 +276,8 @@ function ConstellationCard({
   axisMax?: number;
   unavailable?: boolean;
 }) {
-  const axisMax = fixedAxisMax ?? niceAxisMax(Math.max(...data.map((d) => d.v)));
+  const numericValues = data.flatMap((point) => (point.v === null ? [] : [point.v]));
+  const axisMax = fixedAxisMax ?? niceAxisMax(Math.max(...numericValues));
   const latest = data[data.length - 1];
   const last = data.length - 1;
 
@@ -285,7 +285,6 @@ function ConstellationCard({
   const band = PLOT.w / data.length;
   const x = (i: number) => PLOT.left + (i + 0.5) * band;
   const y = (v: number) => PLOT.top + (1 - v / axisMax) * PLOT.h;
-  const points = data.map((d, i) => `${x(i).toFixed(1)},${y(d.v).toFixed(1)}`).join(" ");
 
   const ticks = [0, 1, 2, 3, 4].map((q) => ({
     value: (axisMax / 4) * q,
@@ -294,15 +293,19 @@ function ConstellationCard({
 
   const glowId = `constellation-glow-${chartId}`;
   const lx = x(last);
-  const ly = y(latest.v);
+  const ly = latest?.v === null ? null : y(latest.v);
 
   return (
     <figure className="manager-constellation-card">
       <figcaption className="manager-constellation-header">
         <span className="manager-constellation-title">{title}</span>
         <strong className="manager-constellation-headline">
-          {unavailable ? "확인 필요" : latest.v.toLocaleString("ko-KR")}
-          {!unavailable ? <span>{unit}</span> : null}
+          {unavailable
+            ? "확인 필요"
+            : latest?.v === null
+              ? "—"
+              : latest.v.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}
+          {!unavailable && latest?.v !== null ? <span>{unit}</span> : null}
         </strong>
       </figcaption>
 
@@ -314,7 +317,9 @@ function ConstellationCard({
         aria-label={
           unavailable
             ? `${title} 데이터를 확인할 수 없음`
-            : `${title} 12개월 추이, 최신 ${latest.v.toLocaleString("ko-KR")}${unit}`
+            : latest?.v === null
+              ? `${title} ${data.length}개월 추이, 최신 데이터 없음`
+              : `${title} ${data.length}개월 추이, 최신 ${latest.v.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}${unit}`
         }
       >
         <defs>
@@ -341,18 +346,20 @@ function ConstellationCard({
         ))}
 
         {/* 반투명 accent 막대 — 상단 라운드, 위아래 균일(페이드 없음) */}
-        {data.map((d, i) => (
-          <rect
-            key={d.m}
-            x={x(i) - BAR_W / 2}
-            y={y(d.v)}
-            width={BAR_W}
-            height={Math.max(0, PLOT.bottom - y(d.v))}
-            rx="3"
-            fill={accent}
-            opacity="0.2"
-          />
-        ))}
+        {data.map((d, i) =>
+          d.v === null ? null : (
+            <rect
+              key={d.m}
+              x={x(i) - BAR_W / 2}
+              y={y(d.v)}
+              width={BAR_W}
+              height={Math.max(0, PLOT.bottom - y(d.v))}
+              rx="3"
+              fill={accent}
+              opacity="0.2"
+            />
+          )
+        )}
 
         {/* 월 라벨 */}
         {data.map((d, i) => (
@@ -362,34 +369,45 @@ function ConstellationCard({
         ))}
 
         {/* 별자리 선 — 카드 정체색(accent) 얇게, 막대 꼭대기를 잇는다 */}
-        <polyline
-          points={points}
-          fill="none"
-          stroke={accent}
-          strokeWidth="1.4"
-          strokeOpacity="0.8"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
+        {data.slice(1).map((point, index) => {
+          const previous = data[index];
+          if (previous.v === null || point.v === null) return null;
+          return (
+            <line
+              key={`${previous.m}-${point.m}`}
+              x1={x(index)}
+              x2={x(index + 1)}
+              y1={y(previous.v)}
+              y2={y(point.v)}
+              stroke={accent}
+              strokeWidth="1.4"
+              strokeOpacity="0.8"
+              strokeLinecap="round"
+            />
+          );
+        })}
 
         {/* 별(막대 꼭대기) — accent 네뷸라 헤일로 + 흰 코어 */}
         {data.map((d, i) => {
+          if (d.v === null) return null;
           const isLatest = i === last;
           return (
             <g key={d.m}>
               <circle cx={x(i)} cy={y(d.v)} r={isLatest ? 4.5 : 3.2} fill={accent} opacity="0.5" filter={`url(#${glowId})`} />
               <circle cx={x(i)} cy={y(d.v)} r={isLatest ? 2.6 : 1.9} fill="#ffffff">
-                <title>{`${d.m} · ${d.v.toLocaleString("ko-KR")}${unit}`}</title>
+                <title>{`${d.m} · ${d.v.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}${unit}`}</title>
               </circle>
             </g>
           );
         })}
 
         {/* 최신 달 강조 — 회절 십자광 */}
-        <g stroke="rgba(255,255,255,0.72)" strokeWidth="0.9" strokeLinecap="round">
-          <line x1={lx - 8} x2={lx + 8} y1={ly} y2={ly} />
-          <line x1={lx} x2={lx} y1={ly - 8} y2={ly + 8} />
-        </g>
+        {ly !== null ? (
+          <g stroke="rgba(255,255,255,0.72)" strokeWidth="0.9" strokeLinecap="round">
+            <line x1={lx - 8} x2={lx + 8} y1={ly} y2={ly} />
+            <line x1={lx} x2={lx} y1={ly - 8} y2={ly + 8} />
+          </g>
+        ) : null}
       </svg>
     </figure>
   );

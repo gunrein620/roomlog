@@ -1,19 +1,27 @@
 import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 import { getUser } from "@/lib/session";
+import { getManagerRentalReport } from "@/lib/rental-report-api";
 import { AlertStatTiles } from "./AlertStatTiles";
 import { HomeCards } from "./HomeCards";
 import { InstrumentPanel } from "./InstrumentPanel";
-import { RepairExpenseSection } from "./RepairExpenseSection";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
-import { BuildingsSection } from "./sections/BuildingsSection";
 import { ReportSection } from "./sections/ReportSection";
 
-export default async function Page() {
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ reportMonths?: string | string[] }>;
+}) {
   const user = await getUser();
-  const dashboard = await assembleManagerDashboard(user);
+  const params = await searchParams;
+  const reportMonths = params.reportMonths === "6" ? 6 : 12;
+  const [dashboard, rentalReport] = await Promise.all([
+    assembleManagerDashboard(user),
+    getManagerRentalReport(reportMonths).catch(() => null)
+  ]);
   const managerName = user?.name ?? "관리인";
 
   const warnings = {
@@ -73,9 +81,7 @@ export default async function Page() {
 
         <AlertStatTiles warnings={warnings} />
 
-        <ReportSection repairExpenses={dashboard.repairExpenses} />
-
-        <RepairExpenseSection repairExpenses={dashboard.repairExpenses} />
+        <ReportSection report={rentalReport} periodMonths={reportMonths} />
 
         {/* ── 운영 존: 관리 중인 집·미계약 | 오늘 확인할 업무 — 2단으로 스캔 거리를 줄인다 ── */}
         <div className="manager-home-ops">
@@ -92,8 +98,6 @@ export default async function Page() {
             <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
           </section>
         </div>
-
-        <BuildingsSection />
       </div>
 
       <style>{`

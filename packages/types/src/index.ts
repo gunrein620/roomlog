@@ -8,6 +8,7 @@ export * from "./movein";
 export * from "./moveout";
 export * from "./cost";
 export * from "./report";
+export * from "./rental-report";
 export * from "./vendor-mgmt";
 export * from "./vendor";
 export * from "./manager-assistant";

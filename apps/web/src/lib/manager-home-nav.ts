@@ -31,6 +31,7 @@ export type MVoxScreenId = keyof typeof MVOX_ROUTES;
 export const MANAGER_CROSS = {
   ticketDash: "/manager/ticket/dash/00", // M-DASH
   ticketCall: "/manager/ticket/call/00", // M-CALL
+  credit: "/manager/vendor-mgmt/credit", // 크레딧 원장·업체 지급
   billing: "/manager/billing", // M-BILL
   messaging: "/manager/messaging/00", // M-MSG (소통)
   realtimeAgent: "/manager/agent/realtime", // 관리인 실시간 AI 운영 에이전트
