@@ -4542,6 +4542,28 @@ export class RoomlogService implements OnModuleDestroy {
   // 세입자가 접수를 명시 요청했고(filingIntent) 초안이 준비되면 버튼 없이 같은 턴에서 바로 접수한다.
   // 수동 "민원 접수" 버튼과 같은 경로라 중복 후보가 있어도 새 티켓으로 접수된다(AI가 중복 가능성은 대화에서 안내).
   private maybeAutoFinalizeIntake(tenantId: string, session: IntakeSession) {
+    // 백스톱: 세입자가 방금 "민원 넣어줘"처럼 접수를 명시 요청했는데 모델이 사진·부가정보를
+    // 이유로 readyToFinalize를 계속 미루면 접수가 무한정 밀린다. 증상 요약과 위치가 이미
+    // 파악된 초안이면 명시 요청을 우선해 접수한다 — 사진·세부는 접수 후 같은 스레드에서 보완.
+    const lastTenantMessage = [...session.messages]
+      .reverse()
+      .find((message) => message.sender === "TENANT");
+    const explicitRequest = this.detectFilingIntent(
+      lastTenantMessage?.transcriptText || lastTenantMessage?.messageText || ""
+    );
+    const location = session.draft.location?.trim() ?? "";
+    const hasMinimumDraft = Boolean(
+      session.draft.title?.trim() &&
+        session.draft.summary?.trim() &&
+        location &&
+        !/확인 필요|미확인/.test(location)
+    );
+
+    if (explicitRequest && hasMinimumDraft) {
+      session.draft.readyToFinalize = true;
+      session.draft.filingIntent = true;
+    }
+
     if (!session.draft.readyToFinalize || !session.draft.filingIntent) {
       return undefined;
     }
@@ -11829,138 +11851,87 @@ export class RoomlogService implements OnModuleDestroy {
     }
   }
 
+  // 로컬 폴백/보정용 답변 — 핵심 요약 한 줄, 안전 안내, 질문 최대 2개만 담아 짧게 유지한다.
   private composeAssistantReply(draft: IntakeDraft, session?: IntakeSession) {
-    const threadText = this.threadText(session);
-    const safetyLines = this.safetyGuidance(threadText, draft);
-    const tenantGuidanceLines = draft.tenantGuidance.filter(
-      (line) => !(safetyLines.length && /(전기|콘센트|스위치|물고임)/.test(line))
-    );
-    const guidanceLines = Array.from(new Set([...safetyLines, ...tenantGuidanceLines]));
-    const currentPhotoCount =
-      draft.photoAnalysis.attachmentUrls.length ||
-      session?.messages.reduce((total, message) => total + message.attachmentUrls.length, 0) ||
-      0;
+    const safetyLines = this.safetyGuidance(this.tenantThreadText(session), draft);
     const needsPhoto =
       draft.photoRequested ||
       draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
       draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question));
-    const contextLines = draft.contextHints.slice(0, 2);
-    const duplicateLines = draft.duplicateCandidates.length
-      ? [
-          `중복 가능성이 있는 기존 티켓이 ${draft.duplicateCandidates.length}건 있습니다.`,
-          `가장 유사한 티켓: ${draft.duplicateCandidates[0].title} (${draft.duplicateCandidates[0].displayStatus})`
-        ]
-      : [];
-    const questionLines = draft.nextQuestions.slice(0, 3).map((question) => `- ${question}`);
+    const currentPhotoCount =
+      draft.photoAnalysis.attachmentUrls.length ||
+      session?.messages.reduce((total, message) => total + message.attachmentUrls.length, 0) ||
+      0;
+    const summaryLine = [
+      `${draft.category}/${draft.detailCategory} · 긴급도 P${draft.priority}`,
+      draft.location ? `위치 ${draft.location}` : "",
+      draft.availableTimes ? `방문 가능 ${draft.availableTimes}` : ""
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const duplicateLine = draft.duplicateCandidates.length
+      ? `비슷한 기존 접수(${draft.duplicateCandidates[0].title})가 있어 관리자 확인 시 함께 참고됩니다.`
+      : "";
 
     if (!draft.readyToFinalize) {
+      const questionLines = draft.nextQuestions.slice(0, 2).map((question) => `- ${question}`);
+
       return [
-        "확인할게요. 이 상담 스레드에서 이어서 정리하고 있어요.",
-        "제가 이해한 내용",
-        `- ${draft.summary}`,
-        `- 분류: ${draft.category} / ${draft.detailCategory}, 긴급도 P${draft.priority}`,
-        draft.location ? `- 위치: ${draft.location}` : "",
-        draft.availableTimes ? `- 방문 가능 시간: ${draft.availableTimes}` : "",
-        "지금 할 일",
-        ...(guidanceLines.length ? guidanceLines.map((line) => `- ${line}`) : ["- 추가 설명을 보내면 같은 상담 스레드에서 이어서 반영하겠습니다."]),
-        needsPhoto || currentPhotoCount
-          ? [
-              "필요한 사진",
-              currentPhotoCount
-                ? `- 현재 첨부 사진 ${currentPhotoCount}건을 이 상담 스레드에 연결했습니다.`
-                : "- 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올려주세요.",
-              `- 사진 판단: ${draft.photoAnalysis.summary}`
-            ].join("\n")
+        `확인했어요. ${draft.summary}`,
+        `(${summaryLine})`,
+        ...safetyLines.map((line) => `- ${line}`),
+        needsPhoto && !currentPhotoCount
+          ? "- 가능하면 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올려주세요."
           : "",
-        [...contextLines, ...duplicateLines].length
-          ? ["관리자 참고 맥락", ...[...contextLines, ...duplicateLines].map((line) => `- ${line}`)].join("\n")
-          : "",
-        questionLines.length ? "다음으로 확인할 질문" : "",
+        duplicateLine,
         ...questionLines,
-        "접수 상태",
-        draft.requiredInfo.length
-          ? `- 추가 정보 필요: ${draft.requiredInfo.join(", ")}. 답변을 받으면 관리자에게 전달할 접수 초안을 갱신하겠습니다.`
-          : "- 추가 확인 답변을 받으면 관리자에게 전달할 접수 초안 준비 여부를 다시 판단하겠습니다.",
-        "- 답변과 사진은 이 상담 스레드에 이어서 저장됩니다."
-      ].filter(Boolean).join("\n");
+        "아직 접수 전입니다. 이대로 바로 접수하려면 '접수해줘'라고 말씀해 주세요."
+      ]
+        .filter(Boolean)
+        .join("\n");
     }
 
     return [
-      "접수 초안이 준비되었습니다. 이 상담 스레드의 내용을 아래처럼 정리했습니다.",
-      "제가 이해한 내용",
-      `- ${draft.summary}`,
-      `- 분류: ${draft.category} / ${draft.detailCategory}, 긴급도 P${draft.priority}`,
-      `- 책임 가능성: ${draft.responsibilityHint} 참고`,
-      draft.location ? `- 위치: ${draft.location}` : "",
-      draft.availableTimes ? `- 방문 가능 시간: ${draft.availableTimes}` : "",
-      "지금 할 일",
-      ...(guidanceLines.length ? guidanceLines.map((line) => `- ${line}`) : ["- 내용이 맞는지 확인한 뒤 접수 확정을 눌러주세요."]),
-      needsPhoto || currentPhotoCount
-        ? [
-            "필요한 사진",
-            currentPhotoCount
-              ? `- 현재 첨부 사진 ${currentPhotoCount}건을 관리자 검토 자료로 연결했습니다.`
-              : "- 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올리면 관리자 판단이 빨라집니다.",
-            `- 사진 판단: ${draft.photoAnalysis.summary}`
-          ].join("\n")
-        : "",
-      [...contextLines, ...duplicateLines].length
-        ? ["관리자 참고 맥락", ...[...contextLines, ...duplicateLines].map((line) => `- ${line}`)].join("\n")
-        : "",
-      draft.nextQuestions.length
-        ? ["다음으로 확인할 질문", ...questionLines].join("\n")
-        : "",
-      "접수 상태",
-      "- 접수 확정 가능: 내용이 맞으면 관리자 티켓으로 전달할 수 있습니다.",
-      "- 이후 답변과 사진도 같은 상담 스레드에 이어서 저장됩니다."
-    ].filter(Boolean).join("\n");
+      `접수 준비가 끝났어요. ${draft.summary}`,
+      `(${summaryLine} · 책임 가능성: ${draft.responsibilityHint} 참고)`,
+      ...safetyLines.map((line) => `- ${line}`),
+      duplicateLine,
+      "이대로 접수할까요? '접수해줘'라고 하시면 바로 관리자에게 전달합니다."
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
+  // 모델 답변을 최대한 그대로 채택한다 — 예전처럼 사진·방문·워크플로 문구가 없다고
+  // 장문의 로컬 템플릿으로 갈아치우면 매 턴 같은 안내가 도배된다(사용자 피드백: 답변이 너무 김).
+  // 빈/초단답만 템플릿으로 대체하고, 안전 안내 누락은 답변 앞에 안전 라인만 덧붙인다.
   private ensureAssistantReplyQuality(
     message: string | undefined,
     draft: IntakeDraft,
     session?: IntakeSession
   ) {
     const generated = message?.trim() ?? "";
-    const composed = this.composeAssistantReply(draft, session);
 
     if (!generated) {
-      return composed;
+      return this.composeAssistantReply(draft, session);
     }
 
     const compact = generated.replace(/\s+/g, "");
     const isTerse =
-      generated.length < 60 ||
+      generated.length < 20 ||
       /^(확인했습니다|네|알겠습니다|접수했습니다|처리하겠습니다)[.!。]*$/.test(compact);
-    const threadText = this.threadText(session);
-    const needsSafety = this.safetyGuidance(threadText, draft).length > 0;
-    const lacksSafety =
-      needsSafety && !/(안전|전기|콘센트|스위치|가스|환기|불꽃|만지지|119|문이)/.test(generated);
-    const needsPhoto =
-      draft.photoRequested ||
-      draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
-      draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question));
-    const lacksPhoto = needsPhoto && !/(사진|촬영|첨부|근접|전체)/.test(generated);
-    const needsVisit =
-      draft.requiredInfo.some((item) => /방문|시간/.test(item)) ||
-      draft.nextQuestions.some((question) => /방문|시간/.test(question));
-    const lacksVisit = needsVisit && !/(방문|시간|일정|가능)/.test(generated);
-    const needsQuestion = !draft.readyToFinalize && draft.nextQuestions.length > 0;
-    const lacksQuestion = needsQuestion && !/[?？]|알려주|올려주|확인해/.test(generated);
-    const lacksRoomlogWorkflow =
-      !/(상담\s*스레드|같은 상담|이어.*저장|접수\s*(초안|상태|확정)|관리자|티켓)/.test(
-        generated
-      );
 
-    if (
-      isTerse ||
-      lacksSafety ||
-      lacksPhoto ||
-      lacksVisit ||
-      lacksQuestion ||
-      lacksRoomlogWorkflow
-    ) {
-      return composed;
+    if (isTerse) {
+      return this.composeAssistantReply(draft, session);
+    }
+
+    const safetyLines = this.safetyGuidance(this.tenantThreadText(session), draft);
+    const lacksSafety =
+      safetyLines.length > 0 &&
+      !/(안전|전기|콘센트|스위치|가스|환기|불꽃|만지지|119|문이)/.test(generated);
+
+    if (lacksSafety) {
+      return [...safetyLines, "", generated].join("\n");
     }
 
     return generated;
@@ -11979,8 +11950,9 @@ export class RoomlogService implements OnModuleDestroy {
       "- 이전 스레드가 아닌 현재 스레드의 대화와 첨부만 근거로 답합니다.",
       "- 같은 호실 과거 기록은 반복 가능성, 과거 조치, 관리자 확인 포인트를 잡기 위한 참고 자료입니다. 현재 세입자가 말하지 않은 내용을 단정하지 않습니다.",
       "- 법적 책임, 비용 부담, 과실을 확정하지 말고 가능성/관리자 검토 필요로 표현합니다.",
-      "- 가스 냄새, 누전, 화재, 침수, 문 잠김 실패, 천장 누수처럼 안전 위험이 있으면 먼저 안전 행동을 안내합니다.",
+      "- 가스 냄새, 누전, 화재, 침수, 문 잠김 실패, 천장 누수처럼 안전 위험이 있으면 먼저 안전 행동을 안내합니다. 단, 안전 안내는 세입자가 현재 스레드에서 직접 말한 위험에만 붙이고, 이번 이슈와 관련 없는 위험(예: 쓰레기 민원에 가스 안내)은 절대 넣지 않습니다.",
       "- 질문은 한 번에 1-3개만 하고, 이미 답한 내용을 반복해서 묻지 않습니다.",
+      "- assistantMessage는 짧고 자연스럽게 씁니다: 핵심 확인 1-2문장과 꼭 필요한 질문 최대 2개면 충분합니다. '제가 이해한 내용', '지금 할 일' 같은 고정 목차를 쓰지 말고, 사진 요청이나 스레드 저장 안내 같은 같은 말을 매 턴 반복하지 않습니다.",
       "- draft.nextQuestions에는 세입자에게 바로 물을 1-3개의 구체 질문만 넣습니다.",
       "- draft.tenantGuidance에는 안전 행동, 사진 촬영 방법, 방문 준비처럼 세입자가 지금 할 일을 1-4개 넣습니다.",
       "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
@@ -11988,6 +11960,8 @@ export class RoomlogService implements OnModuleDestroy {
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
       "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
       "- draft.filingIntent는 세입자가 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했다면 false입니다.",
+      "- 세입자가 접수를 명시 요청했고 증상과 위치가 파악됐다면, 사진이나 부가 정보가 없어도 readyToFinalize를 true로 두고 이번 턴에 접수합니다. 사진·세부 정보는 접수 후 같은 스레드에서 보완하면 된다고 안내합니다.",
+      "- 세입자가 접수 여부를 물으면(예: '넣었어?', '접수됐어?') 첫 문장에서 접수 완료/미완료를 명확히 답합니다. 아직이면 '아직 접수 전입니다'라고 말하고 무엇이 더 필요한지 또는 바로 접수할지 묻습니다.",
       "- filingIntent와 readyToFinalize가 모두 true이면 시스템이 이번 턴에서 민원을 자동 접수하므로, assistantMessage에서 정리한 내용으로 접수를 진행한다고 안내합니다."
     ].join("\n");
   }
@@ -12574,6 +12548,19 @@ export class RoomlogService implements OnModuleDestroy {
           : "";
         return `${message.sender}: ${message.transcriptText || message.messageText}${attachmentText}`;
       })
+      .join("\n");
+  }
+
+  // 안전 안내 키워드 매칭 전용 — AI 메시지를 포함하면 AI가 한 번 언급한 위험 문구(예: 가스)가
+  // 다음 턴부터 계속 매칭되는 자기증폭이 생기므로, 세입자 발화만 모은다.
+  private tenantThreadText(session?: IntakeSession) {
+    if (!session) {
+      return "";
+    }
+
+    return session.messages
+      .filter((message) => message.sender === "TENANT")
+      .map((message) => message.transcriptText || message.messageText)
       .join("\n");
   }
 
