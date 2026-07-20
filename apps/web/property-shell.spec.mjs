@@ -484,8 +484,11 @@ test("manager messaging hub keeps conversations primary with a side composer", (
   assert.match(managerMessagingNewConversationSource, /manager-messaging-new-conversation/);
   assert.match(managerMessagingNewConversationSource, /gridTemplateColumns:\s*"1fr"/);
   assert.doesNotMatch(managerMessagingNewConversationSource, /repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(managerGlobalsCssSource, /\.manager-messaging-workspace\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(320px, 400px\)/s);
+  assert.match(managerGlobalsCssSource, /\.manager-messaging-workspace\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(360px, 420px\)/s);
   assert.match(managerGlobalsCssSource, /\.manager-messaging-composer-panel\s*{[^}]*position:\s*sticky/s);
+  assert.match(managerGlobalsCssSource, /\.manager-messaging-composer-panel\s*{[^}]*border-left:\s*1px solid var\(--border\)/s);
+  assert.match(managerGlobalsCssSource, /\.manager-messaging-new-conversation\s*{[^}]*border:\s*1px solid var\(--border\)/s);
+  assert.match(managerGlobalsCssSource, /\.manager-messaging-new-conversation\s*{[^}]*background:\s*var\(--surface-container-lowest\)/s);
   assert.match(managerGlobalsCssSource, /@media \(max-width:\s*1180px\)[\s\S]*\.manager-messaging-workspace\s*{[^}]*grid-template-columns:\s*1fr/s);
 });
 

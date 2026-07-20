@@ -1691,22 +1691,35 @@ html:has(.manager-workspace) {
 
 .manager-messaging-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-  gap: var(--space-lg);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: 0;
+  align-items: stretch;
+  min-height: max(520px, calc(100dvh - var(--header-height) - 310px));
 }
 
 .manager-messaging-thread-list {
   min-width: 0;
+  padding-right: var(--space-lg);
 }
 
 .manager-messaging-composer-panel {
   position: sticky;
   top: var(--space-lg);
   min-width: 0;
+  min-height: max(520px, calc(100dvh - var(--header-height) - var(--space-xxl)));
+  padding: var(--space-sm) 0 calc(var(--touch-target) + var(--space-xxl)) var(--space-lg);
+  border-left: 1px solid var(--border);
+  background: transparent;
 }
 
 .manager-messaging-new-conversation {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
   box-shadow: none;
 }
 
@@ -1738,8 +1751,13 @@ html:has(.manager-workspace) {
 .manager-messaging-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
+  gap: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--surface-container-lowest);
 }
 
 .manager-messaging-summary-tile {
@@ -1747,9 +1765,14 @@ html:has(.manager-workspace) {
   display: grid;
   gap: var(--space-xs);
   padding: var(--space-md);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
   background: var(--surface-container-lowest);
+}
+
+.manager-messaging-summary-tile:last-child {
+  border-right: 0;
 }
 
 .manager-messaging-summary-tile span {
@@ -1776,25 +1799,37 @@ html:has(.manager-workspace) {
 }
 
 .manager-messaging-status-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
   margin-bottom: var(--space-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--surface-container-lowest);
 }
 
 .manager-messaging-status-filter {
+  min-width: 0;
   min-height: calc(var(--touch-target) - var(--space-xs));
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-xs);
-  padding: 0 var(--space-md);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  padding: 0 var(--space-lg);
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-radius: 0;
   background: var(--surface-container-lowest);
   color: var(--on-surface-variant);
   font-size: var(--fs-caption);
   font-weight: 800;
   text-decoration: none;
+}
+
+.manager-messaging-status-filter:last-child {
+  border-right: 0;
 }
 
 .manager-messaging-status-filter strong {
@@ -1928,10 +1963,20 @@ html:has(.manager-workspace) {
 @media (max-width: 1180px) {
   .manager-messaging-workspace {
     grid-template-columns: 1fr;
+    min-height: 0;
   }
 
   .manager-messaging-composer-panel {
     position: static;
+    min-height: 0;
+    margin-top: var(--space-lg);
+    padding: var(--space-lg) 0 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .manager-messaging-thread-list {
+    padding-right: 0;
   }
 
   .manager-messaging-thread-row {
@@ -1944,6 +1989,10 @@ html:has(.manager-workspace) {
 }
 
 @media (max-width: 760px) {
+  .manager-messaging-status-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .manager-messaging-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1954,6 +2003,10 @@ html:has(.manager-workspace) {
 }
 
 @media (max-width: 520px) {
+  .manager-messaging-status-filters {
+    grid-template-columns: 1fr;
+  }
+
   .manager-messaging-summary-grid {
     grid-template-columns: 1fr;
   }

@@ -405,9 +405,7 @@ function withLatestGeneralThreadIds(
   }
 
   return recipients.map((recipient) => {
-    const latestThreadId = latestGeneralThreadIds.get(
-      `${recipient.roomId}\u0000${recipient.tenantId}`,
-    );
+    const latestThreadId = latestGeneralThreadIds.get(generalRecipientKey(recipient));
 
     return latestThreadId
       ? { ...recipient, existingGeneralThreadId: latestThreadId }
@@ -416,13 +414,19 @@ function withLatestGeneralThreadIds(
 }
 
 function generalConversationKey(
-  thread: Pick<Thread, "roomId" | "tenantId" | "context" | "contextRef">,
+  thread: Pick<Thread, "buildingName" | "unitId" | "tenantId" | "context" | "contextRef">,
 ) {
-  if (!thread.roomId || thread.context !== "general" || thread.contextRef?.trim()) {
+  if (thread.context !== "general" || thread.contextRef?.trim()) {
     return "";
   }
 
-  return `${thread.roomId}\u0000${thread.tenantId}`;
+  return `${thread.buildingName?.trim() ?? ""}\u0000${thread.unitId.trim()}\u0000${thread.tenantId}`;
+}
+
+function generalRecipientKey(
+  recipient: Pick<ManagerMessagingRecipient, "buildingName" | "unitId" | "tenantId">,
+) {
+  return `${recipient.buildingName.trim()}\u0000${recipient.unitId.trim()}\u0000${recipient.tenantId}`;
 }
 
 function isTodayThread(thread: Thread) {
