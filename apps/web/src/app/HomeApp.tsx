@@ -124,6 +124,11 @@ import {
 } from "../lib/owner-draft";
 
 type AppTab = "home" | "map" | "saved" | "inquiry" | "sell" | "living";
+type HomeAppProps = {
+  initialTab?: AppTab;
+  initialTradeListings?: TradeListing[] | null;
+};
+type PublicListingLoadStatus = "loading" | "ready" | "error";
 type MapResultTab = "rooms" | "complexes" | "agents";
 type MapPoint = { lat: number; lng: number };
 type MapQueryType = "neighborhood" | "address" | "road" | "building" | "station" | "place";
@@ -1608,7 +1613,10 @@ const tabForPathname = (pathname: string): AppTab | null => {
   return entry ? (entry[0] as AppTab) : null;
 };
 
-export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }) {
+export default function HomeApp({
+  initialTab = "home",
+  initialTradeListings = null
+}: HomeAppProps) {
   const [activeRole, setActiveRole] = useState<AppRole>("seeker");
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const router = useRouter();
@@ -1671,21 +1679,31 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const urlRoleAppliedRef = useRef(false);
   const isAuthHistoryPushedRef = useRef(false);
   // 공개된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
-  const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
+  const [tradeListings, setTradeListings] = useState<TradeListing[]>(initialTradeListings ?? []);
+  const [tradeListingsStatus, setTradeListingsStatus] = useState<PublicListingLoadStatus>(
+    initialTradeListings === null ? "loading" : "ready"
+  );
   // 등록 직후 홈 피드 복귀 시에도 호출한다 — 30초 폴링을 기다리지 않고 방금 등록한 매물이 바로 보이게.
   const loadTradeListings = useCallback(
     () =>
       fetch("/api/trade/listings/public", { cache: "no-store" })
-        .then((res) => (res.ok ? res.json() : []))
-        .then((data: TradeListing[]) => {
-          if (Array.isArray(data)) setTradeListings(data);
+        .then((res) => {
+          if (!res.ok) throw new Error("PUBLIC_LISTINGS_REQUEST_FAILED");
+          return res.json() as Promise<unknown>;
         })
-        .catch(() => undefined),
+        .then((data) => {
+          if (!Array.isArray(data)) throw new Error("PUBLIC_LISTINGS_PAYLOAD_INVALID");
+          setTradeListings(data as TradeListing[]);
+          setTradeListingsStatus("ready");
+        })
+        .catch(() => {
+          setTradeListingsStatus((current) => current === "loading" ? "error" : current);
+        }),
     []
   );
   useEffect(() => {
     const load = loadTradeListings;
-    load();
+    if (initialTradeListings === null) load();
     const timer = window.setInterval(load, 30000);
     // 다른 탭/앱에 다녀오면 즉시 갱신 — 30초 폴링만으로는 "새로고침해야 보이는" 답답함이 남는다.
     const reloadOnReturn = () => {
@@ -1698,7 +1716,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       window.removeEventListener("focus", reloadOnReturn);
       document.removeEventListener("visibilitychange", reloadOnReturn);
     };
-  }, [loadTradeListings]);
+  }, [initialTradeListings, loadTradeListings]);
 
   function requestMapCurrentLocation(force = false) {
     if (!force && mapLocationRequestedRef.current) return;
@@ -1792,7 +1810,9 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const sortedTradeListings = tradeListings
     .filter((listing) => listing.status !== "계약완료")
     .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
-  const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
+  const allListings = tradeListingsStatus === "ready"
+    ? [...sortedTradeListings.map(tradeListingToCard), ...listings]
+    : [];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const mapTopbarDisplaySearchValue = mapTopbarInputValueForArea(mapTopbarSearchValue);
   const hasVisibleMapContext = hasResolvedMapContext && mapQueryStatus !== "fallback";
@@ -2861,15 +2881,29 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               </>
             ) : (
               <article className="listing-empty-card">
-                <strong>조건에 맞는 추천 매물이 없습니다</strong>
-                <p>필터를 줄이거나 지도에서 주변 매물을 더 넓게 확인해보세요.</p>
-                <button type="button" onClick={() => {
-                  setActiveCategory("오피스텔");
-                  setActiveQuickFilters(["월세"]);
-                  setPriceRange({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT });
-                }}>
-                  기본 조건으로 보기
-                </button>
+                <strong>
+                  {tradeListingsStatus === "loading"
+                    ? "매물을 불러오는 중입니다"
+                    : tradeListingsStatus === "error"
+                      ? "매물 목록을 불러오지 못했습니다"
+                      : "조건에 맞는 추천 매물이 없습니다"}
+                </strong>
+                <p>
+                  {tradeListingsStatus === "loading"
+                    ? "잠시만 기다려 주세요."
+                    : tradeListingsStatus === "error"
+                      ? "잠시 후 다시 시도해 주세요."
+                      : "필터를 줄이거나 지도에서 주변 매물을 더 넓게 확인해보세요."}
+                </p>
+                {tradeListingsStatus === "ready" ? (
+                  <button type="button" onClick={() => {
+                    setActiveCategory("오피스텔");
+                    setActiveQuickFilters(["월세"]);
+                    setPriceRange({ deposit: PRICE_DEPOSIT_LIMIT, monthly: PRICE_MONTHLY_LIMIT });
+                  }}>
+                    기본 조건으로 보기
+                  </button>
+                ) : null}
               </article>
             )}
           </div>
