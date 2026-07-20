@@ -1475,6 +1475,11 @@ test("moves the map only after the current-location action", () => {
   assert.match(naverMapPreviewSource, /map\.setCenter\(nextCenter\)/);
 });
 
+test("shows the current-location marker label only once", () => {
+  assert.match(naverMapPreviewSource, /if \(detail\) content\.append\(detailElement\);/);
+  assert.match(naverMapPreviewSource, /title === "현재 위치" \? "" : "현재 위치"/);
+});
+
 test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
   assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);

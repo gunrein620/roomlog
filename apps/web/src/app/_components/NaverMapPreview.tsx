@@ -151,7 +151,8 @@ function createDismissibleInfoWindow(
   labelElement.textContent = label;
   const detailElement = document.createElement("strong");
   detailElement.textContent = detail;
-  content.append(closeButton, labelElement, detailElement);
+  content.append(closeButton, labelElement);
+  if (detail) content.append(detailElement);
 
   const infoWindow = new maps.InfoWindow({ content });
   closeButton.addEventListener("click", (event) => {
@@ -224,6 +225,10 @@ function readMapViewport(map: NaverMap): NaverMapViewport | null {
     west,
     zoom: Number.isFinite(zoom) ? Number(zoom) : null
   };
+}
+
+function centerMarkerDetail(title: string | undefined, addressKey: string): string {
+  return addressKey || (title === "현재 위치" ? "" : "현재 위치");
 }
 
 export function NaverMapPreview({
@@ -369,7 +374,7 @@ export function NaverMapPreview({
         map,
         marker,
         hasCenter ? title || "이 매물" : "선택 매물",
-        hasCenter ? addressKey || "현재 위치" : "매1.4억"
+        hasCenter ? centerMarkerDetail(title, addressKey) : "매1.4억"
       );
       centerInfoWindowRef.current = infoWindowHandle.infoWindow;
       centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
@@ -442,7 +447,7 @@ export function NaverMapPreview({
         map,
         centerMarkerRef.current,
         title || "이 매물",
-        addressKey || "현재 위치"
+        centerMarkerDetail(title, addressKey)
       );
       return;
     }
@@ -453,7 +458,7 @@ export function NaverMapPreview({
       position: nextCenter
     });
     centerMarkerRef.current = marker;
-    openCenterInfoWindow(maps, map, marker, title || "이 매물", addressKey || "현재 위치");
+    openCenterInfoWindow(maps, map, marker, title || "이 매물", centerMarkerDetail(title, addressKey));
   }, [addressKey, centerKey, closeCenterInfoWindow, loadState, openCenterInfoWindow, showCenterMarker, title]);
 
   useEffect(() => {
