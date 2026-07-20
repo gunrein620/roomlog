@@ -193,12 +193,13 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
 
   async function executeCommand(input: ManagerAgentCommandInput): Promise<ManagerAgentCommandResult> {
     try {
+      const commandInput = managerRealtimeInputWithTranscript(
+        input,
+        lastUserTranscriptRef.current,
+      );
       const disposition = managerRealtimeCommandDisposition(
         getManagerAssistantState().pendingAction,
-        {
-          ...input,
-          text: lastUserTranscriptRef.current || input.text,
-        },
+        commandInput,
       );
 
       if (disposition.kind === "confirm_pending") {
@@ -221,10 +222,10 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
           intent: {
             type: "billing.send_dunning",
             source: "assistant",
-            billId: input.billId || options.initialBillId,
-            prompt: input.text,
-            channel: input.channel,
-            messageText: input.body,
+            billId: commandInput.billId || options.initialBillId,
+            prompt: commandInput.text,
+            channel: commandInput.channel,
+            messageText: commandInput.body,
           },
         });
         options.applyCopilotResponse(response, { includeReply: false });
@@ -239,7 +240,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       if (disposition.kind === "prepare_announcement") {
         const response = await requestManagerCopilotChat({
           messages: [],
-          command: input,
+          command: commandInput,
         });
         options.applyCopilotResponse(response, { includeReply: false });
         return {
@@ -253,7 +254,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       const response = await fetch("/api/manager/agent/realtime/command", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify(commandInput),
       });
       const body = await response.json().catch(() => undefined);
       if (!response.ok) throw new Error(responseMessage(body) || "명령을 실행하지 못했습니다.");
@@ -290,6 +291,16 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
     disconnect,
     startTalking,
     stopTalking,
+  };
+}
+
+export function managerRealtimeInputWithTranscript(
+  input: ManagerAgentCommandInput,
+  latestTranscript: string,
+): ManagerAgentCommandInput {
+  return {
+    ...input,
+    text: latestTranscript.trim() || input.text,
   };
 }
 

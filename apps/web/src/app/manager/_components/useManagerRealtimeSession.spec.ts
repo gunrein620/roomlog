@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   managerRealtimeCommandDisposition,
+  managerRealtimeInputWithTranscript,
   managerPushToTalkEnabled,
   managerRealtimeStatusLabel,
   microphoneErrorMessage,
@@ -100,6 +101,27 @@ describe("manager realtime session labels", () => {
         input,
       ),
       { kind: "confirm_pending", actionId: "announcement-1" },
+    );
+  });
+
+  it("uses the latest voice transcript as an announcement selection follow-up", () => {
+    assert.deepEqual(
+      managerRealtimeInputWithTranscript(
+        {
+          command: "messaging.send_announcement",
+          target: "103호",
+          title: "에어컨 교체 안내",
+          body: "오늘 에어컨 교체 작업이 진행됩니다.",
+        },
+        "뒤에 거",
+      ),
+      {
+        command: "messaging.send_announcement",
+        target: "103호",
+        title: "에어컨 교체 안내",
+        body: "오늘 에어컨 교체 작업이 진행됩니다.",
+        text: "뒤에 거",
+      },
     );
   });
 });

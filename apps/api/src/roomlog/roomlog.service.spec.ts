@@ -6100,6 +6100,31 @@ describe("RoomlogService", () => {
     assert.match(result.summary, /플로우테스트3 103호/);
   });
 
+  it("uses a voice follow-up to choose between two reachable announcement rooms", async () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+    const firstRoom = state.rooms.find((item) => item.id === "room-301");
+    const secondRoom = state.rooms.find((item) => item.id === "room-302");
+
+    assert.ok(firstRoom);
+    assert.ok(secondRoom);
+    firstRoom.buildingName = "관리자-세입자 플로우테스트";
+    firstRoom.roomNo = "103호";
+    secondRoom.buildingName = "관리자-세입자 플로우테스트3";
+    secondRoom.roomNo = "103호";
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_announcement",
+      target: "103호",
+      text: "뒤에 거",
+      title: "에어컨 교체 안내",
+      body: "오늘 에어컨 교체 작업이 진행됩니다."
+    });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.summary, /플로우테스트3 103호/);
+  });
+
   it("prepares and executes every eligible dunning bill with one approval payload", async () => {
     const service = new RoomlogService();
     const state = service.getDemoState();
