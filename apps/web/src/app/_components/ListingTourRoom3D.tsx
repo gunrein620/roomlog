@@ -14,7 +14,7 @@ import {
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
-import { LISTING_TOUR_FURNITURE_LATEST_KEY } from "../splat-tour/splat-furniture";
+import { listingTourFurnitureStorageKey } from "../splat-tour/splat-furniture";
 import {
   normalizeTourScenePoint,
   resolveTourSceneScale
@@ -57,14 +57,10 @@ export type ListingFloorPlan3D = {
 
 const TOUR_HORIZONTAL_SCALE = 1.85;
 
-function floorPlanFurnitureStorageKey(listingId: string) {
-  return `roomlogListingTourFurniture:${listingId}`;
-}
-
 function readSavedFurnitures(listingId: string) {
   if (typeof window === "undefined") return null;
 
-  const raw = window.localStorage.getItem(floorPlanFurnitureStorageKey(listingId));
+  const raw = window.localStorage.getItem(listingTourFurnitureStorageKey(listingId));
   if (raw === null) return null;
   const parsed = JSON.parse(raw) as { furnitures?: unknown } | null;
 
@@ -343,25 +339,18 @@ export default function ListingTourRoom3D({
           source: furniture.source
         }))
       });
-      window.localStorage.setItem(floorPlanFurnitureStorageKey(listingId), payload);
+      window.localStorage.setItem(listingTourFurnitureStorageKey(listingId), payload);
       setHasSavedFurnitureLayout(true);
+      setSaveMessage("이 브라우저에 가구 배치를 저장했습니다. 1인칭 투어에도 반영돼요.");
     } catch {
       setSaveMessage("저장 공간 문제로 가구 배치를 저장하지 못했습니다.");
       return;
-    }
-
-    try {
-      // 공유 최신본 키에도 함께 쓴다 — 1인칭 투어는 매물별 키를 알 수 없어 이 키를 읽는다.
-      window.localStorage.setItem(LISTING_TOUR_FURNITURE_LATEST_KEY, payload);
-      setSaveMessage("이 브라우저에 가구 배치를 저장했습니다. 1인칭 투어에도 반영돼요.");
-    } catch {
-      setSaveMessage("가구 배치는 저장했지만 1인칭 투어 반영 정보를 저장하지 못했습니다.");
     }
   }
 
   function resetFurnitureLayout() {
     try {
-      window.localStorage.removeItem(floorPlanFurnitureStorageKey(listingId));
+      window.localStorage.removeItem(listingTourFurnitureStorageKey(listingId));
       pendingFurnitureOriginRef.current = null;
       pendingTenantFurnitureSourceRef.current = null;
       pendingFurniturePlacedOnceRef.current = false;
