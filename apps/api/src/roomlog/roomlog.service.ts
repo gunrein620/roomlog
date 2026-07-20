@@ -4539,18 +4539,46 @@ export class RoomlogService implements OnModuleDestroy {
     return { session: this.presentIntakeSession(session), assistantMessage, autoFinalized };
   }
 
-  // 세입자가 접수를 명시 요청했고(filingIntent) 초안이 준비되면 버튼 없이 같은 턴에서 바로 접수한다.
-  // 수동 "민원 접수" 버튼과 같은 경로라 중복 후보가 있어도 새 티켓으로 접수된다(AI가 중복 가능성은 대화에서 안내).
+  // 접수는 세입자의 "짧은 명시 승인" 턴에만 실행한다(초안 제시 → 수정 → 승인 플로우, 7/20 결정).
+  // 설명이 섞인 긴 요청 턴에는 접수하지 않고 모델이 초안을 보여주며 승인을 요청한다.
+  // 수동 "민원 접수" 버튼 경로(finalizeIntakeSession 직접 호출)는 그대로 유지된다.
   private maybeAutoFinalizeIntake(tenantId: string, session: IntakeSession) {
-    // 백스톱: 세입자가 방금 "민원 넣어줘"처럼 접수를 명시 요청했는데 모델이 사진·부가정보를
-    // 이유로 readyToFinalize를 계속 미루면 접수가 무한정 밀린다. 증상 요약과 위치가 이미
-    // 파악된 초안이면 명시 요청을 우선해 접수한다 — 사진·세부는 접수 후 같은 스레드에서 보완.
-    const lastTenantMessage = [...session.messages]
-      .reverse()
-      .find((message) => message.sender === "TENANT");
-    const explicitRequest = this.detectFilingIntent(
-      lastTenantMessage?.transcriptText || lastTenantMessage?.messageText || ""
+    const senders = session.messages.map((message) => message.sender);
+    const lastTenantIndex = senders.lastIndexOf("TENANT");
+
+    if (lastTenantIndex < 0) {
+      return undefined;
+    }
+
+    const lastTenantMessage = session.messages[lastTenantIndex];
+    const normalized = (
+      lastTenantMessage.transcriptText ||
+      lastTenantMessage.messageText ||
+      ""
+    ).trim();
+
+    if (!normalized || normalized.length > 25) return undefined;
+    if (/(지\s*마|말아|말고|취소|안\s*돼|안돼|않|중단|보류)/.test(normalized)) return undefined;
+
+    // "접수해줘"/"민원 넣어줘"/"승인"/"진행해"는 단독으로 승인.
+    const strongApproval = this.detectFilingIntent(normalized) || /(승인|진행)/.test(normalized);
+    // "응"/"네" 같은 일반 긍정은 직전 AI 메시지가 접수 여부를 물었을 때만 승인으로 본다 —
+    // 다른 질문("지금도 새나요?")에 대한 "응"으로 접수해버리는 오발동 방지.
+    const previousAssistantMessage = session.messages
+      .slice(0, lastTenantIndex)
+      .filter((message) => message.sender === "AI_ASSISTANT")
+      .at(-1);
+    const assistantAskedApproval = /접수할까요|이대로 접수|접수 준비가 끝났|접수해줘/.test(
+      previousAssistantMessage?.messageText ?? ""
     );
+    const weakApproval = /(응|어|네|넵|예|그래|좋아|괜찮|ㅇㅋ|ㅇㅇ|해줘|ok|okay|yes)/i.test(
+      normalized
+    );
+
+    if (!strongApproval && !(weakApproval && assistantAskedApproval)) {
+      return undefined;
+    }
+
     const location = session.draft.location?.trim() ?? "";
     const hasMinimumDraft = Boolean(
       session.draft.title?.trim() &&
@@ -4559,14 +4587,12 @@ export class RoomlogService implements OnModuleDestroy {
         !/확인 필요|미확인/.test(location)
     );
 
-    if (explicitRequest && hasMinimumDraft) {
-      session.draft.readyToFinalize = true;
-      session.draft.filingIntent = true;
-    }
-
-    if (!session.draft.readyToFinalize || !session.draft.filingIntent) {
+    if (!hasMinimumDraft) {
       return undefined;
     }
+
+    session.draft.readyToFinalize = true;
+    session.draft.filingIntent = true;
 
     try {
       const finalized = this.finalizeIntakeSession(tenantId, session.id);
@@ -11953,6 +11979,7 @@ export class RoomlogService implements OnModuleDestroy {
       "- 가스 냄새, 누전, 화재, 침수, 문 잠김 실패, 천장 누수처럼 안전 위험이 있으면 먼저 안전 행동을 안내합니다. 단, 안전 안내는 세입자가 현재 스레드에서 직접 말한 위험에만 붙이고, 이번 이슈와 관련 없는 위험(예: 쓰레기 민원에 가스 안내)은 절대 넣지 않습니다.",
       "- 질문은 한 번에 1-3개만 하고, 이미 답한 내용을 반복해서 묻지 않습니다.",
       "- assistantMessage는 짧고 자연스럽게 씁니다: 핵심 확인 1-2문장과 꼭 필요한 질문 최대 2개면 충분합니다. '제가 이해한 내용', '지금 할 일' 같은 고정 목차를 쓰지 말고, 사진 요청이나 스레드 저장 안내 같은 같은 말을 매 턴 반복하지 않습니다.",
+      "- 세입자의 말이 최근 접수한 민원과 같은 주제로 이어지는 것 같으면 새 민원으로 오해하지 말고 그 건의 후속 이야기로 이해합니다. 이미 접수된 건임을 자연스럽게 짚어주고(예: '아까 접수한 쓰레기 투기 건 말씀이시죠'), 새로 알려준 내용은 관리자 확인에 참고되도록 정리합니다. 인사말을 다시 하지 않습니다.",
       "- draft.nextQuestions에는 세입자에게 바로 물을 1-3개의 구체 질문만 넣습니다.",
       "- draft.tenantGuidance에는 안전 행동, 사진 촬영 방법, 방문 준비처럼 세입자가 지금 할 일을 1-4개 넣습니다.",
       "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
@@ -11960,9 +11987,10 @@ export class RoomlogService implements OnModuleDestroy {
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
       "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
       "- draft.filingIntent는 세입자가 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했다면 false입니다.",
-      "- 세입자가 접수를 명시 요청했고 증상과 위치가 파악됐다면, 사진이나 부가 정보가 없어도 readyToFinalize를 true로 두고 이번 턴에 접수합니다. 사진·세부 정보는 접수 후 같은 스레드에서 보완하면 된다고 안내합니다.",
-      "- 세입자가 접수 여부를 물으면(예: '넣었어?', '접수됐어?') 첫 문장에서 접수 완료/미완료를 명확히 답합니다. 아직이면 '아직 접수 전입니다'라고 말하고 무엇이 더 필요한지 또는 바로 접수할지 묻습니다.",
-      "- filingIntent와 readyToFinalize가 모두 true이면 시스템이 이번 턴에서 민원을 자동 접수하므로, assistantMessage에서 정리한 내용으로 접수를 진행한다고 안내합니다."
+      "- 세입자가 접수를 요청하면 그 턴에 바로 접수하지 말고 접수 초안을 한 번 보여줍니다: 제목, 내용 요약, 위치, 긴급도를 짧게 정리하고 '이대로 접수할까요? 수정할 부분이 있으면 말씀해 주세요'라고 묻습니다. 사진이나 부가 정보가 없어도 초안은 만들고, readyToFinalize는 true로 둡니다.",
+      "- 세입자가 초안의 특정 부분(제목, 내용, 위치, 긴급도, 방문 시간) 수정을 요청하면 그 부분만 반영해 초안을 갱신하고, 갱신된 초안을 다시 짧게 보여준 뒤 승인을 기다립니다.",
+      "- 세입자가 '승인', '진행해', '접수해줘'처럼 짧게 동의한 턴에만 시스템이 자동 접수합니다. 그 턴에는 접수를 진행했다고 안내합니다.",
+      "- 세입자가 접수 여부를 물으면(예: '넣었어?', '접수됐어?') 첫 문장에서 접수 완료/미완료를 명확히 답합니다. 아직이면 '아직 접수 전입니다'라고 말하고 초안을 보여주며 바로 접수할지 묻습니다."
     ].join("\n");
   }
 
@@ -11981,6 +12009,9 @@ export class RoomlogService implements OnModuleDestroy {
       "현재 상담 스레드 대화:",
       this.threadText(session) || "아직 세입자 메시지가 없습니다.",
       "",
+      "이 세입자가 최근 접수한 민원(후속 이야기일 수 있음):",
+      this.recentComplaintContextForIntake(session) || "최근 접수된 민원이 없습니다.",
+      "",
       "같은 호실 과거 기록:",
       this.roomHistoryContextForIntake(session, fallbackDraft) || "참고할 과거 기록이 없습니다.",
       "",
@@ -11989,6 +12020,30 @@ export class RoomlogService implements OnModuleDestroy {
       "",
       "이 대화를 바탕으로 세입자에게 보낼 다음 답변과 최신 접수 초안을 만들어주세요."
     ].join("\n");
+  }
+
+  // 접수 완료 직후 이어지는 대화는 새 세션으로 시작되므로, 방금 접수한 민원을 모르면
+  // 같은 주제의 후속 발화에 동문서답을 한다 — 최근 3일 내 접수 건은 항상 컨텍스트로 준다.
+  private recentComplaintContextForIntake(session: IntakeSession) {
+    const cutoffMs = Date.now() - 3 * 24 * 60 * 60 * 1000;
+
+    return this.store.complaints
+      .filter(
+        (complaint) =>
+          complaint.tenantId === session.tenantId &&
+          complaint.roomId === session.roomId &&
+          this.timeOf(complaint.createdAt) >= cutoffMs
+      )
+      .sort((a, b) => this.timeOf(b.createdAt) - this.timeOf(a.createdAt))
+      .slice(0, 3)
+      .map((complaint) => {
+        const ticket = this.store.tickets.find((item) => item.id === complaint.ticketId);
+
+        return `- ${complaint.title} (${complaint.createdAt.slice(0, 10)} 접수${
+          ticket ? `, 상태 ${ticket.status}` : ""
+        }): ${complaint.description.slice(0, 80)}`;
+      })
+      .join("\n");
   }
 
   private async intakeImageInputs(session: IntakeSession) {

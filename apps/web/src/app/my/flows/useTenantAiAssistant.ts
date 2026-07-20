@@ -68,6 +68,9 @@ export function useTenantAiAssistant({
   roomIdRef.current = roomId;
   const sessionIdRef = useRef<string | null>(null);
   const sessionPromiseRef = useRef<Promise<TenantIntakeSession> | null>(null);
+  // 접수 완료 후 이어지는 대화는 새 세션으로 시작하는데, 이때 서버 인사말을 다시
+  // 이어붙이면 대화 중간에 인사가 또 나온다 — 실제 대화가 시작된 뒤에는 생략한다.
+  const hasConversationRef = useRef(false);
 
   useEffect(() => {
     setFiledComplaint(null);
@@ -100,6 +103,7 @@ export function useTenantAiAssistant({
   function appendMessage(sender: TenantAiChatMessage["sender"], text: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
+    if (sender === "tenant") hasConversationRef.current = true;
     setMessages((current) => [
       ...current,
       { id: createMessageId(), sender, text: trimmed },
@@ -121,9 +125,11 @@ export function useTenantAiAssistant({
     const promise = (async () => {
       const session = await createTenantIntakeSession(roomIdRef.current);
       sessionIdRef.current = session.id;
-      for (const message of session.messages) {
-        if (message.sender === "AI_ASSISTANT") {
-          appendMessage("assistant", message.messageText);
+      if (!hasConversationRef.current) {
+        for (const message of session.messages) {
+          if (message.sender === "AI_ASSISTANT") {
+            appendMessage("assistant", message.messageText);
+          }
         }
       }
       applySessionDraft(session);
