@@ -233,6 +233,20 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
         };
       }
 
+      if (disposition.kind === "prepare_announcement") {
+        const response = await requestManagerCopilotChat({
+          messages: [],
+          command: input,
+        });
+        options.applyCopilotResponse(response);
+        return {
+          status: response.pendingAction ? "draft_only" : "blocked",
+          domain: "messaging",
+          summary: response.reply,
+          requiresConfirmation: Boolean(response.pendingAction),
+        };
+      }
+
       const response = await fetch("/api/manager/agent/realtime/command", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -287,14 +301,31 @@ export function managerRealtimeCommandDisposition(
 ):
   | { kind: "confirm_pending"; actionId: string }
   | { kind: "prepare_dunning" }
+  | { kind: "prepare_announcement" }
   | { kind: "execute" } {
+  const requestText = `${input.text ?? ""} ${input.body ?? ""}`;
+  const looksLikeDunning =
+    /(독촉|미납|연체|월세|납부)/u.test(requestText) &&
+    /(보내|발송|전송|문자)/u.test(requestText);
+  const isDunningCommand =
+    input.command === "billing.send_dunning" || looksLikeDunning;
+
   if (
-    input.command === "billing.send_dunning" &&
+    input.command === "messaging.send_announcement" &&
+    pendingAction?.kind === "messaging.send_announcement"
+  ) {
+    return { kind: "confirm_pending", actionId: pendingAction.id };
+  }
+  if (input.command === "messaging.send_announcement") {
+    return { kind: "prepare_announcement" };
+  }
+  if (
+    isDunningCommand &&
     pendingAction?.kind === "billing.send_dunning"
   ) {
     return { kind: "confirm_pending", actionId: pendingAction.id };
   }
-  if (input.command === "billing.send_dunning") {
+  if (isDunningCommand) {
     return { kind: "prepare_dunning" };
   }
   return { kind: "execute" };

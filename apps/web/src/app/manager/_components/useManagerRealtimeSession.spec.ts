@@ -69,5 +69,37 @@ describe("manager realtime session labels", () => {
       }),
       { kind: "prepare_dunning" },
     );
+    assert.deepEqual(
+      managerRealtimeCommandDisposition(null, {
+        command: "messaging.send_reply",
+        text: "102호 미납 월세 독촉 문자 보내줘",
+      }),
+      { kind: "prepare_dunning" },
+    );
+  });
+
+  it("persists a voice announcement before confirming the same action", () => {
+    const input = {
+      command: "messaging.send_announcement",
+      target: "관리자 세입자 플로어 테스트 2 102호",
+      title: "에어컨 설치 안내",
+      body: "오늘 에어컨 설치 작업이 진행됩니다.",
+    };
+
+    assert.deepEqual(
+      managerRealtimeCommandDisposition(null, input),
+      { kind: "prepare_announcement" },
+    );
+    assert.deepEqual(
+      managerRealtimeCommandDisposition(
+        {
+          id: "announcement-1",
+          kind: "messaging.send_announcement",
+          summary: "102호 에어컨 설치 안내",
+        },
+        input,
+      ),
+      { kind: "confirm_pending", actionId: "announcement-1" },
+    );
   });
 });

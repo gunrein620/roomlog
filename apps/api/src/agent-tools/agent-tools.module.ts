@@ -22,6 +22,7 @@ import { AgentToolGateService } from "./agent-tool-gate.service";
 import { AgentRoleToolRouter } from "./agent-role-tool.router";
 import { AgentResourceRefCodec } from "./agent-resource-ref";
 import { ManagerAgentToolAdapter } from "./manager-agent-tool.adapter";
+import { ManagerCopilotActionGatewayService } from "./manager-copilot-action.gateway";
 import { PrismaAgentToolActionRepository } from "./prisma-agent-tool-action.repository";
 import { TenantAgentToolAdapter } from "./tenant-agent-tool.adapter";
 import {
@@ -132,6 +133,7 @@ class AgentToolActionLifecycle implements OnModuleDestroy {
       useExisting: AgentRoleToolRouter,
     },
     AgentToolGateService,
+    ManagerCopilotActionGatewayService,
     AgentToolActionLifecycle,
   ],
   exports: [AgentToolGateService],

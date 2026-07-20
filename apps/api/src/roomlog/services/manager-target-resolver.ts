@@ -78,6 +78,10 @@ function compactBuilding(value: string) {
   return value
     .normalize("NFKC")
     .toLowerCase()
+    .replace(
+      /(미납|연체|월세|납부|독촉|문자|메시지|공지|보내\s*줘|보내|발송|전송|해\s*줘|진행해)/gu,
+      ""
+    )
     .replace(/[\s\-_.,!?()[\]{}'"]/gu, "");
 }
 

@@ -6049,6 +6049,33 @@ describe("RoomlogService", () => {
     assert.ok(results.some((result) => result.title === "단수 안내" && result.category === "life"));
   });
 
+  it("resolves a voice-mangled building name when sending an announcement to a unit", async () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+    const thread = state.messagingThreads.find((item) => item.id === "mth_demo_general");
+    const room = state.rooms.find((item) => item.id === thread?.roomId);
+    const otherRoom = state.rooms.find(
+      (item) => item.landlordId === "landlord-demo" && item.id !== room?.id
+    );
+
+    assert.ok(room);
+    assert.ok(otherRoom);
+    room.buildingName = "관리자-세입자 플로우테스트2";
+    room.roomNo = "102호";
+    otherRoom.buildingName = "관리자-세입자 플로우테스트1";
+    otherRoom.roomNo = "102호";
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_announcement",
+      target: "관리자 세입자 플로어 테스트 2 102호",
+      title: "에어컨 설치 안내",
+      body: "오늘 에어컨 설치 작업이 진행됩니다."
+    });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.summary, /플로우테스트2 102호/);
+  });
+
   it("summarizes total ticket counts for the manager agent", async () => {
     const service = new RoomlogService();
 
@@ -6170,6 +6197,34 @@ describe("RoomlogService", () => {
 
     assert.equal(lastMessage?.sender, "manager");
     assert.match(lastMessage?.body ?? "", /미납|청구|독촉/);
+  });
+
+  it("uses a voice-mangled building name to distinguish duplicate dunning units", async () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+    const firstRoom = state.rooms.find((room) => room.id === "room-411");
+    const secondRoom = state.rooms.find((room) => room.id === "room-412");
+    const secondBill = state.bills.find((bill) => bill.id === "bill-demo-overdue-412");
+
+    assert.ok(firstRoom);
+    assert.ok(secondRoom);
+    assert.ok(secondBill);
+    firstRoom.buildingName = "관리자-세입자 플로우테스트1";
+    secondRoom.buildingName = "관리자-세입자 플로우테스트2";
+    secondRoom.roomNo = "411호";
+    secondBill.unitId = "411호";
+
+    const result = await service.runManagerAgentCommand("landlord-demo", {
+      command: "billing.send_dunning",
+      text: "관리자 세입자 플로어 테스트 2 411호 미납 독촉 문자 보내줘"
+    });
+    const secondTenantThreads = service.listTenantMessagingThreads("tenant-billing-412");
+
+    assert.equal(result.status, "executed", result.summary);
+    assert.equal(
+      secondTenantThreads.some((thread) => /납부|미납|연체/u.test(thread.lastMessage)),
+      true
+    );
   });
 
   it("blocks guarded dunning requests before creating a tenant-visible contract chat", async () => {

@@ -18,7 +18,7 @@ const expectedVoiceInstructions = [
   "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
   "billing.send_dunning은 항상 확인 카드로 보류한 뒤 관리인이 승인해야 실행합니다. 서버가 실제 미납 청구와 입금 상태를 다시 확인하고, 성공하면 계약 관계의 일반 소통 채팅으로 납부 안내를 보냅니다.",
   "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리합니다. 금전 독촉은 일반 답장 명령이 아니라 billing.send_dunning의 청구 가드를 통과한 뒤 소통 채팅에 전달합니다.",
-  "공지 발송 요청은 messaging.send_announcement 명령으로만 처리합니다 — 일반 답장(messaging.send_reply)으로 공지를 보내지 않습니다. 대상이 애매하면 전체 세대인지, 특정 건물인지, 특정 호실인지 먼저 되물어 확정합니다. 명령을 호출하기 전에 대상·제목·본문을 요약해 보여주고 발송해도 되는지 한 번 확인을 받습니다. 관리인이 명시적으로 승인(예: '보내', '진행해')한 그 다음 턴에만 명령을 호출하며, 호출하면 즉시 발송됩니다. 승인 없이 호출하지 않습니다. target에는 '전체', 건물명, 또는 '건물명 302호' 형식을 넣고, 제목은 title, 본문은 body로 전달합니다.",
+  "공지 발송 요청은 messaging.send_announcement 명령으로만 처리합니다 — 일반 답장(messaging.send_reply)으로 공지를 보내지 않습니다. 대상·제목·본문을 요청에서 자연스럽게 작성해 즉시 명령을 호출합니다. 서버가 실제 관리 범위 안에서 대상을 해석해 발송 내용을 저장하고 정확히 한 번 승인을 요청하므로, 도구 호출 전에 별도로 승인을 묻지 않습니다. 후보가 여러 개라는 서버 응답이 있을 때만 짧게 되묻습니다. target에는 사용자가 말한 건물명과 호실을 가능한 그대로 넣고, 제목은 title, 본문은 body로 전달합니다.",
   "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
 ].join("\n");
 
@@ -1085,6 +1085,35 @@ describe("manager copilot chat domain", () => {
       if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
       else delete process.env.OPENAI_API_KEY;
     }
+  });
+
+  it("stores a complete announcement draft and executes it on one confirmation", async () => {
+    const service = new RoomlogService();
+    const prepared = await service.chatManagerCopilot("landlord-demo", {
+      messages: [],
+      command: {
+        command: "messaging.send_announcement",
+        target: "전체",
+        title: "에어컨 설치 안내",
+        body: "오늘 에어컨 설치 작업이 진행됩니다."
+      }
+    });
+
+    assert.equal(prepared.pendingAction?.kind, "messaging.send_announcement");
+    assert.match(prepared.reply, /승인|진행해/);
+
+    const confirmed = await service.chatManagerCopilot("landlord-demo", {
+      messages: [],
+      confirmActionId: prepared.pendingAction?.id
+    });
+
+    assert.equal(confirmed.receipts?.[0]?.kind, "messaging.send_announcement");
+    assert.equal(
+      service
+        .listManagerAnnouncementResults("landlord-demo")
+        .some((result) => result.title === "에어컨 설치 안내"),
+      true
+    );
   });
 
   it("treats only short affirmative replies as explicit announcement approval", () => {

@@ -38,6 +38,7 @@ const POLICY = {
   "messaging.list_threads": "IMMEDIATE",
   "messaging.draft_reply": "IMMEDIATE",
   "messaging.send_reply": "PREPARE",
+  "messaging.send_announcement": "PREPARE",
   "vendor.list": "IMMEDIATE",
   "vendor.search": "IMMEDIATE",
   "vendor.register": "PREPARE",
@@ -92,7 +93,10 @@ function optionalBoundedText(value: unknown, label: string) {
   return normalized;
 }
 
-type ExistingPendingKind = "billing.send_dunning" | "messaging.send_reply";
+type ExistingPendingKind =
+  | "billing.send_dunning"
+  | "messaging.send_reply"
+  | "messaging.send_announcement";
 
 export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
   constructor(
@@ -231,15 +235,24 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     if (tool === "credit.topup.prepare" || tool.startsWith("repair_payment.")) {
       return this.preparePaymentMutation(principal, tool, args);
     }
-    if (tool !== "billing.send_dunning" && tool !== "messaging.send_reply") {
+    if (
+      tool !== "billing.send_dunning" &&
+      tool !== "messaging.send_reply" &&
+      tool !== "messaging.send_announcement"
+    ) {
       return this.prepareVendorMutation(principal, tool, args);
     }
     const kind = tool as ExistingPendingKind;
-    only(args, kind === "billing.send_dunning"
-      ? ["billRef", "text", "channel", "body"]
-      : ["threadRef", "text", "body"]);
+    only(
+      args,
+      kind === "billing.send_dunning"
+        ? ["billRef", "text", "channel", "body"]
+        : kind === "messaging.send_reply"
+          ? ["threadRef", "text", "body"]
+          : ["target", "title", "body", "text"],
+    );
     const commandInput: ManagerAgentCommandInput = { command: kind };
-    for (const key of ["text", "channel", "body"] as const) {
+    for (const key of ["text", "channel", "body", "title", "target"] as const) {
       const value = optionalText(args[key], "발송 요청 내용이 올바르지 않습니다.");
       if (value) commandInput[key] = value;
     }
@@ -263,20 +276,34 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
       executorName: kind,
       commandPayload: { kind, commandInput: resolved.commandInput },
       card: {
-        title: kind === "billing.send_dunning" ? "연체 독촉 발송 확인" : "임차인 답장 발송 확인",
+        title:
+          kind === "billing.send_dunning"
+            ? "연체 독촉 발송 확인"
+            : kind === "messaging.send_announcement"
+              ? "공지 발송 확인"
+              : "임차인 답장 발송 확인",
         target: preview
           ? `${preview.billingMonth} ${preview.tenantName}`
-          : resolved.summary,
+          : kind === "messaging.send_announcement"
+            ? String(resolved.commandInput.target ?? resolved.summary)
+            : resolved.summary,
         ...(preview ? {
           room: [preview.buildingName, preview.unitId].filter(Boolean).join(" "),
           amount: preview.unpaidAmount,
           work: preview.messageText,
+        } : kind === "messaging.send_announcement" ? {
+          work: [
+            resolved.commandInput.title,
+            resolved.commandInput.body,
+          ].filter(Boolean).join("\n"),
         } : {
           room: thread ? [thread.buildingName, thread.unitId].filter(Boolean).join(" ") : undefined,
           work: String(resolved.commandInput.body ?? ""),
         }),
         action: kind === "billing.send_dunning"
           ? "저장된 청구 상태를 다시 확인한 뒤 독촉 메시지를 발송합니다."
+          : kind === "messaging.send_announcement"
+            ? "대상과 내용을 다시 확인한 뒤 공지를 발송합니다."
           : "대상 대화의 접근 권한을 다시 확인한 뒤 답장을 발송합니다.",
       },
     };
@@ -292,7 +319,11 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
     if (executorName === "credit.topup.prepare" || executorName.startsWith("repair_payment.")) {
       return this.executePaymentMutation(principal, executorName, payload, _context);
     }
-    if (executorName !== "billing.send_dunning" && executorName !== "messaging.send_reply") {
+    if (
+      executorName !== "billing.send_dunning" &&
+      executorName !== "messaging.send_reply" &&
+      executorName !== "messaging.send_announcement"
+    ) {
       return this.executeVendorMutation(principal, executorName, payload);
     }
     const commandInput = payload.commandInput;
