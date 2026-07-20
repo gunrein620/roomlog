@@ -35,6 +35,49 @@ function isValidOwnerWall(value: unknown): value is OwnerWallLike {
   );
 }
 
+export type PublicOwnerWall3D = OwnerWallLike & {
+  id: string;
+  wall_id: string | number;
+  material?: "wall";
+};
+
+/**
+ * 공개 뷰어용 — 렌더에 필요한 필드만 화이트리스트로 정규화한다.
+ * legacy 벽에 id가 없어도 유효 geometry를 버리지 않도록 배열 위치 기반 ID를 부여한다.
+ */
+export function normalizePublicWalls3D(value: unknown): PublicOwnerWall3D[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((wall, index) => {
+    if (!isValidOwnerWall(wall)) return [];
+
+    const record = wall as unknown as Record<string, unknown>;
+    const fallbackId = `wall-${index + 1}`;
+    const id = typeof record.id === "string" && record.id.trim() ? record.id.trim() : fallbackId;
+    const wallId =
+      typeof record.wall_id === "string" && record.wall_id.trim()
+        ? record.wall_id.trim()
+        : typeof record.wall_id === "number" && Number.isFinite(record.wall_id)
+          ? record.wall_id
+          : id;
+
+    return [
+      {
+        id,
+        wall_id: wallId,
+        dimensions: {
+          width: wall.dimensions.width,
+          height: wall.dimensions.height,
+          depth: wall.dimensions.depth
+        },
+        position: [wall.position[0], wall.position[1], wall.position[2]],
+        rotation: [wall.rotation[0], wall.rotation[1], wall.rotation[2]],
+        ...(record.material === "wall" ? { material: "wall" as const } : {})
+      }
+    ];
+  });
+}
+
 /** 벽 배열이 아니거나 개별 항목이 유효하지 않으면 걸러낸다(빈 배열은 "쓸만한 도면 없음" 신호). */
 export function parseOwnerWalls3D(value: unknown): OwnerWallLike[] {
   if (!Array.isArray(value)) return [];

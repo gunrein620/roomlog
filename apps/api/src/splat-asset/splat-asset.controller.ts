@@ -50,7 +50,7 @@ export class SplatAssetController {
 
   @Get(":id")
   get(@Param("id") id: string) {
-    // 공개 조회 — ?asset= 링크 방문자용. 연결된 도면 가구를 동봉한다(getForViewer).
+    // 공개 조회 — ?asset= 링크 방문자용. 연결된 도면 가구·벽을 동봉한다(getForViewer).
     return this.splatAssetService.getForViewer(id);
   }
 

@@ -34,7 +34,11 @@ import {
   type RegisterSplatAssetInput,
   type UpdateSplatAssetFileInput
 } from "./splat-asset.types";
-import { extractJsonField, parseOwnerWalls3D } from "./owner-floor-plan-walls";
+import {
+  extractJsonField,
+  normalizePublicWalls3D,
+  parseOwnerWalls3D
+} from "./owner-floor-plan-walls";
 
 export const SPLAT_ASSET_DATABASE_URL = "SPLAT_ASSET_DATABASE_URL";
 
@@ -117,6 +121,13 @@ function furnituresFromListingSnapshot(value: unknown): unknown[] | null {
   return asFurnitureArray(value.furnitures ?? room3d?.furnitures);
 }
 
+/** 매물 도면 스냅샷에서 공개 뷰어용 3D 벽 후보만 뽑는다(정식 형태는 top-level walls3D). */
+function wallsFromListingSnapshot(value: unknown): unknown {
+  if (!isRecord(value)) return undefined;
+  const room3d = isRecord(value.room3d) ? value.room3d : null;
+  return value.walls3D ?? room3d?.walls3D ?? room3d?.walls;
+}
+
 function safeUploadedFileName(prefix: string, originalName: string, extension: string): string {
   const uploadId = randomUUID().slice(0, 12);
   const safeBaseName =
@@ -186,13 +197,17 @@ export class SplatAssetService {
   }
 
   /**
-   * 공개 뷰어(?asset= 링크 방문자)용 조회 — 자산에 연결된 도면 가구를 동봉한다.
-   * 공개 엔드포인트이므로 도면 전체·소유자·주소는 노출하지 않고 furnitures 배열만 프로젝션한다.
-   * 소스 우선순위: 정합된 도면(floorPlanId) → 매물 스냅샷(listingId.floorPlan). 둘 다 없으면 null.
+   * 공개 뷰어(?asset= 링크 방문자)용 조회 — 자산에 연결된 도면 가구와 3D 벽을 동봉한다.
+   * 공개 엔드포인트이므로 도면 전체·소유자·주소는 노출하지 않고 필요한 JSON만 프로젝션한다.
+   * 각 소스 우선순위: 정합된 도면(floorPlanId) → 매물 스냅샷(listingId.floorPlan). 둘 다 없으면 null.
    */
   async getForViewer(id: string) {
     const asset = await this.getById(id);
-    return { ...asset, furnitures: await this.projectFurnitures(asset) };
+    const [furnitures, walls] = await Promise.all([
+      this.projectFurnitures(asset),
+      this.projectWalls(asset)
+    ]);
+    return { ...asset, furnitures, walls };
   }
 
   private async projectFurnitures(asset: {
@@ -217,6 +232,33 @@ export class SplatAssetService {
       });
       const furnitures = furnituresFromListingSnapshot(listing?.floorPlan);
       if (furnitures) return filterPublicFurniture(furnitures);
+    }
+
+    return null;
+  }
+
+  private async projectWalls(asset: {
+    floorPlanId: string | null;
+    listingId: string | null;
+  }): Promise<unknown[] | null> {
+    if (asset.floorPlanId) {
+      // FloorPlan.walls는 2D 편집 벽이다. 뷰어용 3D 벽은 room3d.walls만 좁게 조회한다.
+      const plan = await this.getPrisma().floorPlan.findUnique({
+        where: { id: asset.floorPlanId },
+        select: { room3d: true }
+      });
+      const walls = normalizePublicWalls3D(extractJsonField(plan?.room3d, "walls"));
+      if (walls.length > 0) return walls;
+    }
+
+    if (asset.listingId) {
+      // 폴백 스냅샷에서도 floorPlan JSON 안의 walls3D만 추출하고 개별 벽 형태를 검증한다.
+      const listing = await this.getPrisma().tradeListing.findUnique({
+        where: { id: asset.listingId },
+        select: { floorPlan: true }
+      });
+      const walls = normalizePublicWalls3D(wallsFromListingSnapshot(listing?.floorPlan));
+      if (walls.length > 0) return walls;
     }
 
     return null;

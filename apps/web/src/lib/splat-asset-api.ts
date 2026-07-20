@@ -29,6 +29,8 @@ export interface SplatAsset {
   registrationPairs: RegistrationPointPair[] | null;
   /** 공개 뷰어 동봉 가구 — 연결된 도면(floorPlanId)/매물 스냅샷의 furnitures. 미검증 JSON이라 웹에서 isValidPlacedFurniture로 거른다. */
   furnitures?: unknown[] | null;
+  /** 공개 뷰어 동봉 벽 — 연결된 도면(floorPlanId)/매물 스냅샷의 벽. 미검증 JSON이라 웹에서 planWallsFromPayload로 거른다. */
+  walls?: unknown[] | null;
   capturedAt: string | null;
   createdAt: string;
   updatedAt: string;
