@@ -306,6 +306,10 @@ export default function ListingTourRoom3D({
     if (variant === "hero") setIsHeroPanelOpen(false);
   }
 
+  function collapseHeroPanel() {
+    setIsHeroPanelOpen(false);
+  }
+
   useEffect(() => {
     if (furnitureEditorOpen === undefined) return;
     if (furnitureEditorOpen) openFurnitureEditor();
@@ -498,7 +502,13 @@ export default function ListingTourRoom3D({
   }
 
   return (
-    <div className={variant === "hero" ? "listing-tour-room3d hero-stage" : "listing-tour-room3d"}>
+    <div
+      className={
+        variant === "hero"
+          ? `listing-tour-room3d hero-stage${isHeroPanelOpen ? " hero-panel-open" : ""}`
+          : "listing-tour-room3d"
+      }
+    >
       <RoomlogThreeFloorPlanView
         controlsEnabled={!isFurnitureDragging}
         frameloop="always"
@@ -524,6 +534,17 @@ export default function ListingTourRoom3D({
         wallsData={wallsData}
       />
 
+      {variant === "hero" && furnitureEditorOpen && !isHeroPanelOpen ? (
+        <button
+          aria-label="가구 목록 열기"
+          className="hero-furniture-reopen"
+          type="button"
+          onClick={openFurnitureEditor}
+        >
+          가구 목록 열기
+        </button>
+      ) : null}
+
       {variant !== "hero" || isHeroPanelOpen ? (
       <section className={variant === "hero" ? "listing-tour-furniture hero-furniture-drawer" : "listing-tour-furniture"} aria-label="3D 가구 배치">
         <div className="listing-tour-furniture-head">
@@ -534,8 +555,11 @@ export default function ListingTourRoom3D({
             </strong>
             {variant !== "hero" ? <span>{saveMessage}</span> : null}
           </div>
-          <button type="button" onClick={isPlacementOpen ? closeFurnitureEditor : openFurnitureEditor}>
-            {isPlacementOpen ? "닫기" : "가구 편집"}
+          <button
+            type="button"
+            onClick={isPlacementOpen ? (variant === "hero" ? collapseHeroPanel : closeFurnitureEditor) : openFurnitureEditor}
+          >
+            {isPlacementOpen ? (variant === "hero" ? "접기" : "닫기") : "가구 편집"}
           </button>
         </div>
 

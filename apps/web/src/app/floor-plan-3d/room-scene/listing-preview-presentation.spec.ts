@@ -84,4 +84,23 @@ describe("listing-only 3D preview", () => {
       /\.detail-3d-hero\.is-furniture-simulation-open\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?height:\s*100dvh/
     );
   });
+
+  it("docks a collapsible furniture sidebar beside the fullscreen 3D stage", () => {
+    assert.match(listingTourSource, /hero-panel-open/);
+    assert.match(listingTourSource, /function collapseHeroPanel\(\)/);
+    assert.match(listingTourSource, /aria-label="가구 목록 열기"/);
+    assert.match(listingTourSource, /className="hero-furniture-reopen"/);
+    assert.match(
+      globalCss,
+      /\.is-furniture-simulation-open \.listing-tour-room3d\.hero-panel-open \.floor-plan-3d-preview\s*\{[\s\S]*?right:\s*340px/
+    );
+    assert.match(
+      globalCss,
+      /\.is-furniture-simulation-open \.hero-stage \.hero-furniture-drawer\s*\{[\s\S]*?bottom:\s*0;[\s\S]*?width:\s*340px;[\s\S]*?max-height:\s*none/
+    );
+    assert.match(
+      globalCss,
+      /\.is-furniture-simulation-open \.hero-stage \.hero-furniture-catalog-scroll\s*\{[\s\S]*?flex:\s*1;[\s\S]*?max-height:\s*none/
+    );
+  });
 });

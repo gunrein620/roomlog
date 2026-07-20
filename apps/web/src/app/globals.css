@@ -4386,6 +4386,52 @@ p {
   display: none;
 }
 
+.is-furniture-simulation-open .listing-tour-room3d.hero-panel-open .floor-plan-3d-preview {
+  right: 340px;
+}
+
+.is-furniture-simulation-open .hero-stage .hero-furniture-drawer {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 340px;
+  max-height: none;
+  padding: calc(70px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+}
+
+.is-furniture-simulation-open .hero-stage .hero-furniture-drawer > .listing-tour-furniture-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.is-furniture-simulation-open .hero-stage .hero-furniture-catalog-scroll {
+  flex: 1;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.hero-furniture-reopen {
+  position: absolute;
+  top: calc(70px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
+  z-index: 7;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
 .furniture-simulation-close {
   position: absolute;
   top: calc(14px + env(safe-area-inset-top));
