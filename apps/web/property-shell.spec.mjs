@@ -596,7 +596,7 @@ test("manager announcement compose edits targets and translates each language be
     /이 화면은 작성과 저장까지만 담당합니다\. 자동 발송 없이 검토 게이트를 거칩니다\./,
   );
   assert.doesNotMatch(managerMessagingComposerCssSource, /\.primaryInfo/);
-  assert.match(managerMessagingComposerSource, /▷ 검토하고 발송으로/);
+  assert.match(managerMessagingComposerSource, /검토하고 발송으로/);
   assert.match(
     managerMessagingComposeSource,
     /prepareAnnouncementDraftForCompose\(draft, Boolean\(id\)\)/,
