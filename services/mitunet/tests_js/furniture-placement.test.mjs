@@ -176,6 +176,10 @@ test("resolves toolbar modes from furniture interaction state", () => {
   assert.equal(resolveFurnitureToolbarMode({ currentView: "3d" }), "hidden");
   assert.equal(resolveFurnitureToolbarMode({ currentView: "furnishing" }), "hidden");
   assert.equal(resolveFurnitureToolbarMode({
+    currentView: "3d",
+    hasSelectedFurniture: true,
+  }), "selection");
+  assert.equal(resolveFurnitureToolbarMode({
     currentView: "furnishing",
     hasSelectedFurniture: true,
   }), "selection");

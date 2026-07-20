@@ -2462,11 +2462,28 @@ function polygonsBBox(polygons) {
 // rising 3D geometry. Sized & positioned so its pixels align 1:1 with the
 // polygon coordinates, so as walls rise from y=0 they appear to extrude
 // directly out of the inked outlines on the floor.
-function buildInputImagePlane(b64, contentRect, scale, cx, cy) {
+function buildInputImagePlane(b64, contentRect, scale, cx, cy, interiorMask, maskWidth, maskHeight) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const tex = new THREE.Texture(img);
+      const [left, top, innerW, innerH] = contentRect;
+      const imageCanvas = document.createElement("canvas");
+      imageCanvas.width = img.naturalWidth || img.width;
+      imageCanvas.height = img.naturalHeight || img.height;
+      const imageContext = imageCanvas.getContext("2d");
+      imageContext.drawImage(img, 0, 0, imageCanvas.width, imageCanvas.height);
+      const imageData = imageContext.getImageData(0, 0, imageCanvas.width, imageCanvas.height);
+      for (let y = 0; y < imageCanvas.height; y += 1) {
+        const sourceY = Math.min(maskHeight - 1, top + Math.floor(y * innerH / imageCanvas.height));
+        for (let x = 0; x < imageCanvas.width; x += 1) {
+          const sourceX = Math.min(maskWidth - 1, left + Math.floor(x * innerW / imageCanvas.width));
+          const pixelOffset = (y * imageCanvas.width + x) * 4;
+          if (!interiorMask[sourceY * maskWidth + sourceX]) imageData.data[pixelOffset + 3] = 0;
+        }
+      }
+      imageContext.putImageData(imageData, 0, 0);
+
+      const tex = new THREE.CanvasTexture(imageCanvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.minFilter = THREE.LinearFilter;
       tex.magFilter = THREE.LinearFilter;
@@ -2476,7 +2493,6 @@ function buildInputImagePlane(b64, contentRect, scale, cx, cy) {
       tex.flipY = true;
       tex.needsUpdate = true;
 
-      const [left, top, innerW, innerH] = contentRect;
       const planeGeom = new THREE.PlaneGeometry(innerW * scale, innerH * scale);
       planeGeom.rotateX(-Math.PI / 2);
       const mat = new THREE.MeshBasicMaterial({
@@ -2581,6 +2597,39 @@ function decodeInputImageRgba(base64, width, height) {
     image.onerror = () => reject(new Error("Unable to decode the floor-plan image"));
     image.src = "data:image/png;base64," + base64;
   });
+}
+
+const ROOMLOG_PREVIEW_MAX_BASE64_LENGTH = 3_500_000;
+const ROOMLOG_PREVIEW_EDGE_STEPS = [768, 640, 512, 384];
+
+async function buildRoomLogPreviewImage(base64) {
+  if (typeof base64 !== "string" || !base64) {
+    throw new Error("저장할 원본 도면 이미지를 찾지 못했습니다.");
+  }
+  if (base64.length <= ROOMLOG_PREVIEW_MAX_BASE64_LENGTH) return base64;
+
+  const image = await new Promise((resolve, reject) => {
+    const source = new Image();
+    source.onload = () => resolve(source);
+    source.onerror = () => reject(new Error("원본 도면 이미지를 저장용으로 변환하지 못했습니다."));
+    source.src = `data:image/png;base64,${base64}`;
+  });
+
+  let smallestPreview = "";
+  for (const maxEdge of ROOMLOG_PREVIEW_EDGE_STEPS) {
+    const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+    canvas.height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("저장용 도면 캔버스를 만들지 못했습니다.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const preview = canvas.toDataURL("image/png").split(",", 2)[1] ?? "";
+    smallestPreview = preview;
+    if (preview.length <= ROOMLOG_PREVIEW_MAX_BASE64_LENGTH) return preview;
+  }
+
+  return smallestPreview;
 }
 
 async function ensureRoomLogSession() {
@@ -2742,6 +2791,13 @@ function setPlanGeometryVisible(visible) {
   }
 }
 
+function setPlanFloorSurfaceVisible(visible) {
+  finishGroup.visible = visible;
+  for (const child of planGroup.children) {
+    if (child.userData?.isInputImage) child.visible = !visible;
+  }
+}
+
 async function loadPlan(data) {
   // Center on the polygon bbox, not the SVG content rect — the SVG often has
   // whitespace inside its viewBox, so the building's geometric center can
@@ -2767,6 +2823,10 @@ async function loadPlan(data) {
   const furnitureSceneScale = hasPhysicalScale
     ? 1
     : WALL_HEIGHT / PHYSICAL_WALL_HEIGHT;
+  const [width, height] = data.canvas_size ?? [1024, 1024];
+  const interiorMask = buildInteriorMask(
+    data.polygons ?? {}, width, height, data.openings ?? [],
+  );
 
   rebuildFloorFinish(data, { scale, cx, cy, hasPhysicalScale, furnitureSceneScale });
 
@@ -2806,6 +2866,7 @@ async function loadPlan(data) {
     try {
       const plane = await buildInputImagePlane(
         data.input_image_b64, data.content_rect, scale, cx, cy,
+        interiorMask, width, height,
       );
       planGroup.add(plane);
     } catch (e) {
@@ -3455,8 +3516,12 @@ function footprintWithinSupport(position, item, rotationY, supportEntry) {
   });
 }
 
+function isFurniturePlacementView() {
+  return currentView === "3d" || currentView === "furnishing";
+}
+
 function updateFurnitureInteractionUi() {
-  if (currentView === "furnishing") {
+  if (isFurniturePlacementView()) {
     // While placing, the left button is reserved for dropping the furniture, so
     // camera rotate moves to the right button; wheel zoom stays available the
     // whole time. Outside placement the usual left-rotate / right-pan returns.
@@ -3639,7 +3704,7 @@ function updateRayFromPointer(event) {
 }
 
 function updateFurniturePreview(event, { force = false } = {}) {
-  if (currentView !== "furnishing" || !pendingFurniture?.object || !floorPlacementState) return;
+  if (!isFurniturePlacementView() || !pendingFurniture?.object || !floorPlacementState) return;
   if (!shouldUpdateFurniturePreview({
     isTracking: pendingFurniture.trackingPointer,
     force,
@@ -4006,23 +4071,24 @@ function setCanvasViewState(view) {
   sceneCanvas.setAttribute("aria-hidden", String(showingReview));
 }
 
+function setFurniturePlacementVisibility(visible) {
+  furnitureGroup.visible = visible;
+  placementPreviewGroup.visible = visible;
+  document.body.classList.toggle("view-furnishing", visible);
+}
+
 function setFurnishingVisibility(furnishing) {
-  finishGroup.visible = furnishing;
-  furnitureGroup.visible = furnishing;
-  placementPreviewGroup.visible = furnishing;
-  planGroup.children
-    .filter(child => child.userData.isInputImage)
-    .forEach(inputImage => { inputImage.visible = !furnishing; });
-  document.body.classList.toggle("view-furnishing", furnishing);
+  setPlanFloorSurfaceVisible(furnishing);
+  setFurniturePlacementVisibility(furnishing);
 }
 
 function setFurniturePanelOpen(open) {
   clearTimeout(furniturePanelCloseTimer);
   furniturePanelCloseTimer = null;
-  const isFurnishing = currentView === "furnishing";
-  furniturePanelOpenButton.hidden = open || !isFurnishing;
-  furniturePanelOpenButton.setAttribute("aria-expanded", String(open && isFurnishing));
-  if (!isFurnishing) {
+  const canPlaceFurniture = isFurniturePlacementView();
+  furniturePanelOpenButton.hidden = open || !canPlaceFurniture;
+  furniturePanelOpenButton.setAttribute("aria-expanded", String(open && canPlaceFurniture));
+  if (!canPlaceFurniture) {
     furniturePanel.classList.remove("is-open");
     furniturePanel.hidden = true;
     return;
@@ -4036,6 +4102,24 @@ function setFurniturePanelOpen(open) {
   furniturePanelCloseTimer = window.setTimeout(() => {
     if (!furniturePanel.classList.contains("is-open")) furniturePanel.hidden = true;
   }, FURNITURE_PANEL_SLIDE_MS);
+}
+
+async function loadFurnitureCatalogForPlacement() {
+  if (furnitureCatalogPromise) return;
+  const loading = document.createElement("div");
+  loading.className = "furniture-empty";
+  loading.textContent = "가구 목록을 불러오는 중입니다.";
+  furnitureResults.replaceChildren(loading);
+  furniturePagination.hidden = true;
+  try {
+    await ensureFurnitureCatalog();
+    fillFurnitureCategories();
+    catalogOffset = 0;
+    renderFurnitureCatalog();
+  } catch (error) {
+    renderFurnitureCatalogError(error);
+    setStatus(`가구 목록 로딩 실패: ${error.message}`, "error");
+  }
 }
 
 async function enterFurnishingStage() {
@@ -4058,7 +4142,7 @@ async function enterFurnishingStage() {
     currentView = "furnishing";
     setCanvasViewState("furnishing");
     setFurnishingVisibility(true);
-    setFurniturePanelOpen(true);
+    setFurniturePanelOpen(false);
     controls.enabled = true;
     controls.enableRotate = true;
     updateViewButtons("furnishing");
@@ -4093,6 +4177,7 @@ function leaveFurnishingStage() {
   cancelFurnitureInteraction({ clearSelection: true, silent: true });
   currentView = "3d";
   setFurnishingVisibility(false);
+  setFurniturePlacementVisibility(true);
   setFurniturePanelOpen(false);
   setCanvasViewState("3d");
   controls.enabled = true;
@@ -4107,7 +4192,10 @@ cameraViewButtons.forEach(button => button.addEventListener("click", () => {
   if (view === "auto") toggleAutoOrbit();
   else void applyCameraPreset(view);
 }));
-furniturePanelOpenButton.addEventListener("click", () => setFurniturePanelOpen(true));
+furniturePanelOpenButton.addEventListener("click", () => {
+  setFurniturePanelOpen(true);
+  void loadFurnitureCatalogForPlacement();
+});
 furniturePanelCloseButton.addEventListener("click", () => setFurniturePanelOpen(false));
 furnitureSearch.addEventListener("input", () => {
   catalogOffset = 0;
@@ -4192,7 +4280,7 @@ sceneCanvas.addEventListener("pointercancel", () => {
   suppressCanvasClick = false;
 });
 sceneCanvas.addEventListener("click", event => {
-  if (currentView !== "furnishing") return;
+  if (!isFurniturePlacementView()) return;
   if (suppressCanvasClick) {
     suppressCanvasClick = false;
     furniturePointerMoved = false;
@@ -4222,7 +4310,7 @@ sceneCanvas.addEventListener("click", event => {
   }
 });
 window.addEventListener("keydown", event => {
-  if (currentView !== "furnishing") return;
+  if (!isFurniturePlacementView()) return;
   // Keys must not fire while typing in the catalog search (or any form field).
   if (event.target instanceof Element && event.target.closest("input, textarea, select")) return;
   if (event.key === "Escape") {
@@ -4306,8 +4394,6 @@ function setView(view) {
   if (currentView === "furnishing") {
     cancelFurnitureInteraction({ clearSelection: true, silent: true });
     setFurnishingVisibility(false);
-    furniturePanel.hidden = true;
-    furniturePanelOpenButton.hidden = true;
   }
 
   const showingReview = view === "original";
@@ -4319,6 +4405,9 @@ function setView(view) {
   currentView = view;
   editorTools.hidden = !reviewEditor?.document;
   setCanvasViewState(view);
+  setPlanFloorSurfaceVisible(false);
+  setFurniturePlacementVisibility(view === "3d");
+  setFurniturePanelOpen(false);
   controls.enabled = !showingReview;
   controls.enableRotate = !showingReview;
   updateViewButtons(view);
@@ -4494,7 +4583,6 @@ async function showThreeDimensionalView() {
 
 async function showFloorView() {
   if (currentView === "furnishing") {
-    setFurniturePanelOpen(true);
     return;
   }
   if (currentView === "original") await showThreeDimensionalView();
@@ -4552,18 +4640,28 @@ function wireReviewControls() {
       setStatus(`Save failed: ${error.message}`, "error");
     }
   });
-  connectRoomLogButton.addEventListener("click", () => {
+  connectRoomLogButton.addEventListener("click", async () => {
     try {
+      inFlight = true;
+      updateEditorControls();
+      const previewMode = currentView === "furnishing" ? "floor" : "source";
+      const previewImageB64 = previewMode === "source"
+        ? await buildRoomLogPreviewImage(currentComposedPlan?.input_image_b64)
+        : undefined;
       sendRoomLogCompletion(
         roomLogContext,
         currentComposedPlan,
         currentSourceName,
         currentFurniturePlacements(),
+        previewMode,
+        previewImageB64,
       );
       setStatus("3D 도면을 저장하고 매물 등록 화면으로 돌아갑니다.");
       roomLogContext = null;
       updateEditorControls();
     } catch (error) {
+      inFlight = false;
+      updateEditorControls();
       setStatus(`RoomLog 연결 실패: ${error.message}`, "error");
     }
   });

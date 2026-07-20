@@ -160,6 +160,69 @@ function rejectedDoorBarriers(openings) {
     .map(opening => ({ outer: opening.mask_polygon, holes: [] }));
 }
 
+function solidRunLength(mask, width, height, x, y, dx, dy) {
+  let length = 0;
+  for (let step = 0; ; step += 1) {
+    const forwardX = x + dx * step;
+    const forwardY = y + dy * step;
+    if (
+      forwardX < 0 || forwardY < 0 || forwardX >= width || forwardY >= height
+      || !mask[forwardY * width + forwardX]
+    ) break;
+    length += 1;
+  }
+  for (let step = 1; ; step += 1) {
+    const backwardX = x - dx * step;
+    const backwardY = y - dy * step;
+    if (
+      backwardX < 0 || backwardY < 0 || backwardX >= width || backwardY >= height
+      || !mask[backwardY * width + backwardX]
+    ) break;
+    length += 1;
+  }
+  return length;
+}
+
+// A broken exterior wall can leak the outside flood into a long, narrow
+// balcony/corridor even though it is visibly bounded by parallel walls. Restore
+// only these wall-bounded strips: the wall run must be at least twice the gap
+// width, so a genuinely open square area remains outside.
+function restoreNarrowWallBoundedGaps(interior, permanentSolid, width, height) {
+  const restored = interior.slice();
+  const maxGap = Math.max(14, Math.min(220, Math.round(Math.min(width, height) * 0.22)));
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width;) {
+      if (permanentSolid[y * width + x]) { x += 1; continue; }
+      const start = x;
+      while (x < width && !permanentSolid[y * width + x]) x += 1;
+      const end = x;
+      const gap = end - start;
+      if (start === 0 || end === width || gap > maxGap) continue;
+      const leftRun = solidRunLength(permanentSolid, width, height, start - 1, y, 0, 1);
+      const rightRun = solidRunLength(permanentSolid, width, height, end, y, 0, 1);
+      if (Math.min(leftRun, rightRun) < gap * 2) continue;
+      for (let fillX = start; fillX < end; fillX += 1) restored[y * width + fillX] = 1;
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    for (let y = 0; y < height;) {
+      if (permanentSolid[y * width + x]) { y += 1; continue; }
+      const start = y;
+      while (y < height && !permanentSolid[y * width + x]) y += 1;
+      const end = y;
+      const gap = end - start;
+      if (start === 0 || end === height || gap > maxGap) continue;
+      const topRun = solidRunLength(permanentSolid, width, height, x, start - 1, 1, 0);
+      const bottomRun = solidRunLength(permanentSolid, width, height, x, end, 1, 0);
+      if (Math.min(topRun, bottomRun) < gap * 2) continue;
+      for (let fillY = start; fillY < end; fillY += 1) restored[fillY * width + x] = 1;
+    }
+  }
+  return restored;
+}
+
 export function buildInteriorMask(polygons = {}, width, height, openings = []) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
     throw new RangeError("Interior mask dimensions must be positive integers");
@@ -210,7 +273,7 @@ export function buildInteriorMask(polygons = {}, width, height, openings = []) {
   for (let index = 0; index < interior.length; index += 1) {
     interior[index] = permanentSolid[index] || outside[index] ? 0 : 1;
   }
-  return interior;
+  return restoreNarrowWallBoundedGaps(interior, permanentSolid, width, height);
 }
 
 export function maskContains(mask, width, height, x, y) {

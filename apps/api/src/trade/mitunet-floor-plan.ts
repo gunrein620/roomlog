@@ -4,10 +4,12 @@ export const MITUNET_FLOOR_PLAN_VERSION = 1 as const;
 const MAX_POLYGONS_PER_CLASS = 2_000;
 const MAX_POINTS_PER_RING = 2_000;
 const MAX_HOLES_PER_POLYGON = 100;
+const MAX_SOURCE_IMAGE_BASE64_LENGTH = 4_000_000;
 
 export type MitunetPoint = [number, number];
 export type MitunetRing = MitunetPoint[];
 export type MitunetPolygon = { outer: MitunetRing; holes: MitunetRing[] };
+export type MitunetSurfaceMode = "floor" | "source";
 export type MitunetFloorPlan = {
   schema: typeof MITUNET_FLOOR_PLAN_SCHEMA;
   version: typeof MITUNET_FLOOR_PLAN_VERSION;
@@ -20,6 +22,8 @@ export type MitunetFloorPlan = {
     door: MitunetPolygon[];
     window: MitunetPolygon[];
   };
+  sourceImageB64?: string;
+  surfaceMode?: MitunetSurfaceMode;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,6 +73,11 @@ function normalizeGroup(value: unknown, coordinateLimit: number): MitunetPolygon
   return polygons;
 }
 
+function normalizeSourceImageB64(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_SOURCE_IMAGE_BASE64_LENGTH) return undefined;
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(value) ? value : undefined;
+}
+
 export function normalizeMitunetFloorPlan(value: unknown): MitunetFloorPlan | null {
   if (!isRecord(value) || !isRecord(value.polygons)) return null;
   if (value.schema !== MITUNET_FLOOR_PLAN_SCHEMA || value.version !== MITUNET_FLOOR_PLAN_VERSION) return null;
@@ -85,6 +94,12 @@ export function normalizeMitunetFloorPlan(value: unknown): MitunetFloorPlan | nu
   if (!wall?.length || !door || !window) return null;
 
   const scale = Number(value.millimetersPerPixel);
+  const sourceImageB64 = normalizeSourceImageB64(value.sourceImageB64);
+  const surfaceMode: MitunetSurfaceMode | undefined = value.surfaceMode === "floor"
+    ? "floor"
+    : sourceImageB64
+      ? "source"
+      : undefined;
   return {
     schema: MITUNET_FLOOR_PLAN_SCHEMA,
     version: MITUNET_FLOOR_PLAN_VERSION,
@@ -92,6 +107,8 @@ export function normalizeMitunetFloorPlan(value: unknown): MitunetFloorPlan | nu
     canvasSize,
     contentRect,
     millimetersPerPixel: Number.isFinite(scale) && scale > 0 ? scale : null,
-    polygons: { wall, door, window }
+    polygons: { wall, door, window },
+    ...(surfaceMode ? { surfaceMode } : {}),
+    ...(sourceImageB64 && surfaceMode === "source" ? { sourceImageB64 } : {})
   };
 }

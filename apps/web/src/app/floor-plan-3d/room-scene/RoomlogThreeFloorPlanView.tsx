@@ -7,7 +7,7 @@ import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei"
 import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Check, Move, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
@@ -20,7 +20,7 @@ import {
   MITUNET_RENDER_STYLE
 } from "./mitunet-surfaces";
 import { MitunetGtaoEffects } from "./mitunet-postprocessing";
-import { createConcreteTexture, createFloorTexture } from "./mitunet-textures";
+import { createConcreteTexture, createFloorTexture, createSourcePlanTexture } from "./mitunet-textures";
 
 Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
   (modelUrl) => useGLTF.preload(modelUrl)
@@ -298,9 +298,29 @@ function MitunetDecorativeFloor({
       return null;
     }
   }, [plan]);
+  const [sourceTexture, setSourceTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    if (plan.surfaceMode !== "source") {
+      setSourceTexture(null);
+      return () => { disposed = true; };
+    }
+    void createSourcePlanTexture(plan)
+      .then((texture) => {
+        if (disposed) texture?.dispose();
+        else setSourceTexture(texture);
+      })
+      .catch(() => {
+        if (!disposed) setSourceTexture(null);
+      });
+    return () => { disposed = true; };
+  }, [plan]);
 
   useEffect(() => () => concreteTexture?.dispose(), [concreteTexture]);
   useEffect(() => () => woodTexture?.dispose(), [woodTexture]);
+  useEffect(() => () => sourceTexture?.dispose(), [sourceTexture]);
+  const activeFloorTexture = plan.surfaceMode === "source" ? sourceTexture : woodTexture;
 
   return (
     <>
@@ -320,7 +340,7 @@ function MitunetDecorativeFloor({
           />
         </mesh>
       ) : null}
-      {woodTexture ? (
+      {activeFloorTexture ? (
         <mesh
           position={[texturePlane.centerX, 0.004, texturePlane.centerZ]}
           raycast={() => null}
@@ -331,7 +351,7 @@ function MitunetDecorativeFloor({
           <meshStandardMaterial
             alphaTest={0.01}
             depthWrite={false}
-            map={woodTexture}
+            map={activeFloorTexture}
             metalness={0}
             roughness={0.82}
             transparent

@@ -21,6 +21,16 @@ describe("normalizeMitunetFloorPlan", () => {
     assert.deepEqual(normalizeMitunetFloorPlan(validPlan), validPlan);
   });
 
+  it("keeps the saved 3D source image for the listing preview", () => {
+    const sourcePlan = {
+      ...validPlan,
+      surfaceMode: "source" as const,
+      sourceImageB64: "cGxhbg=="
+    };
+
+    assert.deepEqual(normalizeMitunetFloorPlan(sourcePlan), sourcePlan);
+  });
+
   it("rejects payloads without walls or with non-finite points", () => {
     assert.equal(normalizeMitunetFloorPlan({ ...validPlan, polygons: { wall: [], door: [], window: [] } }), null);
     assert.equal(
