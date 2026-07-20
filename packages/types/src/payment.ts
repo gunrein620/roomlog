@@ -272,6 +272,7 @@ export interface ManagerCollectionAnalytics {
 
 export type ManagerTransactionDirection = "deposit" | "withdrawal";
 export type ManagerTransactionLedgerSource = "database" | "demo";
+export type ManagerTransactionLedgerEntrySource = "cost" | "credit_vendor_payout";
 
 export interface ManagerTransactionLedgerBill {
   buildingName?: string;
@@ -295,6 +296,7 @@ export interface ManagerTransactionLedgerCost {
 
 export interface ManagerTransactionLedgerRow {
   id: string;
+  source?: ManagerTransactionLedgerEntrySource;
   direction: ManagerTransactionDirection;
   occurredAt: string;
   amount: number;

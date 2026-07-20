@@ -1949,6 +1949,7 @@ export type TeamTransactionLedgerCost = {
 
 export type TeamTransactionLedgerRow = {
   id: string;
+  source?: "cost" | "credit_vendor_payout";
   direction: "deposit" | "withdrawal";
   occurredAt: string;
   amount: number;

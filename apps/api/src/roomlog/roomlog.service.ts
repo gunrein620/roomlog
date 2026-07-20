@@ -3675,6 +3675,7 @@ export class RoomlogService implements OnModuleDestroy {
       this.presentManagerTransactionDeposit(managerId, deposit)
     );
     const managerCosts = await this.listManagerCosts(managerId);
+    const financialTransactionRows = await this.financialCostReader.listManagerTransactionRows(managerId);
     const supersededCostIds = new Set(
       managerCosts
         .filter((cost) => cost.status === "amended" && cost.supersedesId)
@@ -3700,7 +3701,7 @@ export class RoomlogService implements OnModuleDestroy {
       mismatchDeposits: deposits
         .filter((deposit) => deposit.matchStatus === "MISMATCH")
         .map((deposit) => this.presentDeposit(deposit)),
-      ledgerRows: [...depositRows, ...withdrawalRows].sort((left, right) =>
+      ledgerRows: [...depositRows, ...withdrawalRows, ...financialTransactionRows].sort((left, right) =>
         right.occurredAt.localeCompare(left.occurredAt)
       )
     };
@@ -10631,6 +10632,7 @@ export class RoomlogService implements OnModuleDestroy {
 
     return {
       id: cost.id,
+      source: "cost",
       direction: "withdrawal",
       occurredAt: cost.date,
       amount: cost.amount,
