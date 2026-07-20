@@ -79,8 +79,15 @@ services:
       # 필요 없이 PROD_ENV에 GPU_KEEP_WARM=0을 넣으면 이 기본값을 이긴다.
       GPU_KEEP_WARM: ${GPU_KEEP_WARM:-1}
       # 임차인 가구 USDZ→GLB 변환 워커(services/mesh-worker). ssm이면 GPU 박스에 SSM으로 보내고,
-      # 비우면 아래 MESH_WORKER_URL의 기존 HTTP 경로를 쓴다. 콜백 인증은 GPU_WORKER_SECRET을 공유한다.
-      MESH_WORKER_DISPATCH: ${MESH_WORKER_DISPATCH:-}
+      # 그 외 값이면 아래 MESH_WORKER_URL의 HTTP 경로를 쓴다. 콜백 인증은 GPU_WORKER_SECRET을 공유한다.
+      #
+      # 기본값을 ssm으로 둔다(2026-07-20). prod엔 mesh-worker 컨테이너가 배포된 적이 없어서(deploy.yml의
+      # build·up 목록에 없음) HTTP 기본값(MESH_WORKER_URL=http://mesh-worker:5001)은 DNS부터 실패한다.
+      # GPU_KEEP_WARM과 같은 이유로 PROD_ENV(write-only 블롭)를 안 건드리고 여기 기본값만 바꿨다 —
+      # GPU_INSTANCE_ID·GPU_REGION·GPU_WORKER_SECRET·PUBLIC_API_BASE_URL은 재구성 파이프라인이 이미
+      # 써서 prod에 실값이 있다. HTTP로 되돌릴 땐 PROD_ENV에 MESH_WORKER_DISPATCH=http를 넣으면 된다
+      # (빈 문자열이 아니라 명시적인 값 — :- 기본값 문법은 빈 문자열에도 걸린다).
+      MESH_WORKER_DISPATCH: ${MESH_WORKER_DISPATCH:-ssm}
       MESH_WORKER_URL: ${MESH_WORKER_URL:-http://mesh-worker:5001}
     ports:
       - "4000:4000"
