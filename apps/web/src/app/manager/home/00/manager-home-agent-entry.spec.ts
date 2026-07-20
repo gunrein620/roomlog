@@ -24,3 +24,8 @@ test("manager home keeps AI available via the shared floating launcher", () => {
   // 홈 내장 코파일럿을 제거했으므로 공용 플로팅 AI 런처를 더 이상 숨기지 않는다.
   assert.doesNotMatch(pageSource, /hideAssistantLauncher/);
 });
+
+test("manager home omits the repair expense ledger section", () => {
+  assert.doesNotMatch(pageSource, /RepairExpenseSection/);
+  assert.doesNotMatch(pageSource, /repairExpenses/);
+});
