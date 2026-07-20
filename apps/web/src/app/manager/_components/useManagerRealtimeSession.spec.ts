@@ -49,7 +49,16 @@ describe("manager realtime session labels", () => {
     assert.deepEqual(
       managerRealtimeCommandDisposition(pendingAction, {
         command: "billing.send_dunning",
-        text: "승인",
+        text: "진행해.",
+      }),
+      { kind: "confirm_pending", actionId: "copilot-action-1" },
+    );
+    // Realtime에서는 function_call 이벤트가 사용자 음성 전사 완료보다 먼저 올 수 있다.
+    // 이미 보류된 독촉이 있을 때 같은 독촉 도구를 다시 호출하면 기존 건 승인으로 본다.
+    assert.deepEqual(
+      managerRealtimeCommandDisposition(pendingAction, {
+        command: "billing.send_dunning",
+        text: "103호 월세 독촉 보내",
       }),
       { kind: "confirm_pending", actionId: "copilot-action-1" },
     );
@@ -57,13 +66,6 @@ describe("manager realtime session labels", () => {
       managerRealtimeCommandDisposition(null, {
         command: "billing.send_dunning",
         text: "103호 월세 독촉 보내",
-      }),
-      { kind: "prepare_dunning" },
-    );
-    assert.deepEqual(
-      managerRealtimeCommandDisposition(pendingAction, {
-        command: "billing.send_dunning",
-        text: "문구를 더 짧게 바꿔줘",
       }),
       { kind: "prepare_dunning" },
     );

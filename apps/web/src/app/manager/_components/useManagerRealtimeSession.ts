@@ -290,8 +290,7 @@ export function managerRealtimeCommandDisposition(
   | { kind: "execute" } {
   if (
     input.command === "billing.send_dunning" &&
-    pendingAction?.kind === "billing.send_dunning" &&
-    /^(승인|진행해)$/.test((input.text ?? "").trim())
+    pendingAction?.kind === "billing.send_dunning"
   ) {
     return { kind: "confirm_pending", actionId: pendingAction.id };
   }
