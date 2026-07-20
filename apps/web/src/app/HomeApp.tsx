@@ -1771,8 +1771,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         setMapLocationStatus(error.code === 1 ? "denied" : "unavailable");
       },
       {
-        enableHighAccuracy: true,
-        timeout: 7000,
+        enableHighAccuracy: false,
+        timeout: 20000,
         maximumAge: 1000 * 60 * 5
       }
     );

@@ -1460,6 +1460,12 @@ test("keeps the map visible and explains current-location failures", () => {
   assert.match(cssSource, /\.map-location-notice\s*\{/);
 });
 
+test("uses desktop-tolerant geolocation settings", () => {
+  assert.match(homeAppSource, /enableHighAccuracy:\s*false/);
+  assert.match(homeAppSource, /timeout:\s*20000/);
+  assert.match(homeAppSource, /maximumAge:\s*1000 \* 60 \* 5/);
+});
+
 test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
   assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);
