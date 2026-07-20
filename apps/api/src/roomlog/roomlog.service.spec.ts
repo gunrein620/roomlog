@@ -6100,6 +6100,36 @@ describe("RoomlogService", () => {
     assert.match(result.summary, /플로우테스트3 103호/);
   });
 
+  it("prepares and executes every eligible dunning bill with one approval payload", async () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+    const eligibleBills = state.bills
+      .filter((bill) => ["room-411", "room-412"].includes(bill.roomId))
+      .map((bill) => bill.id);
+
+    const prepared = service.resolveManagerAgentPendingCommand(
+      "landlord-demo",
+      "billing.send_dunning",
+      {
+        command: "billing.send_dunning",
+        text: "두 개 전부 다 독촉 문자 보내줘",
+        billIds: eligibleBills
+      }
+    );
+
+    assert.equal(prepared.status, "ready");
+    if (prepared.status !== "ready") return;
+    assert.deepEqual(prepared.commandInput.billIds, eligibleBills);
+
+    const result = await service.runManagerAgentCommand(
+      "landlord-demo",
+      prepared.commandInput
+    );
+
+    assert.equal(result.status, "executed");
+    assert.match(result.summary, /2건.*발송/);
+  });
+
   it("summarizes total ticket counts for the manager agent", async () => {
     const service = new RoomlogService();
 

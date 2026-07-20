@@ -378,6 +378,38 @@ describe("manager copilot chat domain", () => {
     }
   });
 
+  it("confirms an all-dunning request once and sends every prepared bill", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      const pending = await service.chatManagerCopilot("landlord-demo", {
+        messages: [
+          {
+            role: "user",
+            content: "미납된 청구 전부 다 독촉 문자 보내줘"
+          }
+        ]
+      });
+
+      assert.equal(pending.pendingAction?.kind, "billing.send_dunning");
+      assert.ok((pending.pendingAction?.dunningPreviews?.length ?? 0) > 1);
+
+      const confirmed = await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        confirmActionId: pending.pendingAction?.id
+      });
+
+      assert.match(confirmed.reply, /확인했습니다/);
+      assert.equal(confirmed.receipts?.length, 1);
+      assert.equal(confirmed.receipts?.[0]?.kind, "billing.send_dunning");
+    } finally {
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
   it("reuses the existing contract general chat for a confirmed dunning send", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

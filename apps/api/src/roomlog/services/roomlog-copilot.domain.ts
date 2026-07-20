@@ -26,6 +26,7 @@ type CopilotPendingCommandResolution =
       commandInput: ManagerAgentCommandInput;
       summary: string;
       dunningPreview?: ManagerDunningActionPreview;
+      dunningPreviews?: ManagerDunningActionPreview[];
     }
   | {
       status: "blocked";
@@ -429,6 +430,7 @@ export class RoomlogCopilotDomain {
       kind,
       summary: resolution.summary,
       dunningPreview: resolution.dunningPreview,
+      dunningPreviews: resolution.dunningPreviews,
       managerId,
       commandInput: { ...resolution.commandInput },
       expiresAtMs: Date.now() + pendingActionTtlMs
@@ -453,7 +455,8 @@ export class RoomlogCopilotDomain {
       id: action.id,
       kind: action.kind,
       summary: action.summary,
-      dunningPreview: action.dunningPreview
+      dunningPreview: action.dunningPreview,
+      dunningPreviews: action.dunningPreviews
     };
   }
 

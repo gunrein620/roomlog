@@ -63,6 +63,11 @@ export class ManagerCopilotActionGatewayService
     if (kind === "billing.send_dunning" && resolvedInput.billId) {
       args.billRef = this.refs.issue(principal, "bill", resolvedInput.billId);
     }
+    if (kind === "billing.send_dunning" && resolvedInput.billIds?.length) {
+      args.billRefs = resolvedInput.billIds.map((billId) =>
+        this.refs.issue(principal, "bill", billId)
+      );
+    }
     if (kind === "messaging.send_reply" && resolvedInput.threadId) {
       args.threadRef = this.refs.issue(principal, "thread", resolvedInput.threadId);
     }
@@ -92,6 +97,9 @@ export class ManagerCopilotActionGatewayService
       summary: resolution.summary,
       ...("dunningPreview" in resolution && resolution.dunningPreview
         ? { dunningPreview: resolution.dunningPreview }
+        : {}),
+      ...("dunningPreviews" in resolution && resolution.dunningPreviews
+        ? { dunningPreviews: resolution.dunningPreviews }
         : {}),
     };
 

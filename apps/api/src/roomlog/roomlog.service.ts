@@ -90,6 +90,7 @@ import {
   RoomlogCopilotDomain,
   type ManagerCopilotActionGateway
 } from "./services/roomlog-copilot.domain";
+import { resolveManagerDunningTargets } from "./services/manager-dunning-target-resolver";
 import { resolveManagerTarget } from "./services/manager-target-resolver";
 import {
   buildManagerRealtimeInstructions,
@@ -5391,23 +5392,14 @@ export class RoomlogService implements OnModuleDestroy {
   ) {
     if (kind === "billing.send_dunning") {
       try {
-        const bill = this.findManagerAgentDunningBill(managerId, input);
-        this.assertManagerDunningAllowed(bill);
-        const draft = this.presentDunningDraft(bill);
-        const channel = draft.channel;
-        const messageText = input.body?.trim() || draft.draftText;
+        const bills = this.findManagerAgentDunningBills(managerId, input);
+        const previews = bills.map((bill) => {
+          this.assertManagerDunningAllowed(bill);
+          const draft = this.presentDunningDraft(bill);
+          const channel = draft.channel;
+          const messageText = input.body?.trim() || draft.draftText;
 
-        return {
-          status: "ready" as const,
-          commandInput: {
-            ...input,
-            command: "billing.send_dunning",
-            billId: bill.id,
-            channel,
-            body: messageText
-          },
-          summary: this.managerAgentDunningPendingSummary(managerId, bill, draft),
-          dunningPreview: {
+          return {
             billId: draft.billId,
             buildingName: draft.buildingName,
             unitId: draft.unitId,
@@ -5419,7 +5411,32 @@ export class RoomlogService implements OnModuleDestroy {
             channel,
             messageText,
             guard: draft.guard
-          } satisfies ManagerDunningActionPreview
+          } satisfies ManagerDunningActionPreview;
+        });
+        const firstPreview = previews[0];
+
+        return {
+          status: "ready" as const,
+          commandInput: {
+            ...input,
+            command: "billing.send_dunning",
+            billId: bills.length === 1 ? bills[0].id : undefined,
+            billIds: bills.map((bill) => bill.id),
+            channel: firstPreview.channel,
+            body: bills.length === 1 ? firstPreview.messageText : input.body?.trim()
+          },
+          summary:
+            previews.length === 1
+              ? this.managerAgentDunningPendingSummary(
+                  managerId,
+                  bills[0],
+                  this.presentDunningDraft(bills[0])
+                )
+              : `${previews
+                  .map((preview) => `${preview.unitId}호 ${preview.tenantName}`)
+                  .join(", ")} 총 ${previews.length}건에 독촉 발송`,
+          dunningPreview: previews.length === 1 ? firstPreview : undefined,
+          dunningPreviews: previews
         };
       } catch (error) {
         return {
@@ -5673,32 +5690,69 @@ export class RoomlogService implements OnModuleDestroy {
 
     if (command === "billing.send_dunning") {
       try {
-        const bill = this.findManagerAgentDunningBill(managerId, input);
-        const draft = this.presentDunningDraft(bill);
-        const channel = draft.channel;
-        const messageText = body || draft.draftText;
+        const bills = this.findManagerAgentDunningBills(managerId, input);
+        const sent: Array<Record<string, unknown>> = [];
+        const failed: Array<{ billId: string; reason: string }> = [];
 
-        const delivery = this.sendManagerDunning(managerId, bill.id, {
-          text: messageText,
-          channel
-        });
+        for (const bill of bills) {
+          try {
+            const draft = this.presentDunningDraft(bill);
+            const channel = draft.channel;
+            const messageText = body || draft.draftText;
+            const delivery = this.sendManagerDunning(managerId, bill.id, {
+              text: messageText,
+              channel
+            });
+            sent.push({
+              billId: draft.billId,
+              threadId: delivery.threadId,
+              unitId: draft.unitId,
+              tenantName: draft.tenantName,
+              channel,
+              text: messageText,
+              guard: draft.guard
+            });
+          } catch (error) {
+            failed.push({
+              billId: bill.id,
+              reason:
+                error instanceof Error
+                  ? error.message
+                  : "청구 상태를 다시 확인하지 못했습니다."
+            });
+          }
+        }
+
+        if (sent.length === 0) {
+          throw new BadRequestException(
+            failed.map((item) => item.reason).join(" ") ||
+              "독촉을 발송할 수 있는 청구가 없습니다."
+          );
+        }
+
+        const first = sent[0] as {
+          threadId: string;
+          unitId: string;
+          tenantName: string;
+        };
+        const summary =
+          bills.length === 1 && failed.length === 0
+            ? `${first.unitId}호 ${first.tenantName}님의 소통 채팅으로 연체 독촉 메시지를 발송했습니다.`
+            : `독촉 ${sent.length}건을 소통 채팅으로 발송했습니다.${
+                failed.length ? ` ${failed.length}건은 상태 확인으로 제외했습니다.` : ""
+              }`;
 
         return {
           status: "executed",
           domain: "billing",
-          summary: `${draft.unitId}호 ${draft.tenantName}님의 소통 채팅으로 연체 독촉 메시지를 발송했습니다.`,
-          data: {
-            billId: draft.billId,
-            threadId: delivery.threadId,
-            unitId: draft.unitId,
-            tenantName: draft.tenantName,
-            channel,
-            text: messageText,
-            guard: draft.guard
-          },
+          summary,
+          data:
+            bills.length === 1 && failed.length === 0
+              ? first
+              : { sent, failed },
           navigation: {
             label: "소통 채팅에서 확인",
-            href: `/manager/messaging/04?id=${encodeURIComponent(delivery.threadId)}`
+            href: `/manager/messaging/04?id=${encodeURIComponent(first.threadId)}`
           }
         };
       } catch (error) {
@@ -6077,33 +6131,52 @@ export class RoomlogService implements OnModuleDestroy {
     return this.listManagerMessagingThreads(managerId)[0]?.id;
   }
 
-  private findManagerAgentDunningBill(managerId: string, input: ManagerAgentCommandInput) {
-    const explicitBillId = input.billId?.trim();
+  private findManagerAgentDunningBills(
+    managerId: string,
+    input: ManagerAgentCommandInput
+  ) {
+    const explicitBillIds = [
+      ...(input.billIds ?? []),
+      ...(input.billId ? [input.billId] : [])
+    ]
+      .map((billId) => billId.trim())
+      .filter((billId, index, billIds) => billId && billIds.indexOf(billId) === index);
 
-    if (explicitBillId) {
-      return this.findManagerBill(managerId, explicitBillId);
+    if (explicitBillIds.length > 0) {
+      return explicitBillIds.map((billId) =>
+        this.findManagerBill(managerId, billId)
+      );
     }
 
     const requestText = `${input.text ?? ""} ${input.body ?? ""}`.trim();
     const unitId = this.extractUnitIdFromAgentText(requestText);
     const billingMonth = this.extractBillingMonthFromAgentText(requestText);
     const candidates = this.managerBills(managerId)
-      .filter((bill) => this.canSendManagerDunning(bill))
+      .filter(
+        (bill) =>
+          this.canSendManagerDunning(bill) &&
+          this.managerDunningIsCurrentlyAllowed(bill)
+      )
       .sort((left, right) => this.daysOverdueForBill(right) - this.daysOverdueForBill(left));
-    let matched = candidates;
+    const resolution = resolveManagerDunningTargets(
+      requestText,
+      candidates.map((bill) => {
+        const room = this.roomForBill(bill);
+        return {
+          id: bill.id,
+          buildingName: room?.buildingName ?? "",
+          unitId: room ? this.displayUnitId(room) : bill.unitId,
+          tenantName: this.tenantNameForBill(bill),
+          billingMonth: bill.billingMonth,
+          daysOverdue: this.daysOverdueForBill(bill)
+        };
+      })
+    );
+    let matched = candidates.filter((bill) =>
+      resolution.candidates.some((candidate) => candidate.id === bill.id)
+    );
 
-    if (unitId) {
-      matched = matched.filter((bill) => this.unitsEqual(bill.unitId, unitId));
-    } else {
-      const tenantMatches = matched.filter((bill) => requestText.includes(this.tenantNameForBill(bill)));
-      if (tenantMatches.length) matched = tenantMatches;
-    }
-
-    if (billingMonth) {
-      matched = matched.filter((bill) => bill.billingMonth === billingMonth);
-    }
-
-    if (matched.length > 1 && requestText) {
+    if (resolution.status === "ambiguous" && matched.length > 1 && requestText) {
       const resolution = resolveManagerTarget(
         requestText,
         matched.flatMap((bill) => {
@@ -6123,8 +6196,11 @@ export class RoomlogService implements OnModuleDestroy {
       }
     }
 
-    if (matched.length === 1) {
-      return matched[0];
+    if (
+      matched.length > 0 &&
+      (resolution.status === "resolved" || matched.length === 1)
+    ) {
+      return matched;
     }
 
     if (matched.length > 1) {
@@ -6140,11 +6216,20 @@ export class RoomlogService implements OnModuleDestroy {
       );
     }
 
-    if (unitId || billingMonth) {
+    if (unitId || billingMonth || resolution.status === "not_found") {
       throw new BadRequestException("지정한 호실과 청구월에 맞는 연체 청구서를 찾을 수 없습니다.");
     }
 
     throw new BadRequestException("독촉 대상 연체 청구서를 찾을 수 없습니다.");
+  }
+
+  private managerDunningIsCurrentlyAllowed(bill: Bill) {
+    try {
+      this.assertManagerDunningAllowed(bill);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private extractUnitIdFromAgentText(text: string) {
