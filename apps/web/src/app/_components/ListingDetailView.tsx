@@ -56,7 +56,7 @@ export function ListingDetailView({
   onStartChat: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
-  const [furnitureEditorOpenRequest, setFurnitureEditorOpenRequest] = useState(0);
+  const [isFurnitureSimulationOpen, setIsFurnitureSimulationOpen] = useState(false);
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   // 무대 레이아웃 통합으로 갤러리 탭 상태는 사라짐 — 대표 사진은 첫 장, 나머지는 라이트박스가 담당.
@@ -185,13 +185,30 @@ export function ListingDetailView({
       <div className="detail-hero-stage">
       {has3DHero && listing.floorPlan3D ? (
         /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스). */
-        <div className="detail-3d-hero" id="detail-3d-hero" aria-label={`${listing.title} 3D 도면 미리보기`}>
+        <div
+          aria-label={isFurnitureSimulationOpen ? `${listing.title} 가구배치 시뮬레이션` : `${listing.title} 3D 도면 미리보기`}
+          aria-modal={isFurnitureSimulationOpen ? "true" : undefined}
+          className={`detail-3d-hero${isFurnitureSimulationOpen ? " is-furniture-simulation-open" : ""}`}
+          id="detail-3d-hero"
+          role={isFurnitureSimulationOpen ? "dialog" : undefined}
+        >
           <ListingTourRoom3D
             floorPlan={listing.floorPlan3D}
-            furnitureEditorOpenRequest={furnitureEditorOpenRequest}
+            furnitureEditorOpen={isFurnitureSimulationOpen}
             listingId={listing.listingNo}
             variant="hero"
           />
+          {isFurnitureSimulationOpen ? (
+            <button
+              aria-label="가구배치 시뮬레이션 닫기"
+              className="furniture-simulation-close"
+              type="button"
+              onClick={() => setIsFurnitureSimulationOpen(false)}
+            >
+              <X aria-hidden size={18} strokeWidth={2.5} />
+              닫기
+            </button>
+          ) : null}
           <div className="hero-filmstrip" aria-label={`${listing.title} 사진 모음`}>
             {listing.gallery.slice(0, 4).map((image, index) => (
               <button
@@ -428,7 +445,7 @@ export function ListingDetailView({
           )}
           <button
             type="button"
-            onClick={() => setFurnitureEditorOpenRequest((request) => request + 1)}
+            onClick={() => setIsFurnitureSimulationOpen(true)}
           >
             <Armchair aria-hidden size={18} strokeWidth={2.4} />
             가구배치 시뮬레이션

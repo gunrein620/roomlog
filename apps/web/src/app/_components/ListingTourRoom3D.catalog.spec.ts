@@ -27,8 +27,9 @@ test("uses the same furniture categories as the 3D rendering editor", () => {
 test("opens the 500-item furniture editor from the listing detail request", () => {
   assert.match(tourSource, /const \[furnitureLimit, setFurnitureLimit\] = useState\(30\)/);
   assert.match(tourSource, /const visibleFurnitureCatalog = useMemo/);
-  assert.match(tourSource, /furnitureEditorOpenRequest\?: number/);
-  assert.match(tourSource, /if \(furnitureEditorOpenRequest > 0\) openFurnitureEditor\(\)/);
+  assert.match(tourSource, /furnitureEditorOpen\?: boolean/);
+  assert.match(tourSource, /if \(furnitureEditorOpen\) openFurnitureEditor\(\)/);
+  assert.match(tourSource, /else closeFurnitureEditor\(\)/);
   assert.match(tourSource, /가구 더 보기 \(\{visibleFurnitureCatalog\.length\}\/\{filteredCatalog\.length\}\)/);
 });
 

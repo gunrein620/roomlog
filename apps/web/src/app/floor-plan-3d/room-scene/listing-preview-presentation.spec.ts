@@ -62,17 +62,26 @@ describe("listing-only 3D preview", () => {
     );
   });
 
-  it("places tour and furniture simulation actions below the listing options", () => {
+  it("opens the existing 3D stage fullscreen with its furniture panel", () => {
     assert.match(
       listingDetailSource,
       /detail-panel-options[\s\S]*?detail-panel-tour-actions[\s\S]*?1인칭 투어[\s\S]*?가구배치 시뮬레이션/
     );
-    assert.match(listingDetailSource, /furnitureEditorOpenRequest/);
-    assert.match(listingTourSource, /furnitureEditorOpenRequest\?: number/);
+    assert.match(listingDetailSource, /const \[isFurnitureSimulationOpen, setIsFurnitureSimulationOpen\] = useState\(false\)/);
+    assert.match(listingDetailSource, /is-furniture-simulation-open/);
+    assert.match(listingDetailSource, /role=\{isFurnitureSimulationOpen \? "dialog" : undefined\}/);
+    assert.match(listingDetailSource, /aria-modal=\{isFurnitureSimulationOpen \? "true" : undefined\}/);
+    assert.match(listingDetailSource, /aria-label="가구배치 시뮬레이션 닫기"/);
+    assert.match(listingDetailSource, /furnitureEditorOpen=\{isFurnitureSimulationOpen\}/);
+    assert.match(listingTourSource, /furnitureEditorOpen\?: boolean/);
     assert.doesNotMatch(listingTourSource, /className="hero-furniture-toggle"/);
     assert.match(
       globalCss,
       /\.detail-panel-tour-actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/
+    );
+    assert.match(
+      globalCss,
+      /\.detail-3d-hero\.is-furniture-simulation-open\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?height:\s*100dvh/
     );
   });
 });

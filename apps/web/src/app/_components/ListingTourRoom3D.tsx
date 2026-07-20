@@ -106,12 +106,12 @@ function normalizeMitunetListingFurniture(
 
 export default function ListingTourRoom3D({
   floorPlan,
-  furnitureEditorOpenRequest = 0,
+  furnitureEditorOpen,
   listingId,
   variant = "sheet"
 }: {
   floorPlan: ListingFloorPlan3D;
-  furnitureEditorOpenRequest?: number;
+  furnitureEditorOpen?: boolean;
   listingId: string;
   /** hero = 상세 히어로 스테이지(좌측 글래스 가구 패널 + hover 하이라이트), sheet = 기존 3D 시트 */
   variant?: "sheet" | "hero";
@@ -307,8 +307,10 @@ export default function ListingTourRoom3D({
   }
 
   useEffect(() => {
-    if (furnitureEditorOpenRequest > 0) openFurnitureEditor();
-  }, [furnitureEditorOpenRequest]);
+    if (furnitureEditorOpen === undefined) return;
+    if (furnitureEditorOpen) openFurnitureEditor();
+    else closeFurnitureEditor();
+  }, [furnitureEditorOpen]);
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
     // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
