@@ -78,7 +78,7 @@ export function ReportSection({
     <section id="report" aria-labelledby="report-section-title" className="manager-report-section">
       <div className="manager-report-head">
         <h2 id="report-section-title">임대 현황 리포트</h2>
-        <span className="manager-report-demo">{report ? "실데이터" : "확인 필요"}</span>
+        {!report ? <span className="manager-report-demo">확인 필요</span> : null}
         <div className="manager-report-filters">
           <Link className={periodMonths === 6 ? "is-selected" : undefined} href="?reportMonths=6#report">
             6M
