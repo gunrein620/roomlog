@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
-# mesh-worker — USDZ→GLB 변환 전용 컨테이너. CPU 작업이라 apps/api·apps/web과 달리 GPU 인스턴스가
-# 아니다: 항상 켜져 있는 경량 컨테이너로 docker-compose가 직접 띄운다(gpu-instance.service.ts의
-# start/stop 수명주기가 없다 — services/mesh-worker/README.md 참고).
+# mesh-worker — USDZ→GLB 변환 전용 CPU 컨테이너. HTTP 경로에서는 docker-compose가 상시 띄우고,
+# SSM 경로에서는 이미 켜진 GPU 박스에서 같은 이미지를 잡마다 일회성으로 실행한다. 어느 경로에서도
+# 이 컨테이너가 EC2 start/stop 수명주기를 관리하지 않는다.
 #
 # alpine이 아니라 debian-slim인 이유: Blender 공식 Linux 배포판은 glibc 빌드라 musl(alpine)에서
 # 바로 못 돈다(apps/api·apps/web은 alpine). Blender headless(--background)도 X11/OpenGL 공유
@@ -40,12 +40,12 @@ ENV PATH="/opt/blender:${PATH}"
 
 WORKDIR /app
 COPY services/mesh-worker/package.json ./
-COPY services/mesh-worker/server.mjs services/mesh-worker/convert.mjs services/mesh-worker/gltf-bbox.mjs ./
+COPY services/mesh-worker/server.mjs services/mesh-worker/cli.mjs services/mesh-worker/convert.mjs services/mesh-worker/gltf-bbox.mjs ./
 COPY services/mesh-worker/blender ./blender
 
 ENV PORT=5001
 EXPOSE 5001
 
-# 컨테이너 기동만으로 Blender가 정말 실행되는지 드러난다(server.mjs가 시작 시 --version을 찍어본다) —
-# 조용히 성공한 척 넘어가지 않는다.
+# 기본 진입점은 기존 HTTP 서버 그대로다. SSM은 --entrypoint node ... /app/cli.mjs를 명시한다.
+# 서버 기동 시 Blender가 정말 실행되는지 확인해 조용히 성공한 척 넘어가지 않는다.
 CMD ["node", "server.mjs"]

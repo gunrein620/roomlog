@@ -40,8 +40,14 @@ function extentsOf(min, max) {
   return [max[0] - min[0], max[1] - min[1], max[2] - min[2]].sort((a, b) => a - b);
 }
 
-/** 두 bbox의 "정렬된 세 변 길이" 비율이 허용 오차 안에 있는지 확인한다(축 재배치엔 둔감, 스케일엔 민감). */
-function assertScalePreserved(importBox, exportBox) {
+/**
+ * 두 bbox의 "정렬된 세 변 길이" 비율이 허용 오차 안에 있는지 확인한다.
+ * importBox는 Blender 월드 공간(Z-up), exportBox는 GLB 메시 로컬 공간이라 좌표계가 서로 다르다.
+ * 따라서 세 변을 정렬해 축 순열에는 불변이면서 실제 스케일 변화에는 민감하게 비교한다.
+ * 이 검사는 의도적으로 축 순서 자체는 검증하지 않는다. 웹 뷰어는 three.js Box3().setFromObject()로
+ * 노드 변환까지 적용하므로, 축 방향 검증은 이 함수의 책임이 아니다.
+ */
+export function assertScalePreserved(importBox, exportBox) {
   const importExtents = extentsOf(importBox.min, importBox.max);
   const exportExtents = extentsOf(exportBox.min, exportBox.max);
   for (let i = 0; i < 3; i += 1) {
@@ -50,14 +56,14 @@ function assertScalePreserved(importBox, exportBox) {
     if (a <= 0 || b <= 0) {
       throw new ConversionStageError(
         "scale-check",
-        `바운딩박스 변 길이가 0 이하입니다(import=${a}, export=${b}) — 빈 메시이거나 스케일 붕괴.`
+        `정렬된 바운딩박스 변 길이가 0 이하입니다(import=${a}, export=${b}) — 빈 메시이거나 스케일 붕괴.`
       );
     }
     const ratio = b / a;
     if (Math.abs(ratio - 1) > SCALE_DRIFT_TOLERANCE) {
       throw new ConversionStageError(
         "scale-check",
-        `Blender import↔export 사이 스케일이 어긋났습니다(변 ${i}: import=${a.toFixed(4)}m, export=${b.toFixed(4)}m, ratio=${ratio.toFixed(4)}). ` +
+        `Blender import↔export 사이 스케일이 어긋났습니다(정렬된 변 ${i}: import=${a.toFixed(4)}m, export=${b.toFixed(4)}m, ratio=${ratio.toFixed(4)}). ` +
           `Object Capture USDZ는 metersPerUnit=1이 확정 전제(mesh-anchor.ts) — 이 드리프트는 GLB를 그대로 쓰면 실치수 오류로 이어진다.`
       );
     }
@@ -160,8 +166,9 @@ async function postCallback(callbackBase, workerSecret, furnitureId, path, body)
 }
 
 /**
- * 잡 1건을 처리한다. 성공/실패 어느 쪽이든 API에 콜백을 보내는 것으로 끝난다 — 이 함수 자체는
- * 예외를 던지지 않는다(호출부인 server.mjs는 로그만 남기면 된다). 콜백 전송 자체가 실패하면(네트워크
+ * 잡 1건을 처리한다. 작업 디렉터리를 만든 뒤의 파이프라인 오류는 실패 콜백을 보내고 예외 대신
+ * 성공 여부를 반환한다(기존 server.mjs는 반환값을 무시하고, 일회성 cli.mjs만 종료 코드 결정에 쓴다).
+ * 작업 디렉터리 생성 같은 준비 단계의 예상 밖 오류는 호출부로 전파된다. 콜백 전송 자체가 실패하면(네트워크
  * 끊김 등) 그건 로그로만 남긴다 — 그 이상 재시도하지 않는다(오케스트레이터 없는 단순 파이프라인이라
  * 재큐잉 로직이 없다; 이 워커가 재기동되지 않는 한 해당 잡은 CONVERTING에 멈춘 채 API 쪽에서
  * 사람이 재시도를 유도해야 한다 — docs/mesh-conversion-worker.md에 명시).
@@ -186,6 +193,7 @@ export async function runConversionJob(job) {
     console.log(`[mesh-worker] furniture=${furnitureId} 변환 성공 (${uploadedBytes} bytes) — 완료 콜백 전송`);
 
     await postCallback(callbackBase, workerSecret, furnitureId, "complete", { glbUrl: glbPublicUrl });
+    return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[mesh-worker] furniture=${furnitureId} 변환 실패: ${message}`);
@@ -194,6 +202,8 @@ export async function runConversionJob(job) {
     } catch (callbackErr) {
       console.error(`[mesh-worker] furniture=${furnitureId} 실패 콜백 전송조차 실패: ${callbackErr.message}`);
     }
+    // 실패 콜백은 위에서 이미 보냈다. CLI는 이 결과만 보고 exit 1로 끝내며 콜백을 중복 전송하지 않는다.
+    return { ok: false, error: message };
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
