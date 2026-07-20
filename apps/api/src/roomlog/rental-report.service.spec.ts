@@ -66,4 +66,72 @@ describe("관리인 임대 현황 리포트", () => {
       "이 검증은 청구 총액과 실제 수납액이 다른 상태를 전제로 합니다."
     );
   });
+
+  it("월별 수리비는 입출금 원장의 업체 크레딧 지급 출금만 합산한다", async () => {
+    const currentMonth = currentMonthInSeoul();
+    const service = new RoomlogService({
+      seedDemoData: true,
+      financialCostReader: {
+        listManagerCosts: async () => [
+          {
+            id: "legacy-repair-cost",
+            managerId: MANAGER_ID,
+            date: `${currentMonth}-20T09:30:00.000Z`,
+            item: "기존 비용 원장 수리비",
+            amount: 999_000,
+            type: "repair",
+            scope: "unit",
+            status: "confirmed",
+            verified: true,
+            repairPayment: "already_paid",
+            createdAt: `${currentMonth}-20T09:30:00.000Z`,
+            updatedAt: `${currentMonth}-20T09:30:00.000Z`
+          }
+        ],
+        listManagerTransactionRows: async () => [
+          {
+            id: "credit-payout-auto",
+            source: "credit_vendor_payout",
+            direction: "withdrawal",
+            occurredAt: `${currentMonth}-19T09:30:00.000Z`,
+            amount: 80_000,
+            statusLabel: "지급 완료",
+            itemLabel: "업체 크레딧 지급"
+          },
+          {
+            id: "credit-payout-manual",
+            source: "credit_vendor_payout",
+            direction: "withdrawal",
+            occurredAt: `${currentMonth}-20T09:30:00.000Z`,
+            amount: 20_000,
+            statusLabel: "지급 완료",
+            itemLabel: "업체 크레딧 지급"
+          },
+          {
+            id: "credit-topup",
+            source: "credit_vendor_payout",
+            direction: "deposit",
+            occurredAt: `${currentMonth}-20T09:30:00.000Z`,
+            amount: 300_000,
+            statusLabel: "충전 완료",
+            itemLabel: "크레딧 충전"
+          },
+          {
+            id: "other-withdrawal",
+            source: "cost",
+            direction: "withdrawal",
+            occurredAt: `${currentMonth}-20T09:30:00.000Z`,
+            amount: 500_000,
+            statusLabel: "지급 완료",
+            itemLabel: "다른 비용"
+          }
+        ],
+        isFinanceOwnedCost: async () => false
+      } as any
+    });
+
+    const report = await service.getManagerRentalReport(MANAGER_ID, 6);
+
+    assert.equal(report.points.at(-1)?.repairCostAmount, 100_000);
+  });
 });

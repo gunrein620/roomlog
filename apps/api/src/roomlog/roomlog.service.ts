@@ -3676,18 +3676,11 @@ export class RoomlogService implements OnModuleDestroy {
       const room = this.roomForManagerBill(managerId, bill);
       return room && roomIds.has(room.id);
     });
-    const costs = await this.listManagerCosts(managerId);
-    const supersededCostIds = new Set(
-      costs
-        .filter((cost) => cost.status === "amended" && cost.supersedesId)
-        .map((cost) => cost.supersedesId as string)
-    );
-    const repairCosts = costs.filter(
-      (cost) =>
-        cost.type === "repair" &&
-        (cost.status === "confirmed" || cost.status === "amended") &&
-        cost.repairPayment !== "unpaid" &&
-        !supersededCostIds.has(cost.id)
+    const vendorCreditPayouts = (
+      await this.financialCostReader.listManagerTransactionRows(managerId)
+    ).filter(
+      (row) =>
+        row.source === "credit_vendor_payout" && row.direction === "withdrawal"
     );
     const tickets = this.store.tickets.filter((ticket) => roomIds.has(ticket.roomId));
 
@@ -3715,9 +3708,10 @@ export class RoomlogService implements OnModuleDestroy {
           month,
           // 수익은 청구서 합계가 아니라 실제 수납 완료액이다. 부분 수납도 실제 금액만 포함한다.
           collectedAmount: monthBills.reduce((sum, bill) => sum + bill.paidAmount, 0),
-          repairCostAmount: repairCosts
-            .filter((cost) => this.monthKey(cost.date) === month)
-            .reduce((sum, cost) => sum + cost.amount, 0),
+          // 수리비는 비용 원장이 아니라 입출금 원장의 업체 크레딧 지급 출금만 집계한다.
+          repairCostAmount: vendorCreditPayouts
+            .filter((payout) => this.monthKey(payout.occurredAt) === month)
+            .reduce((sum, payout) => sum + payout.amount, 0),
           occupancyRate: this.occupancyRateAtMonthEnd(rooms, month),
           ticketResolutionRate:
             receivedTickets.length > 0

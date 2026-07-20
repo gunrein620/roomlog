@@ -13,5 +13,6 @@ test("임대 현황 리포트는 고정 데모 수치 대신 실제 수납액 AP
   assert.match(source, /href="\?reportMonths=6#report"/);
   assert.match(source, /href="\?reportMonths=12#report"/);
   assert.match(source, /\/api\/manager\/rental-report\.csv\?months=\$\{periodMonths\}/);
-  assert.match(source, /MANAGER_COST_ROUTES\["M-COST-00"\]/);
+  assert.doesNotMatch(source, /MANAGER_COST_ROUTES\["M-COST-00"\]/);
+  assert.match(source, /MANAGER_CROSS\.credit/);
 });

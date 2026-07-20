@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { RentalReport, RentalReportPeriodMonths } from "@roomlog/types";
-import { MANAGER_COST_ROUTES } from "@/lib/cost-nav";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 
 // M-HOME-02(임대 현황 리포트) — API 집계 결과를 그대로 표현한다.
@@ -99,7 +98,7 @@ export function ReportSection({
 
       <div className="manager-report-drills">
         <Link href="/manager/billing/collection">수납 원장 보기</Link>
-        <Link href={MANAGER_COST_ROUTES["M-COST-00"]}>수리비 원장 보기</Link>
+        <Link href={MANAGER_CROSS.credit}>크레딧 원장 보기</Link>
         <Link href={MANAGER_CROSS.contract}>계약·입주 현황 보기</Link>
         <Link href={MANAGER_CROSS.ticketDash}>민원 원장 보기</Link>
       </div>
