@@ -17,6 +17,9 @@ struct ObjectCaptureScanView: View {
     @ObservedObject private var uploader = ObjectCaptureUploader.shared
 
     let furniture: TenantFurnitureSummary
+    /// 업로드가 succeeded로 넘어가는 순간(정밀 스캔 완료) 한 번 호출된다 — RoomScanView가 세션 종료 시
+    /// "안 찍은 항목"을 가려내는 데 쓴다.
+    var onCaptured: (() -> Void)? = nil
 
     @State private var flow: Flow = .checkingSupport
     @State private var nameDraft = ""
@@ -223,6 +226,7 @@ struct ObjectCaptureScanView: View {
             flow = .uploading(progress)
         case .succeeded:
             flow = .succeeded
+            onCaptured?()
         case .failed(let message):
             flow = .failed(message)
         case nil:
