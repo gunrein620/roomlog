@@ -5443,7 +5443,8 @@ export class RoomlogService implements OnModuleDestroy {
         }
         const audience = this.messaging.resolveManagerAnnouncementAudience(
           managerId,
-          input.target
+          input.target,
+          input.text
         );
         if (audience.recipientCount === 0) {
           throw new BadRequestException("공지 수신 세대가 없습니다.");
@@ -5720,7 +5721,8 @@ export class RoomlogService implements OnModuleDestroy {
       try {
         const audience = this.messaging.resolveManagerAnnouncementAudience(
           managerId,
-          input.target
+          input.target,
+          input.text
         );
         const result = this.messaging.sendManagerAgentAnnouncement(managerId, {
           scope: audience.scope,

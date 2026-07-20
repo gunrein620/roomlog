@@ -45,6 +45,26 @@ describe("manager target resolver", () => {
     });
   });
 
+  it("resolves an ordinal follow-up against the previously shown candidates", () => {
+    const result = resolveManagerTarget(
+      "103호",
+      [
+        { id: "room-1", buildingName: "플로우테스트", unitId: "103" },
+        { id: "room-2", buildingName: "플로우테스트3", unitId: "103" }
+      ],
+      "뒤에 거"
+    );
+
+    assert.deepEqual(result, {
+      status: "resolved",
+      candidate: {
+        id: "room-2",
+        buildingName: "플로우테스트3",
+        unitId: "103"
+      }
+    });
+  });
+
   it("uses the only in-scope candidate when speech loses the unit number", () => {
     const result = resolveManagerTarget(
       "권리서신 업로드 테스트 대기호",

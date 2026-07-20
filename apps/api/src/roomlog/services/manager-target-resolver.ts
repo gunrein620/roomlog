@@ -14,9 +14,15 @@ const MINIMUM_LEAD = 0.04;
 
 export function resolveManagerTarget(
   rawTarget: string,
-  candidates: readonly ManagerTargetCandidate[]
+  candidates: readonly ManagerTargetCandidate[],
+  followupText?: string
 ): ManagerTargetResolution {
   const available = [...candidates];
+  const ordinalCandidate = resolveOrdinalCandidate(followupText, available);
+  if (ordinalCandidate) {
+    return { status: "resolved", candidate: ordinalCandidate };
+  }
+
   const unit = rawTarget.match(/([0-9]{1,4})\s*호/u)?.[1];
   const unitMatches = unit
     ? available.filter((candidate) => normalizeUnit(candidate.unitId) === unit)
@@ -68,6 +74,33 @@ export function resolveManagerTarget(
         candidates: ranked.slice(0, 3).map((item) => item.candidate)
       }
     : { status: "not_found", candidates: available.slice(0, 3) };
+}
+
+function resolveOrdinalCandidate(
+  followupText: string | undefined,
+  candidates: readonly ManagerTargetCandidate[]
+) {
+  const normalized = followupText
+    ?.normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/gu, "");
+
+  if (!normalized || candidates.length < 2) return undefined;
+
+  if (/(뒤(에|쪽)?거|마지막|끝(에|쪽)?거|두번째|2번째|둘째)/u.test(normalized)) {
+    return candidates[Math.min(1, candidates.length - 1)];
+  }
+
+  if (/(앞(에|쪽)?거|첫번째|1번째|첫째)/u.test(normalized)) {
+    return candidates[0];
+  }
+
+  const numbered = normalized.match(/([1-9])번/u);
+  if (numbered) {
+    return candidates[Number(numbered[1]) - 1];
+  }
+
+  return undefined;
 }
 
 function normalizeUnit(value: string) {
