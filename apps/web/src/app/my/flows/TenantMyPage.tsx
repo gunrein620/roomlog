@@ -32,6 +32,7 @@ import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
 import { TenantAiAssistantPanel } from "./TenantAiAssistantPanel";
 import {
+  markTenantAiDraftFormOpen,
   openTenantAiAssistant,
   useTenantAiAssistantStore,
 } from "./tenant-ai-assistant-store";
@@ -1255,6 +1256,7 @@ export default function TenantMyPage({
   const isTicketClosed = detailTicket?.status === "COMPLETED" || detailTicket?.status === "CANCELLED";
 
   const openNewRequestSheet = () => {
+    markTenantAiDraftFormOpen(false);
     setRequestError("");
     setRequestDraft(EMPTY_REQUEST_DRAFT);
     // 긴급도·방문 가능 시간은 임시저장에 포함되지 않는 즉석 입력 — 새 작성은 항상 빈 값에서 시작한다.
@@ -1267,6 +1269,7 @@ export default function TenantMyPage({
 
   const openSavedRequestSheet = () => {
     if (!savedRequestDraft) return;
+    markTenantAiDraftFormOpen(false);
     setRequestError("");
     setRequestDraft({
       category: savedRequestDraft.category,
@@ -1470,10 +1473,12 @@ export default function TenantMyPage({
     clearRequestImages();
     setIsLoadingRequestDraft(false);
     setIsRequestSheetOpen(true);
+    markTenantAiDraftFormOpen(true);
     ai.consumeDraftForRequest();
   }, [ai.draftForRequest]);
 
   const closeRequestSheet = (resetDraft = false) => {
+    markTenantAiDraftFormOpen(false);
     setIsLoadingRequestDraft(false);
     setIsRequestSheetOpen(false);
     setRequestError("");
@@ -1533,6 +1538,7 @@ export default function TenantMyPage({
         url,
         uploadedUrl: url
       })));
+      markTenantAiDraftFormOpen(false);
       setIsRequestSheetOpen(false);
       showToast("민원/하자 요청이 임시 저장되었습니다.");
     } catch (error) {
@@ -1612,6 +1618,7 @@ export default function TenantMyPage({
         return;
       }
       setSavedRequestDraft(null);
+      markTenantAiDraftFormOpen(false);
       setIsRequestSheetOpen(false);
       setRequestDraft(EMPTY_REQUEST_DRAFT);
       setRequestUrgency(undefined);
@@ -1632,13 +1639,24 @@ export default function TenantMyPage({
     void ai.startTextSession();
   };
 
+  const returnToAiConversation = () => {
+    closeRequestSheet();
+    openTenantAiAssistant();
+  };
+
   const landlordUnreadBadge = formatTenantLandlordUnreadCount(landlordUnreadCount);
   const landlordInquiryLabel = landlordUnreadCount > 0
     ? `임대인에게 문의하기, 미확인 메시지 ${landlordUnreadCount}개`
     : "임대인에게 문의하기";
 
   return (
-    <div className={`tenant-ai-workspace${tenantAiSession.open ? " tenant-ai-workspace--open" : ""}`}>
+    <div
+      className={[
+        "tenant-ai-workspace",
+        tenantAiSession.open ? "tenant-ai-workspace--open" : "",
+        tenantAiSession.draftFormOpen ? "tenant-ai-workspace--draft" : "",
+      ].filter(Boolean).join(" ")}
+    >
       <section className="screen tenant-screen tenant-portal-screen" id="my-page" aria-labelledby="tenant-title">
       <h2 id="tenant-title" className="visually-hidden">세입자 마이페이지</h2>
 
@@ -2048,6 +2066,20 @@ export default function TenantMyPage({
             </header>
 
             <form className="tenant-request-form" onSubmit={handleRequestSubmit}>
+              {tenantAiSession.draftFormOpen ? (
+                <div className="tenant-ai-draft-banner">
+                  <span>
+                    <Bot aria-hidden="true" />
+                    <strong>AI가 작성한 초안</strong>
+                    <small>
+                      대화 내용을 바탕으로 정리했어요. 확인 후 바로 수정하거나 사진을 추가할 수 있습니다.
+                    </small>
+                  </span>
+                  <button type="button" onClick={returnToAiConversation}>
+                    AI 대화로 돌아가기
+                  </button>
+                </div>
+              ) : null}
               <div className="tenant-request-type-toggle" role="group" aria-label="요청 유형">
                 {(["민원", "하자"] as const).map((category) => (
                   <button
