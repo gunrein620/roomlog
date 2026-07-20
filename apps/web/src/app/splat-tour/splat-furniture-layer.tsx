@@ -9,15 +9,16 @@ import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { getFurnitureDimensions } from "../floor-plan-3d/furniture-placement";
 import type { PlacedFurniture } from "../floor-plan-3d/room-model/types";
+import { shouldEnableTourFurnitureFloor, type TourFurnitureBounds } from "./splat-furniture-editor";
 
-function SplatFurnitureBoxMesh({ furniture }: { furniture: PlacedFurniture }) {
+function SplatFurnitureBoxMesh({ furniture, opacity = 0.48 }: { furniture: PlacedFurniture; opacity?: number }) {
   const dimensions = getFurnitureDimensions(furniture);
 
   return (
     <group position={[furniture.position[0], 0, furniture.position[2]]} rotation={furniture.rotation}>
       <mesh position={[0, dimensions.height / 2, 0]}>
         <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
-        <meshLambertMaterial color={furniture.color} opacity={0.48} transparent />
+        <meshLambertMaterial color={furniture.color} depthWrite={opacity >= 0.45} opacity={opacity} transparent />
       </mesh>
     </group>
   );
@@ -81,25 +82,73 @@ function SplatFurnitureGlbMesh({ furniture }: { furniture: PlacedFurniture }) {
   );
 }
 
-function SplatFurnitureMesh({ furniture }: { furniture: PlacedFurniture }) {
-  if (!furniture.modelUrl) {
-    return <SplatFurnitureBoxMesh furniture={furniture} />;
-  }
-
+function SplatFurnitureMesh({
+  furniture,
+  isPending = false,
+  onPointerDown
+}: {
+  furniture: PlacedFurniture;
+  isPending?: boolean;
+  onPointerDown?: (furniture: PlacedFurniture) => void;
+}) {
   return (
-    <Suspense fallback={<SplatFurnitureBoxMesh furniture={furniture} />}>
-      <SplatFurnitureGlbMesh furniture={furniture} />
-    </Suspense>
+    <group
+      onPointerDown={(event) => {
+        if (!onPointerDown) return;
+        event.stopPropagation();
+        onPointerDown(furniture);
+      }}
+    >
+      {furniture.modelUrl ? (
+        <Suspense fallback={<SplatFurnitureBoxMesh furniture={furniture} />}>
+          <SplatFurnitureGlbMesh furniture={furniture} />
+        </Suspense>
+      ) : (
+        <SplatFurnitureBoxMesh furniture={furniture} />
+      )}
+      {isPending ? <SplatFurnitureBoxMesh furniture={{ ...furniture, color: "#60a5fa" }} opacity={0.2} /> : null}
+    </group>
   );
 }
 
-/** Canvas 안에서 도면 좌표 그대로 가구를 렌더하는 표시 전용 레이어. 인터랙션 없음. */
-export function SplatFurnitureLayer({ furnitures }: { furnitures: readonly PlacedFurniture[] }) {
+type SplatFurnitureLayerProps = {
+  bounds?: TourFurnitureBounds | null;
+  furnitures: readonly PlacedFurniture[];
+  onFloorPointerDown?: (point: { x: number; z: number }) => void;
+  onFurniturePointerDown?: (furniture: PlacedFurniture) => void;
+  pendingFurniture?: PlacedFurniture | null;
+};
+
+/** Canvas 안에서 도면 좌표 그대로 가구를 렌더하고, 편집 중에만 바닥 클릭을 받는다. */
+export function SplatFurnitureLayer({
+  bounds,
+  furnitures,
+  onFloorPointerDown,
+  onFurniturePointerDown,
+  pendingFurniture = null
+}: SplatFurnitureLayerProps) {
+  const floorWidth = bounds ? Math.max(0.01, bounds.maxX - bounds.minX) : 0;
+  const floorDepth = bounds ? Math.max(0.01, bounds.maxZ - bounds.minZ) : 0;
+
   return (
     <group>
       {furnitures.map((furniture) => (
-        <SplatFurnitureMesh key={furniture.id} furniture={furniture} />
+        <SplatFurnitureMesh key={furniture.id} furniture={furniture} onPointerDown={onFurniturePointerDown} />
       ))}
+      {pendingFurniture ? <SplatFurnitureMesh furniture={pendingFurniture} isPending /> : null}
+      {bounds && shouldEnableTourFurnitureFloor(pendingFurniture) ? (
+        <mesh
+          position={[(bounds.minX + bounds.maxX) / 2, 0.002, (bounds.minZ + bounds.maxZ) / 2]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            onFloorPointerDown?.({ x: event.point.x, z: event.point.z });
+          }}
+        >
+          <planeGeometry args={[floorWidth, floorDepth]} />
+          <meshBasicMaterial depthWrite={false} opacity={0} transparent />
+        </mesh>
+      ) : null}
     </group>
   );
 }

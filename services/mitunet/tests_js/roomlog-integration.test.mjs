@@ -65,23 +65,50 @@ test("rejects a plan without wall polygons", () => {
   );
 });
 
-test("posts only to the exact RoomLog origin", () => {
-  const calls = [];
-  const opener = { postMessage: (...args) => calls.push(args) };
+test("stores the completed plan under its request-scoped key and returns in the same tab", () => {
+  const entries = new Map();
+  const previousWindow = globalThis.window;
+  globalThis.window = {
+    localStorage: {
+      setItem(key, value) {
+        entries.set(key, value);
+      },
+    },
+    location: { href: "" },
+  };
   const context = readRoomLogContext(locationLike, ["http://localhost:3000"]);
 
-  sendRoomLogCompletion(context, plan, "home.png", opener);
+  try {
+    const message = sendRoomLogCompletion(context, plan, "home.png");
 
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][1], "http://localhost:3000");
+    assert.equal(message.requestId, "req-123");
+    assert.equal(
+      globalThis.window.location.href,
+      "http://localhost:3000/?flow=listing&floorPlanRequestId=req-123#my-page",
+    );
+    const stored = JSON.parse(entries.get("roomlogListingFloorPlan3D:req-123"));
+    assert.equal(stored.name, "home.png");
+    assert.equal(typeof stored.savedAt, "number");
+    assert.deepEqual(stored.walls3D, []);
+    assert.deepEqual(stored.furnitures, []);
+    assert.deepEqual(stored.mitunet, message.payload);
+  } finally {
+    globalThis.window = previousWindow;
+  }
 });
 
-test("reports a closed opener window", () => {
-  const context = readRoomLogContext(locationLike, ["http://localhost:3000"]);
-  assert.throws(
-    () => sendRoomLogCompletion(context, plan, "home.png", { closed: true, postMessage() {} }),
-    /no longer available/i,
-  );
+test("rejects a missing RoomLog context before accessing browser storage", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { localStorage: { setItem() {} }, location: { href: "" } };
+
+  try {
+    assert.throws(
+      () => sendRoomLogCompletion(null, plan, "home.png"),
+      /integration is not active/i,
+    );
+  } finally {
+    globalThis.window = previousWindow;
+  }
 });
 
 test("completion message carries optional furniture placements", () => {

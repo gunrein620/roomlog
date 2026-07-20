@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 
-import {
-  transformMitunetViewerHtml,
-  transformRoomLogIntegrationModule,
-} from "./mitunet-proxy";
+import { transformMitunetViewerHtml } from "./mitunet-proxy";
 import * as mitunetProxy from "./mitunet-proxy";
+
+const integrationSource = readFileSync(
+  join(process.cwd(), "../../services/mitunet/viewer/roomlog-integration.mjs"),
+  "utf8",
+);
 
 test("keeps 3D plan saving available in the RoomLog flow", () => {
   const transformed = transformMitunetViewerHtml(`
@@ -35,25 +39,20 @@ test("rewrites relative demo sample paths to the mitunet-assets route", () => {
   assert.doesNotMatch(transformed, /`\.\/demos\//);
 });
 
-test("keeps the viewer completion signature and stores mapped furniture records", () => {
-  const transformed = transformRoomLogIntegrationModule(`
-export function sendRoomLogCompletion(context, plan, sourceName, opener, furnitures = []) {
-  const message = buildRoomLogCompletion(context, plan, sourceName, furnitures);
-  opener.postMessage(message, context.returnOrigin);
-  return message;
-}
-`, "roomlog:floor-plan-draft", "/landlord/listings/new");
-
+test("keeps RoomLog completion behavior in the source module instead of runtime source replacement", () => {
   assert.match(
-    transformed,
-    /sendRoomLogCompletion\(context, plan, sourceName, opener, furnitures = \[\]\)/,
+    integrationSource,
+    /sendRoomLogCompletion\(context, plan, sourceName, furnitures = \[\]\)/,
   );
-  assert.match(
-    transformed,
-    /buildRoomLogCompletion\(context, plan, sourceName, furnitures\)/,
+  assert.match(integrationSource, /const storageKey = `roomlogListingFloorPlan3D:\$\{context\.requestId\}`;/);
+  assert.match(integrationSource, /window\.localStorage\.setItem\(storageKey, JSON\.stringify\(storageValue\)\);/);
+  assert.match(integrationSource, /returnUrl\.searchParams\.set\("floorPlanRequestId", context\.requestId\);/);
+  assert.match(integrationSource, /window\.location\.href = returnUrl\.toString\(\);/);
+  assert.doesNotMatch(integrationSource, /postMessage/);
+  assert.equal(
+    typeof (mitunetProxy as Record<string, unknown>).transformRoomLogIntegrationModule,
+    "undefined",
   );
-  assert.match(transformed, /furnitures: message\.payload\.furnitures/);
-  assert.doesNotMatch(transformed, /furnitures: \[\]/);
 });
 
 test("disables detected-door auto scale only in the RoomLog viewer", () => {

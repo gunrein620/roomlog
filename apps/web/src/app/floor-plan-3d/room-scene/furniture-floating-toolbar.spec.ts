@@ -38,7 +38,7 @@ describe("RoomLog furniture floating controls", () => {
     }
   });
 
-  it("shows only cancel and explicit confirmation while furniture follows the pointer", () => {
+  it("shows optional deletion between rotation and confirmation while furniture follows the pointer", () => {
     const pendingToolbar = between(
       viewerSource,
       "{pendingFurniture && onPendingConfirm",
@@ -47,11 +47,27 @@ describe("RoomLog furniture floating controls", () => {
 
     assert.match(pendingToolbar, /aria-label="배치 취소"/);
     assert.match(pendingToolbar, /aria-label="배치완료"/);
-    assert.doesNotMatch(pendingToolbar, /aria-label="90도 회전"/);
-    assert.doesNotMatch(pendingToolbar, /aria-label="가구 삭제"/);
+    assert.match(pendingToolbar, /onPendingRotate \? \(/);
+    assert.match(pendingToolbar, /<RotateCcw/);
+    assert.match(pendingToolbar, /<RotateCw/);
+    assert.match(pendingToolbar, /pendingFurnitureCanBeDeleted && onPendingDelete \? \(/);
+    assert.match(pendingToolbar, /aria-label="가구 삭제"/);
+    assert.match(pendingToolbar, /<Trash2/);
     assert.match(editorSource, /function handle3DFloorPointerMove[\s\S]*?if \(!pendingFurniture\) return;/);
     assert.doesNotMatch(editorSource, /isFurnitureDragging/);
     assert.match(editorSource, /controlsEnabled=\{!pendingFurniture\}/);
+  });
+
+  it("receives each pending-toolbar action as a component parameter", () => {
+    const componentParameters = between(
+      viewerSource,
+      "export function RoomlogThreeFloorPlanView({",
+      "}: {"
+    );
+
+    for (const property of ["onPendingDelete", "onPendingRotate", "pendingFurnitureCanBeDeleted"]) {
+      assert.match(componentParameters, new RegExp(`\\b${property},`));
+    }
   });
 
   it("selects placed furniture before entering move mode", () => {

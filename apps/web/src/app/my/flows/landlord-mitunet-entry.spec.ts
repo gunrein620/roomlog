@@ -22,3 +22,10 @@ test("keeps a JSON upload fallback for MitUNet projects", () => {
   // JSON 업로드는 가시 라벨 대신 3D 박스의 숨은 드롭으로만 지원(개발자용) — 드롭 배선으로 검증한다.
   assert.match(source, /handleFloorPlanJsonDrop/);
 });
+
+test("keeps each listing draft's 3D snapshot in its own request-scoped storage key", () => {
+  assert.match(source, /floorPlanRequestId/);
+  assert.match(source, /getListingFloorPlanStorageKey\(floorPlanRequestId\)/);
+  assert.match(source, /readListingFloorPlanSnapshot\(floorPlanRequestId\)/);
+  assert.match(source, /localStorage\.removeItem\(getListingFloorPlanStorageKey\(floorPlanRequestId\)\)/);
+});
