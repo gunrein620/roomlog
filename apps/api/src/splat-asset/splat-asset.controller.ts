@@ -23,6 +23,7 @@ import {
   parseIntakeCompleteInput,
   parseIntakeInput,
   parseIntakePresignInput,
+  parseOptionalCaptureFloorPlanInput,
   parseRegisterInput,
   parseUpdateFileInput
 } from "./splat-asset.types";
@@ -49,7 +50,7 @@ export class SplatAssetController {
 
   @Get(":id")
   get(@Param("id") id: string) {
-    // 공개 조회 — ?asset= 링크 방문자용. 연결된 도면 가구를 동봉한다(getForViewer).
+    // 공개 조회 — ?asset= 링크 방문자용. 연결된 도면 가구·벽을 동봉한다(getForViewer).
     return this.splatAssetService.getForViewer(id);
   }
 
@@ -105,6 +106,22 @@ export class SplatAssetController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
     await this.splatAssetService.assertAssetOwner(id, user.id);
     return this.splatAssetService.register(id, parseRegisterInput(body));
+  }
+
+  @Post(":id/auto-register-preview")
+  @HttpCode(200)
+  async autoRegisterPreview(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id") id: string,
+    @Body() body: unknown
+  ) {
+    // A4a — 도면 자동정합 프리뷰. 2점 수동 정합(PATCH :id/registration)과 동일하게 자산 소유자만
+    // 조회할 수 있다. 저장은 안 하므로(PREVIEW ONLY) 확정은 web이 register()를 별도로 호출한다.
+    // captureFloorPlan은 보통 asset에 저장된 roomplan.json(intake/complete가 채움)을 서비스가 읽지만,
+    // body에 실려오면 override/fallback으로 그걸 우선한다(주로 테스트·구버전 클라 호환용).
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    await this.splatAssetService.assertAssetOwner(id, user.id);
+    return this.splatAssetService.previewAutoRegister(id, parseOptionalCaptureFloorPlanInput(body));
   }
 
   @Patch(":id/file")

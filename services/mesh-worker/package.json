@@ -1,0 +1,13 @@
+{
+  "name": "mesh-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "USDZ→GLB 변환 워커 — Blender headless를 감싸는 HTTP 서비스. 항상 켜져 있는 경량 CPU 컨테이너(GPU 인스턴스 아님). apps/api의 mesh-conversion-dispatcher.ts가 이 서비스의 POST /convert를 호출한다.",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

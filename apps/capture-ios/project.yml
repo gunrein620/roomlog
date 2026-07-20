@@ -1,0 +1,37 @@
+# xcodegen 스펙 — `xcodegen` 실행으로 RoomLogCapture.xcodeproj 재생성 (Xcode 불필요)
+name: RoomLogCapture
+options:
+  bundleIdPrefix: com.roomlog
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    CODE_SIGN_STYLE: Automatic   # 팀은 Xcode Signing 탭에서 Personal Team 선택(무료)
+targets:
+  RoomLogCapture:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/RoomLogCapture
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.roomlog.capture
+        TARGETED_DEVICE_FAMILY: "1,2"        # iPhone Pro + iPad Pro (둘 다 LiDAR 라인 존재)
+        SUPPORTS_MACCATALYST: false
+    info:
+      path: Sources/RoomLogCapture/Info.plist
+      properties:
+        NSCameraUsageDescription: "방을 3D 스캔하기 위해 카메라와 LiDAR를 사용합니다."
+        NSAppTransportSecurity:                       # 로컬 IP HTTP 서버 테스트용 최소 예외(사설망/.local만)
+          NSAllowsLocalNetworking: true
+        UIRequiredDeviceCapabilities: [arkit]
+        UIFileSharingEnabled: true                  # Files 앱에서 캡처 폴더 접근(수동 압축 폴백)
+        LSSupportsOpeningDocumentsInPlace: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false

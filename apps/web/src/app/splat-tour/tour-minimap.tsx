@@ -8,16 +8,26 @@ export function TourMinimap({
   presets,
   activeId,
   onSelect,
-  livePosition
+  livePosition,
+  planIsPlaceholder
 }: {
   presets: TourPreset[];
   activeId: string;
   onSelect: (id: string) => void;
   // 카메라 실시간 위치(정규화 0~100%). 정합된 splat 위 현재 시점을 도면에 점으로 표시(Matterport식).
   livePosition?: { x: number; y: number } | null;
+  // 서버·브라우저 어디에서도 연결된 도면을 확인하지 못해 참고용 4면 경계를 쓰는지 여부.
+  planIsPlaceholder: boolean;
 }) {
   return (
-    <div className="tour-minimap-card" aria-label="투어 미니맵">
+    <div
+      className={`tour-minimap-card${planIsPlaceholder ? " is-placeholder" : ""}`}
+      aria-label={
+        planIsPlaceholder
+          ? "투어 미니맵, 연결된 도면을 확인하지 못해 참고용 경계를 표시합니다"
+          : "투어 미니맵, 연결된 도면"
+      }
+    >
       <style>
         {`
           .tour-minimap-card {
@@ -152,11 +162,46 @@ export function TourMinimap({
               left 120ms linear,
               top 120ms linear;
           }
+
+          .tour-minimap-card.is-placeholder .tour-minimap-plan svg {
+            opacity: 0.58;
+          }
+
+          .tour-minimap-card.is-placeholder .tour-minimap-title span:last-child {
+            color: var(--muted);
+          }
+
+          .tour-minimap-placeholder {
+            position: absolute;
+            z-index: 3;
+            right: 7px;
+            bottom: 7px;
+            left: 7px;
+            display: grid;
+            gap: 2px;
+            margin: 0;
+            border: 1px dashed var(--line);
+            border-radius: 6px;
+            padding: 5px 4px;
+            background: color-mix(in srgb, var(--paper) 92%, transparent);
+            color: var(--ink);
+            font-size: 9px;
+            font-weight: 800;
+            line-height: 1.15;
+            text-align: center;
+            backdrop-filter: blur(8px);
+          }
+
+          .tour-minimap-placeholder span:last-child {
+            color: var(--muted);
+            font-size: 8px;
+            font-weight: 700;
+          }
         `}
       </style>
       <div className="tour-minimap-title" aria-hidden>
         <span>도면</span>
-        <span>3m x 4m</span>
+        <span>{planIsPlaceholder ? "미확인" : "연결됨"}</span>
       </div>
       <div className="tour-minimap-plan">
         <svg aria-hidden focusable="false" preserveAspectRatio="none" viewBox="0 0 100 100">
@@ -167,9 +212,10 @@ export function TourMinimap({
             height="88"
             rx="2"
             fill="var(--paper)"
-            stroke="var(--ink)"
+            stroke={planIsPlaceholder ? "var(--muted)" : "var(--ink)"}
             strokeOpacity="0.72"
             strokeWidth="5"
+            strokeDasharray={planIsPlaceholder ? "6 4" : undefined}
             vectorEffect="non-scaling-stroke"
           />
           <path
@@ -186,50 +232,54 @@ export function TourMinimap({
             strokeWidth="0.8"
             vectorEffect="non-scaling-stroke"
           />
-          <line
-            x1="34"
-            y1="6"
-            x2="68"
-            y2="6"
-            stroke="var(--blue)"
-            strokeLinecap="round"
-            strokeWidth="5"
-            vectorEffect="non-scaling-stroke"
-          />
-          <line
-            x1="34"
-            y1="11"
-            x2="68"
-            y2="11"
-            stroke="var(--blue-soft)"
-            strokeLinecap="round"
-            strokeWidth="2"
-            vectorEffect="non-scaling-stroke"
-          />
-          <line
-            x1="54"
-            y1="94"
-            x2="75"
-            y2="94"
-            stroke="var(--paper)"
-            strokeLinecap="round"
-            strokeWidth="7"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d="M55 93V75M55 93A20 20 0 0 0 74 75"
-            fill="none"
-            stroke="var(--muted)"
-            strokeLinecap="round"
-            strokeWidth="1.8"
-            vectorEffect="non-scaling-stroke"
-          />
-          <text x="51" y="15" fill="var(--blue)" fontSize="5" fontWeight="800" textAnchor="middle">
-            창문
-          </text>
-          <text x="81" y="90" fill="var(--muted)" fontSize="5" fontWeight="800" textAnchor="middle">
-            현관
-          </text>
+          {!planIsPlaceholder ? (
+            <>
+              <line
+                x1="34"
+                y1="6"
+                x2="68"
+                y2="6"
+                stroke="var(--blue)"
+                strokeLinecap="round"
+                strokeWidth="5"
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1="34"
+                y1="11"
+                x2="68"
+                y2="11"
+                stroke="var(--blue-soft)"
+                strokeLinecap="round"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1="54"
+                y1="94"
+                x2="75"
+                y2="94"
+                stroke="var(--paper)"
+                strokeLinecap="round"
+                strokeWidth="7"
+                vectorEffect="non-scaling-stroke"
+              />
+              <path
+                d="M55 93V75M55 93A20 20 0 0 0 74 75"
+                fill="none"
+                stroke="var(--muted)"
+                strokeLinecap="round"
+                strokeWidth="1.8"
+                vectorEffect="non-scaling-stroke"
+              />
+              <text x="51" y="15" fill="var(--blue)" fontSize="5" fontWeight="800" textAnchor="middle">
+                창문
+              </text>
+              <text x="81" y="90" fill="var(--muted)" fontSize="5" fontWeight="800" textAnchor="middle">
+                현관
+              </text>
+            </>
+          ) : null}
         </svg>
         {livePosition ? (
           <span
@@ -260,6 +310,12 @@ export function TourMinimap({
             </button>
           );
         })}
+        {planIsPlaceholder ? (
+          <p className="tour-minimap-placeholder" role="status">
+            <span>연결 도면 미확인</span>
+            <span>참고용 경계예요</span>
+          </p>
+        ) : null}
       </div>
     </div>
   );

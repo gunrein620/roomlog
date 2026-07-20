@@ -7,6 +7,7 @@ import {
   planWallsFromPayload,
   readFloorPlanDraftServerId,
   resolvePlanWalls,
+  resolveViewerPlanWalls,
   wallsToPlanBounds
 } from "./splat-plan-shape";
 
@@ -161,6 +162,37 @@ test("planWallsFromPayload: filters invalid walls and rejects non-plan payloads"
   assert.deepEqual(planWallsFromPayload("not-json-object"), []);
   assert.deepEqual(planWallsFromPayload(42), []);
   assert.deepEqual(planWallsFromPayload({ unrelated: true }), []);
+});
+
+test("resolveViewerPlanWalls: prefers validated server walls over browser walls", () => {
+  const browserWall = testWall("browser");
+  const serverWall = testWall("server");
+  const resolved = resolveViewerPlanWalls([serverWall], {
+    source: "floor-plan-draft",
+    walls: [browserWall]
+  });
+
+  assert.equal(resolved.source, "server");
+  assert.deepEqual(resolved.walls?.map((wall) => wall.id), ["server"]);
+});
+
+test("resolveViewerPlanWalls: falls back to browser then an explicit placeholder source", () => {
+  const browserWall = testWall("browser");
+  const invalidServerWall = {
+    ...testWall("invalid-server"),
+    dimensions: { width: 0, height: 2.4, depth: 0.15 }
+  };
+  const browserFallback = resolveViewerPlanWalls([invalidServerWall], {
+    source: "resident-design",
+    walls: [browserWall]
+  });
+
+  assert.equal(browserFallback.source, "resident-design");
+  assert.deepEqual(browserFallback.walls?.map((wall) => wall.id), ["browser"]);
+  assert.deepEqual(resolveViewerPlanWalls(null, null), {
+    source: "placeholder",
+    walls: null
+  });
 });
 
 test("planWallFootprint: rotated wall footprint matches wallsToPlanBounds corners", () => {

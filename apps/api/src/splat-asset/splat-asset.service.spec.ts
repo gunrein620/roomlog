@@ -11,6 +11,16 @@ function serviceWithFakes(prisma: unknown, storageAdapter: unknown): SplatAssetS
   return service;
 }
 
+function viewerWall(id: string) {
+  return {
+    id,
+    wall_id: id,
+    dimensions: { width: 3, height: 2.4, depth: 0.12 },
+    position: [1, 1.2, 2],
+    rotation: [0, 0.5, 0]
+  };
+}
+
 describe("SplatAssetService", () => {
   it("classifies a Record3D zip as a queued capture source", async () => {
     let createdData: Record<string, unknown> | undefined;
@@ -117,16 +127,25 @@ describe("SplatAssetService", () => {
     assert.equal((updateData?.jobError as string).length, 2048);
   });
 
-  it("projects floor-plan furniture for the public viewer and selects only the furnitures column", async () => {
-    const asset = { id: "asset-1", floorPlanId: "fp-1", listingId: null };
-    let floorPlanQuery: Record<string, unknown> | undefined;
+  it("projects floor-plan furniture and 3D walls with narrow public selects", async () => {
+    const asset = { id: "asset-1", floorPlanId: "fp-1", listingId: "listing-must-not-win" };
+    const wall = viewerWall("wall-1");
+    const floorPlanQueries: Record<string, unknown>[] = [];
     const service = serviceWithFakes(
       {
         splatAsset: { findUnique: async () => asset },
         floorPlan: {
           findUnique: async (args: Record<string, unknown>) => {
-            floorPlanQuery = args;
-            return { furnitures: [{ id: "sofa" }, { id: "bed" }] };
+            floorPlanQueries.push(args);
+            const select = args.select as Record<string, unknown>;
+            return select.furnitures
+              ? { furnitures: [{ id: "sofa" }, { id: "bed" }] }
+              : { room3d: { walls: [wall] } };
+          }
+        },
+        tradeListing: {
+          findUnique: async () => {
+            throw new Error("유효한 연결 도면보다 매물 스냅샷을 먼저 조회하면 안 됩니다.");
           }
         }
       },
@@ -135,18 +154,30 @@ describe("SplatAssetService", () => {
 
     const result = await service.getForViewer("asset-1");
 
-    // 도면 전체가 아니라 furnitures 컬럼만 select — 벽·소유자 정보 노출 방지.
-    assert.deepEqual((floorPlanQuery?.select as Record<string, unknown>) ?? null, { furnitures: true });
+    assert.deepEqual(floorPlanQueries.map((query) => query.select), [
+      { furnitures: true },
+      { room3d: true }
+    ]);
+    // 소유자·주소·도면 전체를 고르지 않고 공개 뷰어에 필요한 두 컬럼만 각각 조회한다.
+    for (const query of floorPlanQueries) {
+      const select = query.select as Record<string, unknown>;
+      assert.equal("ownerId" in select, false);
+      assert.equal("owner" in select, false);
+      assert.equal("address" in select, false);
+      assert.equal("sourceImageUrl" in select, false);
+    }
     assert.deepEqual(result.furnitures, [{ id: "sofa" }, { id: "bed" }]);
+    assert.deepEqual(result.walls, [wall]);
   });
 
-  it("falls back to the listing snapshot furniture when the asset has no floorPlanId", async () => {
+  it("falls back to the listing snapshot furniture and walls when the asset has no floorPlanId", async () => {
     const asset = { id: "asset-1", floorPlanId: null, listingId: "listing-9" };
+    const wall = viewerWall("listing-wall");
     const service = serviceWithFakes(
       {
         splatAsset: { findUnique: async () => asset },
         tradeListing: {
-          findUnique: async () => ({ floorPlan: { walls3D: [], furnitures: [{ id: "desk" }] } })
+          findUnique: async () => ({ floorPlan: { walls3D: [wall], furnitures: [{ id: "desk" }] } })
         }
       },
       { save: async () => ({ fileName: "unused", fileUrl: "/unused" }) }
@@ -155,9 +186,10 @@ describe("SplatAssetService", () => {
     const result = await service.getForViewer("asset-1");
 
     assert.deepEqual(result.furnitures, [{ id: "desk" }]);
+    assert.deepEqual(result.walls, [wall]);
   });
 
-  it("returns null furniture when neither floor plan nor listing snapshot yields any", async () => {
+  it("returns null furniture and walls when neither floor plan nor listing snapshot yields any", async () => {
     const asset = { id: "asset-1", floorPlanId: null, listingId: null };
     const service = serviceWithFakes(
       { splatAsset: { findUnique: async () => asset } },
@@ -167,6 +199,70 @@ describe("SplatAssetService", () => {
     const result = await service.getForViewer("asset-1");
 
     assert.equal(result.furnitures, null);
+    assert.equal(result.walls, null);
+  });
+
+  it("filters malformed walls and falls back from the linked plan to the listing snapshot", async () => {
+    const asset = { id: "asset-1", floorPlanId: "fp-broken", listingId: "listing-9" };
+    const wall = { ...viewerWall("listing-valid"), material: "wall", privateNote: "do-not-project" };
+    let listingWallQuery: Record<string, unknown> | undefined;
+    const service = serviceWithFakes(
+      {
+        splatAsset: { findUnique: async () => asset },
+        floorPlan: {
+          findUnique: async ({ select }: { select: Record<string, unknown> }) =>
+            select.furnitures
+              ? { furnitures: [{ id: "sofa" }] }
+              : { room3d: { walls: [{ id: "broken", dimensions: { width: 2 } }] } }
+        },
+        tradeListing: {
+          findUnique: async (args: Record<string, unknown>) => {
+            listingWallQuery = args;
+            return {
+              floorPlan: {
+                walls3D: [wall, { ...viewerWall("nan-wall"), position: [Number.NaN, 0, 0] }]
+              }
+            };
+          }
+        }
+      },
+      { save: async () => ({ fileName: "unused", fileUrl: "/unused" }) }
+    );
+
+    const result = await service.getForViewer("asset-1");
+
+    assert.deepEqual(result.walls, [{
+      id: "listing-valid",
+      wall_id: "listing-valid",
+      dimensions: wall.dimensions,
+      position: wall.position,
+      rotation: wall.rotation,
+      material: "wall"
+    }]);
+    assert.deepEqual(listingWallQuery?.select, { floorPlan: true });
+  });
+
+  it("assigns deterministic public ids to valid legacy walls without identifiers", async () => {
+    const asset = { id: "asset-legacy", floorPlanId: "fp-legacy", listingId: null };
+    const legacyWall = {
+      dimensions: { width: 2.5, height: 2.3, depth: 0.1 },
+      position: [0, 1.15, 0],
+      rotation: [0, 0, 0]
+    };
+    const service = serviceWithFakes(
+      {
+        splatAsset: { findUnique: async () => asset },
+        floorPlan: {
+          findUnique: async ({ select }: { select: Record<string, unknown> }) =>
+            select.furnitures ? { furnitures: [] } : { room3d: { walls: [legacyWall] } }
+        }
+      },
+      { save: async () => ({ fileName: "unused", fileUrl: "/unused" }) }
+    );
+
+    const result = await service.getForViewer("asset-legacy");
+
+    assert.deepEqual(result.walls, [{ ...legacyWall, id: "wall-1", wall_id: "wall-1" }]);
   });
 
   it("links a registration to an existing floor plan and promotes to REGISTERED", async () => {

@@ -1,5 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
 import type {
+  MetricOpening,
+  MetricWall,
+  RoomPlanCaptureFloorPlan,
   SplatIntakeCompleteRequest,
   SplatIntakePresignRequest
 } from "@roomlog/types";
@@ -121,9 +124,11 @@ export function parseIntakePresignInput(body: unknown): SplatIntakePresignReques
 export function parseIntakeCompleteInput(body: unknown): SplatIntakeCompleteRequest {
   const raw = (body ?? {}) as Record<string, unknown>;
   const intake = parseIntakeInput(raw);
+  const captureFloorPlan = parseOptionalCaptureFloorPlanInput(raw);
   return {
     ...intake,
-    key: requireNonEmptyString(raw.key, "key")
+    key: requireNonEmptyString(raw.key, "key"),
+    ...(captureFloorPlan ? { captureFloorPlan } : {})
   };
 }
 
@@ -153,6 +158,100 @@ export function parseTransform(value: unknown): SplatTransformInput {
     transform[key] = n;
   }
   return transform;
+}
+
+function parsePoint2(value: unknown, field: string): [number, number] {
+  if (!Array.isArray(value) || value.length !== 2) {
+    throw new BadRequestException(`${field}는 [x, z] 형태의 좌표여야 합니다.`);
+  }
+  const [x, z] = value.map((v) => Number(v));
+  if (!Number.isFinite(x) || !Number.isFinite(z)) {
+    throw new BadRequestException(`${field}는 유한한 숫자 2개여야 합니다.`);
+  }
+  return [x, z];
+}
+
+function parsePositiveNumber(value: unknown, field: string): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new BadRequestException(`${field}는 0보다 큰 숫자여야 합니다.`);
+  return n;
+}
+
+/**
+ * 0을 허용하는 숫자. RoomPlan은 벽을 **두께 없는 얇은 면**으로 모델링해서 실제 캡처의
+ * `CapturedRoom.Surface.dimensions.z`(= thickness)가 0으로 온다(2026-07-19 실캡처 확인).
+ * 매처는 벽 중심선 세그먼트만 쓰므로 두께가 양수일 필요가 없다 — 0을 거부하면 실 데이터가 전부 400.
+ */
+function parseNonNegativeNumber(value: unknown, field: string): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new BadRequestException(`${field}는 0 이상의 숫자여야 합니다.`);
+  return n;
+}
+
+function parseMetricWall(value: unknown, index: number): MetricWall {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  return {
+    start: parsePoint2(raw.start, `walls[${index}].start`),
+    end: parsePoint2(raw.end, `walls[${index}].end`),
+    height: parsePositiveNumber(raw.height, `walls[${index}].height`),
+    thickness: parseNonNegativeNumber(raw.thickness, `walls[${index}].thickness`)
+  };
+}
+
+function parseMetricOpening(value: unknown, index: number): MetricOpening {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  const kind = raw.kind;
+  if (kind !== "door" && kind !== "window") {
+    throw new BadRequestException(`openings[${index}].kind는 door 또는 window여야 합니다.`);
+  }
+  return {
+    kind,
+    center: parsePoint2(raw.center, `openings[${index}].center`),
+    width: parsePositiveNumber(raw.width, `openings[${index}].width`),
+    height: parsePositiveNumber(raw.height, `openings[${index}].height`)
+  };
+}
+
+/**
+ * A4a — RoomPlan(iOS) 캡처 도면 계약(packages/types/src/roomplan-capture.ts) 값 검증.
+ * asset.captureFloorPlan(저장된 roomplan.json)과 요청 body의 captureFloorPlan 둘 다 이 함수로
+ * 검증한다 — 저장 시점(complete)과 읽기 시점(auto-register-preview override) 양쪽의 유일한 소비처.
+ */
+export function parseCaptureFloorPlanValue(value: unknown): RoomPlanCaptureFloorPlan {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new BadRequestException("captureFloorPlan이 필요합니다.");
+  }
+  const plan = value as Record<string, unknown>;
+  if (plan.frame !== "arkit-metric") {
+    throw new BadRequestException('captureFloorPlan.frame은 "arkit-metric"이어야 합니다.');
+  }
+  if (!Array.isArray(plan.walls) || plan.walls.length === 0) {
+    throw new BadRequestException("captureFloorPlan.walls는 비어 있지 않은 배열이어야 합니다.");
+  }
+
+  const openingsRaw = plan.openings;
+  if (openingsRaw !== undefined && !Array.isArray(openingsRaw)) {
+    throw new BadRequestException("captureFloorPlan.openings는 배열이어야 합니다.");
+  }
+
+  return {
+    frame: "arkit-metric",
+    walls: plan.walls.map((wall, index) => parseMetricWall(wall, index)),
+    openings: Array.isArray(openingsRaw) ? openingsRaw.map((opening, index) => parseMetricOpening(opening, index)) : []
+  };
+}
+
+/** body.captureFloorPlan 필수 검증 — auto-register-preview 스펙의 직접 단위테스트 대상. */
+export function parseCaptureFloorPlanInput(body: unknown): RoomPlanCaptureFloorPlan {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  return parseCaptureFloorPlanValue(raw.captureFloorPlan);
+}
+
+/** body.captureFloorPlan 있으면 검증, 없으면 undefined — intake/complete와 auto-register-preview override가 쓴다. */
+export function parseOptionalCaptureFloorPlanInput(body: unknown): RoomPlanCaptureFloorPlan | undefined {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  if (raw.captureFloorPlan == null) return undefined;
+  return parseCaptureFloorPlanValue(raw.captureFloorPlan);
 }
 
 export function parseRegisterInput(body: unknown): RegisterSplatAssetInput {

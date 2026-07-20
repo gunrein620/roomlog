@@ -11,7 +11,7 @@ import { SplatScene } from "./splat-scene";
 import { TourJoystick, type TourJoystickVector } from "./tour-joystick";
 import type { TourMoveInput } from "./tour-camera";
 import { SplatDropzone } from "./splat-dropzone";
-import { LISTING_TOUR_FURNITURE_LATEST_KEY, loadViewerFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
+import { listingTourFurnitureStorageKey, loadViewerFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
 import { SplatFurnitureLayer } from "./splat-furniture-layer";
 import {
   beginTourFurnitureDraft,
@@ -27,7 +27,12 @@ import {
   type TourFurnitureDraft
 } from "./splat-furniture-editor";
 import { SplatPlanWalls } from "./splat-plan-walls";
-import { loadPlanWallsFromBrowser, wallsToPlanBounds, type PlanBounds } from "./splat-plan-shape";
+import {
+  loadPlanWallsFromBrowser,
+  resolveViewerPlanWalls,
+  wallsToPlanBounds,
+  type PlanBounds
+} from "./splat-plan-shape";
 import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
@@ -123,13 +128,22 @@ export default function TourViewer() {
   const [showPlanWalls, setShowPlanWalls] = useState(
     () => typeof window !== "undefined" && resolveWallReplace(window.location.search, false)
   );
-  // 실 FloorPlan.walls(localStorage) — 있으면 플레이스홀더 4면 대신 실제 벽 형상을 쓴다.
-  // lazy 초기화(localStorage는 동기): 마운트 후 effect로 채우면 SplatScene의 planWallsKey가
+  // 브라우저 도면은 서버 자산 벽이 없을 때만 쓰는 폴백이다. lazy 초기화(localStorage는 동기):
+  // 마운트 후 effect로 채우면 SplatScene의 planWallsKey가
   // null→값으로 바뀌며 splat 자산을 통째로 두 번 로드한다(적대검증 실측).
-  const [planWallsState] = useState(() =>
+  const [browserPlanWallsState] = useState(() =>
     typeof window === "undefined" ? null : loadPlanWallsFromBrowser()
   );
-  const planWalls = planWallsState?.walls ?? null;
+  // undefined/null/잘못된 JSON은 모두 브라우저 폴백으로 해석한다. 서버 JSON도 아래 resolver에서
+  // 형태 검증을 통과해야만 실제 벽으로 채택된다.
+  const [serverPlanWallsPayload, setServerPlanWallsPayload] = useState<unknown>(null);
+  // 가구 배치 저장 키의 매물 신원. null이면 이 자산은 매물에 연결돼 있지 않다.
+  const [assetListingId, setAssetListingId] = useState<string | null>(null);
+  const planWallsState = useMemo(
+    () => resolveViewerPlanWalls(serverPlanWallsPayload, browserPlanWallsState),
+    [browserPlanWallsState, serverPlanWallsPayload]
+  );
+  const planWalls = planWallsState.walls;
   const planBounds = useMemo<PlanBounds | null>(
     () => (planWalls && planWalls.length > 0 ? wallsToPlanBounds(planWalls) : null),
     [planWalls]
@@ -231,8 +245,19 @@ export default function TourViewer() {
 
   function persistFurnitureLayout(furnitures: PlacedFurniture[]) {
     setFurnitureState({ furnitures, source: "listing-tour" });
+    // 매물별 키로 저장한다. 예전엔 매물 구분 없는 전역 키를 썼는데, 그러면 매물 A에서 놓은
+    // 가구가 매물 B의 투어에도 떴다(f3f4c40c에서 매물 상세·투어 읽기 경로를 이 키로 통일).
+    if (!assetListingId) {
+      // 매물 연결이 없으면 저장할 신원이 없다. 전역 키로 폴백하면 그게 곧 위 누출이므로,
+      // 화면에는 반영하되 저장은 하지 않고 그 사실을 알린다(조용히 성공한 척하지 않는다).
+      setFurnitureCatalogStatus("이 자산은 매물 연결이 없어 배치를 저장할 수 없습니다. 화면에만 반영됩니다.");
+      return;
+    }
     try {
-      window.localStorage.setItem(LISTING_TOUR_FURNITURE_LATEST_KEY, createTourFurnitureSavePayload(furnitures));
+      window.localStorage.setItem(
+        listingTourFurnitureStorageKey(assetListingId),
+        createTourFurnitureSavePayload(furnitures)
+      );
       setFurnitureCatalogStatus("이 브라우저에 가구 배치를 저장했습니다.");
     } catch {
       setFurnitureCatalogStatus("가구 배치는 화면에 반영됐지만 브라우저 저장에 실패했습니다.");
@@ -344,6 +369,8 @@ export default function TourViewer() {
     setShowHint(true);
     // 정합값은 asset의 파일에 대한 배치라, 다른 파일을 드롭하면 무의미 — 해제한다.
     setAssetTransform(null);
+    // 서버 벽도 해당 자산에 귀속된 형상이므로 로컬 파일로 바꾸면 브라우저 도면 폴백으로 되돌린다.
+    setServerPlanWallsPayload(null);
     setShowPlanWalls(resolveWallReplace(window.location.search, false));
   }, []);
 
@@ -357,6 +384,10 @@ export default function TourViewer() {
     getSplatAsset(assetId)
       .then((asset) => {
         if (cancelled) return;
+        // 공개 자산에 동봉된 벽을 최우선으로 채택한다. 미검증 API JSON은 resolver가 다시 거른다.
+        setServerPlanWallsPayload(asset.walls);
+        // 가구 배치 저장 키를 매물별로 가르기 위해 자산의 매물 연결을 붙든다.
+        setAssetListingId(asset.listingId);
         // PROCESSING: 아직 spz가 없다(fileUrl 빈 문자열). 예전엔 여기서 샘플로 조용히 폴백됐지만,
         // 그 은폐를 걷어내고 "제작 중" 안내를 전면에 띄운다.
         if (asset.status === "PROCESSING") {
@@ -442,7 +473,7 @@ export default function TourViewer() {
     console.info(
       "[splat-tour] plan-walls " +
         JSON.stringify({
-          source: planWallsState?.source ?? "none",
+          source: planWallsState.source,
           count: planWalls?.length ?? 0,
           bounds: planBounds
         })
@@ -1255,6 +1286,7 @@ export default function TourViewer() {
           activeId={activeId}
           livePosition={minimapPosition}
           onSelect={setActiveId}
+          planIsPlaceholder={planWallsState.source === "placeholder"}
           presets={[]}
         />
       </div>

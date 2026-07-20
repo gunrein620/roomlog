@@ -13,7 +13,8 @@ describe("splat tour furniture catalog drawer", () => {
 
   it("connects catalog selection and local persistence to the tour", () => {
     assert.match(source, /beginTourFurnitureDraft/);
-    assert.match(source, /LISTING_TOUR_FURNITURE_LATEST_KEY/);
+    // 매물별 키로 저장한다 — 전역 최신본 키는 매물 간 가구 누출 원인이라 제거됐다(f3f4c40c).
+    assert.match(source, /listingTourFurnitureStorageKey/);
     assert.match(source, /onFloorPointerDown/);
     assert.match(source, /onFurniturePointerDown/);
   });

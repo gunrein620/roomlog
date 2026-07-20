@@ -184,7 +184,7 @@ export function ListingDetailView({
       {has3DHero && listing.floorPlan3D ? (
         /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스). */
         <div className="detail-3d-hero" id="detail-3d-hero" aria-label={`${listing.title} 3D 도면 미리보기`}>
-          <ListingTourRoom3D floorPlan={listing.floorPlan3D} variant="hero" />
+          <ListingTourRoom3D floorPlan={listing.floorPlan3D} listingId={listing.listingNo} variant="hero" />
           <div className="hero-tour-cta-wrap">
             {/* 1인칭 진입 — 기존 하단 바와 동일한 정직 게이트(자산 있음/없음/데모)를 그대로 쓴다. */}
             {splatAssetId ? (
@@ -567,7 +567,7 @@ export function ListingDetailView({
             <div className="tour-preview-stage" aria-label="3D 투어 미리보기">
               {listing.floorPlan3D ? (
                 <div className="tour-room-3d">
-                  <ListingTourRoom3D floorPlan={listing.floorPlan3D} />
+                  <ListingTourRoom3D floorPlan={listing.floorPlan3D} listingId={listing.listingNo} />
                 </div>
               ) : (
                 <div className="tour-room-empty-wrap">

@@ -16,6 +16,11 @@ export interface PlanWallsState {
   source: PlanWallsSource;
 }
 
+export interface ViewerPlanWallsState {
+  walls: WheretoputWall3D[] | null;
+  source: "server" | PlanWallsSource | "placeholder";
+}
+
 export interface PlanBounds {
   minX: number;
   maxX: number;
@@ -244,6 +249,24 @@ export function planWallsFromPayload(payload: unknown): WheretoputWall3D[] {
       : [];
 
   return candidates.filter(isValidPlanWall);
+}
+
+/** 공개 자산 벽을 먼저 쓰고, 유효한 서버 벽이 없을 때만 기존 브라우저 도면으로 폴백한다. */
+export function resolveViewerPlanWalls(
+  serverPayload: unknown,
+  browserState: PlanWallsState | null
+): ViewerPlanWallsState {
+  const serverWalls = planWallsFromPayload(serverPayload);
+  if (serverWalls.length > 0) {
+    return { walls: serverWalls, source: "server" };
+  }
+
+  const browserWalls = browserState?.walls.filter(isValidPlanWall) ?? [];
+  if (browserState && browserWalls.length > 0) {
+    return { walls: browserWalls, source: browserState.source };
+  }
+
+  return { walls: null, source: "placeholder" };
 }
 
 /** 벽 하나의 바닥 발자국(XZ) 4모서리 — 도면 SVG 렌더용. */
