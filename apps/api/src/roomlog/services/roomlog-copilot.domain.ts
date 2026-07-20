@@ -142,7 +142,7 @@ export class RoomlogCopilotDomain {
       return {
         mode: "openai",
         reply: prepared.pendingAction
-          ? `${prepared.pendingAction.summary} 내용을 확인한 뒤 발송해 주세요.`
+          ? `${prepared.pendingAction.summary} 내용을 확인했습니다. 발송하려면 '승인' 또는 '진행해'를 입력해 주세요.`
           : summary || "독촉을 준비하지 못했습니다. 대상 청구를 다시 확인해 주세요.",
         pendingAction: prepared.pendingAction
       };
@@ -175,7 +175,7 @@ export class RoomlogCopilotDomain {
     return {
       mode: "openai",
       reply: prepared.pendingAction
-        ? `${prepared.pendingAction.summary} 내용을 확인한 뒤 발송해 주세요.`
+        ? `${prepared.pendingAction.summary} 내용을 확인했습니다. 발송하려면 '승인' 또는 '진행해'를 입력해 주세요.`
         : summary || "독촉을 준비하지 못했습니다. 대상 청구를 다시 확인해 주세요.",
       pendingAction: prepared.pendingAction
     };

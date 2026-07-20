@@ -20,7 +20,6 @@ import {
 } from "@/lib/manager-assistant";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { MANAGER_TICKET_ROUTES } from "@/lib/ticket-manager-nav";
-import { ManagerAssistantActionCard } from "./ManagerAssistantActionCard";
 import { shouldManagerAssistantStickToBottom } from "./manager-assistant-scroll";
 import {
   closeManagerAssistant,
@@ -325,15 +324,6 @@ export function ManagerAssistantSidePanel(_props: ManagerAssistantPanelProps) {
                   </p>
                 </div>
               )}
-              {session.pendingAction ? (
-                <ManagerAssistantActionCard
-                  action={session.pendingAction}
-                  busy={session.busy}
-                  onConfirm={session.confirmPendingAction}
-                  onCancel={session.cancelPendingAction}
-                  onReviseDunning={session.revisePendingDunning}
-                />
-              ) : null}
             </div>
             {session.notice ? (
               <p className="manager-ai-notice" role="status">
@@ -351,7 +341,7 @@ export function ManagerAssistantSidePanel(_props: ManagerAssistantPanelProps) {
                     disabled={session.inputDisabled}
                     placeholder={
                       session.pendingAction
-                        ? "발송하거나 취소한 뒤 대화를 이어가세요"
+                        ? "발송하려면 '승인' 또는 '진행해'를 입력하세요"
                         : session.notice
                           ? "AI 설정 후 사용할 수 있습니다"
                           : "처리할 관리 업무를 입력하세요"

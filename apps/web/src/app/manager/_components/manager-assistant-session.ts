@@ -28,6 +28,12 @@ export const initialManagerAssistantSessionState: ManagerAssistantSessionState =
   pendingAction: null,
 };
 
+export function managerAssistantPendingTextCommand(
+  value: string,
+): "confirm" | null {
+  return /^(승인|진행해)$/.test(value.trim()) ? "confirm" : null;
+}
+
 export function reduceManagerAssistantSession(
   state: ManagerAssistantSessionState,
   event: ManagerAssistantSessionEvent,

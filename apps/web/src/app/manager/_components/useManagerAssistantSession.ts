@@ -8,6 +8,7 @@ import type {
 } from "@roomlog/types";
 import { requestManagerCopilotChat } from "../../../lib/manager-copilot-api";
 import {
+  managerAssistantPendingTextCommand,
   toManagerCopilotMessages,
   type ManagerAssistantSessionEvent,
 } from "./manager-assistant-session";
@@ -100,7 +101,12 @@ function applyCopilotResponse(response: ManagerCopilotChatResponse) {
 async function submitText(content: string) {
   const state = getManagerAssistantState();
   const trimmed = content.trim();
-  if (!trimmed || state.busy || state.notice || state.pendingAction) return false;
+  if (!trimmed || state.busy || state.notice) return false;
+
+  const pendingCommand = state.pendingAction
+    ? managerAssistantPendingTextCommand(trimmed)
+    : null;
+  if (state.pendingAction && pendingCommand !== "confirm") return false;
 
   const userEntry: ManagerAssistantTranscriptEntry = {
     id: createEntryId(),
@@ -115,58 +121,15 @@ async function submitText(content: string) {
   try {
     const response = await requestManagerCopilotChat({
       messages: toManagerCopilotMessages(nextEntries),
+      ...(state.pendingAction
+        ? { confirmActionId: state.pendingAction.id }
+        : {}),
     });
     applyCopilotResponse(response);
     return true;
   } catch (error) {
     appendSystemError(error, "AI 응답을 받지 못했습니다.");
     return false;
-  } finally {
-    setManagerAssistantBusy(false);
-  }
-}
-
-async function resolvePendingAction(kind: "confirm" | "cancel") {
-  const state = getManagerAssistantState();
-  if (!state.pendingAction || state.busy) return;
-  setManagerAssistantBusy(true);
-
-  try {
-    const response = await requestManagerCopilotChat({
-      messages: toManagerCopilotMessages(state.entries),
-      ...(kind === "confirm"
-        ? { confirmActionId: state.pendingAction.id }
-        : { cancelActionId: state.pendingAction.id }),
-    });
-    applyCopilotResponse(response);
-  } catch (error) {
-    appendSystemError(error, "보류 작업을 처리하지 못했습니다.");
-  } finally {
-    setManagerAssistantBusy(false);
-  }
-}
-
-async function revisePendingDunning(messageText: string, channel: string) {
-  const state = getManagerAssistantState();
-  const preview = state.pendingAction?.dunningPreview;
-  if (!preview || state.busy) return;
-  setManagerAssistantBusy(true);
-
-  try {
-    const response = await requestManagerCopilotChat({
-      messages: toManagerCopilotMessages(state.entries),
-      intent: {
-        type: "billing.send_dunning",
-        source: "assistant",
-        billId: preview.billId,
-        prompt: `${preview.unitId}호 ${preview.billingMonth} 독촉 문구 수정`,
-        channel,
-        messageText,
-      },
-    });
-    applyCopilotResponse(response);
-  } catch (error) {
-    appendSystemError(error, "독촉 문구를 수정하지 못했습니다.");
   } finally {
     setManagerAssistantBusy(false);
   }
@@ -182,15 +145,11 @@ export function useManagerAssistantSession() {
     pendingAction: store.pendingAction,
     busy: store.busy,
     notice: store.notice,
-    inputDisabled:
-      store.busy || Boolean(store.notice) || Boolean(store.pendingAction),
+    inputDisabled: store.busy || Boolean(store.notice),
     selectMode(mode: ManagerAssistantMode) {
       dispatchManagerAssistantEvent({ type: "select_mode", mode });
     },
     submitText,
-    confirmPendingAction: () => resolvePendingAction("confirm"),
-    cancelPendingAction: () => resolvePendingAction("cancel"),
-    revisePendingDunning,
     appendVoiceEntry: appendEntry,
     applyCopilotResponse,
     setPendingAction(pendingAction: ManagerCopilotPendingAction | null) {

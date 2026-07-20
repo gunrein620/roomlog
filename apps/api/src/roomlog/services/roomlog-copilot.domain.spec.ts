@@ -321,7 +321,7 @@ describe("manager copilot chat domain", () => {
       });
 
       assert.equal(result.mode, "openai");
-      assert.match(result.reply, /내용을 확인한 뒤 발송/);
+      assert.match(result.reply, /승인.*진행해/);
       assert.equal(result.pendingAction?.kind, "billing.send_dunning");
       assert.match(result.pendingAction?.summary ?? "", /정예린/);
       assert.match(result.pendingAction?.summary ?? "", /정글빌라 411호/);

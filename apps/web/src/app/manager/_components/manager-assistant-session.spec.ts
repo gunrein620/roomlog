@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import * as managerAssistantSession from "./manager-assistant-session";
 import {
   initialManagerAssistantSessionState,
   reduceManagerAssistantSession,
@@ -54,5 +55,18 @@ describe("manager assistant session", () => {
       { role: "user", content: "이번 달 수납" },
       { role: "assistant", content: "수납률은 92%입니다." },
     ]);
+  });
+
+  it("treats only 승인 and 진행해 as pending-action text confirmation", () => {
+    const managerAssistantPendingTextCommand = (
+      managerAssistantSession as typeof managerAssistantSession & {
+        managerAssistantPendingTextCommand?: (value: string) => "confirm" | null;
+      }
+    ).managerAssistantPendingTextCommand;
+
+    assert.equal(managerAssistantPendingTextCommand?.("승인"), "confirm");
+    assert.equal(managerAssistantPendingTextCommand?.(" 진행해 "), "confirm");
+    assert.equal(managerAssistantPendingTextCommand?.("네"), null);
+    assert.equal(managerAssistantPendingTextCommand?.("승인 취소"), null);
   });
 });
