@@ -12,4 +12,10 @@ test("tenant AI intake confirms through chat without a separate filing button", 
   assert.match(hook, /draftForRequest/);
   assert.match(page, /ai\.draftForRequest/);
   assert.match(page, /setIsRequestSheetOpen\(true\)/);
+  assert.match(hook, /접수 초안을 작성하겠습니다/);
+  assert.doesNotMatch(page, /className="manager-ai-notice"/);
+  assert.match(page, /formatTenantRequestDescription/);
+  assert.match(page, /\[문제 내용\]/);
+  assert.match(page, /\[세부 유형\]/);
+  assert.match(page, /\[요청 사항\]/);
 });

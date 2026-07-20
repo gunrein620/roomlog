@@ -156,6 +156,10 @@ export function useTenantAiAssistant({
     if (!trimmed || busy) return false;
 
     appendMessage("tenant", trimmed);
+    appendMessage(
+      "assistant",
+      "말씀해 주신 내용으로 접수 초안을 작성하겠습니다. 잠시만 기다려 주세요.",
+    );
     setBusy(true);
     try {
       const session = await ensureSession();

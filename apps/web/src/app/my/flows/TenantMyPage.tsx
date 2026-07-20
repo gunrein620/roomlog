@@ -46,6 +46,7 @@ import {
   type TenantComplaintDraft,
   type TenantComplaintDraftImage
 } from "@/lib/tenant-complaint-draft";
+import type { TenantIntakeDraft } from "@/lib/tenant-intake-api";
 
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   current: null,
@@ -173,6 +174,17 @@ type TenantAnnouncementState =
 
 type TenantAiMode = "text" | "call";
 type TenantAiStage = "choose" | "text" | "voice";
+
+function formatTenantRequestDescription(draft: TenantIntakeDraft): string {
+  const detailCategory = draft.detailCategory?.trim() || draft.category?.trim();
+  const sections = [
+    `[문제 내용]\n${draft.summary.trim()}`,
+    detailCategory ? `[세부 유형]\n${detailCategory}` : "",
+    "[요청 사항]\n관리자 확인 후 필요한 조치를 요청드립니다."
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
+}
 
 // 계약 조건 한 줄 표기 — 실제 연결된 계약이 없으면 위조하지 않고 그 사실을 그대로 알린다.
 function tenancyTermsLabel(contract: TenantContractSummary | null): string {
@@ -1465,7 +1477,7 @@ export default function TenantMyPage({
       category: isDefect ? "하자" : "민원",
       title: draft.title,
       occurredAt: draft.occurredAt ? dateTimeLocalValue(draft.occurredAt) : "",
-      description: draft.summary
+      description: formatTenantRequestDescription(draft)
     });
     setRequestUrgency(draft.priority && [1, 2, 3, 4].includes(draft.priority) ? draft.priority as 1 | 2 | 3 | 4 : undefined);
     setRequestAvailableTimes(draft.availableTimes ?? "");
@@ -1991,11 +2003,6 @@ export default function TenantMyPage({
                   </div>
                 ),
               )}
-              {ai.busy ? (
-                <p className="manager-ai-notice" role="status">
-                  AI가 내용을 정리하고 있어요...
-                </p>
-              ) : null}
               {ai.filedComplaint && tenantVendorConnectionEligible(
                 ai.filedComplaint.responsibilityHint,
               ) ? (
