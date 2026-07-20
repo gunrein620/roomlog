@@ -4,7 +4,8 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { Armchair, Check, ChevronDown, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
+import { Armchair, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
+import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
 import { TourJoystick, type TourJoystickVector } from "./tour-joystick";
@@ -100,6 +101,8 @@ export default function TourViewer() {
   const [furnitureQuery, setFurnitureQuery] = useState("");
   const [furnitureLimit, setFurnitureLimit] = useState(30);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  const furnitureCategoryTabsRef = useRef<HTMLDivElement>(null);
+  const [furnitureCategoryScroll, setFurnitureCategoryScroll] = useState({ left: 0, max: 0 });
   const [furnitureState, setFurnitureState] = useState<SplatFurnitureState>({
     furnitures: [],
     source: "none"
@@ -167,6 +170,27 @@ export default function TourViewer() {
     [filteredFurnitureCatalog, furnitureLimit]
   );
 
+  const syncFurnitureCategoryScroll = useCallback(() => {
+    const tabList = furnitureCategoryTabsRef.current;
+    if (!tabList) return;
+    const max = Math.max(0, Math.round(tabList.scrollWidth - tabList.clientWidth));
+    const left = Math.max(0, Math.min(max, Math.round(tabList.scrollLeft)));
+    setFurnitureCategoryScroll((current) => (current.left === left && current.max === max ? current : { left, max }));
+  }, []);
+
+  useEffect(() => {
+    if (!isFurnitureCatalogOpen) return;
+    const tabList = furnitureCategoryTabsRef.current;
+    if (!tabList) return;
+
+    syncFurnitureCategoryScroll();
+    const resizeObserver = new ResizeObserver(syncFurnitureCategoryScroll);
+    resizeObserver.observe(tabList);
+    Array.from(tabList.children).forEach((child) => resizeObserver.observe(child));
+
+    return () => resizeObserver.disconnect();
+  }, [furnitureCategories, isFurnitureCatalogOpen, syncFurnitureCategoryScroll]);
+
   const handleCameraMove = useCallback(
     (position: [number, number, number]) => {
       setMinimapPosition(worldToMinimapPercent(position[0], position[2], planBounds));
@@ -179,6 +203,25 @@ export default function TourViewer() {
   const handleJoystickChange = useCallback((vector: TourJoystickVector | null) => {
     moveInputRef.current = vector ?? { forward: 0, strafe: 0 };
   }, []);
+
+  function handleFurnitureCategoryScroll() {
+    syncFurnitureCategoryScroll();
+  }
+
+  function handleFurnitureCategoryScrollInput(event: FormEvent<HTMLInputElement>) {
+    const tabList = furnitureCategoryTabsRef.current;
+    if (!tabList) return;
+    tabList.scrollLeft = Number(event.currentTarget.value);
+    syncFurnitureCategoryScroll();
+  }
+
+  function moveFurnitureCategoryScroll(direction: -1 | 1) {
+    const tabList = furnitureCategoryTabsRef.current;
+    if (!tabList) return;
+    const max = Math.max(0, tabList.scrollWidth - tabList.clientWidth);
+    tabList.scrollLeft = Math.max(0, Math.min(max, tabList.scrollLeft + direction * 180));
+    syncFurnitureCategoryScroll();
+  }
 
   function applyLoadedFurniture(state: SplatFurnitureState) {
     setFurnitureState(state);
@@ -670,6 +713,8 @@ export default function TourViewer() {
           }
 
           .tour-furniture-drawer {
+            --tour-scrollbar-track: #d8d8d8;
+            --tour-scrollbar-thumb: #8a8a8a;
             position: absolute;
             z-index: 6;
             bottom: 78px;
@@ -754,16 +799,93 @@ export default function TourViewer() {
             font: inherit;
           }
 
+          .tour-furniture-category-scroll-area {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+          }
+
           .tour-furniture-categories {
             display: flex;
             gap: 6px;
             overflow-x: auto;
-            padding-bottom: 2px;
+            min-width: 0;
+            padding-bottom: 0;
             scrollbar-width: none;
           }
 
           .tour-furniture-categories::-webkit-scrollbar {
             display: none;
+          }
+
+          .tour-furniture-category-scrollbar {
+            display: grid;
+            grid-template-columns: 28px minmax(0, 1fr) 28px;
+            align-items: center;
+            gap: 6px;
+            min-height: 30px;
+            padding: 3px 0;
+            border-top: 1px solid var(--tour-scrollbar-track);
+          }
+
+          .tour-furniture-category-scroll-button {
+            display: grid;
+            width: 28px;
+            height: 24px;
+            place-items: center;
+            border: 1px solid var(--tour-scrollbar-track);
+            border-radius: 7px;
+            background: var(--paper);
+            color: var(--tour-scrollbar-thumb);
+            cursor: pointer;
+          }
+
+          .tour-furniture-category-scroll-button:hover {
+            border-color: var(--tour-scrollbar-thumb);
+            background: #f1f1f1;
+          }
+
+          .tour-furniture-category-scroll-range {
+            width: 100%;
+            height: 14px;
+            margin: 0;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+          }
+
+          .tour-furniture-category-scroll-range::-webkit-slider-runnable-track {
+            height: 8px;
+            border-radius: 999px;
+            background: var(--tour-scrollbar-track);
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+          }
+
+          .tour-furniture-category-scroll-range::-webkit-slider-thumb {
+            width: 44px;
+            height: 14px;
+            margin-top: -3px;
+            border: 0;
+            border-radius: 999px;
+            appearance: none;
+            background: var(--tour-scrollbar-thumb);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+          }
+
+          .tour-furniture-category-scroll-range::-moz-range-track {
+            height: 8px;
+            border-radius: 999px;
+            background: var(--tour-scrollbar-track);
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+          }
+
+          .tour-furniture-category-scroll-range::-moz-range-thumb {
+            width: 44px;
+            height: 14px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--tour-scrollbar-thumb);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
           }
 
           .tour-furniture-category {
@@ -788,6 +910,29 @@ export default function TourViewer() {
             min-height: 0;
             overflow: auto;
             padding-right: 2px;
+          }
+
+          .tour-furniture-grid,
+          .tour-furniture-placed {
+            scrollbar-color: var(--tour-scrollbar-thumb) var(--tour-scrollbar-track);
+            scrollbar-width: thin;
+          }
+
+          .tour-furniture-grid::-webkit-scrollbar,
+          .tour-furniture-placed::-webkit-scrollbar {
+            width: 10px;
+          }
+
+          .tour-furniture-grid::-webkit-scrollbar-track,
+          .tour-furniture-placed::-webkit-scrollbar-track {
+            background: var(--tour-scrollbar-track);
+          }
+
+          .tour-furniture-grid::-webkit-scrollbar-thumb,
+          .tour-furniture-placed::-webkit-scrollbar-thumb {
+            border: 2px solid var(--tour-scrollbar-track);
+            border-radius: 999px;
+            background: var(--tour-scrollbar-thumb);
           }
 
           .tour-furniture-item {
@@ -1131,19 +1276,57 @@ export default function TourViewer() {
             type="search"
             value={furnitureQuery}
           />
-          <div aria-label="가구 카테고리" className="tour-furniture-categories" role="tablist">
-            {furnitureCategories.map((category) => (
-              <button
-                aria-selected={furnitureCategory === category}
-                className={`tour-furniture-category${furnitureCategory === category ? " is-active" : ""}`}
-                key={category}
-                onClick={() => setFurnitureCategory(category)}
-                role="tab"
-                type="button"
-              >
-                {category} {category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}
-              </button>
-            ))}
+          <div className="tour-furniture-category-scroll-area">
+            <div
+              aria-label="가구 카테고리"
+              className="tour-furniture-categories"
+              onScroll={handleFurnitureCategoryScroll}
+              ref={furnitureCategoryTabsRef}
+              role="tablist"
+            >
+              {furnitureCategories.map((category) => (
+                <button
+                  aria-selected={furnitureCategory === category}
+                  className={`tour-furniture-category${furnitureCategory === category ? " is-active" : ""}`}
+                  key={category}
+                  onClick={() => setFurnitureCategory(category)}
+                  role="tab"
+                  type="button"
+                >
+                  {category} {category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}
+                </button>
+              ))}
+            </div>
+            {furnitureCategoryScroll.max > 0 ? (
+              <div className="tour-furniture-category-scrollbar">
+                <button
+                  aria-label="카테고리 왼쪽으로 이동"
+                  className="tour-furniture-category-scroll-button"
+                  onClick={() => moveFurnitureCategoryScroll(-1)}
+                  type="button"
+                >
+                  <ChevronLeft aria-hidden size={15} strokeWidth={2.5} />
+                </button>
+                <input
+                  aria-label="가구 카테고리 가로 스크롤"
+                  className="tour-furniture-category-scroll-range"
+                  max={furnitureCategoryScroll.max}
+                  min={0}
+                  onInput={handleFurnitureCategoryScrollInput}
+                  step={1}
+                  type="range"
+                  value={furnitureCategoryScroll.left}
+                />
+                <button
+                  aria-label="카테고리 오른쪽으로 이동"
+                  className="tour-furniture-category-scroll-button"
+                  onClick={() => moveFurnitureCategoryScroll(1)}
+                  type="button"
+                >
+                  <ChevronRight aria-hidden size={15} strokeWidth={2.5} />
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="tour-furniture-grid">
             {visibleFurnitureCatalog.map((item) => {

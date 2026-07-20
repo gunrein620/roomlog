@@ -41,4 +41,21 @@ describe("splat tour furniture catalog drawer", () => {
   it("keeps every catalog card tall enough for its thumbnail when more items are shown", () => {
     assert.match(source, /\.tour-furniture-grid\s*\{[\s\S]*?grid-auto-rows:\s*58px;/);
   });
+
+  it("shows an explicit horizontal category scrollbar in the splat tour drawer", () => {
+    assert.match(source, /aria-label="가구 카테고리 가로 스크롤"/);
+    assert.match(source, /className="tour-furniture-category-scrollbar"/);
+    assert.match(source, /onInput=\{handleFurnitureCategoryScrollInput\}/);
+    assert.match(source, /aria-label="카테고리 왼쪽으로 이동"/);
+    assert.match(source, /aria-label="카테고리 오른쪽으로 이동"/);
+    assert.match(source, /\.tour-furniture-category-scrollbar\s*\{[\s\S]*?grid-template-columns:\s*28px minmax\(0, 1fr\) 28px;/);
+    assert.match(source, /\.tour-furniture-category-scroll-range::-webkit-slider-thumb\s*\{[\s\S]*?width:\s*44px;/);
+  });
+
+  it("matches the category scrollbar colors to the drawer's vertical scrollbars", () => {
+    assert.match(source, /\.tour-furniture-drawer\s*\{[\s\S]*?--tour-scrollbar-track:\s*#d8d8d8;[\s\S]*?--tour-scrollbar-thumb:\s*#8a8a8a;/);
+    assert.match(source, /\.tour-furniture-grid,\s*\.tour-furniture-placed\s*\{[\s\S]*?scrollbar-color:\s*var\(--tour-scrollbar-thumb\) var\(--tour-scrollbar-track\);/);
+    assert.match(source, /\.tour-furniture-category-scroll-range::-webkit-slider-runnable-track\s*\{[\s\S]*?background:\s*var\(--tour-scrollbar-track\);/);
+    assert.match(source, /\.tour-furniture-category-scroll-range::-webkit-slider-thumb\s*\{[\s\S]*?background:\s*var\(--tour-scrollbar-thumb\);/);
+  });
 });
