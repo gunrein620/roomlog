@@ -40,8 +40,14 @@ function extentsOf(min, max) {
   return [max[0] - min[0], max[1] - min[1], max[2] - min[2]].sort((a, b) => a - b);
 }
 
-/** 두 bbox의 "정렬된 세 변 길이" 비율이 허용 오차 안에 있는지 확인한다(축 재배치엔 둔감, 스케일엔 민감). */
-function assertScalePreserved(importBox, exportBox) {
+/**
+ * 두 bbox의 "정렬된 세 변 길이" 비율이 허용 오차 안에 있는지 확인한다.
+ * importBox는 Blender 월드 공간(Z-up), exportBox는 GLB 메시 로컬 공간이라 좌표계가 서로 다르다.
+ * 따라서 세 변을 정렬해 축 순열에는 불변이면서 실제 스케일 변화에는 민감하게 비교한다.
+ * 이 검사는 의도적으로 축 순서 자체는 검증하지 않는다. 웹 뷰어는 three.js Box3().setFromObject()로
+ * 노드 변환까지 적용하므로, 축 방향 검증은 이 함수의 책임이 아니다.
+ */
+export function assertScalePreserved(importBox, exportBox) {
   const importExtents = extentsOf(importBox.min, importBox.max);
   const exportExtents = extentsOf(exportBox.min, exportBox.max);
   for (let i = 0; i < 3; i += 1) {
@@ -50,14 +56,14 @@ function assertScalePreserved(importBox, exportBox) {
     if (a <= 0 || b <= 0) {
       throw new ConversionStageError(
         "scale-check",
-        `바운딩박스 변 길이가 0 이하입니다(import=${a}, export=${b}) — 빈 메시이거나 스케일 붕괴.`
+        `정렬된 바운딩박스 변 길이가 0 이하입니다(import=${a}, export=${b}) — 빈 메시이거나 스케일 붕괴.`
       );
     }
     const ratio = b / a;
     if (Math.abs(ratio - 1) > SCALE_DRIFT_TOLERANCE) {
       throw new ConversionStageError(
         "scale-check",
-        `Blender import↔export 사이 스케일이 어긋났습니다(변 ${i}: import=${a.toFixed(4)}m, export=${b.toFixed(4)}m, ratio=${ratio.toFixed(4)}). ` +
+        `Blender import↔export 사이 스케일이 어긋났습니다(정렬된 변 ${i}: import=${a.toFixed(4)}m, export=${b.toFixed(4)}m, ratio=${ratio.toFixed(4)}). ` +
           `Object Capture USDZ는 metersPerUnit=1이 확정 전제(mesh-anchor.ts) — 이 드리프트는 GLB를 그대로 쓰면 실치수 오류로 이어진다.`
       );
     }
