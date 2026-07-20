@@ -47,5 +47,17 @@ describe("listing-only 3D preview", () => {
     assert.match(listingTourSource, /className="hero-furniture-catalog-scroll"/);
     assert.match(listingTourSource, /variant !== "hero" && furnitureCategoryScroll\.max > 0/);
     assert.doesNotMatch(listingTourSource, /hero-furniture-list/);
+    assert.match(
+      globalCss,
+      /\.hero-stage \.hero-furniture-drawer\s*\{[\s\S]*?width: min\(240px, calc\(100% - 28px\)\)/
+    );
+    assert.match(
+      globalCss,
+      /\.hero-stage \.hero-furniture-catalog-scroll\s*\{[\s\S]*?max-height: 112px/
+    );
+    assert.match(
+      globalCss,
+      /\.hero-stage \.listing-tour-furniture-category-tabs\s*\{[\s\S]*?scrollbar-width: thin/
+    );
   });
 });
