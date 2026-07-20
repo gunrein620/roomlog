@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { RentalReport, RentalReportPeriodMonths } from "@roomlog/types";
-import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 
 // M-HOME-02(임대 현황 리포트) — API 집계 결과를 그대로 표현한다.
 // id="report"는 옛 앵커 링크 호환용.
@@ -94,13 +93,6 @@ export function ReportSection({
         {charts.map((chart) => (
           <ConstellationCard key={chart.chartId} {...chart} unavailable={!report} />
         ))}
-      </div>
-
-      <div className="manager-report-drills">
-        <Link href="/manager/billing/collection">수납 원장 보기</Link>
-        <Link href={MANAGER_CROSS.credit}>크레딧 원장 보기</Link>
-        <Link href={MANAGER_CROSS.contract}>계약·입주 현황 보기</Link>
-        <Link href={MANAGER_CROSS.ticketDash}>민원 원장 보기</Link>
       </div>
 
       <style>{`
@@ -228,19 +220,6 @@ export function ReportSection({
           width: 100%;
           height: auto;
           display: block;
-        }
-
-        .manager-report-drills {
-          display: flex;
-          gap: var(--space-md);
-          flex-wrap: wrap;
-        }
-
-        .manager-report-drills a {
-          color: var(--primary);
-          font-weight: 800;
-          font-size: var(--fs-caption);
-          text-decoration: none;
         }
 
         @media (max-width: 1160px) {
