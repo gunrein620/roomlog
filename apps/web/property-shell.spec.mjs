@@ -1450,6 +1450,16 @@ test("uses the Naver Maps SDK path instead of a mock map drawing", () => {
   assert.doesNotMatch(cssSource, /naver-map-fallback|map-entry-visual|map-mini-pin|draw-line|naver-place-label/);
 });
 
+test("keeps the map visible and explains current-location failures", () => {
+  assert.doesNotMatch(homeAppSource, /\{hasVisibleMapContext\s*\?\s*\(\s*<NaverMapPreview/);
+  assert.match(homeAppSource, /<NaverMapPreview[\s\S]*?className="map-stage"/);
+  assert.match(homeAppSource, /위치 권한을 허용해 주세요/);
+  assert.match(homeAppSource, /현재 위치를 확인할 수 없습니다/);
+  assert.match(homeAppSource, /다시 시도/);
+  assert.match(homeAppSource, /const currentLocationNotice/);
+  assert.match(cssSource, /\.map-location-notice\s*\{/);
+});
+
 test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
   assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);

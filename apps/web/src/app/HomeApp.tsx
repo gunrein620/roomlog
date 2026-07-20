@@ -1715,7 +1715,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setMapQueryStatus("idle");
     setMapLocationStatus("requesting");
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
+      (position) => {
         if (requestId !== mapContextRequestIdRef.current) return;
 
         const center = {
@@ -1728,30 +1728,43 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           return;
         }
 
-        const currentAddress = await reverseGeocodeMapPoint(center);
-        if (requestId !== mapContextRequestIdRef.current) return;
-        const isNearJungleCampus = distanceBetweenMeters(center, JUNGLE_CAMPUS_CENTER) <= 5000;
-        const fallbackAddress = isNearJungleCampus ? JUNGLE_CAMPUS_ADDRESS : CURRENT_LOCATION_AREA_LABEL;
-        const locationLabel = currentAddress ?? fallbackAddress;
-
         setMapSearchContext({
           source: "user-location",
-          label: locationLabel,
+          label: CURRENT_LOCATION_AREA_LABEL,
           center,
           radiusM: 3000,
-          queryType: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "road" : undefined,
-          precision: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "address" : undefined,
-          addressText: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? locationLabel : undefined,
-          description: locationLabel !== CURRENT_LOCATION_AREA_LABEL
-            ? `현재 위치 기준 · 반경 3km · ${locationLabel}`
-            : undefined
+          description: "현재 위치 기준 · 반경 3km"
         });
         setMapSearchMatchedListingNos([]);
         setHasResolvedMapContext(true);
-        setSelectedArea(locationLabel);
+        setSelectedArea(CURRENT_LOCATION_AREA_LABEL);
         setMapTopbarSearchValue("");
         setActiveMapResultTab("rooms");
         setMapLocationStatus("granted");
+
+        void reverseGeocodeMapPoint(center).then((currentAddress) => {
+          if (requestId !== mapContextRequestIdRef.current) return;
+
+          const isNearJungleCampus = distanceBetweenMeters(center, JUNGLE_CAMPUS_CENTER) <= 5000;
+          const fallbackAddress = isNearJungleCampus ? JUNGLE_CAMPUS_ADDRESS : CURRENT_LOCATION_AREA_LABEL;
+          const locationLabel = currentAddress ?? fallbackAddress;
+
+          setMapSearchContext((current) =>
+            current.source === "user-location" && current.center.lat === center.lat && current.center.lng === center.lng
+              ? {
+                  ...current,
+                  label: locationLabel,
+                  queryType: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "road" : undefined,
+                  precision: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? "address" : undefined,
+                  addressText: locationLabel !== CURRENT_LOCATION_AREA_LABEL ? locationLabel : undefined,
+                  description: locationLabel !== CURRENT_LOCATION_AREA_LABEL
+                    ? `현재 위치 기준 · 반경 3km · ${locationLabel}`
+                    : "현재 위치 기준 · 반경 3km"
+                }
+              : current
+          );
+          setSelectedArea(locationLabel);
+        });
       },
       (error) => {
         if (requestId !== mapContextRequestIdRef.current) return;
@@ -1985,6 +1998,14 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           : !hasResolvedMapContext
             ? "지역을 검색하거나 내 위치를 확인해 주세요"
             : "지역 검색 기준";
+  const currentLocationNotice =
+    mapLocationStatus === "requesting"
+      ? { title: "현재 위치를 확인하고 있습니다", description: "위치 확인이 끝나면 지도가 현재 위치로 이동합니다." }
+      : mapLocationStatus === "denied"
+        ? { title: "위치 권한을 허용해 주세요", description: "브라우저 설정에서 위치 권한을 허용한 뒤 다시 시도해 주세요." }
+        : mapLocationStatus === "unavailable"
+          ? { title: "현재 위치를 확인할 수 없습니다", description: "기본 지도를 보고 있거나, 다시 시도할 수 있습니다." }
+          : null;
   const mapListingDistanceLabel = (listing: { distance: string; distanceFromCenterM?: number }) =>
     isDistanceScopedMap && Number.isFinite(listing.distanceFromCenterM)
       ? `${isLocationScopedMap ? "현재 위치" : `${mapScopeLabel} 위치`} ${formatDistanceLabel(listing.distanceFromCenterM ?? 0)} · ${listing.distance}`
@@ -2992,43 +3013,26 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           ) : null}
 
           <div className="map-canvas-stack">
-            {hasVisibleMapContext ? (
-              <NaverMapPreview
-                className="map-stage"
-                center={mapSearchContext.center}
-                showCenterMarker={isDistanceScopedMap}
-                address={isSearchScopedMap ? mapSearchContext.addressText ?? mapAreaDisplayTitle : null}
-                title={isLocationScopedMap ? "현재 위치" : mapAreaDisplayTitle}
-                markers={mapMarkers}
-                onViewportChange={setMapViewport}
-              />
-            ) : (
-              <div className="map-unresolved-state" role="status">
-                <MapPinned size={30} strokeWidth={2.2} aria-hidden="true" />
-                <strong>
-                  {mapQueryStatus === "fallback"
-                    ? mapSearchErrorMessage
-                      ? "검색 서비스를 확인해 주세요"
-                      : areaMatchedMapItems.length > 0
-                      ? "지도 위치를 하나로 정할 수 없습니다"
-                      : "검색 위치를 확인할 수 없습니다"
-                    : mapLocationStatus === "requesting"
-                      ? "현재 위치를 확인하고 있습니다"
-                      : "표시할 지역이 없습니다"}
-                </strong>
-                <p>
-                  {mapQueryStatus === "fallback"
-                    ? mapSearchErrorMessage
-                      ? mapSearchErrorMessage
-                      : areaMatchedMapItems.length > 0
-                      ? "동일한 이름의 지역이 여러 곳이거나 매물 좌표가 없습니다. 시·군·구를 함께 검색해 주세요."
-                      : "일치하는 지역이나 매물이 없습니다. 지역명을 더 정확히 입력해 주세요."
-                    : mapLocationStatus === "requesting"
-                      ? "위치 확인이 끝나면 지도를 표시합니다."
-                      : "지역을 검색하거나 내 위치 보기를 선택해 주세요."}
-                </p>
-              </div>
-            )}
+            <NaverMapPreview
+              className="map-stage"
+              center={mapSearchContext.center}
+              showCenterMarker={isDistanceScopedMap}
+              address={isSearchScopedMap ? mapSearchContext.addressText ?? mapAreaDisplayTitle : null}
+              title={isLocationScopedMap ? "현재 위치" : mapAreaDisplayTitle}
+              markers={mapMarkers}
+              onViewportChange={setMapViewport}
+            />
+            {currentLocationNotice ? (
+              <aside className="map-location-notice" role="status">
+                <div>
+                  <strong>{currentLocationNotice.title}</strong>
+                  <p>{currentLocationNotice.description}</p>
+                </div>
+                {mapLocationStatus !== "requesting" ? (
+                  <button type="button" onClick={() => requestMapCurrentLocation(true)}>다시 시도</button>
+                ) : null}
+              </aside>
+            ) : null}
           </div>
 
           <div className="result-sheet">
