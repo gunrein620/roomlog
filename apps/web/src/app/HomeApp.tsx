@@ -1778,13 +1778,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     );
   }
 
-  useEffect(() => {
-    if (activeTab !== "map" || hasResolvedMapContext) return;
-    requestMapCurrentLocation();
-    // 지도 탭 첫 진입 때 한 번만 현재 위치를 요청한다. 검색/수동 위치 변경은 별도 액션이 소유한다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, hasResolvedMapContext]);
-
   // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
   // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
   // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).

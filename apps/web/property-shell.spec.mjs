@@ -1466,6 +1466,15 @@ test("uses desktop-tolerant geolocation settings", () => {
   assert.match(homeAppSource, /maximumAge:\s*1000 \* 60 \* 5/);
 });
 
+test("moves the map only after the current-location action", () => {
+  assert.doesNotMatch(
+    homeAppSource,
+    /useEffect\(\(\) => \{\s*if \(activeTab !== "map" \|\| hasResolvedMapContext\) return;\s*requestMapCurrentLocation\(\);/
+  );
+  assert.match(homeAppSource, /onClick=\{\(\) => requestMapCurrentLocation\(true\)\}/);
+  assert.match(naverMapPreviewSource, /map\.setCenter\(nextCenter\)/);
+});
+
 test("home recommendations use only the public trade listing feed", () => {
   assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
   assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);
