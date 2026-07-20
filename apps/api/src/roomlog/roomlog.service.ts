@@ -12,6 +12,7 @@ import {
 } from "@nestjs/common";
 import type {
   VendorAssignmentNoticeRecord,
+  VendorAssignmentSyncRecord,
   VendorRepairMessageRecord,
 } from "./vendor-workflow.repository";
 import { createHash } from "node:crypto";
@@ -7479,6 +7480,78 @@ export class RoomlogService implements OnModuleDestroy {
 
   ingestVendorAssignmentNotice(record: VendorAssignmentNoticeRecord) {
     this.ingestWorkflowMessage(record);
+  }
+
+  /**
+   * 업체 배정도 Prisma 저장소 직행 쓰기다 — 티켓 상태·배정 업체·수리 요청을 같은 id로
+   * 스토어에 반영해 관리자 대시보드(스토어 읽기)가 즉시 보게 하고, 다음 전체 미러
+   * persist가 stale 티켓 상태(RECEIVED)로 DB의 배정 결과를 되돌리는 것도 막는다.
+   * DB 커밋 이후에 불리므로 스토어에 없는 티켓이면 조용히 건너뛴다(throw 금지).
+   */
+  ingestVendorAssignment(record: VendorAssignmentSyncRecord) {
+    const ticket = this.store.tickets.find((item) => item.id === record.ticketId);
+    if (!ticket) return;
+    const syncedAt = record.updatedAt || now();
+
+    // 재배정: DB에서 CANCELLED 처리된 기존 열린 수리를 스토어에도 맞춘다.
+    for (const repair of this.store.repairs) {
+      if (
+        repair.ticketId === ticket.id &&
+        repair.id !== record.repairId &&
+        !["COMPLETED", "CANCELLED"].includes(repair.status)
+      ) {
+        repair.status = "CANCELLED";
+        repair.updatedAt = syncedAt;
+      }
+    }
+
+    if (!this.store.repairs.some((repair) => repair.id === record.repairId)) {
+      this.store.repairs.unshift({
+        id: record.repairId,
+        ticketId: ticket.id,
+        vendorId: record.vendorId,
+        status: "REQUESTED",
+        title: `${ticket.category} 처리 요청`,
+        description: record.requestNote,
+        completionPhotoUrls: [],
+        createdAt: syncedAt,
+        updatedAt: syncedAt
+      });
+    }
+
+    ticket.assignedVendorId = record.vendorId;
+    if (ticket.status !== "VENDOR_ASSIGNED") {
+      const fromStatus = ticket.status;
+      ticket.status = "VENDOR_ASSIGNED";
+      const complaint = this.store.complaints.find((item) => item.id === ticket.complaintId);
+      if (complaint) {
+        complaint.status = complaintStatusFor("VENDOR_ASSIGNED");
+        complaint.updatedAt = syncedAt;
+      }
+      this.pushHistory(ticket.id, record.managerId, fromStatus, "VENDOR_ASSIGNED", "업체 배정");
+    }
+    ticket.updatedAt = syncedAt;
+
+    // 수동 등록 업체(VendorProfile 직행)는 스토어 vendors에 없어 assignedVendor 이름
+    // 해석이 실패한다("미선정" 표시) — 배정 시점에 식별 정보를 upsert해 둔다.
+    let vendor = this.store.vendors.find((item) => item.id === record.vendorId);
+    if (!vendor) {
+      vendor = {
+        id: record.vendorId,
+        businessName: record.vendor.businessName,
+        contactPerson: record.vendor.contactPerson,
+        phone: record.vendor.phone,
+        serviceArea: record.vendor.serviceArea,
+        activeJobs: 0,
+        ...(record.vendor.createdByManagerId
+          ? { createdByManagerId: record.vendor.createdByManagerId }
+          : {}),
+        createdAt: syncedAt,
+        updatedAt: syncedAt
+      };
+      this.store.vendors.push(vendor);
+    }
+    vendor.activeJobs += 1;
   }
 
   private ingestWorkflowMessage(
