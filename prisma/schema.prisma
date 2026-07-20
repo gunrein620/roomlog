@@ -2297,6 +2297,7 @@ model TradeListing {
 model TenantFurniture {
   id            String   @id
   ownerTenantId String
+  importBatchId String? // 한 번의 RoomPlan 스캔 = 한 배치. 배치 단위 되돌리기용.
   category      String // TenantFurnitureCategory
   label         String?
   widthMm       Int
@@ -2309,6 +2310,7 @@ model TenantFurniture {
   createdAt     DateTime @default(now())
 
   @@index([ownerTenantId])
+  @@index([ownerTenantId, importBatchId])
 }
 
 // 임차인이 특정 매물 방(splat 정합 프레임)에 자기 가구를 놓은 배치안. 매물×임차인 1개.

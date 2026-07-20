@@ -102,6 +102,36 @@ describe("TenantFurnitureService RoomPlan import", () => {
     assert.equal(result[0].createdAt, "2026-07-17T00:00:00.000Z");
   });
 
+  it("assigns one shared importBatchId to every row from one import", async () => {
+    const created: Array<Record<string, unknown>> = [];
+    const prisma = {
+      tenantFurniture: {
+        create: ({ data }: { data: Record<string, unknown> }) => {
+          created.push(data);
+          return Promise.resolve({ ...data, createdAt: new Date("2026-07-17T00:00:00.000Z") });
+        }
+      },
+      $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations)
+    };
+    const service = serviceWithPrisma(prisma);
+
+    const result = await service.importRoomPlan("tenant-1", {
+      source: "roomplan",
+      objects: [
+        { category: "chair", dimensions: { w: 0.5, d: 0.5, h: 0.8 } },
+        { category: "table", dimensions: { w: 1.2, d: 0.7, h: 0.75 } }
+      ]
+    });
+
+    assert.equal(created.length, 2);
+    assert.match(String(created[0].importBatchId), /^tfb_[0-9a-f-]{36}$/);
+    assert.equal(created[1].importBatchId, created[0].importBatchId);
+    assert.deepEqual(
+      result.map((row) => row.importBatchId),
+      [created[0].importBatchId, created[0].importBatchId]
+    );
+  });
+
   it("rejects the whole payload before writes when a dimension is non-positive", async () => {
     let createCalls = 0;
     const service = serviceWithPrisma({
@@ -185,6 +215,82 @@ describe("TenantFurnitureService ownership", () => {
       deleted: true
     });
     assert.equal(deleted, true);
+  });
+
+  it("deletes only the requested batch owned by the caller", async () => {
+    let rows = [
+      { id: "target-1", ownerTenantId: "tenant-owner", importBatchId: "batch-target" },
+      { id: "target-2", ownerTenantId: "tenant-owner", importBatchId: "batch-target" },
+      { id: "other-batch", ownerTenantId: "tenant-owner", importBatchId: "batch-other" },
+      { id: "other-owner", ownerTenantId: "tenant-other", importBatchId: "batch-target" }
+    ];
+    let deleteWhere: Record<string, unknown> | undefined;
+    const service = serviceWithPrisma({
+      tenantFurniture: {
+        findFirst: async ({
+          where
+        }: {
+          where: { importBatchId: string; ownerTenantId?: string };
+        }) =>
+          rows.find(
+            (row) =>
+              row.importBatchId === where.importBatchId &&
+              (where.ownerTenantId === undefined || row.ownerTenantId === where.ownerTenantId)
+          ) ?? null,
+        deleteMany: async ({ where }: { where: { ownerTenantId: string; importBatchId: string } }) => {
+          deleteWhere = where;
+          const before = rows.length;
+          rows = rows.filter(
+            (row) =>
+              row.ownerTenantId !== where.ownerTenantId ||
+              row.importBatchId !== where.importBatchId
+          );
+          return { count: before - rows.length };
+        }
+      }
+    });
+
+    assert.deepEqual(await service.removeImportBatch("batch-target", "tenant-owner"), {
+      batchId: "batch-target",
+      deletedCount: 2
+    });
+    assert.deepEqual(deleteWhere, {
+      ownerTenantId: "tenant-owner",
+      importBatchId: "batch-target"
+    });
+    assert.deepEqual(rows.map((row) => row.id), ["other-batch", "other-owner"]);
+  });
+
+  it("rejects deleting a batch owned by another tenant", async () => {
+    let deleteCalled = false;
+    const foreignRow = {
+      id: "foreign-row",
+      ownerTenantId: "tenant-other",
+      importBatchId: "foreign-batch"
+    };
+    const service = serviceWithPrisma({
+      tenantFurniture: {
+        findFirst: async ({
+          where
+        }: {
+          where: { importBatchId: string; ownerTenantId?: string };
+        }) =>
+          foreignRow.importBatchId === where.importBatchId &&
+          (where.ownerTenantId === undefined || foreignRow.ownerTenantId === where.ownerTenantId)
+            ? foreignRow
+            : null,
+        deleteMany: async () => {
+          deleteCalled = true;
+          return { count: 1 };
+        }
+      }
+    });
+
+    await assert.rejects(
+      () => service.removeImportBatch("foreign-batch", "tenant-owner"),
+      ForbiddenException
+    );
+    assert.equal(deleteCalled, false);
   });
 });
 

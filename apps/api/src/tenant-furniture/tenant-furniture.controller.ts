@@ -74,6 +74,15 @@ export class TenantFurnitureController {
     return this.tenantFurnitureService.update(id, user.id, body);
   }
 
+  @Delete("batches/:batchId")
+  async removeImportBatch(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("batchId") batchId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.tenantFurnitureService.removeImportBatch(batchId, user.id);
+  }
+
   @Delete(":id")
   async remove(
     @Headers("authorization") authorization: string | undefined,

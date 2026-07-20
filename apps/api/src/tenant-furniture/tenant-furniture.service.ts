@@ -223,6 +223,7 @@ function furnitureView(row: PrismaTenantFurniture): TenantFurniture {
   return {
     id: row.id,
     ownerTenantId: row.ownerTenantId,
+    importBatchId: row.importBatchId ?? null,
     category: row.category as TenantFurnitureCategory,
     label: row.label,
     sizeMm: {
@@ -290,6 +291,7 @@ export class TenantFurnitureService {
 
   async importRoomPlan(ownerTenantId: string, payload: RoomPlanImportPayload): Promise<TenantFurniture[]> {
     const objects = validateRoomPlanPayload(payload);
+    const importBatchId = `tfb_${randomUUID()}`;
     const prepared = objects.map((object, index) => ({
       id: `tf_${randomUUID()}`,
       category: mapRoomPlanCategory(object.category),
@@ -302,6 +304,7 @@ export class TenantFurnitureService {
           data: {
             id: item.id,
             ownerTenantId,
+            importBatchId,
             category: item.category,
             label: null,
             widthMm: item.sizeMm.width,
@@ -351,6 +354,18 @@ export class TenantFurnitureService {
     await this.requireOwner(id, ownerTenantId);
     await this.getPrisma().tenantFurniture.delete({ where: { id } });
     return { id, deleted: true };
+  }
+
+  async removeImportBatch(
+    batchId: string,
+    ownerTenantId: string
+  ): Promise<{ batchId: string; deletedCount: number }> {
+    const normalizedBatchId = requireNonEmptyString(batchId, "batchId");
+    await this.requireBatchOwner(normalizedBatchId, ownerTenantId);
+    const result = await this.getPrisma().tenantFurniture.deleteMany({
+      where: { ownerTenantId, importBatchId: normalizedBatchId }
+    });
+    return { batchId: normalizedBatchId, deletedCount: result.count };
   }
 
   async getPlacement(tenantId: string, listingId: string): Promise<TenantFurniturePlacement | null> {
@@ -578,6 +593,23 @@ export class TenantFurnitureService {
       throw new ForbiddenException("본인 소유 가구만 수정하거나 삭제할 수 있습니다.");
     }
     return row;
+  }
+
+  private async requireBatchOwner(
+    importBatchId: string,
+    ownerTenantId: string
+  ): Promise<PrismaTenantFurniture> {
+    const prisma = this.getPrisma();
+    const ownedRow = await prisma.tenantFurniture.findFirst({
+      where: { importBatchId, ownerTenantId }
+    });
+    if (ownedRow) return ownedRow;
+
+    const existingRow = await prisma.tenantFurniture.findFirst({ where: { importBatchId } });
+    if (!existingRow) {
+      throw new NotFoundException(`RoomPlan 가져오기 배치를 찾을 수 없습니다: ${importBatchId}`);
+    }
+    throw new ForbiddenException("본인 소유 RoomPlan 가져오기 배치만 삭제할 수 있습니다.");
   }
 
   private async requireOwnedPlacementItems(

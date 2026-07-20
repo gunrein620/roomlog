@@ -42,6 +42,8 @@ export interface FurnitureDimensionsMm {
 export interface TenantFurniture {
   id: string;
   ownerTenantId: string;
+  /** RoomPlan 한 번의 스캔으로 생성된 행을 함께 되돌리기 위한 배치 ID. 그 외 출처는 null. */
+  importBatchId: string | null;
   category: TenantFurnitureCategory;
   /** 사용자 편집 가능한 라벨(없으면 category 기반 표시). */
   label: string | null;
