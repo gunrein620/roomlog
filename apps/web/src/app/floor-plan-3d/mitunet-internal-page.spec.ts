@@ -185,6 +185,17 @@ test("does not suppress a furniture selection click after an earlier camera drag
   assert.match(pointerDownHandler, /suppressCanvasClick = false;/);
 });
 
+test("dismisses the furniture toolbar when the simulation is clicked outside the selected furniture", () => {
+  assert.match(
+    viewerSource,
+    /function clearFurnitureSelection\(\) \{[\s\S]*?selectedFurniture = null;[\s\S]*?updateFurnitureInteractionUi\(\);/,
+  );
+  assert.match(
+    viewerSource,
+    /document\.addEventListener\("pointerdown", event => \{[\s\S]*?sceneCanvas\.contains\(event\.target\)[\s\S]*?furnitureToolbar\.contains\(event\.target\)[\s\S]*?clearFurnitureSelection\(\);/,
+  );
+});
+
 test("keeps furniture placement available in both 3D and Floor while the slide drawer starts closed", () => {
   assert.match(
     viewerSource,

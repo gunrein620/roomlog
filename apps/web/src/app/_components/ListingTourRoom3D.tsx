@@ -392,8 +392,18 @@ export default function ListingTourRoom3D({
     setSaveMessage(`${nextFurniture.name} 위치를 잡았습니다. ✓로 배치를 확정하세요.`);
   }
 
+  function clearSelectedFurniture() {
+    if (!selectedFurnitureId || pendingFurniture) return;
+    setSelectedFurnitureId(null);
+    setSaveMessage("가구 선택을 해제했습니다.");
+  }
+
   function handleFloorPointerDown(event: ThreeEvent<PointerEvent>) {
-    if (event.button !== 0 || !pendingFurniture) return;
+    if (event.button !== 0) return;
+    if (!pendingFurniture) {
+      clearSelectedFurniture();
+      return;
+    }
     event.stopPropagation();
     placePendingFurniture(event.point);
     setIsFurnitureDragging(true);
@@ -405,10 +415,18 @@ export default function ListingTourRoom3D({
   }
 
   function handleWallPointerDown(_wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) {
-    if (event.button !== 0 || !pendingFurniture) return;
+    if (event.button !== 0) return;
+    if (!pendingFurniture) {
+      clearSelectedFurniture();
+      return;
+    }
     event.stopPropagation();
     placePendingFurniture(event.point);
     setIsFurnitureDragging(true);
+  }
+
+  function handleScenePointerMissed() {
+    clearSelectedFurniture();
   }
 
   function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
@@ -592,6 +610,7 @@ export default function ListingTourRoom3D({
         onFloorPointerDown={handleFloorPointerDown}
         onFloorPointerMove={handleFloorPointerMove}
         onFurniturePointerDown={handleFurniturePointerDown}
+        onScenePointerMissed={handleScenePointerMissed}
         onPendingCancel={cancelPendingFurniturePlacement}
         onPendingConfirm={confirmPendingFurniturePlacement}
         pendingFurnitureCanBeDeleted={isPendingFurnitureEditing}

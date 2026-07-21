@@ -622,6 +622,7 @@ export function RoomlogThreeFloorPlanView({
   onFloorPointerDown,
   onFloorPointerMove,
   onFurniturePointerDown,
+  onScenePointerMissed,
   onPendingCancel,
   onPendingConfirm,
   onPendingDelete,
@@ -665,6 +666,7 @@ export function RoomlogThreeFloorPlanView({
   // 가구 드래그 이동용 — 바닥 위 커서 이동을 컨테이너에 전달한다.
   onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
+  onScenePointerMissed?: () => void;
   // 배치 중에는 취소/완료, 선택 중에는 이동/양방향 회전/삭제 버튼을 표시한다.
   onPendingCancel?: () => void;
   onPendingConfirm?: () => void;
@@ -751,7 +753,7 @@ export function RoomlogThreeFloorPlanView({
         backgroundRepeat: "repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat",
       } : undefined}
     >
-      <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} gl={{ alpha: listingPreview }} shadows>
+      <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} gl={{ alpha: listingPreview }} onPointerMissed={onScenePointerMissed} shadows>
         {/* 상세 3D 히어로는 fitDistanceScale로 방을 화면에 더 작게 배치한다(bounds 오토핏 위에 접붙임). */}
         {controlMode === "orbit" ? (
           <RoomCameraAutoFit bounds={wallBounds} distanceScale={fitDistanceScale} previewFit={previewFit} />

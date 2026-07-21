@@ -11,6 +11,10 @@ const viewerSource = readFileSync(
   join(process.cwd(), "src/app/floor-plan-3d/room-scene/RoomlogThreeFloorPlanView.tsx"),
   "utf8"
 );
+const listingTourSource = readFileSync(
+  join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"),
+  "utf8"
+);
 const globalCss = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
 
 function between(source: string, start: string, end: string) {
@@ -26,8 +30,8 @@ describe("RoomLog furniture floating controls", () => {
     assert.match(viewerSource, /const selectedFurniture = furnitureData\.find/);
     const selectedToolbar = between(
       viewerSource,
-      "{selectedFurniture && !pendingFurniture",
-      "{pendingFurniture && onPendingConfirm"
+      "{sceneInteractive && selectedFurniture && !pendingFurniture",
+      "{sceneInteractive && pendingFurniture && onPendingConfirm"
     );
 
     for (const label of ["가구 이동", "왼쪽으로 90도 회전", "오른쪽으로 90도 회전", "가구 삭제"]) {
@@ -41,7 +45,7 @@ describe("RoomLog furniture floating controls", () => {
   it("shows optional deletion between rotation and confirmation while furniture follows the pointer", () => {
     const pendingToolbar = between(
       viewerSource,
-      "{pendingFurniture && onPendingConfirm",
+      "{sceneInteractive && pendingFurniture && onPendingConfirm",
       "</group>"
     );
 
@@ -97,6 +101,21 @@ describe("RoomLog furniture floating controls", () => {
     assert.match(editorSource, /onSelectedRotateRight=\{\(\) => rotateSelectedFurniture\(1\)\}/);
     assert.match(editorSource, /onSelectedDelete=\{deleteSelectedFurniture\}/);
     assert.match(editorSource, /setSelectedFurnitureId\(nextFurniture\.id\)/);
+  });
+
+  it("dismisses the selected-furniture toolbar when the detailed scene is clicked elsewhere", () => {
+    assert.match(listingTourSource, /function clearSelectedFurniture\(\)[\s\S]*?setSelectedFurnitureId\(null\)/);
+    assert.match(
+      listingTourSource,
+      /function handleFloorPointerDown[\s\S]*?if \(!pendingFurniture\) \{[\s\S]*?clearSelectedFurniture\(\);[\s\S]*?return;/
+    );
+    assert.match(
+      listingTourSource,
+      /function handleWallPointerDown[\s\S]*?if \(!pendingFurniture\) \{[\s\S]*?clearSelectedFurniture\(\);[\s\S]*?return;/
+    );
+    assert.match(listingTourSource, /onScenePointerMissed=\{handleScenePointerMissed\}/);
+    assert.match(viewerSource, /onScenePointerMissed,/);
+    assert.match(viewerSource, /<Canvas[\s\S]*?onPointerMissed=\{onScenePointerMissed\}/);
   });
 
   it("uses the compact neutral MitUNet icon toolbar styling", () => {
