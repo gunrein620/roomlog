@@ -6,6 +6,7 @@ import test from "node:test";
 const component = readFileSync(join(process.cwd(), "src/app/floor-plan-3d/owner-furniture/OwnerFurnitureSimulation.tsx"), "utf8");
 
 test("owner furniture page loads handoff and uses the shared first-person experience", () => {
+  assert.match(component, /className="owner-furniture-page is-3d-simulation-open"/);
   assert.match(component, /readOwnerFurnitureDraft/);
   assert.match(component, /experience="owner"/);
   assert.match(component, /initialSimulationMode="furniture"/);

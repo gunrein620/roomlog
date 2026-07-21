@@ -4448,6 +4448,36 @@ p {
 
 .is-3d-simulation-open .listing-tour-furniture-grid small {
   font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.is-3d-simulation-open .hero-stage .listing-tour-furniture-head strong {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-source-tabs button {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-search input {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-category-tabs button {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-grid strong {
+  font-weight: 700;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-actions button {
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .hero-furniture-reopen {

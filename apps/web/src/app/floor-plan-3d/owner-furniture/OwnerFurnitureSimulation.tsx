@@ -73,7 +73,7 @@ export default function OwnerFurnitureSimulation() {
   if (!draft) return <main className="owner-furniture-loading">3D 가구 배치를 불러오는 중입니다…</main>;
 
   return (
-    <main className="owner-furniture-page">
+    <main className="owner-furniture-page is-3d-simulation-open">
       <header className="owner-furniture-header">
         <div>
           <small>ROOMLOG 3D</small>
