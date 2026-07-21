@@ -714,6 +714,7 @@ export function RoomlogThreeFloorPlanView({
   hideHint = false,
   horizontalScale = 1,
   listingPreview = false,
+  mitunetLayout: mitunetLayoutProp,
   mitunetPlan,
   moveInputRef = null,
   onWalkStatusChange,
@@ -773,6 +774,10 @@ export function RoomlogThreeFloorPlanView({
   horizontalScale?: number;
   /** 등록 카드 전용: 건물 바깥 장식과 카메라 조작을 숨긴다. */
   listingPreview?: boolean;
+  /** 미터 레이아웃을 이미 갖고 있을 때(예: 캡처 도면 변환 결과) 직접 넘긴다 — 주어지면
+   * mitunetPlan에서 파생하지 않고 이걸 그대로 쓴다. 원본 이미지가 없으므로 장식 바닥은
+   * 생략된다(아래 hasMitunetStyle/MitunetDecorativeFloor 분기 참조). */
+  mitunetLayout?: MitunetSceneLayout;
   mitunetPlan?: MitunetFloorPlan;
   moveInputRef?: { current: { forward: number; strafe: number } } | null;
   onWalkStatusChange?: (status: FloorPlanWalkStatus) => void;
@@ -820,7 +825,10 @@ export function RoomlogThreeFloorPlanView({
   wallsData: WheretoputWall3D[];
 }) {
   const sceneHorizontalScale = Math.max(0.1, horizontalScale);
-  const mitunetLayout = useMemo(() => mitunetPlan ? createMitunetSceneLayout(mitunetPlan) : null, [mitunetPlan]);
+  const mitunetLayout = useMemo(
+    () => mitunetLayoutProp ?? (mitunetPlan ? createMitunetSceneLayout(mitunetPlan) : null),
+    [mitunetLayoutProp, mitunetPlan]
+  );
   const wallBounds = mitunetLayout
     ? {
         centerX: mitunetLayout.bounds.centerX,
@@ -829,7 +837,9 @@ export function RoomlogThreeFloorPlanView({
         height: mitunetLayout.bounds.depth
       }
     : computeWallBoundsXZ(wallsData);
-  const hasMitunetStyle = Boolean(mitunetLayout && mitunetPlan);
+  // layout만 있고 plan(원본 이미지)이 없는 경우(캡처 도면)도 mitunet 룩(밤하늘·조명)은 그대로
+  // 적용한다 — 장식 바닥만 아래에서 별도로 건너뛴다.
+  const hasMitunetStyle = Boolean(mitunetLayout);
   const selectedFurniture = furnitureData.find((furniture) => furniture.id === selectedFurnitureId) ?? null;
   const sceneInteractive = controlMode === "orbit";
   const pointerSceneInteractive = sceneInteractive && (!furnitureFirstPersonEnabled || furnitureInteractionMode === "select");
