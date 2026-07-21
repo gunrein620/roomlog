@@ -10,6 +10,7 @@ import { cameraRelativeWalkDelta, combineWalkInput, resolveWalkInputCode, type W
 import { createFloorPlanWalkWorld } from "../walk/walk-scene";
 
 const WALK_EYE_HEIGHT_METERS = 1.45;
+const WALK_INITIAL_LOOK_DROP_METERS = 0.28;
 const WALK_SPEED_METERS_PER_SECOND = 1.5;
 const LOOK_SENSITIVITY = 0.002;
 
@@ -74,7 +75,7 @@ export function FloorPlanWalkControls({
       WALK_EYE_HEIGHT_METERS,
       spawn.z,
       spawn.x,
-      WALK_EYE_HEIGHT_METERS,
+      WALK_EYE_HEIGHT_METERS - WALK_INITIAL_LOOK_DROP_METERS,
       spawn.z - 1,
       false
     );

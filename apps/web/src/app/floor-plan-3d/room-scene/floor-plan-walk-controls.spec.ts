@@ -28,6 +28,11 @@ describe("floor plan walk controls", () => {
     assert.match(source, /WALK_SPEED_METERS_PER_SECOND \* Math\.min\(delta, 0\.1\)/);
   });
 
+  it("starts with a slightly downward view so a compact room does not look like a blank wall", () => {
+    assert.match(source, /const WALK_INITIAL_LOOK_DROP_METERS = 0\.28/);
+    assert.match(source, /WALK_EYE_HEIGHT_METERS - WALK_INITIAL_LOOK_DROP_METERS/);
+  });
+
   it("ignores movement keys from editable controls", () => {
     assert.match(source, /tagName === "input" \|\| tagName === "textarea" \|\| target\.isContentEditable/);
   });
