@@ -70,6 +70,7 @@ export type ListingFloorPlan3D = {
 };
 
 type SimulationMode = "overview" | "walk" | "furniture";
+type FurnitureSourceTab = "mine" | "catalog";
 
 type ListingTourRoom3DProps = {
   floorPlan: ListingFloorPlan3D;
@@ -180,6 +181,7 @@ export default function ListingTourRoom3D({
   // hero 패널 접기 — 우상단 "가구 편집" 버튼으로 여닫고, 도면을 가리지 않도록 기본은 닫아 둔다.
   const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(initialSimulationMode === "furniture");
   const [catalogQuery, setCatalogQuery] = useState("");
+  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureSourceTab>(experience === "owner" ? "mine" : "catalog");
   const [furnitureCategoryFilter, setFurnitureCategoryFilter] = useState("전체");
   const [furnitureLimit, setFurnitureLimit] = useState(30);
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
@@ -893,119 +895,149 @@ export default function ListingTourRoom3D({
 
         {isPlacementOpen ? (
           <div className="listing-tour-furniture-body">
-            {tenantFurnitures.length > 0 ? (
-              <section className="listing-tour-furniture-body" aria-label="내 가구">
-                <div className="listing-tour-furniture-head">
-                  <div>
-                    <strong>내 가구</strong>
-                    <span>등록한 가구를 이 방에 놓아보세요.</span>
-                  </div>
-                </div>
-                <div className="listing-tour-furniture-grid">
-                  {tenantFurnitures.map((furniture) => {
-                    const item = tenantFurnitureCatalogItem(furniture);
+            <div aria-label="가구 목록 종류" className="listing-tour-furniture-source-tabs" role="tablist">
+              <button
+                aria-selected={furnitureSourceTab === "mine"}
+                className={furnitureSourceTab === "mine" ? "active" : ""}
+                onClick={() => setFurnitureSourceTab("mine")}
+                role="tab"
+                type="button"
+              >
+                내 가구 <small>{tenantFurnitures.length}</small>
+              </button>
+              <button
+                aria-selected={furnitureSourceTab === "catalog"}
+                className={furnitureSourceTab === "catalog" ? "active" : ""}
+                onClick={() => setFurnitureSourceTab("catalog")}
+                role="tab"
+                type="button"
+              >
+                등록 가구 <small>{furnitureCatalog.length}</small>
+              </button>
+            </div>
 
-                    return (
-                      <button
-                        className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
-                        key={item.furniture_id}
-                        onClick={() => handleTenantFurnitureSelect(furniture)}
-                        type="button"
-                      >
-                        <span
-                          className="listing-tour-furniture-thumb"
-                          style={{ backgroundColor: "var(--surface-container-high)" }}
-                          aria-hidden="true"
+            {furnitureSourceTab === "mine" ? (
+              <section className="listing-tour-furniture-source-panel" aria-label="내 가구">
+                <p className="listing-tour-furniture-source-copy">등록한 가구를 이 방에 놓아보세요.</p>
+                {tenantFurnitures.length > 0 ? (
+                  <div className="hero-furniture-catalog-scroll">
+                    <div className="listing-tour-furniture-grid">
+                      {tenantFurnitures.map((furniture) => {
+                        const item = tenantFurnitureCatalogItem(furniture);
+
+                        return (
+                          <button
+                            className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
+                            key={item.furniture_id}
+                            onClick={() => handleTenantFurnitureSelect(furniture)}
+                            type="button"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="listing-tour-furniture-thumb"
+                              style={{ backgroundColor: "var(--surface-container-high)" }}
+                            >
+                              {TENANT_FURNITURE_CATEGORY_ICONS[furniture.category] ?? "◇"}
+                            </span>
+                            <strong>{item.name}</strong>
+                            <small>{furniture.sizeMm.width} × {furniture.sizeMm.depth} mm</small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="listing-tour-furniture-source-empty">
+                    <p>등록한 내 가구가 없습니다.</p>
+                    <button onClick={() => setFurnitureSourceTab("catalog")} type="button">
+                      등록 가구 보기
+                    </button>
+                  </div>
+                )}
+              </section>
+            ) : (
+              <section className="listing-tour-furniture-source-panel" aria-label="등록 가구">
+                <div className="listing-tour-furniture-search">
+                  <input
+                    aria-label="가구 검색"
+                    onChange={(event) => setCatalogQuery(event.target.value)}
+                    placeholder="침대, 책상, 의자 검색"
+                    type="search"
+                    value={catalogQuery}
+                  />
+                </div>
+                <div
+                  aria-label="가구 카테고리"
+                  className="listing-tour-furniture-category-tabs"
+                  onScroll={handleFurnitureCategoryScroll}
+                  ref={furnitureCategoryTabsRef}
+                  role="tablist"
+                >
+                  {furnitureCategoryFilters.map((category) => (
+                    <button
+                      aria-selected={furnitureCategoryFilter === category}
+                      className={furnitureCategoryFilter === category ? "active" : ""}
+                      key={category}
+                      onClick={() => setFurnitureCategoryFilter(category)}
+                      role="tab"
+                      type="button"
+                    >
+                      {category}
+                      <small>{category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}</small>
+                    </button>
+                  ))}
+                </div>
+                {variant !== "hero" && furnitureCategoryScroll.max > 0 ? (
+                  <input
+                    aria-label="가구 카테고리 가로 스크롤"
+                    className="listing-tour-furniture-category-scrollbar"
+                    max={furnitureCategoryScroll.max}
+                    min={0}
+                    onInput={handleFurnitureCategoryScrollChange}
+                    step={1}
+                    type="range"
+                    value={furnitureCategoryScroll.left}
+                  />
+                ) : null}
+                <div className="hero-furniture-catalog-scroll">
+                  <div className="listing-tour-furniture-grid">
+                    {visibleFurnitureCatalog.map((item) => {
+                      const imageUrl = furnitureImageUrl(item);
+
+                      return (
+                        <button
+                          className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
+                          key={item.furniture_id}
+                          onClick={() => handleFurnitureSelect(item)}
+                          type="button"
                         >
-                          {TENANT_FURNITURE_CATEGORY_ICONS[furniture.category] ?? "◇"}
-                        </span>
-                        <strong>{item.name}</strong>
-                        <small>{furniture.sizeMm.width} × {furniture.sizeMm.depth} mm</small>
-                      </button>
-                    );
-                  })}
+                          <span className="listing-tour-furniture-thumb" style={{ backgroundColor: item.color }}>
+                            {imageUrl ? (
+                              <img
+                                alt=""
+                                decoding="async"
+                                loading="lazy"
+                                onError={(event) => {
+                                  event.currentTarget.style.display = "none";
+                                }}
+                                src={imageUrl}
+                              />
+                            ) : null}
+                          </span>
+                          <strong>{item.name}</strong>
+                          <small>{item.brand}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {visibleFurnitureCatalog.length < filteredCatalog.length ? (
+                    <button className="listing-tour-furniture-more" onClick={() => setFurnitureLimit((limit) => limit + 30)} type="button">
+                      가구 더 보기 ({visibleFurnitureCatalog.length}/{filteredCatalog.length})
+                    </button>
+                  ) : null}
                 </div>
               </section>
-            ) : null}
-            <div className="listing-tour-furniture-search">
-              <input
-                aria-label="가구 검색"
-                onChange={(event) => setCatalogQuery(event.target.value)}
-                placeholder="침대, 책상, 의자 검색"
-                type="search"
-                value={catalogQuery}
-              />
-            </div>
-            <div
-              aria-label="가구 카테고리"
-              className="listing-tour-furniture-category-tabs"
-              onScroll={handleFurnitureCategoryScroll}
-              ref={furnitureCategoryTabsRef}
-              role="tablist"
-            >
-              {furnitureCategoryFilters.map((category) => (
-                <button
-                  aria-selected={furnitureCategoryFilter === category}
-                  className={furnitureCategoryFilter === category ? "active" : ""}
-                  key={category}
-                  onClick={() => setFurnitureCategoryFilter(category)}
-                  role="tab"
-                  type="button"
-                >
-                  {category}
-                  <small>{category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}</small>
-                </button>
-              ))}
-            </div>
-            {variant !== "hero" && furnitureCategoryScroll.max > 0 ? (
-              <input
-                aria-label="가구 카테고리 가로 스크롤"
-                className="listing-tour-furniture-category-scrollbar"
-                max={furnitureCategoryScroll.max}
-                min={0}
-                onInput={handleFurnitureCategoryScrollChange}
-                step={1}
-                type="range"
-                value={furnitureCategoryScroll.left}
-              />
-            ) : null}
-            <div className="hero-furniture-catalog-scroll">
-            <div className="listing-tour-furniture-grid">
-              {visibleFurnitureCatalog.map((item) => {
-                const imageUrl = furnitureImageUrl(item);
-
-                return (
-                  <button
-                    className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
-                    key={item.furniture_id}
-                    onClick={() => handleFurnitureSelect(item)}
-                    type="button"
-                  >
-                    <span className="listing-tour-furniture-thumb" style={{ backgroundColor: item.color }}>
-                      {imageUrl ? (
-                        <img
-                          alt=""
-                          decoding="async"
-                          loading="lazy"
-                          onError={(event) => {
-                            event.currentTarget.style.display = "none";
-                          }}
-                          src={imageUrl}
-                        />
-                      ) : null}
-                    </span>
-                    <strong>{item.name}</strong>
-                    <small>{item.brand}</small>
-                  </button>
-                );
-              })}
-            </div>
-            {visibleFurnitureCatalog.length < filteredCatalog.length ? (
-              <button className="listing-tour-furniture-more" onClick={() => setFurnitureLimit((limit) => limit + 30)} type="button">
-                가구 더 보기 ({visibleFurnitureCatalog.length}/{filteredCatalog.length})
-              </button>
-            ) : null}
-            </div>
+            )}
             {variant !== "hero" ? <p className="listing-tour-furniture-hint">
               가구를 놓거나 배치된 가구를 클릭해 끌어서 옮기고, 가구 위 버튼으로 ✓확정·⟳회전·✕취소·🗑삭제하세요.
             </p> : null}
