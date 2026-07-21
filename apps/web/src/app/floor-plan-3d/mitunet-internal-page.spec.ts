@@ -75,6 +75,9 @@ test("proxies MitUNet inference requests from the RoomLog origin", () => {
   assert.match(apiRouteSource, /integration-config/);
   assert.match(apiRouteSource, /healthz/);
   assert.match(apiRouteSource, /applyRoomLogMitunetFormOptions/);
+  assert.match(apiRouteSource, /timeoutMs: 90_000/);
+  assert.match(apiRouteSource, /timeoutMs: 5_000/);
+  assert.match(apiRouteSource, /MITUNET_UPSTREAM_TIMEOUT/);
 });
 
 test("keeps completion inside RoomLog instead of using legacy external-window messaging", () => {
