@@ -28,3 +28,11 @@ test("bridges the cached floor-plan token before requesting GPT room materials",
     "session bridge must run before the room-material request",
   );
 });
+
+test("RoomLog furnishing uses the shared owner simulation while standalone keeps legacy furnishing", () => {
+  assert.match(viewerSource, /beginRoomLogFurnitureSimulation/);
+  assert.match(viewerSource, /if \(roomLogFlowRequested && roomLogContext\)/);
+  assert.match(viewerSource, /currentFurniturePlacements\(\)/);
+  assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{[\s\S]*?roomLogFlowRequested[\s\S]*?enterFurnishingStage/);
+  assert.match(viewerSource, /if \(!furnitureCatalog\.length \|\| !furnitureCatalogPromise\)/);
+});

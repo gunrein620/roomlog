@@ -55,6 +55,12 @@ test("keeps RoomLog completion behavior in the source module instead of runtime 
   );
 });
 
+test("provides a request-scoped handoff to the shared owner furniture route", () => {
+  assert.match(integrationSource, /export function beginRoomLogFurnitureSimulation/);
+  assert.match(integrationSource, /roomlogOwnerFurnitureDraft:\$\{context\.requestId\}/);
+  assert.match(integrationSource, /\/floor-plan-3d\/owner-furniture/);
+});
+
 test("disables detected-door auto scale only in the RoomLog viewer", () => {
   const transform = (mitunetProxy as Record<string, unknown>)[
     "transformRoomLogReviewEditorModule"

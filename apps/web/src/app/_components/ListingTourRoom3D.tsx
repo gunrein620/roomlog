@@ -69,7 +69,35 @@ export type ListingFloorPlan3D = {
   mitunet?: MitunetFloorPlan;
 };
 
-type SimulationMode = "walk" | "furniture";
+type SimulationMode = "overview" | "walk" | "furniture";
+
+type ListingTourRoom3DProps = {
+  floorPlan: ListingFloorPlan3D;
+  simulationOpen?: boolean;
+  listingId: string;
+  /** hero = 상세 히어로 스테이지, sheet = 기존 3D 시트 */
+  variant?: "sheet" | "hero";
+  experience?: "listing" | "owner";
+  initialSimulationMode?: SimulationMode;
+  onOwnerFurnitureSave?: (furnitures: ListingFloorPlanFurniture[]) => void;
+};
+
+function serializeFurnitureLayout(furnitures: PlacedFurniture[]): ListingFloorPlanFurniture[] {
+  return furnitures.map((furniture) => ({
+    id: furniture.id,
+    furniture_id: furniture.furniture_id,
+    name: furniture.name,
+    color: furniture.color,
+    length: furniture.length,
+    modelUrl: furniture.modelUrl,
+    position: furniture.position,
+    rotation: furniture.rotation,
+    scale: furniture.scale,
+    placement: furniture.placement,
+    sizeMm: furniture.sizeMm,
+    source: furniture.source
+  }));
+}
 
 function readSavedFurnitures(listingId: string) {
   if (typeof window === "undefined") return null;
@@ -132,26 +160,23 @@ function sameFurnitureTransform(left: PlacedFurniture, right: PlacedFurniture) {
 }
 
 export default function ListingTourRoom3D({
+  experience = "listing",
   floorPlan,
+  initialSimulationMode = "walk",
   simulationOpen,
   listingId,
+  onOwnerFurnitureSave,
   variant = "sheet"
-}: {
-  floorPlan: ListingFloorPlan3D;
-  simulationOpen?: boolean;
-  listingId: string;
-  /** hero = 상세 히어로 스테이지(좌측 글래스 가구 패널 + hover 하이라이트), sheet = 기존 3D 시트 */
-  variant?: "sheet" | "hero";
-}) {
+}: ListingTourRoom3DProps) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
-  const [simulationMode, setSimulationMode] = useState<SimulationMode>("walk");
+  const [simulationMode, setSimulationMode] = useState<SimulationMode>(initialSimulationMode);
   const [furnitureInteractionMode, setFurnitureInteractionMode] = useState<FurnitureInteractionMode>("explore");
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const walkMoveInputRef = useRef<TourJoystickVector>({ forward: 0, strafe: 0 });
   const furniturePointerLockRequestRef = useRef<(() => void) | null>(null);
-  const [isPlacementOpen, setIsPlacementOpen] = useState(false);
+  const [isPlacementOpen, setIsPlacementOpen] = useState(initialSimulationMode === "furniture");
   // hero 패널 접기 — 우상단 "가구 편집" 버튼으로 여닫고, 도면을 가리지 않도록 기본은 닫아 둔다.
-  const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(false);
+  const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(initialSimulationMode === "furniture");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [furnitureCategoryFilter, setFurnitureCategoryFilter] = useState("전체");
   const [furnitureLimit, setFurnitureLimit] = useState(30);
@@ -244,7 +269,7 @@ export default function ListingTourRoom3D({
 
   useEffect(() => {
     try {
-      const savedFurnitures = readSavedFurnitures(listingId);
+      const savedFurnitures = experience === "owner" ? null : readSavedFurnitures(listingId);
       setPlacedFurnitures(
         ((savedFurnitures ?? floorPlan.furnitures) as unknown as PlacedFurniture[]).map((furniture) =>
           normalizeMitunetListingFurniture(furniture, floorPlan.mitunet)
@@ -264,7 +289,7 @@ export default function ListingTourRoom3D({
     setIsPendingFurnitureEditing(false);
     setSelectedFurnitureId(null);
     setFurnitureInteractionMode("explore");
-  }, [floorPlan, listingId]);
+  }, [experience, floorPlan, listingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -388,8 +413,9 @@ export default function ListingTourRoom3D({
 
     if (simulationOpen) {
       if (pendingFurniture) cancelPendingFurniturePlacement();
-      setSimulationMode("walk");
-      closeFurnitureEditor();
+      setSimulationMode(initialSimulationMode);
+      if (initialSimulationMode === "furniture") openFurnitureEditor();
+      else closeFurnitureEditor();
       return;
     }
 
@@ -579,7 +605,7 @@ export default function ListingTourRoom3D({
   }
 
   function selectSimulationMode(nextMode: SimulationMode) {
-    if (nextMode === "walk" && pendingFurniture) cancelPendingFurniturePlacement();
+    if (nextMode !== "furniture" && pendingFurniture) cancelPendingFurniturePlacement();
     walkMoveInputRef.current = { forward: 0, strafe: 0 };
     setSelectedFurnitureId(null);
     setIsFurnitureDragging(false);
@@ -684,25 +710,17 @@ export default function ListingTourRoom3D({
   }
 
   function saveFurnitureLayout() {
+    if (experience === "owner") {
+      onOwnerFurnitureSave?.(serializeFurnitureLayout(placedFurnitures));
+      setSaveMessage("등록용 가구 배치를 저장했습니다.");
+      return;
+    }
     let payload: string;
 
     try {
       payload = JSON.stringify({
         savedAt: Date.now(),
-        furnitures: placedFurnitures.map((furniture) => ({
-          id: furniture.id,
-          furniture_id: furniture.furniture_id,
-          name: furniture.name,
-          color: furniture.color,
-          length: furniture.length,
-          modelUrl: furniture.modelUrl,
-          position: furniture.position,
-          rotation: furniture.rotation,
-          scale: furniture.scale,
-          placement: furniture.placement,
-          sizeMm: furniture.sizeMm,
-          source: furniture.source
-        }))
+        furnitures: serializeFurnitureLayout(placedFurnitures)
       });
       window.localStorage.setItem(listingTourFurnitureStorageKey(listingId), payload);
       setHasSavedFurnitureLayout(true);
@@ -793,13 +811,13 @@ export default function ListingTourRoom3D({
       {variant === "hero" && simulationOpen ? (
         <div aria-label="3D 시뮬레이션 모드" className="listing-tour-simulation-modes" role="tablist">
           <button
-            aria-selected={simulationMode === "walk"}
-            className={simulationMode === "walk" ? "active" : ""}
-            onClick={() => selectSimulationMode("walk")}
+            aria-selected={simulationMode === (experience === "owner" ? "overview" : "walk")}
+            className={simulationMode === (experience === "owner" ? "overview" : "walk") ? "active" : ""}
+            onClick={() => selectSimulationMode(experience === "owner" ? "overview" : "walk")}
             role="tab"
             type="button"
           >
-            워킹뷰
+            {experience === "owner" ? "전체보기" : "워킹뷰"}
           </button>
           <button
             aria-selected={simulationMode === "furniture"}
@@ -973,7 +991,7 @@ export default function ListingTourRoom3D({
             </p> : null}
             <div className="listing-tour-furniture-actions">
               <button onClick={saveFurnitureLayout} type="button">
-                저장
+                {experience === "owner" ? "3D 도면 저장하기" : "저장"}
               </button>
               <button disabled={!hasSavedFurnitureLayout} onClick={resetFurnitureLayout} type="button">
                 원래 배치로 되돌리기

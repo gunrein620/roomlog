@@ -113,6 +113,24 @@ function validatedSizeMm(value, index) {
   return { width: dimensions[0], height: dimensions[1], depth: dimensions[2] };
 }
 
+function validatedFurniturePlacement(value, index) {
+  if (value == null) return undefined;
+  if (value.mode === "floor") return { mode: "floor" };
+  if (value.mode === "surface") {
+    if (typeof value.supportFurnitureId !== "string" || !value.supportFurnitureId.trim()) {
+      return invalidFurniture(index, "surface placement supportFurnitureId is required");
+    }
+    return { mode: "surface", supportFurnitureId: value.supportFurnitureId.trim() };
+  }
+  if (value.mode === "wall") {
+    if (typeof value.wallId !== "string" || !value.wallId.trim()) {
+      return invalidFurniture(index, "wall placement wallId is required");
+    }
+    return { mode: "wall", wallId: value.wallId.trim() };
+  }
+  return invalidFurniture(index, "placement mode is invalid");
+}
+
 function furnitureDisplayName(filename) {
   const withoutExtension = filename.replace(/\.glb$/i, "");
   const withoutIkeaPrefix = withoutExtension.replace(/^ikea[-_ ]+/i, "");
@@ -147,6 +165,7 @@ function mapFurniturePlacements(furnitures, hasPhysicalScale) {
       return invalidFurniture(index, "rotationY must be finite");
     }
     const sizeMm = validatedSizeMm(furniture.sizeMm, index);
+    const placement = validatedFurniturePlacement(furniture.placement, index);
 
     return {
       id,
@@ -163,6 +182,7 @@ function mapFurniturePlacements(furnitures, hasPhysicalScale) {
       rotation: [0, furniture.rotationY, 0],
       scale: hasPhysicalScale ? 1 : UNCALIBRATED_FURNITURE_SCALE,
       sizeMm,
+      ...(placement ? { placement } : {}),
     };
   });
 }
@@ -235,5 +255,45 @@ export function sendRoomLogCompletion(
   const returnUrl = new URL("/?flow=listing#my-page", context.returnOrigin);
   returnUrl.searchParams.set("floorPlanRequestId", context.requestId);
   window.location.href = returnUrl.toString();
+  return message;
+}
+
+export function beginRoomLogFurnitureSimulation(
+  context,
+  plan,
+  sourceName,
+  furnitures = [],
+  previewMode = "floor",
+  previewImageB64,
+) {
+  const message = buildRoomLogCompletion(
+    context,
+    plan,
+    sourceName,
+    furnitures,
+    previewMode,
+    previewImageB64,
+  );
+  if (!globalThis.window?.localStorage) {
+    throw new Error("RoomLog storage is not available in this browser");
+  }
+
+  const draft = {
+    requestId: context.requestId,
+    savedAt: Date.now(),
+    floorPlan: {
+      name: message.payload.name,
+      walls3D: [],
+      furnitures: message.payload.furnitures,
+      mitunet: message.payload,
+    },
+  };
+  const storageKey = `roomlogOwnerFurnitureDraft:${context.requestId}`;
+  window.localStorage.setItem(storageKey, JSON.stringify(draft));
+
+  const furnitureUrl = new URL("/floor-plan-3d/owner-furniture", context.returnOrigin);
+  furnitureUrl.searchParams.set("requestId", context.requestId);
+  furnitureUrl.searchParams.set("returnOrigin", context.returnOrigin);
+  window.location.href = furnitureUrl.toString();
   return message;
 }

@@ -1762,7 +1762,7 @@
   <div class="segmented" id="view-switch" role="tablist" aria-label="Plan view">
     <button class="segment active" data-view="original" role="tab" aria-selected="true" disabled>2D</button>
     <button class="segment" data-view="3d" role="tab" aria-selected="false" disabled>3D</button>
-    <button class="segment" id="furnish-btn" data-view="furnishing" role="tab" aria-selected="false" disabled>Floor</button>
+    <button class="segment" id="furnish-btn" data-view="furnishing" role="tab" aria-selected="false" disabled>가구 배치</button>
   </div>
 </div>
 
@@ -1894,6 +1894,7 @@ import {
   planExportFilename,
 } from "/viewer-assets/plan-export.mjs";
 import {
+  beginRoomLogFurnitureSimulation,
   readRoomLogContext,
   sendRoomLogCompletion,
 } from "/viewer-assets/roomlog-integration.mjs";
@@ -4136,6 +4137,16 @@ async function enterFurnishingStage() {
   const entering = currentView === "3d";
   let roomMaterialWarning = "";
   if (!currentComposedPlan || inFlight || (!entering && currentView !== "furnishing")) return;
+  if (roomLogFlowRequested && roomLogContext) {
+    beginRoomLogFurnitureSimulation(
+      roomLogContext,
+      currentComposedPlan,
+      currentSourceName,
+      currentFurniturePlacements(),
+      "floor",
+    );
+    return;
+  }
   if (entering) {
     inFlight = true;
     updateEditorControls();
@@ -4203,6 +4214,10 @@ cameraViewButtons.forEach(button => button.addEventListener("click", () => {
   else void applyCameraPreset(view);
 }));
 furniturePanelOpenButton.addEventListener("click", () => {
+  if (roomLogFlowRequested) {
+    void enterFurnishingStage();
+    return;
+  }
   setFurniturePanelOpen(true);
   void loadFurnitureCatalogForPlacement();
 });

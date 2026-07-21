@@ -28,6 +28,17 @@ floor-plan-3d/
   → 저장 payload (컨테이너가 조립해서 API 전송)
 ```
 
+## 등록자 가구 배치 전달
+
+매물 등록에서 MitUNet은 도면 추출과 전체보기까지만 담당한다. RoomLog 연동 상태에서 `가구 배치`를 누르면 현재 도면을 `roomlogOwnerFurnitureDraft:<requestId>`에 저장하고 `/floor-plan-3d/owner-furniture`로 이동한다.
+
+등록자 가구 화면은 매물 상세와 같은 `ListingTourRoom3D` 및 `FurnitureFirstPersonControls`를 사용한다. 따라서 WASD·마우스 시야, `2` 카탈로그, `E` 집기, `1/3` 회전, `Q` 확정, `R` 제거와 자동 바닥·가구 위·벽 표면 인식은 한 구현을 공유한다. 등록 완료 시 확정된 가구만 `roomlogListingFloorPlan3D:<requestId>`에 저장하고 매물 등록 화면으로 돌아간다.
+
+- MitUNet 연동/초안 계약: `owner-furniture-handoff.ts`, `services/mitunet/viewer/roomlog-integration.mjs`
+- 등록자 화면: `owner-furniture/OwnerFurnitureSimulation.tsx`
+- 공용 조작과 렌더링: `../_components/ListingTourRoom3D.tsx`, `room-scene/FurnitureFirstPersonControls.tsx`
+- 표면 판정: `furniture-placement/surface-placement.ts`
+
 ## 의존성 규칙 (충돌 방지의 핵심 — 반드시 지킬 것)
 
 | 폴더 | import 가능한 것 | import 금지 |

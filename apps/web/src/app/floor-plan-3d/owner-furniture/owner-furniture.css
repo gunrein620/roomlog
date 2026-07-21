@@ -1,0 +1,42 @@
+.owner-furniture-page {
+  min-height: 100dvh;
+  background: var(--surface);
+  color: var(--on-surface);
+}
+
+.owner-furniture-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 10px 24px;
+}
+
+.owner-furniture-header div {
+  display: grid;
+  gap: 2px;
+}
+
+.owner-furniture-header small,
+.owner-furniture-header span {
+  color: var(--on-surface-variant);
+}
+
+.owner-furniture-page .listing-tour-room3d {
+  height: calc(100dvh - 64px);
+}
+
+.owner-furniture-error,
+.owner-furniture-loading {
+  display: grid;
+  gap: 12px;
+  margin: 20vh auto;
+  max-width: 520px;
+  padding: 24px;
+}
+
+@media (max-width: 720px) {
+  .owner-furniture-header span {
+    display: none;
+  }
+}
