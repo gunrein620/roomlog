@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { Thread } from "@roomlog/types";
+import type { ManagerMessagingRecipient, Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
 import {
   deleteManagerThread,
@@ -29,7 +29,6 @@ import {
   LinkButton,
   ScreenHeader,
   formatDateTime,
-  gridStyle,
   sectionTitleStyle,
 } from "../_components";
 import { BuildingFilter } from "./BuildingFilter";
@@ -37,7 +36,16 @@ import { NewConversationForm } from "./NewConversationForm";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ building?: string; q?: string }>;
+type MessagingStatusFilter =
+  | "all"
+  | "needs-reply"
+  | "today"
+  | "general"
+  | "contract"
+  | "defect"
+  | "announcement";
+
+type SearchParams = Promise<{ building?: string; q?: string; status?: string }>;
 
 async function deleteManagerThreadAction(formData: FormData) {
   "use server";
@@ -64,19 +72,28 @@ async function deleteManagerThreadAction(formData: FormData) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const [{ building, q }, threads, recipients] = await Promise.all([
+  const [{ building, q, status }, threads, recipients] = await Promise.all([
     searchParams,
     listManagerThreads(),
     listManagerMessagingRecipients(),
   ]);
-  const buildingOptions = getBuildingOptions(threads, recipients);
-  const showUnassigned = hasUnassignedBuilding(threads);
+  const uniqueThreads = uniqueThreadsByConversationTarget(threads);
+  const recipientsWithLatestThreads = withLatestGeneralThreadIds(recipients, uniqueThreads);
+  const buildingOptions = getBuildingOptions(uniqueThreads, recipientsWithLatestThreads);
+  const showUnassigned = hasUnassignedBuilding(uniqueThreads);
   const activeBuilding = resolveBuildingFilter(building, buildingOptions, showUnassigned);
-  const filteredThreads = filterThreadsByBuilding(threads, activeBuilding);
+  const filteredThreads = filterThreadsByBuilding(uniqueThreads, activeBuilding);
   const searchQuery = q?.trim() ?? "";
   const searchedThreads = filterThreadsBySearch(filteredThreads, searchQuery);
-  const sortedThreads = sortManagerThreads(searchedThreads);
+  const activeStatus = resolveStatusFilter(status);
+  const statusFilteredThreads = filterThreadsByStatus(searchedThreads, activeStatus);
+  const sortedThreads = sortManagerThreads(statusFilteredThreads);
   const needsReply = searchedThreads.filter(managerThreadNeedsReply).length;
+  const todayCount = searchedThreads.filter(isTodayThread).length;
+  const contractOrNoticeCount = searchedThreads.filter(
+    (thread) => thread.context === "contract" || thread.context === "announcement",
+  ).length;
+  const statusFilterOptions = getStatusFilterOptions(searchedThreads);
 
   return (
     <>
@@ -118,6 +135,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           }}
         >
           {activeBuilding ? <input type="hidden" name="building" value={activeBuilding} /> : null}
+          {activeStatus !== "all" ? <input type="hidden" name="status" value={activeStatus} /> : null}
           <label
             style={{
               minWidth: 0,
@@ -168,145 +186,125 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </div>
       </div>
 
-      <NewConversationForm
-        recipients={recipients}
-        initialBuilding={activeBuilding}
-      />
+      <div className="manager-messaging-summary-grid" aria-label="대화 요약">
+        <SummaryTile label="전체 대화" value={searchedThreads.length} />
+        <SummaryTile label="답장 필요" value={needsReply} emphasis />
+        <SummaryTile label="오늘 업데이트" value={todayCount} />
+        <SummaryTile label="계약·공지" value={contractOrNoticeCount} />
+      </div>
 
-      <section>
+      <nav className="manager-messaging-status-filters" aria-label="대화 상태 필터">
+        {statusFilterOptions.map((option) => (
+          <Link
+            key={option.key}
+            href={managerMessagingHubHref({
+              building: activeBuilding,
+              q: searchQuery,
+              status: option.key,
+            })}
+            className={`manager-messaging-status-filter${
+              option.key === activeStatus ? " is-active" : ""
+            }`}
+            aria-current={option.key === activeStatus ? "page" : undefined}
+          >
+            <span>{option.label}</span>
+            <strong>{option.count}</strong>
+          </Link>
+        ))}
+      </nav>
+
+      <div className="manager-messaging-workspace">
+        <section className="manager-messaging-thread-list">
           <div style={sectionTitleStyle}>건물별 · 답장 필요 상단</div>
           {sortedThreads.length > 0 ? (
-          <div style={gridStyle}>
-            {sortedThreads.map((thread) => (
-              <ThreadCard key={thread.id} thread={thread} />
-            ))}
-          </div>
+            <div className="manager-messaging-thread-table" role="list">
+              {sortedThreads.map((thread) => (
+                <ThreadRow key={thread.id} thread={thread} />
+              ))}
+            </div>
           ) : searchQuery ? (
             <Card style={{ color: "var(--on-surface-variant)", textAlign: "center" }}>
               &ldquo;{searchQuery}&rdquo; 검색 결과가 없습니다.
             </Card>
           ) : (
             <Card style={{ color: "var(--on-surface-variant)", textAlign: "center" }}>
-              이 건물에는 아직 시작된 대화가 없습니다.
+              이 조건에는 아직 시작된 대화가 없습니다.
             </Card>
           )}
-      </section>
+        </section>
+        <aside className="manager-messaging-composer-panel" aria-label="새 대화 시작">
+          <NewConversationForm
+            recipients={recipientsWithLatestThreads}
+            initialBuilding={activeBuilding}
+          />
+        </aside>
+      </div>
     </>
   );
 }
 
-function ThreadCard({ thread }: { thread: Thread }) {
+function SummaryTile({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string;
+  value: number;
+  emphasis?: boolean;
+}) {
+  return (
+    <section className={`manager-messaging-summary-tile${emphasis ? " is-emphasis" : ""}`}>
+      <span>{label}</span>
+      <strong>{value}건</strong>
+    </section>
+  );
+}
+
+function ThreadRow({ thread }: { thread: Thread }) {
   const needsReply = managerThreadNeedsReply(thread);
   const confirmationLabel = managerThreadConfirmationLabel(thread);
   const locationLabel = formatThreadLocation(thread);
+
   return (
-    <Card
-      style={{
-        height: 206,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-sm)",
-        border: needsReply ? "1.5px solid var(--primary)" : "1px solid var(--border)",
-      }}
+    <article
+      className={`manager-messaging-thread-row${needsReply ? " is-needs-reply" : ""}`}
+      role="listitem"
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)" }}>
-        <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+      <div className="manager-messaging-thread-row__meta">
+        <div className="manager-messaging-thread-row__badges">
           <Badge emphasis={needsReply}>{locationLabel}</Badge>
           <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
           {thread.isManagerTicketUnread ? (
-            <span
-              aria-label="티켓 미확인"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "var(--space-xs)",
-                padding: "var(--space-xs) var(--space-sm)",
-                borderRadius: "var(--radius-full)",
-                color: "var(--primary)",
-                background: "var(--primary-container)",
-                fontSize: "var(--fs-caption)",
-                fontWeight: 800,
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: "var(--space-sm)",
-                  height: "var(--space-sm)",
-                  borderRadius: "var(--radius-full)",
-                  background: "var(--primary)",
-                }}
-              />
+            <span className="manager-messaging-thread-row__unread" aria-label="상대방 미확인">
+              <span aria-hidden="true" />
               <span>미확인</span>
             </span>
           ) : null}
         </div>
-        {needsReply ? (
-          <Badge emphasis>
-            <span
-              aria-label="답장 필요"
-              style={{
-                display: "inline-flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                lineHeight: 1.25,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span>답장</span>
-              <span>필요</span>
-            </span>
-          </Badge>
-        ) : null}
+        {needsReply ? <Badge emphasis>답장 필요</Badge> : null}
       </div>
-      <div data-testid="manager-thread-title" style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>
-        {thread.contextLabel ?? "일반 문의"}
+
+      <div className="manager-messaging-thread-row__body">
+        <strong data-testid="manager-thread-title">{thread.contextLabel ?? "일반 문의"}</strong>
+        <span data-testid="manager-thread-message" title={thread.lastMessage}>
+          {thread.lastMessage}
+        </span>
       </div>
-      <div
-        data-testid="manager-thread-message"
-        title={thread.lastMessage}
-        style={{
-          minWidth: 0,
-          overflow: "hidden",
-          color: "var(--on-surface-variant)",
-          fontSize: "var(--fs-caption)",
-          lineHeight: 1.5,
-          whiteSpace: "nowrap",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {thread.lastMessage}
-      </div>
-      <div style={{ marginTop: "auto", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
-        미응답 {formatDateTime(thread.updatedAt)} ·{" "}
+
+      <div className="manager-messaging-thread-row__time">
+        <span>{formatDateTime(thread.updatedAt)}</span>
         <span
           data-confirmation={confirmationLabel === "미확인" ? "unconfirmed" : "confirmed"}
-          style={{
-            color:
-              confirmationLabel === "미확인"
-                ? "var(--primary)"
-                : "var(--on-surface-variant)",
-            fontWeight: 800,
-          }}
-        >{confirmationLabel}</span>
+          className={confirmationLabel === "미확인" ? "is-unconfirmed" : undefined}
+        >
+          {confirmationLabel}
+        </span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-sm)", alignItems: "center" }}>
+
+      <div className="manager-messaging-thread-row__actions">
         <Link
           href={`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${thread.id}`}
-          style={{
-            minHeight: 40,
-            borderRadius: "var(--radius-btn)",
-            background: "var(--surface-container-high)",
-            color: "var(--on-surface)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textDecoration: "none",
-            fontSize: "var(--fs-caption)",
-            fontWeight: 800,
-          }}
+          className="manager-messaging-thread-row__open"
         >
           열기
         </Link>
@@ -316,12 +314,155 @@ function ThreadCard({ thread }: { thread: Thread }) {
             type="submit"
             variant="ghost"
             aria-label={`${locationLabel} ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
-            style={{ height: 40, padding: "0 var(--space-md)" }}
+            style={{ height: 40, padding: "0 var(--space-md)", whiteSpace: "nowrap" }}
           >
             삭제
           </Button>
         </form>
       </div>
-    </Card>
+    </article>
   );
+}
+
+function resolveStatusFilter(value?: string): MessagingStatusFilter {
+  if (
+    value === "needs-reply" ||
+    value === "today" ||
+    value === "general" ||
+    value === "contract" ||
+    value === "defect" ||
+    value === "announcement"
+  ) {
+    return value;
+  }
+
+  return "all";
+}
+
+function filterThreadsByStatus(threads: Thread[], status: MessagingStatusFilter) {
+  switch (status) {
+    case "needs-reply":
+      return threads.filter(managerThreadNeedsReply);
+    case "today":
+      return threads.filter(isTodayThread);
+    case "general":
+    case "contract":
+    case "defect":
+    case "announcement":
+      return threads.filter((thread) => thread.context === status);
+    case "all":
+    default:
+      return threads;
+  }
+}
+
+function getStatusFilterOptions(threads: Thread[]) {
+  return [
+    { key: "all", label: "전체", count: threads.length },
+    { key: "needs-reply", label: "답장 필요", count: threads.filter(managerThreadNeedsReply).length },
+    { key: "today", label: "오늘", count: threads.filter(isTodayThread).length },
+    { key: "general", label: "일반", count: threads.filter((thread) => thread.context === "general").length },
+    { key: "contract", label: "계약", count: threads.filter((thread) => thread.context === "contract").length },
+    { key: "defect", label: "민원/하자", count: threads.filter((thread) => thread.context === "defect").length },
+    {
+      key: "announcement",
+      label: "공지 답변",
+      count: threads.filter((thread) => thread.context === "announcement").length,
+    },
+  ] satisfies Array<{ key: MessagingStatusFilter; label: string; count: number }>;
+}
+
+function uniqueThreadsByConversationTarget(threads: Thread[]) {
+  const sortedThreads = [...threads].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const seenGeneralThreads = new Set<string>();
+
+  return sortedThreads.filter((thread) => {
+    const key = generalConversationKey(thread);
+    if (!key) {
+      return true;
+    }
+
+    if (seenGeneralThreads.has(key)) {
+      return false;
+    }
+
+    seenGeneralThreads.add(key);
+    return true;
+  });
+}
+
+function withLatestGeneralThreadIds(
+  recipients: ManagerMessagingRecipient[],
+  threads: Thread[],
+): ManagerMessagingRecipient[] {
+  const latestGeneralThreadIds = new Map<string, string>();
+
+  for (const thread of threads) {
+    const key = generalConversationKey(thread);
+    if (key) {
+      latestGeneralThreadIds.set(key, thread.id);
+    }
+  }
+
+  return recipients.map((recipient) => {
+    const latestThreadId = latestGeneralThreadIds.get(generalRecipientKey(recipient));
+
+    return latestThreadId
+      ? { ...recipient, existingGeneralThreadId: latestThreadId }
+      : recipient;
+  });
+}
+
+function generalConversationKey(
+  thread: Pick<Thread, "buildingName" | "unitId" | "tenantId" | "context" | "contextRef">,
+) {
+  if (thread.context !== "general" || thread.contextRef?.trim()) {
+    return "";
+  }
+
+  return `${thread.buildingName?.trim() ?? ""}\u0000${thread.unitId.trim()}\u0000${thread.tenantId}`;
+}
+
+function generalRecipientKey(
+  recipient: Pick<ManagerMessagingRecipient, "buildingName" | "unitId" | "tenantId">,
+) {
+  return `${recipient.buildingName.trim()}\u0000${recipient.unitId.trim()}\u0000${recipient.tenantId}`;
+}
+
+function isTodayThread(thread: Thread) {
+  const updatedAt = new Date(thread.updatedAt);
+  const now = new Date();
+
+  return (
+    updatedAt.getFullYear() === now.getFullYear() &&
+    updatedAt.getMonth() === now.getMonth() &&
+    updatedAt.getDate() === now.getDate()
+  );
+}
+
+function managerMessagingHubHref({
+  building,
+  q,
+  status,
+}: {
+  building: string;
+  q: string;
+  status: MessagingStatusFilter;
+}) {
+  const params = new URLSearchParams();
+
+  if (building) {
+    params.set("building", building);
+  }
+  if (q) {
+    params.set("q", q);
+  }
+  if (status !== "all") {
+    params.set("status", status);
+  }
+
+  const queryString = params.toString();
+  return queryString
+    ? `${MANAGER_MESSAGING_ROUTES["M-MSG-00"]}?${queryString}`
+    : MANAGER_MESSAGING_ROUTES["M-MSG-00"];
 }

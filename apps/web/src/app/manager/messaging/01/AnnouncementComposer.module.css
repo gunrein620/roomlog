@@ -1,7 +1,7 @@
 .composeGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
-  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
+  gap: var(--space-lg);
   align-items: start;
 }
 
@@ -11,23 +11,42 @@
 .translationList {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-md);
 }
 
 .rightColumn {
   position: sticky;
   top: var(--space-lg);
+  align-self: start;
 }
 
 .card {
-  padding: var(--space-xl);
+  padding: var(--space-lg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface-container-lowest);
   box-shadow: var(--shadow);
 }
 
 .categoryCard {
+  padding: var(--space-md) var(--space-lg);
+}
+
+.targetCard {
+  padding-block: var(--space-lg);
+}
+
+.contentCard {
+  padding-top: var(--space-lg);
+}
+
+.translationPanel {
+  padding: var(--space-lg);
+}
+
+.submitPanel {
+  display: grid;
+  gap: var(--space-md);
   padding: var(--space-lg);
 }
 
@@ -47,6 +66,12 @@
   flex-wrap: wrap;
 }
 
+.submitPanel .actionRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-sm);
+}
+
 .choiceInput {
   position: absolute;
   inline-size: 1px;
@@ -57,11 +82,11 @@
 }
 
 .categoryPill {
-  min-height: 42px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  padding: 0 var(--space-xl);
+  padding: 0 var(--space-lg);
   border-radius: var(--radius-full);
   background: var(--surface-container-low);
   color: var(--on-surface-variant);
@@ -88,7 +113,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  margin: 0 0 var(--space-xl);
+  margin: 0 0 var(--space-md);
   color: var(--on-surface-variant);
   font-size: var(--fs-caption);
   font-weight: 800;
@@ -103,8 +128,8 @@
 }
 
 .scopeList {
-  padding-bottom: var(--space-lg);
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .targetBox,
@@ -117,20 +142,20 @@
 .targetBox {
   display: flex;
   align-items: center;
-  min-height: var(--touch-target);
-  padding: var(--space-md) var(--space-lg);
+  min-height: 40px;
+  padding: var(--space-sm) var(--space-lg);
   border: 1px solid var(--border);
   font-weight: 800;
 }
 
 .targetControls {
   display: grid;
-  gap: var(--space-md);
+  gap: var(--space-sm);
 }
 
 .targetSummary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-md);
   align-items: stretch;
 }
@@ -155,7 +180,7 @@
 .select {
   appearance: none;
   width: 100%;
-  min-height: var(--touch-target);
+  min-height: 42px;
   padding: 0 calc(var(--space-xxl) + 10px) 0 var(--space-lg);
   border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
@@ -168,7 +193,7 @@
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-sm);
-  max-height: 190px;
+  max-height: 152px;
   overflow: auto;
 }
 
@@ -191,7 +216,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: var(--touch-target);
+  min-height: 40px;
   padding: 0 var(--space-lg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -222,10 +247,10 @@
 .targetHint {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   width: max-content;
   max-width: 100%;
-  padding: var(--space-md) var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
   border: 1px dashed var(--outline-variant);
   color: var(--on-surface-variant);
   text-align: center;
@@ -253,7 +278,7 @@
 .deliveryModeGroup {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
 }
 
 .input,
@@ -283,7 +308,7 @@
 }
 
 .textarea {
-  min-height: 190px;
+  min-height: 156px;
 }
 
 .input:focus,
@@ -299,7 +324,7 @@
 
 .translationHeader {
   justify-content: space-between;
-  margin-bottom: var(--space-xl);
+  margin-bottom: var(--space-md);
 }
 
 .translationHeader h2 {
@@ -309,8 +334,8 @@
 
 .translationCard {
   display: grid;
-  gap: var(--space-md);
-  padding: var(--space-lg);
+  gap: var(--space-sm);
+  padding: var(--space-md);
   border: 1px solid var(--border);
 }
 
@@ -328,7 +353,7 @@
 
 .translationFields {
   display: grid;
-  gap: var(--space-md);
+  gap: var(--space-sm);
 }
 
 .attachButton {
@@ -373,7 +398,23 @@
 }
 
 .translationTextarea {
-  min-height: 104px;
+  min-height: 96px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.submitCopy {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.submitCopy strong {
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+}
+
+.submitCopy span {
+  color: var(--on-surface-variant);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
@@ -408,6 +449,11 @@
 .reviewButton {
   flex: 1;
   min-width: 220px;
+}
+
+.submitPanel .reviewButton,
+.submitPanel button {
+  width: 100%;
 }
 
 @media (max-width: 1050px) {
