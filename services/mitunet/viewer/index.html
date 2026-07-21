@@ -1896,6 +1896,7 @@ import {
 import {
   beginRoomLogFurnitureSimulation,
   readRoomLogContext,
+  readRoomLogFurnitureDraft,
   sendRoomLogCompletion,
 } from "/viewer-assets/roomlog-integration.mjs";
 import {
@@ -4136,18 +4137,60 @@ async function loadFurnitureCatalogForPlacement() {
   }
 }
 
+async function blobToBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+async function buildRoomLogEditorSnapshot() {
+  if (!reviewEditor?.document || !currentExtraction || !currentComposedPlan) {
+    throw new Error("도면 편집 상태를 저장할 수 없습니다.");
+  }
+  const wallMaskBlob = await reviewEditor.toWallMaskBlob();
+  return {
+    composedPlan: {
+      ...currentComposedPlan,
+      input_image_b64: undefined,
+      analysis_image_b64: undefined,
+    },
+    review: {
+      ...currentExtraction,
+      wall_mask_b64: await blobToBase64(wallMaskBlob),
+      openings: reviewEditor.getOpenings(),
+      calibration: reviewEditor.getCalibration(),
+    },
+    sourceName: currentSourceName,
+  };
+}
+
 async function enterFurnishingStage() {
   const entering = currentView === "3d";
   let roomMaterialWarning = "";
   if (!currentComposedPlan || inFlight || (!entering && currentView !== "furnishing")) return;
   if (roomLogFlowRequested && roomLogContext) {
-    beginRoomLogFurnitureSimulation(
-      roomLogContext,
-      currentComposedPlan,
-      currentSourceName,
-      currentFurniturePlacements(),
-      "floor",
-    );
+    inFlight = true;
+    updateEditorControls();
+    try {
+      const editorSnapshot = await buildRoomLogEditorSnapshot();
+      beginRoomLogFurnitureSimulation(
+        roomLogContext,
+        currentComposedPlan,
+        currentSourceName,
+        currentFurniturePlacements(),
+        "floor",
+        undefined,
+        editorSnapshot,
+      );
+    } catch (error) {
+      setStatus(`가구 배치 화면을 열지 못했습니다: ${error.message}`, "error");
+    } finally {
+      inFlight = false;
+      updateEditorControls();
+    }
     return;
   }
   if (entering) {
@@ -4824,6 +4867,40 @@ async function initializeRoomLogIntegration() {
   }
 }
 
+async function restoreRoomLogEditorSnapshot() {
+  const resumeView = new URLSearchParams(window.location.search).get("resumeView");
+  if (!roomLogContext || (resumeView !== "original" && resumeView !== "3d")) return false;
+  try {
+    const draft = readRoomLogFurnitureDraft(window.localStorage, roomLogContext.requestId);
+    const snapshot = draft?.editorSnapshot;
+    if (!snapshot?.review || !snapshot?.composedPlan) return false;
+
+    await reviewEditor.load(snapshot.review);
+    reviewEditor.calibration = snapshot.review.calibration ?? reviewEditor.getCalibration();
+    const composedPlan = {
+      ...snapshot.composedPlan,
+      input_image_b64: snapshot.review.input_image_b64,
+      analysis_image_b64: snapshot.review.analysis_image_b64,
+    };
+    const rendered = await loadPlan(composedPlan);
+    if (!rendered) throw new Error("저장된 3D 도면을 복원할 수 없습니다.");
+
+    currentExtraction = snapshot.review;
+    currentComposedPlan = composedPlan;
+    currentSourceName = typeof snapshot.sourceName === "string" ? snapshot.sourceName : "";
+    reviewEditor.document.markRendered();
+    document.body.classList.remove("upload-empty");
+    const targetView = resumeView === "original" ? "original" : "3d";
+    setView(targetView);
+    setStatus(summarize(currentComposedPlan));
+    updateEditorControls();
+    return true;
+  } catch (error) {
+    setStatus(`저장된 도면을 복원하지 못했습니다: ${error.message}`, "error");
+    return false;
+  }
+}
+
 async function enableStaticDemoMode() {
   demoControls.hidden = false;
   setStatus("Loading samples…");
@@ -4857,6 +4934,7 @@ async function initializeViewer() {
   const liveModeEnabled = await enableLiveMode();
   if (liveModeEnabled) {
     await initializeRoomLogIntegration();
+    await restoreRoomLogEditorSnapshot();
   } else {
     pendingUploadFile = null;
     uploadButton.hidden = false;

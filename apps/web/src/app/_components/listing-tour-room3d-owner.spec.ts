@@ -16,6 +16,14 @@ test("shared 3D simulation exposes owner overview and persistence adapter", () =
   assert.match(source, /ownerSaveRequestRef\.current = saveFurnitureLayout/);
 });
 
+test("owner persistence adapter forwards the requested navigation destination", () => {
+  assert.match(source, /export type OwnerFurnitureSaveDestination = "listing" \| "original" \| "3d"/);
+  assert.match(source, /onOwnerFurnitureSave\?: \(furnitures: ListingFloorPlanFurniture\[\], destination: OwnerFurnitureSaveDestination\) => void/);
+  assert.match(source, /ownerSaveRequestRef\?: MutableRefObject<\(\(destination\?: OwnerFurnitureSaveDestination\) => void\) \| null>/);
+  assert.match(source, /function saveFurnitureLayout\(destination: OwnerFurnitureSaveDestination = "listing"\)/);
+  assert.match(source, /onOwnerFurnitureSave\?\.\(serializeFurnitureLayout\(confirmedFurnituresForOwnerSave\(\)\), destination\)/);
+});
+
 test("owner overview uses orbit controls while furniture keeps first-person controls", () => {
   assert.match(source, /simulationMode === "walk" \? "walk" : "orbit"/);
   assert.match(source, /simulationMode === "furniture"/);

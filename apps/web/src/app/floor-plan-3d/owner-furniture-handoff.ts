@@ -2,9 +2,16 @@ import type { ListingFloorPlan3D } from "../_components/ListingTourRoom3D";
 
 export const OWNER_FURNITURE_DRAFT_PREFIX = "roomlogOwnerFurnitureDraft";
 
+export type OwnerFurnitureEditorSnapshot = {
+  composedPlan: Record<string, unknown>;
+  review: Record<string, unknown>;
+  sourceName: string;
+};
+
 export type OwnerFurnitureDraft = {
   requestId: string;
   savedAt: number;
+  editorSnapshot?: OwnerFurnitureEditorSnapshot;
   floorPlan: ListingFloorPlan3D;
 };
 
@@ -27,4 +34,17 @@ export function readOwnerFurnitureDraft(storage: DraftStorage, requestId: string
 
 export function writeOwnerFurnitureDraft(storage: DraftStorage, draft: OwnerFurnitureDraft) {
   storage.setItem(ownerFurnitureDraftStorageKey(draft.requestId), JSON.stringify(draft));
+}
+
+export function buildOwnerFloorPlanResumePath(
+  returnOrigin: string,
+  requestId: string,
+  destination: "original" | "3d"
+) {
+  const url = new URL("/floor-plan-3d/mitunet", returnOrigin);
+  url.searchParams.set("integration", "roomlog");
+  url.searchParams.set("returnOrigin", returnOrigin);
+  url.searchParams.set("requestId", requestId);
+  url.searchParams.set("resumeView", destination);
+  return url.toString();
 }

@@ -71,6 +71,7 @@ export type ListingFloorPlan3D = {
 
 type SimulationMode = "overview" | "walk" | "furniture";
 type FurnitureSourceTab = "mine" | "catalog";
+export type OwnerFurnitureSaveDestination = "listing" | "original" | "3d";
 
 type ListingTourRoom3DProps = {
   floorPlan: ListingFloorPlan3D;
@@ -80,8 +81,8 @@ type ListingTourRoom3DProps = {
   variant?: "sheet" | "hero";
   experience?: "listing" | "owner";
   initialSimulationMode?: SimulationMode;
-  onOwnerFurnitureSave?: (furnitures: ListingFloorPlanFurniture[]) => void;
-  ownerSaveRequestRef?: MutableRefObject<(() => void) | null>;
+  onOwnerFurnitureSave?: (furnitures: ListingFloorPlanFurniture[], destination: OwnerFurnitureSaveDestination) => void;
+  ownerSaveRequestRef?: MutableRefObject<((destination?: OwnerFurnitureSaveDestination) => void) | null>;
 };
 
 function serializeFurnitureLayout(furnitures: PlacedFurniture[]): ListingFloorPlanFurniture[] {
@@ -720,9 +721,9 @@ export default function ListingTourRoom3D({
     return originalFurniture ? [...placedFurnitures, originalFurniture] : placedFurnitures;
   }
 
-  function saveFurnitureLayout() {
+  function saveFurnitureLayout(destination: OwnerFurnitureSaveDestination = "listing") {
     if (experience === "owner") {
-      onOwnerFurnitureSave?.(serializeFurnitureLayout(confirmedFurnituresForOwnerSave()));
+      onOwnerFurnitureSave?.(serializeFurnitureLayout(confirmedFurnituresForOwnerSave()), destination);
       setSaveMessage("등록용 가구 배치를 저장했습니다.");
       return;
     }
@@ -1042,7 +1043,7 @@ export default function ListingTourRoom3D({
               가구를 놓거나 배치된 가구를 클릭해 끌어서 옮기고, 가구 위 버튼으로 ✓확정·⟳회전·✕취소·🗑삭제하세요.
             </p> : null}
             <div className="listing-tour-furniture-actions">
-              <button onClick={saveFurnitureLayout} type="button">
+              <button onClick={() => saveFurnitureLayout()} type="button">
                 {experience === "owner" ? "3D 도면 저장하기" : "저장"}
               </button>
               <button disabled={!hasSavedFurnitureLayout} onClick={resetFurnitureLayout} type="button">
