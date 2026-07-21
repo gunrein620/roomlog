@@ -28,6 +28,12 @@ describe("furniture first-person controls", () => {
     assert.match(controllerSource, /onRotateLeft/);
     assert.match(controllerSource, /onRotateRight/);
     assert.match(controllerSource, /modeRef\.current === "carry"[\s\S]*?onCancel\(\)[\s\S]*?onOpenSelect\(\)/);
+    assert.match(controllerSource, /onPlacementHit/);
+    assert.match(controllerSource, /onLatestPlacementHit/);
+    assert.match(controllerSource, /onRemove/);
+    assert.match(controllerSource, /normal\.transformDirection\(.*matrixWorld/);
+    assert.match(controllerSource, /supportTopY/);
+    assert.match(controllerSource, /wallMaxY/);
   });
 
   it("mounts the dedicated controller while retaining orbit fallback", () => {
@@ -40,7 +46,7 @@ describe("furniture first-person controls", () => {
   it("marks aimable scene objects and shows state-specific guidance", () => {
     assert.match(viewerSource, /roomlogPlacementSurface: "floor"/);
     assert.match(viewerSource, /roomlogPlacementSurface: "wall"/);
-    assert.match(mitunetExtrudedLayerSource, /userData=\{\{ roomlogPlacementSurface: "wall" \}\}/);
+    assert.match(mitunetExtrudedLayerSource, /userData=\{\{ roomlogPlacementSurface: "wall", roomlogWallId: "mitunet-wall" \}\}/);
     assert.match(viewerSource, /roomlogFurnitureId: furniture\.id/);
     assert.match(viewerSource, /className="floor-plan-furniture-reticle"/);
     assert.match(viewerSource, /1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정/);

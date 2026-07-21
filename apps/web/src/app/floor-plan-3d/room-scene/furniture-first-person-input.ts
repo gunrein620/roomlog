@@ -17,7 +17,8 @@ export type FurnitureShortcutAction =
   | "rotate-left"
   | "rotate-right"
   | "confirm"
-  | "cancel";
+  | "cancel"
+  | "remove";
 
 export function resolveFurnitureShortcut(input: {
   aimedFurnitureId: string | null;
@@ -39,6 +40,7 @@ export function resolveFurnitureShortcut(input: {
   if ((input.code === "Digit1" || input.code === "Numpad1") && input.mode === "carry") return "rotate-left";
   if ((input.code === "Digit3" || input.code === "Numpad3") && input.mode === "carry") return "rotate-right";
   if (input.code === "KeyQ" && input.mode === "carry") return "confirm";
+  if (input.code === "KeyR" && input.mode === "carry") return "remove";
   if (input.code === "Escape" && input.mode === "carry") return "cancel";
   return null;
 }

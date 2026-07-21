@@ -105,6 +105,29 @@ describe("furniture first-person input", () => {
     );
   });
 
+  it("uses R to remove or cancel the carried furniture", () => {
+    assert.equal(
+      resolveFurnitureShortcut({
+        aimedFurnitureId: null,
+        code: "KeyR",
+        mode: "carry",
+        repeat: false,
+        target: null
+      }),
+      "remove"
+    );
+    assert.equal(
+      resolveFurnitureShortcut({
+        aimedFurnitureId: null,
+        code: "KeyR",
+        mode: "explore",
+        repeat: false,
+        target: null
+      }),
+      null
+    );
+  });
+
   it("ignores repeats and editable targets", () => {
     assert.equal(
       resolveFurnitureShortcut({

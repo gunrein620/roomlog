@@ -150,7 +150,7 @@ function MitunetExtrudedLayer({
       position={[0, y, 0]}
       receiveShadow
       rotation={[-Math.PI / 2, 0, 0]}
-      userData={{ roomlogPlacementSurface: "wall" }}
+      userData={{ roomlogPlacementSurface: "wall", roomlogWallId: "mitunet-wall" }}
     >
       {surface === "wall" ? (
         <>
@@ -548,7 +548,7 @@ function WallMesh({
       onPointerDown={(event) => onPointerDown(wall, event)}
       position={wall.position}
       rotation={wall.rotation}
-      userData={{ roomlogPlacementSurface: "wall" }}
+      userData={{ roomlogPlacementSurface: "wall", roomlogWallId: String(wall.wall_id) }}
     >
       <boxGeometry args={[wall.dimensions.width, wall.dimensions.height, wall.dimensions.depth]} />
       <meshLambertMaterial color={isSelected ? "#2f55ff" : "#eeeeec"} />

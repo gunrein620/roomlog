@@ -3,7 +3,8 @@
 import { CameraControls, CameraControlsImpl } from "@react-three/drei/core/CameraControls.js";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef, type ComponentRef, type MutableRefObject } from "react";
-import { Object3D, Raycaster, Vector2, Vector3 } from "three";
+import { Box3, Object3D, Raycaster, Vector2, Vector3 } from "three";
+import type { FurniturePlacementHit } from "../furniture-placement";
 import { resolveWalkInputCode, type WalkAction } from "../walk/walk-input";
 import {
   furnitureFirstPersonMovementDelta,
@@ -26,10 +27,13 @@ export type FurnitureFirstPersonControlsProps = {
   onCancel: () => void;
   onCloseSelect: () => void;
   onConfirm: () => void;
+  onLatestPlacementHit?: (hit: FurniturePlacementHit) => void;
   onLatestPlacementPoint: (point: { x: number; z: number }) => void;
   onOpenSelect: () => void;
   onPickupAimed: (id: string) => void;
+  onPlacementHit?: (hit: FurniturePlacementHit) => void;
   onPlacementPoint: (point: { x: number; z: number }) => void;
+  onRemove?: () => void;
   onRotateLeft: () => void;
   onRotateRight: () => void;
   onStatusChange: (status: FurnitureFirstPersonStatus) => void;
@@ -41,7 +45,7 @@ type FurnitureCameraControls = NonNullable<ComponentRef<typeof CameraControls>>;
 
 type SceneHitMetadata =
   | { kind: "furniture"; furnitureId: string }
-  | { kind: "surface"; surface: "floor" | "wall" };
+  | { kind: "surface"; surface: "floor" | "wall"; wallId?: string };
 
 export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControlsProps) {
   const controlsRef = useRef<ComponentRef<typeof CameraControls>>(null);
@@ -149,6 +153,8 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
           callbacksRef.current.onConfirm();
         } else if (shortcut === "cancel") {
           callbacksRef.current.onCancel();
+        } else if (shortcut === "remove") {
+          callbacksRef.current.onRemove?.();
         } else if (shortcut === "rotate-left") {
           callbacksRef.current.onRotateLeft();
         } else if (shortcut === "rotate-right") {
@@ -235,9 +241,9 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
     if (modeRef.current === "explore") {
       let nextAimedFurnitureId: string | null = null;
       for (const intersection of intersections) {
-        const metadata = findSceneHitMetadata(intersection.object);
-        if (!metadata) continue;
-        if (metadata.kind === "furniture") nextAimedFurnitureId = metadata.furnitureId;
+        const sceneHit = findSceneHitMetadata(intersection.object);
+        if (!sceneHit) continue;
+        if (sceneHit.metadata.kind === "furniture") nextAimedFurnitureId = sceneHit.metadata.furnitureId;
         break;
       }
       if (nextAimedFurnitureId !== aimedFurnitureIdRef.current) {
@@ -250,31 +256,68 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
     }
 
     for (const intersection of intersections) {
-      const metadata = findSceneHitMetadata(intersection.object);
-      if (!metadata) continue;
-      if (metadata.kind === "surface" && metadata.surface === "wall") return;
-      if (metadata.kind === "surface" && metadata.surface === "floor") {
-        const point = { x: intersection.point.x, z: intersection.point.z };
-        callbacksRef.current.onLatestPlacementPoint(point);
-        if (modeRef.current === "carry") callbacksRef.current.onPlacementPoint(point);
-        return;
+      const sceneHit = findSceneHitMetadata(intersection.object);
+      if (!sceneHit) continue;
+      const hit = createFurniturePlacementHit(sceneHit, intersection);
+      callbacksRef.current.onLatestPlacementHit?.(hit);
+      if (hit.kind === "floor") callbacksRef.current.onLatestPlacementPoint(hit.point);
+      if (modeRef.current === "carry") {
+        callbacksRef.current.onPlacementHit?.(hit);
+        if (hit.kind === "floor") callbacksRef.current.onPlacementPoint(hit.point);
       }
+      return;
     }
   });
 
   return <CameraControls makeDefault ref={controlsRef} />;
 }
 
-function findSceneHitMetadata(object: Object3D): SceneHitMetadata | null {
+function findSceneHitMetadata(object: Object3D): { metadata: SceneHitMetadata; root: Object3D } | null {
   let current: Object3D | null = object;
   while (current) {
     const furnitureId = current.userData.roomlogFurnitureId;
-    if (typeof furnitureId === "string") return { kind: "furniture", furnitureId };
+    if (typeof furnitureId === "string") return { metadata: { kind: "furniture", furnitureId }, root: current };
     const surface = current.userData.roomlogPlacementSurface;
-    if (surface === "floor" || surface === "wall") return { kind: "surface", surface };
+    if (surface === "floor" || surface === "wall") {
+      const wallId = typeof current.userData.roomlogWallId === "string" ? current.userData.roomlogWallId : undefined;
+      return { metadata: { kind: "surface", surface, wallId }, root: current };
+    }
     current = current.parent;
   }
   return null;
+}
+
+function createFurniturePlacementHit(
+  sceneHit: { metadata: SceneHitMetadata; root: Object3D },
+  intersection: ReturnType<Raycaster["intersectObjects"]>[number]
+): FurniturePlacementHit {
+  const point = { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z };
+  if (sceneHit.metadata.kind === "furniture") {
+    const bounds = new Box3().setFromObject(sceneHit.root);
+    return {
+      kind: "furniture",
+      furnitureId: sceneHit.metadata.furnitureId,
+      point,
+      supportTopY: bounds.max.y
+    };
+  }
+  if (sceneHit.metadata.surface === "floor") return { kind: "floor", point };
+
+  const bounds = new Box3().setFromObject(sceneHit.root);
+  const normal = intersection.face?.normal.clone() ?? raycasterFacingNormal(intersection.point, intersection.object);
+  if (intersection.face) normal.transformDirection(intersection.object.matrixWorld);
+  return {
+    kind: "wall",
+    normal: { x: normal.x, y: normal.y, z: normal.z },
+    point,
+    wallId: sceneHit.metadata.wallId ?? "mitunet-wall",
+    wallMaxY: bounds.max.y,
+    wallMinY: bounds.min.y
+  };
+}
+
+function raycasterFacingNormal(point: Vector3, object: Object3D) {
+  return point.clone().sub(object.getWorldPosition(new Vector3())).normalize();
 }
 
 function configureFurnitureControls(controls: FurnitureCameraControls) {
