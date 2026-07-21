@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -13,6 +13,11 @@ const apiRouteSource = readFileSync(
   join(process.cwd(), "src/app/floor-plan-3d/mitunet-api/[...endpoint]/route.ts"),
   "utf8",
 );
+const vendorRoutePath = join(
+  process.cwd(),
+  "src/app/floor-plan-3d/mitunet-vendor/[...asset]/route.ts",
+);
+const vendorRouteSource = existsSync(vendorRoutePath) ? readFileSync(vendorRoutePath, "utf8") : "";
 const composeSource = readFileSync(join(process.cwd(), "../../docker-compose.yml"), "utf8");
 const productionComposeSource = readFileSync(
   join(process.cwd(), "../../docker-compose.prod.yml"),
@@ -50,6 +55,17 @@ test("serves MitUNet viewer assets without exposing arbitrary local files", () =
   assert.doesNotMatch(assetRouteSource, /transformRoomLogIntegrationModule/);
   assert.doesNotMatch(assetRouteSource, /roomlogListingFloorPlan3D/);
   assert.doesNotMatch(assetRouteSource, /\/sell\?flow=listing#my-page/);
+});
+
+test("serves 3D runtime dependencies from an allowlisted RoomLog route", () => {
+  assert.equal(existsSync(vendorRoutePath), true, "MitUNet vendor route must exist");
+  assert.match(vendorRouteSource, /VENDOR_ROOTS/);
+  assert.match(vendorRouteSource, /ALLOWED_VENDOR_EXTENSIONS/);
+  assert.match(vendorRouteSource, /filePath\.startsWith/);
+  assert.doesNotMatch(viewerSource, /unpkg\.com/);
+  assert.match(viewerSource, /\/floor-plan-3d\/mitunet-vendor\/three-0\.185\.0\/build\/three\.module\.js/);
+  assert.match(viewerSource, /\/floor-plan-3d\/mitunet-vendor\/lucide-0\.468\.0\/dist\/umd\/lucide\.min\.js/);
+  assert.match(viewerSource, /\/floor-plan-3d\/mitunet-vendor\/three-0\.185\.0\/examples\/jsm\/libs\/draco\//);
 });
 
 test("proxies MitUNet inference requests from the RoomLog origin", () => {

@@ -5,6 +5,7 @@ import {
   resolveMitunetViewerFile,
   transformRoomLogReviewEditorModule,
 } from "../../mitunet-proxy";
+import { mitunetAssetCacheControl } from "../../mitunet-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ type RouteContext = {
   params: Promise<{ asset: string[] }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { asset } = await context.params;
   const filePath = resolveMitunetViewerFile(...asset);
   const assetPath = asset.join("/");
@@ -22,7 +23,10 @@ export async function GET(_request: Request, context: RouteContext) {
 
   return new Response(body, {
     headers: {
-      "Cache-Control": "no-store",
+      "Cache-Control": mitunetAssetCacheControl(
+        assetPath,
+        new URL(request.url).searchParams.has("v"),
+      ),
       "Content-Type": contentTypeFor(filePath),
     },
   });

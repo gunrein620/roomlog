@@ -1674,14 +1674,14 @@
   }
 </style>
 
-<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+<script src="/floor-plan-3d/mitunet-vendor/lucide-0.468.0/dist/umd/lucide.min.js" defer></script>
 <script type="module" src="/viewer-assets/upload-bootstrap.mjs"></script>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+    "three": "/floor-plan-3d/mitunet-vendor/three-0.185.0/build/three.module.js",
+    "three/addons/": "/floor-plan-3d/mitunet-vendor/three-0.185.0/examples/jsm/"
   }
 }
 </script>
@@ -2131,7 +2131,7 @@ placementPreviewGroup.visible = false;
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath(
-  "https://unpkg.com/three@0.162.0/examples/jsm/libs/draco/",
+  "/floor-plan-3d/mitunet-vendor/three-0.185.0/examples/jsm/libs/draco/",
 );
 const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);

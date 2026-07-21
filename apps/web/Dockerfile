@@ -39,6 +39,10 @@ COPY assets assets
 COPY packages packages
 COPY apps/web apps/web
 
+RUN mkdir -p /tmp/mitunet-vendor && \
+    cp -RL apps/web/node_modules/three /tmp/mitunet-vendor/three && \
+    cp -RL apps/web/node_modules/lucide /tmp/mitunet-vendor/lucide
+
 RUN pnpm --filter web build
 
 FROM base AS runner
@@ -60,6 +64,8 @@ ENV NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL=$NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static /app/apps/web/.next/static
 COPY --from=builder /app/apps/web/public /app/apps/web/public
+COPY --from=builder /tmp/mitunet-vendor/three /app/apps/web/node_modules/three
+COPY --from=builder /tmp/mitunet-vendor/lucide /app/apps/web/node_modules/lucide
 
 EXPOSE 3000
 
