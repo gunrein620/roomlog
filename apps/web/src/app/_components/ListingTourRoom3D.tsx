@@ -29,7 +29,7 @@ import type {
 } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
 import type { FurnitureInteractionMode } from "../floor-plan-3d/room-scene/furniture-first-person-input";
-import { resolveMitunetFurnitureSceneScale } from "../floor-plan-3d/room-scene/mitunet-geometry";
+import { resolveMitunetFurnitureSceneScale, type MitunetSceneLayout } from "../floor-plan-3d/room-scene/mitunet-geometry";
 import { listingTourFurnitureStorageKey } from "../splat-tour/splat-furniture";
 import { TourJoystick, type TourJoystickVector } from "../splat-tour/tour-joystick";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
@@ -73,6 +73,10 @@ type SimulationMode = "overview" | "walk" | "furniture";
 
 type ListingTourRoom3DProps = {
   floorPlan: ListingFloorPlan3D;
+  /** 매물에 연결된 splat 자산의 캡처 도면(RoomPlan)을 뷰어 레이아웃으로 미리 변환해 넘긴다.
+   * 있으면 floorPlan.mitunet/walls3D보다 우선(실측·splat과 좌표계 항등) — 없으면(null/undefined)
+   * 기존 mitunet/walls3D 경로가 무변경으로 그대로 동작한다. */
+  captureFloorPlanLayout?: MitunetSceneLayout | null;
   simulationOpen?: boolean;
   listingId: string;
   /** hero = 상세 히어로 스테이지, sheet = 기존 3D 시트 */
@@ -161,6 +165,7 @@ function sameFurnitureTransform(left: PlacedFurniture, right: PlacedFurniture) {
 }
 
 export default function ListingTourRoom3D({
+  captureFloorPlanLayout,
   experience = "listing",
   floorPlan,
   initialSimulationMode = "walk",
@@ -171,6 +176,10 @@ export default function ListingTourRoom3D({
   variant = "sheet"
 }: ListingTourRoom3DProps) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
+  // 캡처 도면이 있으면 도면 렌더는 그것이 전담한다 — walls3D 박스 벽을 같이 그리면 이중으로
+  // 겹친다(furniture-placement 계산용 wallsData 자체는 아래에서 그대로 유지). 캡처가 없으면
+  // 기존 렌더 경로(mitunetPlan에서 파생하는 폴리곤 + wallsData 박스 벽)가 그대로 동작한다.
+  const roomViewWallsData = captureFloorPlanLayout ? [] : wallsData;
   const [simulationMode, setSimulationMode] = useState<SimulationMode>(initialSimulationMode);
   const [furnitureInteractionMode, setFurnitureInteractionMode] = useState<FurnitureInteractionMode>("explore");
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
@@ -790,7 +799,8 @@ export default function ListingTourRoom3D({
         furniturePlacementFeedback={furniturePlacementFeedback}
         furniturePointerLockRequestRef={furniturePointerLockRequestRef}
         hideHint
-        mitunetPlan={floorPlan.mitunet}
+        mitunetLayout={captureFloorPlanLayout ?? undefined}
+        mitunetPlan={captureFloorPlanLayout ? undefined : floorPlan.mitunet}
         moveInputRef={walkMoveInputRef}
         orbitMinDistance={1.6}
         fitDistanceScale={0.9}
@@ -825,7 +835,7 @@ export default function ListingTourRoom3D({
         pendingFurniture={pendingFurniture}
         selectedFurnitureId={selectedFurnitureId}
         selectedWallId={null}
-        wallsData={wallsData}
+        wallsData={roomViewWallsData}
       />
 
       {variant === "hero" && simulationOpen ? (

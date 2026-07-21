@@ -3649,6 +3649,23 @@ p {
   font-weight: 800;
 }
 
+/* 3D 도면 출처 표시 — 캡처(실측)인지 mitunet(도면 이미지 자동 추출)인지. 헤더 오버레이(top-title,
+   z-index 9) 바로 아래 다크 글래스 pill. */
+.detail-3d-hero-plan-source {
+  position: absolute;
+  top: calc(60px + env(safe-area-inset-top));
+  left: 16px;
+  z-index: 8;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(23, 19, 58, 0.72);
+  color: #ebe5ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
 /* 우상단 가구 배치 토글 pill */
 .hero-furniture-toggle {
   position: absolute;
@@ -5497,8 +5514,26 @@ p {
 
 /* 실제 3D 도면 뷰 — 편집기와 같은 R3F 캔버스를 상세 시트 크기에 맞춰 채운다. */
 .tour-room-3d {
+  position: relative;
   width: 100%;
   height: 100%;
+}
+
+/* 3D 도면 출처 표시 — 히어로의 .detail-3d-hero-plan-source와 같은 문구, 시트 배경(밝은 그리드)에
+   맞춘 라이트 pill. */
+.tour-preview-plan-source {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.7rem;
+  font-weight: 700;
+  pointer-events: none;
 }
 
 .tour-room-3d .floor-plan-3d-preview {
