@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MAX_MANAGER_LISTING_PHOTOS,
+  MANAGER_LISTING_FLOOR_PLAN_STORAGE_KEY,
   mergeManagerListingPhotos,
   parseManagerListingFloorPlan,
+  readManagerListingFloorPlanSnapshot,
 } from "./manager-listing-media";
 
 const imageFile = (name: string) => new File(["image"], name, { type: "image/jpeg" });
@@ -41,6 +43,17 @@ test("normalizes floor plan JSON from walls3D and compatible room3d walls", () =
     name: "도면 A",
   });
   assert.deepEqual(parseManagerListingFloorPlan(JSON.stringify({ room3d: { walls: [wall] } })), {
+    walls3D: [wall],
+    furnitures: [],
+  });
+});
+
+test("reads request-scoped floor plan snapshots from local storage", () => {
+  const requestId = "manager-listing-123";
+  const storage = new Map<string, string>();
+  storage.set(`${MANAGER_LISTING_FLOOR_PLAN_STORAGE_KEY}:${requestId}`, JSON.stringify({ walls3D: [wall] }));
+
+  assert.deepEqual(readManagerListingFloorPlanSnapshot({ getItem: (key) => storage.get(key) ?? null }, requestId), {
     walls3D: [wall],
     furnitures: [],
   });
