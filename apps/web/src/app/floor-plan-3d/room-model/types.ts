@@ -51,6 +51,14 @@ export type RegisteredPlanMetadata = {
   height?: number;
 };
 
+export type FurniturePlacementMode = "floor" | "surface" | "wall";
+export type FurniturePlacementCapability = FurniturePlacementMode | "any";
+export type FurniturePlacementAttachment = {
+  mode: FurniturePlacementMode;
+  supportFurnitureId?: string;
+  wallId?: string;
+};
+
 export type FurnitureCatalogItem = {
   brand: string;
   category?: string;
@@ -60,6 +68,7 @@ export type FurnitureCatalogItem = {
   length: [number, number, number];
   modelUrl?: string;
   name: string;
+  placementCapability?: FurniturePlacementCapability;
   price: number;
   source?: string;
   sourceUrl?: string;
@@ -72,6 +81,7 @@ export type PlacedFurniture = FurnitureCatalogItem & {
   id: string;
   includedInLease?: boolean;
   locked?: boolean;
+  placement?: FurniturePlacementAttachment;
   position: [number, number, number];
   rotation: [number, number, number];
   scale: number;
