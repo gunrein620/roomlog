@@ -26,7 +26,7 @@ describe("listing-only 3D preview", () => {
     assert.match(viewerSource, /showGround=\{!listingPreview\}/);
     assert.match(viewerSource, /enabled=\{controlsEnabled\}/);
     assert.match(viewerSource, /gl=\{\{ alpha: listingPreview \}\}/);
-    assert.match(listingTourSource, /orbitKeyboardMoveEnabled=\{simulationOpen && simulationMode === "furniture"\}/);
+    assert.match(listingTourSource, /furnitureFirstPersonEnabled=\{simulationOpen && simulationMode === "furniture" && !isCoarsePointer\}/);
   });
 
   it("keeps the render background, rotates on drag, and opens the editor on a click", () => {
@@ -105,12 +105,13 @@ describe("listing-only 3D preview", () => {
     );
   });
 
-  it("mounts exactly one camera controller for orbit or walk mode", () => {
+  it("mounts exactly one camera controller for orbit, walk, or furniture first-person mode", () => {
     assert.match(viewerSource, /export type RoomControlMode = "orbit" \| "walk"/);
     assert.match(viewerSource, /controlMode === "walk" \? \(/);
     assert.match(viewerSource, /<FloorPlanWalkControls/);
+    assert.match(viewerSource, /:\s*furnitureFirstPersonEnabled \? \(\s*<FurnitureFirstPersonControls/);
     assert.match(viewerSource, /:\s*\(\s*<RoomOrbitControls/);
-    assert.match(viewerSource, /controlMode === "orbit" \? \(\s*<RoomCameraAutoFit/);
+    assert.match(viewerSource, /controlMode === "orbit" && !furnitureFirstPersonEnabled \? \(\s*<RoomCameraAutoFit/);
   });
 
   it("makes the scene view-only and shows lock instructions in walk mode", () => {

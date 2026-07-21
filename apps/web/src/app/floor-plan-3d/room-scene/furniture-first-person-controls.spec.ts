@@ -6,6 +6,7 @@ import { join } from "node:path";
 const sceneDir = join(process.cwd(), "src/app/floor-plan-3d/room-scene");
 const controllerPath = join(sceneDir, "FurnitureFirstPersonControls.tsx");
 const viewerSource = readFileSync(join(sceneDir, "RoomlogThreeFloorPlanView.tsx"), "utf8");
+const listingSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
 const styles = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
 
 describe("furniture first-person controls", () => {
@@ -36,5 +37,17 @@ describe("furniture first-person controls", () => {
     assert.match(viewerSource, /Q 고정 · Esc 취소/);
     assert.match(viewerSource, /WASD 이동 · 마우스 시점 · E 가구 선택/);
     assert.match(styles, /\.floor-plan-furniture-reticle/);
+  });
+
+  it("connects desktop E and Q actions to the existing placement mutations", () => {
+    assert.match(listingSource, /useState<FurnitureInteractionMode>\("explore"\)/);
+    assert.match(
+      listingSource,
+      /furnitureFirstPersonEnabled=\{simulationOpen && simulationMode === "furniture" && !isCoarsePointer\}/
+    );
+    assert.match(listingSource, /onFurniturePickupAimed=\{beginFurnitureMoveById\}/);
+    assert.match(listingSource, /onFurniturePlacementPoint=\{placePendingFurniture\}/);
+    assert.match(listingSource, /onFurnitureConfirm=\{confirmPendingFurnitureFromShortcut\}/);
+    assert.match(listingSource, /furniturePointerLockRequestRef\.current\?\.\(\)/);
   });
 });

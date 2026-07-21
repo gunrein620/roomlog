@@ -33,10 +33,11 @@ describe("furniture orbit keyboard controls", () => {
     assert.doesNotMatch(viewerSource, /target=\{target\}/);
   });
 
-  it("enables keyboard movement only for the fullscreen furniture mode", () => {
+  it("keeps orbit keyboard movement reusable while fullscreen furniture uses first-person controls", () => {
     assert.match(viewerSource, /orbitKeyboardMoveEnabled\?: boolean/);
     assert.match(viewerSource, /keyboardMoveEnabled=\{orbitKeyboardMoveEnabled\}/);
-    assert.match(listingSource, /orbitKeyboardMoveEnabled=\{simulationOpen && simulationMode === "furniture"\}/);
+    assert.doesNotMatch(listingSource, /orbitKeyboardMoveEnabled=/);
+    assert.match(listingSource, /furnitureFirstPersonEnabled=\{simulationOpen && simulationMode === "furniture" && !isCoarsePointer\}/);
     assert.match(viewerSource, /WASD 이동 · 드래그 회전/);
   });
 });
