@@ -4,6 +4,7 @@ import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import {
   isNearAnyPlanWall,
   planWallFootprint,
+  planWallsFromCaptureFloorPlan,
   planWallsFromPayload,
   readFloorPlanDraftServerId,
   resolvePlanWalls,
@@ -167,7 +168,7 @@ test("planWallsFromPayload: filters invalid walls and rejects non-plan payloads"
 test("resolveViewerPlanWalls: prefers validated server walls over browser walls", () => {
   const browserWall = testWall("browser");
   const serverWall = testWall("server");
-  const resolved = resolveViewerPlanWalls([serverWall], {
+  const resolved = resolveViewerPlanWalls(null, [serverWall], {
     source: "floor-plan-draft",
     walls: [browserWall]
   });
@@ -182,17 +183,84 @@ test("resolveViewerPlanWalls: falls back to browser then an explicit placeholder
     ...testWall("invalid-server"),
     dimensions: { width: 0, height: 2.4, depth: 0.15 }
   };
-  const browserFallback = resolveViewerPlanWalls([invalidServerWall], {
+  const browserFallback = resolveViewerPlanWalls(null, [invalidServerWall], {
     source: "resident-design",
     walls: [browserWall]
   });
 
   assert.equal(browserFallback.source, "resident-design");
   assert.deepEqual(browserFallback.walls?.map((wall) => wall.id), ["browser"]);
-  assert.deepEqual(resolveViewerPlanWalls(null, null), {
+  assert.deepEqual(resolveViewerPlanWalls(null, null, null), {
     source: "placeholder",
     walls: null
   });
+});
+
+test("resolveViewerPlanWalls: capture floor plan outranks server walls and browser walls", () => {
+  const captureWall = metricWall([0, 0], [2, 0]);
+  const serverWall = testWall("server");
+  const browserWall = testWall("browser");
+  const resolved = resolveViewerPlanWalls({ walls: [captureWall] }, [serverWall], {
+    source: "resident-design",
+    walls: [browserWall]
+  });
+
+  assert.equal(resolved.source, "capture");
+  assert.deepEqual(resolved.walls?.map((wall) => wall.id), ["capture-wall-0"]);
+});
+
+test("planWallsFromCaptureFloorPlan: synthesizes a minimum render depth for zero-thickness RoomPlan walls", () => {
+  const walls = planWallsFromCaptureFloorPlan({ walls: [metricWall([0, 0], [3, 0], { thickness: 0 })] });
+
+  assert.equal(walls.length, 1);
+  assert.equal(walls[0].dimensions.depth, 0.05);
+  assert.equal(walls[0].dimensions.width, 3);
+});
+
+test("planWallsFromCaptureFloorPlan: rejects malformed segments and non-plan payloads", () => {
+  assert.deepEqual(planWallsFromCaptureFloorPlan(null), []);
+  assert.deepEqual(planWallsFromCaptureFloorPlan({ walls: "not-array" }), []);
+  assert.deepEqual(
+    planWallsFromCaptureFloorPlan({
+      walls: [
+        metricWall([0, 0], [0, 0]), // 길이 0
+        { ...metricWall([0, 0], [1, 0]), thickness: -1 }, // 음수 두께
+        { ...metricWall([0, 0], [1, 0]), height: 0 } // 높이 0
+      ]
+    }),
+    []
+  );
+});
+
+test("planWallsFromCaptureFloorPlan: yaw round-trips through the wallLocalToWorldXZ convention back to the original segment", () => {
+  // splat-plan-shape.ts의 wallLocalToWorldXZ(비공개)와 동일한 변환을 중심선(localZ=0)에 재적용해,
+  // localX=∓halfWidth가 원래 start/end로 돌아오는지 검증한다(z에 음의 sin을 쓰는 규약과의 정합).
+  const centerlineWorldPoint = (wall: WheretoputWall3D, localX: number) => {
+    const ry = wall.rotation[1];
+    return {
+      x: wall.position[0] + localX * Math.cos(ry),
+      z: wall.position[2] - localX * Math.sin(ry)
+    };
+  };
+
+  const segments: [[number, number], [number, number]][] = [
+    [[0, 0], [2, 0]],
+    [[0, 0], [0, 3]],
+    [[1, 1], [-2, 4]],
+    [[-1, 2], [-1, -3]]
+  ];
+
+  for (const [start, end] of segments) {
+    const [wall] = planWallsFromCaptureFloorPlan({ walls: [metricWall(start, end)] });
+    const halfWidth = wall.dimensions.width / 2;
+    const roundTrippedStart = centerlineWorldPoint(wall, -halfWidth);
+    const roundTrippedEnd = centerlineWorldPoint(wall, halfWidth);
+
+    assertApproxEqual(roundTrippedStart.x, start[0]);
+    assertApproxEqual(roundTrippedStart.z, start[1]);
+    assertApproxEqual(roundTrippedEnd.x, end[0]);
+    assertApproxEqual(roundTrippedEnd.z, end[1]);
+  }
 });
 
 test("planWallFootprint: rotated wall footprint matches wallsToPlanBounds corners", () => {
@@ -238,6 +306,21 @@ function fakeStorage(values: Record<string, string>): Pick<Storage, "getItem"> {
 
 function storagePayload(walls: unknown[], savedAt: number): string {
   return JSON.stringify({ room3d: { walls }, savedAt });
+}
+
+// RoomPlan(iOS) 캡처 도면의 MetricWall(packages/types/src/roomplan-capture.ts) 하나를 만든다.
+// 기본 두께 0.1은 RoomPlan 실캡처의 typical thickness — 0 케이스는 개별 테스트에서 override한다.
+function metricWall(
+  start: [number, number],
+  end: [number, number],
+  overrides: { height?: number; thickness?: number } = {}
+): { start: [number, number]; end: [number, number]; height: number; thickness: number } {
+  return {
+    start,
+    end,
+    height: overrides.height ?? 2.4,
+    thickness: overrides.thickness ?? 0.1
+  };
 }
 
 function testWall(id: string, overrides: Partial<Omit<WheretoputWall3D, "dimensions">> & {

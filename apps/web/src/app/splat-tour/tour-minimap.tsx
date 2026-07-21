@@ -1,5 +1,8 @@
 "use client";
 
+import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
+import type { PlanBounds } from "./splat-plan-shape";
+import { formatMinimapDimensions, wallsToMinimapFootprints } from "./tour-minimap-geometry";
 import type { TourPreset } from "./tour-types";
 
 const labelPlacementFor = (y: number) => (y > 74 ? "top" : "bottom");
@@ -9,7 +12,9 @@ export function TourMinimap({
   activeId,
   onSelect,
   livePosition,
-  planIsPlaceholder
+  planIsPlaceholder,
+  walls,
+  bounds
 }: {
   presets: TourPreset[];
   activeId: string;
@@ -18,7 +23,16 @@ export function TourMinimap({
   livePosition?: { x: number; y: number } | null;
   // 서버·브라우저 어디에서도 연결된 도면을 확인하지 못해 참고용 4면 경계를 쓰는지 여부.
   planIsPlaceholder: boolean;
+  // 실제 벽 배열. 비어있거나 없으면 하드코딩 참고용 사각형으로 폴백한다.
+  walls?: readonly WheretoputWall3D[] | null;
+  // walls의 XZ 경계(미터). 벽 폴리곤 정규화·치수 라벨 계산에 쓴다.
+  bounds?: PlanBounds | null;
 }) {
+  const hasRealPlan = !planIsPlaceholder && Boolean(walls && walls.length > 0 && bounds);
+  const footprints = hasRealPlan ? wallsToMinimapFootprints(walls!, bounds!) : [];
+  // 실측 치수가 있을 때만 상태 텍스트("미확인"/"연결됨") 자리를 치수로 대체한다 — 118px 폭이라
+  // 상태·치수를 동시에 못 담는다(둘 다 "연결됨" 함의라 상호배타로 충분).
+  const dimensionsLabel = hasRealPlan && bounds ? formatMinimapDimensions(bounds) : null;
   return (
     <div
       className={`tour-minimap-card${planIsPlaceholder ? " is-placeholder" : ""}`}
@@ -201,85 +215,103 @@ export function TourMinimap({
       </style>
       <div className="tour-minimap-title" aria-hidden>
         <span>도면</span>
-        <span>{planIsPlaceholder ? "미확인" : "연결됨"}</span>
+        <span>{dimensionsLabel ?? (planIsPlaceholder ? "미확인" : "연결됨")}</span>
       </div>
       <div className="tour-minimap-plan">
         <svg aria-hidden focusable="false" preserveAspectRatio="none" viewBox="0 0 100 100">
-          <rect
-            x="8"
-            y="6"
-            width="84"
-            height="88"
-            rx="2"
-            fill="var(--paper)"
-            stroke={planIsPlaceholder ? "var(--muted)" : "var(--ink)"}
-            strokeOpacity="0.72"
-            strokeWidth="5"
-            strokeDasharray={planIsPlaceholder ? "6 4" : undefined}
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d="M14 20H86M14 35H86M14 50H86M14 65H86M14 80H86"
-            fill="none"
-            stroke="var(--line)"
-            strokeWidth="0.8"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d="M24 12V88M42 12V88M60 12V88M78 12V88"
-            fill="none"
-            stroke="var(--line)"
-            strokeWidth="0.8"
-            vectorEffect="non-scaling-stroke"
-          />
-          {!planIsPlaceholder ? (
+          {hasRealPlan ? (
+            // 실제 벽 발자국. 창문·현관 같은 가짜 디테일은 실데이터가 없으니 그리지 않는다
+            // (허위 표시보다 없는 게 낫다는 원칙 — splat-furniture-layer.tsx와 동일한 태도).
+            footprints.map((footprint) => (
+              <polygon
+                fill="var(--paper)"
+                key={footprint.id}
+                points={footprint.points}
+                stroke="var(--ink)"
+                strokeOpacity="0.72"
+                strokeWidth="3"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))
+          ) : (
             <>
-              <line
-                x1="34"
-                y1="6"
-                x2="68"
-                y2="6"
-                stroke="var(--blue)"
-                strokeLinecap="round"
+              <rect
+                x="8"
+                y="6"
+                width="84"
+                height="88"
+                rx="2"
+                fill="var(--paper)"
+                stroke={planIsPlaceholder ? "var(--muted)" : "var(--ink)"}
+                strokeOpacity="0.72"
                 strokeWidth="5"
-                vectorEffect="non-scaling-stroke"
-              />
-              <line
-                x1="34"
-                y1="11"
-                x2="68"
-                y2="11"
-                stroke="var(--blue-soft)"
-                strokeLinecap="round"
-                strokeWidth="2"
-                vectorEffect="non-scaling-stroke"
-              />
-              <line
-                x1="54"
-                y1="94"
-                x2="75"
-                y2="94"
-                stroke="var(--paper)"
-                strokeLinecap="round"
-                strokeWidth="7"
+                strokeDasharray={planIsPlaceholder ? "6 4" : undefined}
                 vectorEffect="non-scaling-stroke"
               />
               <path
-                d="M55 93V75M55 93A20 20 0 0 0 74 75"
+                d="M14 20H86M14 35H86M14 50H86M14 65H86M14 80H86"
                 fill="none"
-                stroke="var(--muted)"
-                strokeLinecap="round"
-                strokeWidth="1.8"
+                stroke="var(--line)"
+                strokeWidth="0.8"
                 vectorEffect="non-scaling-stroke"
               />
-              <text x="51" y="15" fill="var(--blue)" fontSize="5" fontWeight="800" textAnchor="middle">
-                창문
-              </text>
-              <text x="81" y="90" fill="var(--muted)" fontSize="5" fontWeight="800" textAnchor="middle">
-                현관
-              </text>
+              <path
+                d="M24 12V88M42 12V88M60 12V88M78 12V88"
+                fill="none"
+                stroke="var(--line)"
+                strokeWidth="0.8"
+                vectorEffect="non-scaling-stroke"
+              />
+              {!planIsPlaceholder ? (
+                <>
+                  <line
+                    x1="34"
+                    y1="6"
+                    x2="68"
+                    y2="6"
+                    stroke="var(--blue)"
+                    strokeLinecap="round"
+                    strokeWidth="5"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <line
+                    x1="34"
+                    y1="11"
+                    x2="68"
+                    y2="11"
+                    stroke="var(--blue-soft)"
+                    strokeLinecap="round"
+                    strokeWidth="2"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <line
+                    x1="54"
+                    y1="94"
+                    x2="75"
+                    y2="94"
+                    stroke="var(--paper)"
+                    strokeLinecap="round"
+                    strokeWidth="7"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <path
+                    d="M55 93V75M55 93A20 20 0 0 0 74 75"
+                    fill="none"
+                    stroke="var(--muted)"
+                    strokeLinecap="round"
+                    strokeWidth="1.8"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <text x="51" y="15" fill="var(--blue)" fontSize="5" fontWeight="800" textAnchor="middle">
+                    창문
+                  </text>
+                  <text x="81" y="90" fill="var(--muted)" fontSize="5" fontWeight="800" textAnchor="middle">
+                    현관
+                  </text>
+                </>
+              ) : null}
             </>
-          ) : null}
+          )}
         </svg>
         {livePosition ? (
           <span

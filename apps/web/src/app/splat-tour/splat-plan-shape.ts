@@ -5,7 +5,7 @@ import {
   WALL_CLIP_INSET_METERS
 } from "./splat-walls";
 
-export type PlanWallsSource = "resident-design" | "floor-plan-draft" | "tour-upload";
+export type PlanWallsSource = "resident-design" | "floor-plan-draft" | "tour-upload" | "capture";
 
 // register 픽 화면에서 업로드한 도면을 뷰어(벽 대체·걷기 경계·미니맵)와 공유하는 전용 키.
 // 에디터 저장본(floorPlanDraft/residentFloorPlanDesign)을 덮지 않기 위해 별도 키를 쓴다.
@@ -40,6 +40,9 @@ type StorageCandidate = {
 };
 
 const DEFAULT_PLAN_HEIGHT_METERS = 2.4;
+// RoomPlan(iOS)은 벽을 두께 0인 면으로 모델링한다(실캡처로 확인, 커밋 4dd61e07). isValidPlanWall이
+// depth>0을 요구하므로, 렌더용 최소 두께를 합성해 실캡처 벽이 조용히 걸러지지 않게 한다.
+const CAPTURE_WALL_MIN_DEPTH_METERS = 0.05;
 
 export function resolvePlanWalls(storage: Pick<Storage, "getItem"> | null): PlanWallsState | null {
   if (!storage) return null;
@@ -251,11 +254,77 @@ export function planWallsFromPayload(payload: unknown): WheretoputWall3D[] {
   return candidates.filter(isValidPlanWall);
 }
 
-/** 공개 자산 벽을 먼저 쓰고, 유효한 서버 벽이 없을 때만 기존 브라우저 도면으로 폴백한다. */
+/**
+ * RoomPlan(iOS) 캡처 도면(SplatAsset.captureFloorPlan, roomplan.json)을 뷰어 벽으로 변환한다.
+ * 이 경로의 벽은 splat과 같은 ARSession에서 나와 좌표계가 동일하므로(RoomPlanExporter.swift 주석)
+ * 정합(transform) 없이 항등으로 그대로 쓴다. 입력은 미검증 JSON이니 관대하게 파싱하고, 유효한
+ * 벽이 하나도 없으면 빈 배열을 돌려준다.
+ */
+export function planWallsFromCaptureFloorPlan(payload: unknown): WheretoputWall3D[] {
+  if (!isRecord(payload)) return [];
+
+  return readArray(payload.walls).reduce<WheretoputWall3D[]>((walls, rawWall, index) => {
+    const wall = metricWallToPlanWall(rawWall, index);
+    if (wall) walls.push(wall);
+    return walls;
+  }, []);
+}
+
+/**
+ * MetricWall(start/end 세그먼트, ARKit 실측 미터) 하나를 WheretoputWall3D로 변환한다.
+ * position = 세그먼트 중점(y는 height/2, 기존 도면 벽과 동일하게 바닥부터 절반 높이).
+ * rotation[1](yaw)은 wallLocalToWorldXZ의 역함수가 되도록 구한다 — 그 함수는
+ * z = position[2] − localX·sin(ry) + localZ·cos(ry) 로 z에 음의 sin을 쓰므로,
+ * 방향벡터 (dx,dz) = end−start 에 대해 cos(ry) = dx/len, sin(ry) = −dz/len 를 만족해야 하고,
+ * 이는 곧 ry = atan2(−dz, dx)다(왕복 테스트로 검증).
+ */
+function metricWallToPlanWall(value: unknown, index: number): WheretoputWall3D | null {
+  if (!isRecord(value)) return null;
+  if (!isFiniteNumberPair(value.start) || !isFiniteNumberPair(value.end)) return null;
+  if (!isPositiveFiniteNumber(value.height)) return null;
+  if (!isFiniteNumber(value.thickness) || value.thickness < 0) return null;
+
+  const [startX, startZ] = value.start;
+  const [endX, endZ] = value.end;
+  const dx = endX - startX;
+  const dz = endZ - startZ;
+  const length = Math.hypot(dx, dz);
+  if (!(length > 0)) return null;
+
+  const wall: WheretoputWall3D = {
+    id: `capture-wall-${index}`,
+    wall_id: `capture-wall-${index}`,
+    material: "wall",
+    dimensions: {
+      width: length,
+      height: value.height,
+      depth: Math.max(value.thickness, CAPTURE_WALL_MIN_DEPTH_METERS)
+    },
+    position: [(startX + endX) / 2, value.height / 2, (startZ + endZ) / 2],
+    rotation: [0, Math.atan2(-dz, dx), 0]
+  };
+
+  return isValidPlanWall(wall) ? wall : null;
+}
+
+function isFiniteNumberPair(value: unknown): value is [number, number] {
+  return Array.isArray(value) && value.length === 2 && value.every(isFiniteNumber);
+}
+
+/**
+ * 벽 출처 우선순위: 캡처 도면(같은 ARSession이라 정합 불필요) → 공개 자산 벽(연결된 도면/매물
+ * 스냅샷) → 브라우저 도면 → placeholder.
+ */
 export function resolveViewerPlanWalls(
+  capturePayload: unknown,
   serverPayload: unknown,
   browserState: PlanWallsState | null
 ): ViewerPlanWallsState {
+  const captureWalls = planWallsFromCaptureFloorPlan(capturePayload);
+  if (captureWalls.length > 0) {
+    return { walls: captureWalls, source: "capture" };
+  }
+
   const serverWalls = planWallsFromPayload(serverPayload);
   if (serverWalls.length > 0) {
     return { walls: serverWalls, source: "server" };

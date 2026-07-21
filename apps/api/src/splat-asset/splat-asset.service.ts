@@ -39,6 +39,7 @@ import {
   normalizePublicWalls3D,
   parseOwnerWalls3D
 } from "./owner-floor-plan-walls";
+import { mitunetToOwnerWalls } from "./mitunet-floor-plan-walls";
 
 export const SPLAT_ASSET_DATABASE_URL = "SPLAT_ASSET_DATABASE_URL";
 
@@ -512,6 +513,12 @@ export class SplatAssetService {
       // 매물 스냅샷은 서버 FloorPlan row가 아니므로 floorPlanId는 null로 반환(register 연결 대상 아님).
       const walls = parseOwnerWalls3D(extractJsonField(listing?.floorPlan, "walls3D"));
       if (walls.length > 0) return { floorPlanId: null, walls };
+
+      // walls3D가 비어 있어도 도면 이미지 업로드 경로(mitunet)만 채워진 매물이 있다
+      // (trade.service.ts normalizeFloorPlan — 이미지 업로드는 walls3D를 만들지 않는다).
+      // mitunet-floor-plan-walls.ts가 폴리곤을 박스 벽으로 근사 변환해 자동정합을 계속 진행시킨다.
+      const mitunetWalls = mitunetToOwnerWalls(extractJsonField(listing?.floorPlan, "mitunet"));
+      if (mitunetWalls.length > 0) return { floorPlanId: null, walls: mitunetWalls };
     }
 
     return null;
