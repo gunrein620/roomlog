@@ -391,17 +391,9 @@ export default function ListingTourRoom3D({
       return;
     }
 
-    // 배치된 가구를 클릭하면 다시 집어들어 재편집 모드로 — 취소(✕)하면 원래 자리로 돌아간다.
-    // 확정 표시(source)가 붙은 채로는 이동이 막히므로 초안 상태로 되돌려서 집는다.
-    pendingFurnitureOriginRef.current = furniture;
-    pendingTenantFurnitureSourceRef.current = null;
-    pendingFurniturePlacedOnceRef.current = true;
-    setIsPendingFurnitureEditing(true);
-    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
-    setPendingFurniture(reopenFurnitureDraft(furniture));
-    setSelectedFurnitureId(null);
-    setIsFurnitureDragging(true);
-    setSaveMessage(`${furniture.name} 재편집 — 끌어서 옮기고 ✓로 확정하세요.`);
+    setSelectedFurnitureId(furniture.id);
+    setIsFurnitureDragging(false);
+    setSaveMessage(`${furniture.name} 선택됨 — 위 아이콘으로 이동, 회전 또는 삭제하세요.`);
   }
 
   function confirmPendingFurniturePlacement() {
@@ -420,7 +412,7 @@ export default function ListingTourRoom3D({
         : finalized;
     setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
     setPendingFurniture(null);
-    setSelectedFurnitureId(null);
+    setSelectedFurnitureId(nextFurniture.id);
     setSaveMessage(`${nextFurniture.name} 배치를 확정했습니다.`);
   }
 
@@ -450,6 +442,43 @@ export default function ListingTourRoom3D({
     if (!pendingFurniture) return;
     setPendingFurniture(rotateFurnitureQuarterTurn(pendingFurniture, direction));
     setSaveMessage(`집고 있는 가구를 ${direction === -1 ? "왼쪽" : "오른쪽"}으로 90도 회전했습니다.`);
+  }
+
+  function beginSelectedFurnitureMove() {
+    if (!selectedFurnitureId) return;
+    const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
+    if (!furniture) return;
+
+    pendingFurnitureOriginRef.current = furniture;
+    pendingTenantFurnitureSourceRef.current = null;
+    pendingFurniturePlacedOnceRef.current = true;
+    setIsPendingFurnitureEditing(true);
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
+    setPendingFurniture(reopenFurnitureDraft(furniture));
+    setSelectedFurnitureId(null);
+    setIsFurnitureDragging(false);
+    setSaveMessage(`${furniture.name} 이동 중 — 바닥을 눌러 위치를 잡고 ✓로 확정하세요.`);
+  }
+
+  function rotateSelectedFurniture(direction: -1 | 1) {
+    if (!selectedFurnitureId) return;
+    const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
+    if (!furniture) return;
+
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.map((item) => (
+      item.id === furniture.id ? rotateFurnitureQuarterTurn(item, direction) : item
+    )));
+    setSaveMessage(`${furniture.name} ${direction === -1 ? "왼쪽" : "오른쪽"}으로 90도 회전했습니다.`);
+  }
+
+  function deleteSelectedFurniture() {
+    if (!selectedFurnitureId) return;
+    const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
+    if (!furniture) return;
+
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
+    setSelectedFurnitureId(null);
+    setSaveMessage(`${furniture.name}을(를) 삭제했습니다.`);
   }
 
   function saveFurnitureLayout() {
@@ -527,6 +556,10 @@ export default function ListingTourRoom3D({
         previewFit
         onPendingDelete={deletePendingFurniture}
         onPendingRotate={rotatePendingFurniture}
+        onSelectedDelete={deleteSelectedFurniture}
+        onSelectedMove={beginSelectedFurnitureMove}
+        onSelectedRotateLeft={() => rotateSelectedFurniture(-1)}
+        onSelectedRotateRight={() => rotateSelectedFurniture(1)}
         onWallPointerDown={handleWallPointerDown}
         pendingFurniture={pendingFurniture}
         selectedFurnitureId={selectedFurnitureId}

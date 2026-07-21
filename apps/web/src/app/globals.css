@@ -11870,8 +11870,8 @@ p {
 .floor-plan-pending-actions {
   display: flex;
   gap: 6px;
-  padding: 5px;
-  border-radius: 999px;
+  padding: 6px;
+  border-radius: 14px;
   background: #ffffff;
   border: 1px solid var(--line);
   box-shadow: 0 8px 20px rgba(18, 24, 40, 0.18);
@@ -11880,12 +11880,12 @@ p {
 
 .floor-plan-pending-actions button {
   display: inline-grid;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   place-items: center;
   border: 0;
-  border-radius: 50%;
-  background: #eef2f9;
+  border-radius: 10px;
+  background: transparent;
   color: #384252;
   font-size: 1rem;
   font-weight: 700;
@@ -11905,25 +11905,25 @@ p {
 }
 
 .floor-plan-pending-actions button:hover {
-  background: #dde5f2;
+  background: #eef2f9;
 }
 
 .floor-plan-pending-actions button.is-confirm {
-  background: #16a34a;
-  color: #ffffff;
+  background: transparent;
+  color: #16a34a;
 }
 
 .floor-plan-pending-actions button.is-confirm:hover {
-  background: #15803d;
+  background: #dcfce7;
 }
 
 .floor-plan-pending-actions button.is-cancel {
-  background: #dc2626;
-  color: #ffffff;
+  background: transparent;
+  color: #dc2626;
 }
 
 .floor-plan-pending-actions button.is-cancel:hover {
-  background: #b91c1c;
+  background: #fee2e2;
 }
 
 .floor-plan-pending-actions button.is-delete {
