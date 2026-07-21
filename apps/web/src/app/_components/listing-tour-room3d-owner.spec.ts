@@ -33,4 +33,9 @@ test("owner furniture catalog uses horizontal source tabs and readable large car
   assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-grid (?:strong|strong,)[\s\S]*text-overflow: clip;[\s\S]*white-space: normal;/);
   assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-grid strong \{[\s\S]*font-size: 0\.86rem;/);
   assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-grid small \{[\s\S]*font-size: 0\.75rem;/);
+  assert.match(styles, /\.is-3d-simulation-open \.hero-stage \.listing-tour-furniture-head strong \{[\s\S]*font-size: 1rem;[\s\S]*font-weight: 700;/);
+  assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-source-tabs button \{[\s\S]*font-size: 0\.9rem;[\s\S]*font-weight: 700;/);
+  assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-search input \{[\s\S]*font-size: 0\.85rem;[\s\S]*font-weight: 500;/);
+  assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-category-tabs button \{[\s\S]*font-size: 0\.78rem;[\s\S]*font-weight: 600;/);
+  assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-actions button \{[\s\S]*font-size: 0\.82rem;[\s\S]*font-weight: 700;/);
 });
