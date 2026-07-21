@@ -31,7 +31,6 @@ import {
 } from "@/lib/listing-catalog";
 import { listSplatAssetsByListing } from "@/lib/splat-asset-api";
 import { captureFloorPlanToSceneLayout } from "../floor-plan-3d/room-scene/capture-to-layout";
-import { LISTING_FLOOR_PLAN_SOURCE_LABEL, resolveListingFloorPlanSource } from "./listing-floor-plan-source";
 import { NaverMapPreview } from "./NaverMapPreview";
 
 // 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
@@ -126,8 +125,6 @@ export function ListingDetailView({
     () => captureFloorPlanToSceneLayout(splatAssetCaptureFloorPlan),
     [splatAssetCaptureFloorPlan]
   );
-  // 지금 3D 뷰에 뜬 도면이 실측 캡처인지 도면 이미지 자동 추출(mitunet)인지 — 사용자에게 출처를 알린다.
-  const floorPlanSource = resolveListingFloorPlanSource(Boolean(captureFloorPlanLayout), Boolean(listing.floorPlan3D?.mitunet));
 
   // 직접등록 매물은 집주인이 등록 시 고른 옵션만, 데모 매물(options 없음)은 기존 고정 목록을 보여준다.
   const listingOptions = listing.options ?? optionItems;
@@ -208,9 +205,6 @@ export function ListingDetailView({
           id="detail-3d-hero"
           role={is3DSimulationOpen ? "dialog" : undefined}
         >
-          {floorPlanSource ? (
-            <span className="detail-3d-hero-plan-source">{LISTING_FLOOR_PLAN_SOURCE_LABEL[floorPlanSource]}</span>
-          ) : null}
           <ListingTourRoom3D
             captureFloorPlanLayout={captureFloorPlanLayout}
             floorPlan={listing.floorPlan3D}
@@ -621,9 +615,6 @@ export function ListingDetailView({
             <div className="tour-preview-stage" aria-label="3D 투어 미리보기">
               {listing.floorPlan3D ? (
                 <div className="tour-room-3d">
-                  {floorPlanSource ? (
-                    <span className="tour-preview-plan-source">{LISTING_FLOOR_PLAN_SOURCE_LABEL[floorPlanSource]}</span>
-                  ) : null}
                   <ListingTourRoom3D
                     captureFloorPlanLayout={captureFloorPlanLayout}
                     floorPlan={listing.floorPlan3D}
