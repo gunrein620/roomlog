@@ -13,6 +13,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 import { FURNITURE_CATALOG, getFurnitureDimensions } from "../furniture-placement";
 import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
+import type { FurniturePlacementHit, FurniturePlacementResult } from "../furniture-placement";
 import { createMitunetSceneLayout, type MitunetSceneLayout, type MitunetScenePolygon } from "./mitunet-geometry";
 import {
   calculateMitunetGroundBounds,
@@ -433,6 +434,9 @@ function FurnitureGlbMesh({
   const gltf = useGLTF(modelUrl);
   const invalidate = useThree((state) => state.invalidate);
   const dimensions = getFurnitureDimensions(furniture);
+  const wallMounted = furniture.placement?.mode === "wall";
+  const wallQuarterTurns = Math.abs(Math.round(furniture.rotation[2] / (Math.PI / 2))) % 2;
+  const renderedHeight = wallMounted && wallQuarterTurns === 1 ? dimensions.width : dimensions.height;
   const { modelMinY, modelSize, scene } = useMemo(() => {
     const clonedScene = gltf.scene.clone(true);
 
@@ -498,13 +502,17 @@ function FurnitureGlbMesh({
       onPointerDown={(event) => onPointerDown(furniture, event)}
       // y = 저장된 장착/적층 높이(씬 단위). 바닥 가구는 ≈0이고, 벽걸이·탁자 위 소품은
       // 뷰어에서 계산한 높이가 그대로 들어와 매물 3D에서도 같은 위치에 뜬다.
-      position={[furniture.position[0], furniture.position[1], furniture.position[2]]}
+      position={[
+        furniture.position[0],
+        wallMounted ? furniture.position[1] + renderedHeight / 2 : furniture.position[1],
+        furniture.position[2]
+      ]}
       rotation={furniture.rotation}
       userData={{ roomlogFurnitureId: furniture.id }}
     >
-      <primitive object={scene} position={[0, modelOffsetY, 0]} scale={scale} />
+      <primitive object={scene} position={[0, wallMounted ? modelOffsetY - dimensions.height / 2 : modelOffsetY, 0]} scale={scale} />
       {isSelected ? (
-        <mesh position={[0, dimensions.height / 2, 0]}>
+        <mesh position={wallMounted ? [0, 0, 0] : [0, dimensions.height / 2, 0]}>
           <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
           <meshLambertMaterial color="#2f55ff" opacity={0.4} transparent wireframe />
         </mesh>
@@ -700,6 +708,7 @@ export function RoomlogThreeFloorPlanView({
   furnitureData,
   furnitureFirstPersonEnabled = false,
   furnitureInteractionMode = "explore",
+  furniturePlacementFeedback = null,
   furniturePointerLockRequestRef,
   furnitureVerticalScale = 1,
   hideHint = false,
@@ -717,10 +726,13 @@ export function RoomlogThreeFloorPlanView({
   onFurnitureCancel,
   onFurnitureCloseSelect,
   onFurnitureConfirm,
+  onFurnitureLatestPlacementHit,
   onFurnitureLatestPlacementPoint,
   onFurnitureOpenSelect,
   onFurniturePickupAimed,
+  onFurniturePlacementHit,
   onFurniturePlacementPoint,
+  onFurnitureRemove,
   onFurnitureRotateLeft,
   onFurnitureRotateRight,
   onFurniturePointerDown,
@@ -754,6 +766,7 @@ export function RoomlogThreeFloorPlanView({
   furnitureData: PlacedFurniture[];
   furnitureFirstPersonEnabled?: boolean;
   furnitureInteractionMode?: FurnitureInteractionMode;
+  furniturePlacementFeedback?: (Pick<FurniturePlacementResult, "reason" | "valid"> & { mode: "floor" | "surface" | "wall" }) | null;
   furniturePointerLockRequestRef?: MutableRefObject<(() => void) | null>;
   furnitureVerticalScale?: number;
   hideHint?: boolean;
@@ -774,10 +787,13 @@ export function RoomlogThreeFloorPlanView({
   onFurnitureCancel?: () => void;
   onFurnitureCloseSelect?: () => void;
   onFurnitureConfirm?: () => void;
+  onFurnitureLatestPlacementHit?: (hit: FurniturePlacementHit) => void;
   onFurnitureLatestPlacementPoint?: (point: { x: number; z: number }) => void;
   onFurnitureOpenSelect?: () => void;
   onFurniturePickupAimed?: (id: string) => void;
+  onFurniturePlacementHit?: (hit: FurniturePlacementHit) => void;
   onFurniturePlacementPoint?: (point: { x: number; z: number }) => void;
+  onFurnitureRemove?: () => void;
   onFurnitureRotateLeft?: () => void;
   onFurnitureRotateRight?: () => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
@@ -849,6 +865,19 @@ export function RoomlogThreeFloorPlanView({
       window.clearTimeout(timer);
     };
   }, []);
+
+  const furniturePlacementState = furnitureInteractionMode === "carry" && furniturePlacementFeedback?.valid !== true
+    ? "invalid"
+    : "valid";
+  const furniturePlacementLabel = furnitureInteractionMode !== "carry"
+    ? null
+    : furniturePlacementFeedback?.valid
+      ? furniturePlacementFeedback.mode === "wall"
+        ? "벽걸이 배치"
+        : furniturePlacementFeedback.mode === "surface"
+          ? "가구 위 배치"
+          : "바닥 배치"
+      : "배치 불가";
 
   return (
     <div
@@ -1009,10 +1038,13 @@ export function RoomlogThreeFloorPlanView({
             onCancel={() => onFurnitureCancel?.()}
             onCloseSelect={() => onFurnitureCloseSelect?.()}
             onConfirm={() => onFurnitureConfirm?.()}
+            onLatestPlacementHit={onFurnitureLatestPlacementHit}
             onLatestPlacementPoint={(point) => onFurnitureLatestPlacementPoint?.(point)}
             onOpenSelect={() => onFurnitureOpenSelect?.()}
             onPickupAimed={(id) => onFurniturePickupAimed?.(id)}
+            onPlacementHit={onFurniturePlacementHit}
             onPlacementPoint={(point) => onFurniturePlacementPoint?.(point)}
+            onRemove={onFurnitureRemove}
             onRotateLeft={() => onFurnitureRotateLeft?.()}
             onRotateRight={() => onFurnitureRotateRight?.()}
             onStatusChange={setFurnitureFirstPersonStatus}
@@ -1042,7 +1074,15 @@ export function RoomlogThreeFloorPlanView({
       ) : null}
       {furnitureFirstPersonEnabled ? (
         <>
-          {furnitureInteractionMode !== "select" ? <span aria-hidden="true" className="floor-plan-furniture-reticle" /> : null}
+          {furnitureInteractionMode !== "select" ? (
+            <span className={`floor-plan-furniture-reticle is-${furniturePlacementState}`}>
+              {furniturePlacementLabel ? (
+                <span aria-live="polite" className="floor-plan-furniture-reticle-label" role="status">
+                  {furniturePlacementLabel}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
           {furnitureFirstPersonStatus === "locked" || furnitureInteractionMode === "select" ? null : (
             <div className={`floor-plan-walk-instruction is-${furnitureFirstPersonStatus}`} role="status">
               <strong>클릭하여 가구 배치 시작</strong>
@@ -1051,7 +1091,7 @@ export function RoomlogThreeFloorPlanView({
           )}
           <span className="floor-3d-hint">
             {furnitureInteractionMode === "carry"
-              ? "1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정"
+              ? "1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정 · R 제거/취소"
               : furnitureInteractionMode === "select"
                 ? "가구를 선택하세요 · 2 또는 Esc 닫기"
                 : aimedFurnitureId

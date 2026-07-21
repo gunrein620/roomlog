@@ -259,11 +259,11 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
       const sceneHit = findSceneHitMetadata(intersection.object);
       if (!sceneHit) continue;
       const hit = createFurniturePlacementHit(sceneHit, intersection);
-      callbacksRef.current.onLatestPlacementHit?.(hit);
-      if (hit.kind === "floor") callbacksRef.current.onLatestPlacementPoint(hit.point);
+      if (callbacksRef.current.onLatestPlacementHit) callbacksRef.current.onLatestPlacementHit(hit);
+      else if (hit.kind === "floor") callbacksRef.current.onLatestPlacementPoint(hit.point);
       if (modeRef.current === "carry") {
-        callbacksRef.current.onPlacementHit?.(hit);
-        if (hit.kind === "floor") callbacksRef.current.onPlacementPoint(hit.point);
+        if (callbacksRef.current.onPlacementHit) callbacksRef.current.onPlacementHit(hit);
+        else if (hit.kind === "floor") callbacksRef.current.onPlacementPoint(hit.point);
       }
       return;
     }

@@ -48,10 +48,28 @@ describe("furniture first-person controls", () => {
     assert.match(viewerSource, /roomlogPlacementSurface: "wall"/);
     assert.match(mitunetExtrudedLayerSource, /userData=\{\{ roomlogPlacementSurface: "wall", roomlogWallId: "mitunet-wall" \}\}/);
     assert.match(viewerSource, /roomlogFurnitureId: furniture\.id/);
-    assert.match(viewerSource, /className="floor-plan-furniture-reticle"/);
+    assert.match(viewerSource, /className=\{`floor-plan-furniture-reticle is-/);
     assert.match(viewerSource, /1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정/);
     assert.match(viewerSource, /2 가구 선택 · WASD 이동 · 마우스 시점/);
     assert.match(styles, /\.floor-plan-furniture-reticle/);
+  });
+
+  it("shows green or red placement feedback with the active surface label", () => {
+    assert.match(viewerSource, /바닥 배치/);
+    assert.match(viewerSource, /가구 위 배치/);
+    assert.match(viewerSource, /벽걸이 배치/);
+    assert.match(viewerSource, /배치 불가/);
+    assert.match(viewerSource, /floor-plan-furniture-reticle is-/);
+    assert.match(styles, /\.floor-plan-furniture-reticle\.is-valid/);
+    assert.match(styles, /\.floor-plan-furniture-reticle\.is-invalid/);
+    assert.match(styles, /var\(--success\)/);
+    assert.match(styles, /var\(--error\)/);
+  });
+
+  it("rotates wall-mounted GLB furniture around its visual centre", () => {
+    assert.match(viewerSource, /const wallMounted = furniture\.placement\?\.mode === "wall"/);
+    assert.match(viewerSource, /wallMounted \? furniture\.position\[1\] \+ renderedHeight \/ 2/);
+    assert.match(viewerSource, /wallMounted \? modelOffsetY - dimensions\.height \/ 2/);
   });
 
   it("connects desktop E and Q actions to the existing placement mutations", () => {

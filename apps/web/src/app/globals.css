@@ -4513,11 +4513,19 @@ p {
   z-index: 7;
   width: 18px;
   height: 18px;
-  border: 2px solid var(--paper);
+  border: 2px solid var(--success);
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-soft);
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+.floor-plan-furniture-reticle.is-valid {
+  border-color: var(--success);
+}
+
+.floor-plan-furniture-reticle.is-invalid {
+  border-color: var(--error);
 }
 
 .floor-plan-furniture-reticle::after {
@@ -4527,9 +4535,33 @@ p {
   width: 4px;
   height: 4px;
   border-radius: var(--radius-full);
-  background: var(--paper);
+  background: var(--success);
   content: "";
   transform: translate(-50%, -50%);
+}
+
+.floor-plan-furniture-reticle.is-invalid::after {
+  background: var(--error);
+}
+
+.floor-plan-furniture-reticle-label {
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  width: max-content;
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  background: var(--paper);
+  color: var(--success);
+  box-shadow: var(--shadow-soft);
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1;
+  transform: translateX(-50%);
+}
+
+.floor-plan-furniture-reticle.is-invalid .floor-plan-furniture-reticle-label {
+  color: var(--error);
 }
 
 /* ── 우측 패널 CTA(시안) — 데스크톱 전용, 모바일은 하단 고정 바가 담당 ── */

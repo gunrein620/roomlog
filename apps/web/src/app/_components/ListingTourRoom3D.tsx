@@ -11,13 +11,22 @@ import {
   FURNITURE_CATALOG,
   furnitureCategoryLabel,
   furnitureImageUrl,
+  hasAttachedFurniture,
   listFurnitureCategoryFilters,
   loadGlbDatasetCatalog,
-  moveFurnitureDraftToPoint,
+  moveAttachedFurniture,
   reopenFurnitureDraft,
+  resolveFurniturePlacement,
+  rotateFurnitureForPlacement,
   rotateFurnitureQuarterTurn
 } from "../floor-plan-3d/furniture-placement";
-import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
+import type { FurniturePlacementHit, FurniturePlacementResult } from "../floor-plan-3d/furniture-placement";
+import type {
+  FurnitureCatalogItem,
+  FurniturePlacementAttachment,
+  PlacedFurniture,
+  WheretoputWall3D
+} from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
 import type { FurnitureInteractionMode } from "../floor-plan-3d/room-scene/furniture-first-person-input";
 import { resolveMitunetFurnitureSceneScale } from "../floor-plan-3d/room-scene/mitunet-geometry";
@@ -45,6 +54,7 @@ export type ListingFloorPlanFurniture = {
   color: string;
   length: [number, number, number];
   modelUrl?: string;
+  placement?: FurniturePlacementAttachment;
   position: [number, number, number];
   rotation: [number, number, number];
   scale: number;
@@ -97,7 +107,12 @@ function normalizeMitunetListingFurniture(
   furniture: PlacedFurniture,
   mitunetPlan: MitunetFloorPlan | undefined
 ): PlacedFurniture {
-  if (!mitunetPlan || !furniture.modelUrl || furniture.source === "furniture-glb-dataset") {
+  if (
+    !mitunetPlan
+    || !furniture.modelUrl
+    || furniture.source === "furniture-glb-dataset"
+    || (furniture.placement?.mode && furniture.placement.mode !== "floor")
+  ) {
     return furniture;
   }
 
@@ -106,6 +121,14 @@ function normalizeMitunetListingFurniture(
     position: [furniture.position[0], 0.006, furniture.position[2]],
     scale: resolveMitunetFurnitureSceneScale(mitunetPlan)
   };
+}
+
+function sameFurnitureTransform(left: PlacedFurniture, right: PlacedFurniture) {
+  return left.position.every((value, index) => value === right.position[index])
+    && left.rotation.every((value, index) => value === right.rotation[index])
+    && left.placement?.mode === right.placement?.mode
+    && left.placement?.supportFurnitureId === right.placement?.supportFurnitureId
+    && left.placement?.wallId === right.placement?.wallId;
 }
 
 export default function ListingTourRoom3D({
@@ -135,6 +158,7 @@ export default function ListingTourRoom3D({
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
+  const [furniturePlacementFeedback, setFurniturePlacementFeedback] = useState<Pick<FurniturePlacementResult, "reason" | "valid"> & { mode: FurniturePlacementAttachment["mode"] } | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [tenantFurnitures, setTenantFurnitures] = useState<TenantFurniture[]>([]);
   const [hasSavedFurnitureLayout, setHasSavedFurnitureLayout] = useState(false);
@@ -147,9 +171,11 @@ export default function ListingTourRoom3D({
   const pendingFurnitureOriginRef = useRef<PlacedFurniture | null>(null);
   // 내 가구 신규 배치의 원본 source 보존용. finalizeFurnitureDraft의 RESIDENT_DESIGN 덮어쓰기를 막는다.
   const pendingTenantFurnitureSourceRef = useRef<TenantFurniture["source"] | null>(null);
-  // 집고 있는 가구가 사용자 위치를 한 번이라도 받았는지 — 첫 배치는 벽 통과 검사를 끈다.
+  const pendingFurniturePlacementRef = useRef<FurniturePlacementResult | null>(null);
+  // 집고 있는 가구가 사용자 위치를 한 번이라도 받았는지 — 포인터 기반 배치의 호환 상태에도 사용한다.
   const pendingFurniturePlacedOnceRef = useRef(false);
-  // 1인칭 중앙 조준선이 마지막으로 만난 유효 바닥점. 사이드바에서 고른 새 가구의 첫 위치로 쓴다.
+  const lastFurniturePlacementHitRef = useRef<FurniturePlacementHit | null>(null);
+  // 기존 포인터 기반 배치를 위한 마지막 바닥점 호환 캐시.
   const lastFurniturePlacementPointRef = useRef<{ x: number; z: number } | null>(null);
   const furnitureCategoryTabsRef = useRef<HTMLDivElement>(null);
   const [furnitureCategoryScroll, setFurnitureCategoryScroll] = useState({ left: 0, max: 0 });
@@ -326,6 +352,20 @@ export default function ListingTourRoom3D({
     lastFurniturePlacementPointRef.current = point;
   }
 
+  function rememberFurniturePlacementHit(hit: FurniturePlacementHit) {
+    lastFurniturePlacementHitRef.current = hit;
+    if (hit.kind === "floor") rememberFurniturePlacementPoint(hit.point);
+  }
+
+  function updateFurniturePlacementFeedback(placement: FurniturePlacementResult | null) {
+    const next = placement
+      ? { mode: placement.attachment.mode, reason: placement.reason, valid: placement.valid }
+      : null;
+    setFurniturePlacementFeedback((current) => (
+      current?.mode === next?.mode && current?.reason === next?.reason && current?.valid === next?.valid ? current : next
+    ));
+  }
+
   function closeFurnitureEditor() {
     setIsPlacementOpen(false);
     if (variant === "hero") setIsHeroPanelOpen(false);
@@ -341,6 +381,9 @@ export default function ListingTourRoom3D({
     setSelectedFurnitureId(null);
     setIsFurnitureDragging(false);
     setFurnitureInteractionMode("explore");
+    setFurniturePlacementFeedback(null);
+    pendingFurniturePlacementRef.current = null;
+    lastFurniturePlacementHitRef.current = null;
     lastFurniturePlacementPointRef.current = null;
 
     if (simulationOpen) {
@@ -396,11 +439,14 @@ export default function ListingTourRoom3D({
 
   function startCatalogFurnitureCarry(draft: PlacedFurniture) {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    const placementPoint = lastFurniturePlacementPointRef.current;
-    const nextDraft = placementPoint
-      ? moveFurnitureDraftToPoint(draft, normalizedScenePoint(placementPoint), wallsData, { ignoreCrossing: true })
-      : draft;
-    pendingFurniturePlacedOnceRef.current = placementPoint !== null;
+    const placementHit = lastFurniturePlacementHitRef.current;
+    const placement = placementHit
+      ? resolveFurniturePlacement({ draft, hit: placementHit, placed: placedFurnitures, walls: wallsData })
+      : null;
+    const nextDraft = placement?.valid ? placement.furniture : draft;
+    pendingFurniturePlacementRef.current = placement;
+    updateFurniturePlacementFeedback(placement);
+    pendingFurniturePlacedOnceRef.current = placement?.valid === true;
     setPendingFurniture(nextDraft);
     setSelectedFurnitureId(null);
     setIsPlacementOpen(true);
@@ -408,18 +454,23 @@ export default function ListingTourRoom3D({
     furniturePointerLockRequestRef.current?.();
   }
 
-  function placePendingFurniture(point: { x: number; z: number }) {
+  function placePendingFurnitureAtHit(hit: FurniturePlacementHit) {
     if (!pendingFurniture) return;
-    // 카탈로그에서 갓 꺼낸 가구의 현재 위치(원점)는 이동 경로가 아니다 —
-    // 첫 배치는 벽 통과 검사를 끄고, 그 뒤부터(드래그) 경로 기준으로 벽에 막는다.
-    const nextFurniture = moveFurnitureDraftToPoint(pendingFurniture, normalizedScenePoint(point), wallsData, {
-      ignoreCrossing: !pendingFurniturePlacedOnceRef.current
-    });
+    rememberFurniturePlacementHit(hit);
+    const placement = resolveFurniturePlacement({ draft: pendingFurniture, hit, placed: placedFurnitures, walls: wallsData });
+    pendingFurniturePlacementRef.current = placement;
+    updateFurniturePlacementFeedback(placement);
+    if (!placement.valid) {
+      setSaveMessage(placement.reason ?? "이 위치에는 배치할 수 없습니다.");
+      return;
+    }
     pendingFurniturePlacedOnceRef.current = true;
-    // 벽에 막혀 위치가 그대로면 상태 업데이트를 건너뛴다 — 드래그 중 무의미한 리렌더 방지.
-    if (nextFurniture.position[0] === pendingFurniture.position[0] && nextFurniture.position[2] === pendingFurniture.position[2]) return;
-    setPendingFurniture(nextFurniture);
-    setSaveMessage(`${nextFurniture.name} 위치를 잡았습니다. ✓로 배치를 확정하세요.`);
+    if (!sameFurnitureTransform(pendingFurniture, placement.furniture)) setPendingFurniture(placement.furniture);
+    setSaveMessage(`${placement.furniture.name} 위치를 잡았습니다. Q로 배치를 확정하세요.`);
+  }
+
+  function placePendingFurniture(point: { x: number; z: number }) {
+    placePendingFurnitureAtHit({ kind: "floor", point: { ...normalizedScenePoint(point), y: 0 } });
   }
 
   function clearSelectedFurniture() {
@@ -475,6 +526,10 @@ export default function ListingTourRoom3D({
 
   function confirmPendingFurniturePlacement() {
     if (!pendingFurniture) return;
+    if (!pendingFurniturePlacementRef.current?.valid) {
+      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 Q를 눌러주세요.");
+      return;
+    }
     // 재편집이면 원본 분류(source)를 보존한다 — 임대인 옵션 가구가 세입자 배치로 둔갑하지 않게.
     const origin = pendingFurnitureOriginRef.current;
     const tenantFurnitureSource = pendingTenantFurnitureSourceRef.current;
@@ -487,16 +542,23 @@ export default function ListingTourRoom3D({
       : tenantFurnitureSource
         ? { ...finalized, source: tenantFurnitureSource }
         : finalized;
-    setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
+    setPlacedFurnitures((currentFurnitures) => {
+      const withMovedChildren = origin
+        ? moveAttachedFurniture({ afterSupport: nextFurniture, beforeSupport: origin, furniture: currentFurnitures })
+        : currentFurnitures;
+      return [...withMovedChildren, nextFurniture];
+    });
     setPendingFurniture(null);
+    pendingFurniturePlacementRef.current = null;
+    setFurniturePlacementFeedback(null);
     setSelectedFurnitureId(nextFurniture.id);
     setFurnitureInteractionMode("explore");
     setSaveMessage(`${nextFurniture.name} 배치를 확정했습니다.`);
   }
 
   function confirmPendingFurnitureFromShortcut() {
-    if (!pendingFurniturePlacedOnceRef.current) {
-      setSaveMessage("바닥을 바라본 뒤 Q를 눌러 가구를 고정하세요.");
+    if (!pendingFurniturePlacementRef.current?.valid) {
+      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 Q를 눌러주세요.");
       return;
     }
     confirmPendingFurniturePlacement();
@@ -508,6 +570,8 @@ export default function ListingTourRoom3D({
     const restored = restorePendingFurnitureOrigin();
     pendingTenantFurnitureSourceRef.current = null;
     setPendingFurniture(null);
+    pendingFurniturePlacementRef.current = null;
+    setFurniturePlacementFeedback(null);
     setIsPendingFurnitureEditing(false);
     setSelectedFurnitureId(null);
     setFurnitureInteractionMode("explore");
@@ -528,19 +592,43 @@ export default function ListingTourRoom3D({
 
   function deletePendingFurniture() {
     if (!pendingFurniture) return;
+    if (hasAttachedFurniture(pendingFurniture.id, placedFurnitures)) {
+      setSaveMessage("위에 놓인 가구를 먼저 제거하세요");
+      return;
+    }
     const targetName = pendingFurniture.name;
     pendingFurnitureOriginRef.current = null;
     pendingTenantFurnitureSourceRef.current = null;
     setIsPendingFurnitureEditing(false);
     setPendingFurniture(null);
+    pendingFurniturePlacementRef.current = null;
+    setFurniturePlacementFeedback(null);
     setSelectedFurnitureId(null);
     setFurnitureInteractionMode("explore");
     setSaveMessage(`${targetName}을 삭제했습니다.`);
   }
 
+  function removePendingFurnitureFromShortcut() {
+    if (!pendingFurniture) return;
+    if (!isPendingFurnitureEditing) {
+      cancelPendingFurniturePlacement();
+      return;
+    }
+    deletePendingFurniture();
+  }
+
   function rotatePendingFurniture(direction: -1 | 1) {
     if (!pendingFurniture) return;
-    setPendingFurniture(rotateFurnitureQuarterTurn(pendingFurniture, direction));
+    const rotated = rotateFurnitureForPlacement(pendingFurniture, direction);
+    const hit = lastFurniturePlacementHitRef.current;
+    if (hit) {
+      const placement = resolveFurniturePlacement({ draft: rotated, hit, placed: placedFurnitures, walls: wallsData });
+      pendingFurniturePlacementRef.current = placement;
+      updateFurniturePlacementFeedback(placement);
+      setPendingFurniture(placement.valid ? placement.furniture : rotated);
+    } else {
+      setPendingFurniture(rotated);
+    }
     setSaveMessage(`집고 있는 가구를 ${direction === -1 ? "왼쪽" : "오른쪽"}으로 90도 회전했습니다.`);
   }
 
@@ -554,6 +642,8 @@ export default function ListingTourRoom3D({
     setIsPendingFurnitureEditing(true);
     setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
     setPendingFurniture(reopenFurnitureDraft(furniture));
+    pendingFurniturePlacementRef.current = null;
+    setFurniturePlacementFeedback(null);
     setSelectedFurnitureId(null);
     setIsFurnitureDragging(false);
     setFurnitureInteractionMode("carry");
@@ -571,9 +661,11 @@ export default function ListingTourRoom3D({
     const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
     if (!furniture) return;
 
-    setPlacedFurnitures((currentFurnitures) => currentFurnitures.map((item) => (
-      item.id === furniture.id ? rotateFurnitureQuarterTurn(item, direction) : item
-    )));
+    const rotated = rotateFurnitureQuarterTurn(furniture, direction);
+    setPlacedFurnitures((currentFurnitures) => {
+      const withoutSupport = currentFurnitures.filter((item) => item.id !== furniture.id);
+      return [...moveAttachedFurniture({ afterSupport: rotated, beforeSupport: furniture, furniture: withoutSupport }), rotated];
+    });
     setSaveMessage(`${furniture.name} ${direction === -1 ? "왼쪽" : "오른쪽"}으로 90도 회전했습니다.`);
   }
 
@@ -581,6 +673,10 @@ export default function ListingTourRoom3D({
     if (!selectedFurnitureId) return;
     const furniture = placedFurnitures.find((item) => item.id === selectedFurnitureId);
     if (!furniture) return;
+    if (hasAttachedFurniture(furniture.id, placedFurnitures)) {
+      setSaveMessage("위에 놓인 가구를 먼저 제거하세요");
+      return;
+    }
 
     setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
     setSelectedFurnitureId(null);
@@ -603,6 +699,7 @@ export default function ListingTourRoom3D({
           position: furniture.position,
           rotation: furniture.rotation,
           scale: furniture.scale,
+          placement: furniture.placement,
           sizeMm: furniture.sizeMm,
           source: furniture.source
         }))
@@ -652,6 +749,7 @@ export default function ListingTourRoom3D({
         furnitureData={placedFurnitures}
         furnitureFirstPersonEnabled={simulationOpen && simulationMode === "furniture" && !isCoarsePointer}
         furnitureInteractionMode={furnitureInteractionMode}
+        furniturePlacementFeedback={furniturePlacementFeedback}
         furniturePointerLockRequestRef={furniturePointerLockRequestRef}
         hideHint
         mitunetPlan={floorPlan.mitunet}
@@ -665,9 +763,12 @@ export default function ListingTourRoom3D({
         onFurnitureCloseSelect={closeFurnitureSelection}
         onFurnitureConfirm={confirmPendingFurnitureFromShortcut}
         onFurnitureLatestPlacementPoint={rememberFurniturePlacementPoint}
+        onFurnitureLatestPlacementHit={rememberFurniturePlacementHit}
         onFurnitureOpenSelect={openFurnitureSelection}
         onFurniturePickupAimed={beginFurnitureMoveById}
         onFurniturePlacementPoint={placePendingFurniture}
+        onFurniturePlacementHit={placePendingFurnitureAtHit}
+        onFurnitureRemove={removePendingFurnitureFromShortcut}
         onFurnitureRotateLeft={() => rotatePendingFurniture(-1)}
         onFurnitureRotateRight={() => rotatePendingFurniture(1)}
         onFurniturePointerDown={handleFurniturePointerDown}

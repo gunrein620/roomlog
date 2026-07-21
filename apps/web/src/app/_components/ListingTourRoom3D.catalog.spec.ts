@@ -65,7 +65,7 @@ test("reuses the touch joystick for coarse-pointer walk input", () => {
 
 test("connects both pending-furniture rotation directions to the listing tour", () => {
   assert.match(tourSource, /function rotatePendingFurniture\(direction: -1 \| 1\)/);
-  assert.match(tourSource, /rotateFurnitureQuarterTurn\(pendingFurniture, direction\)/);
+  assert.match(tourSource, /rotateFurnitureForPlacement\(pendingFurniture, direction\)/);
   assert.match(tourSource, /onPendingRotate=\{rotatePendingFurniture\}/);
 });
 
@@ -85,13 +85,20 @@ test("uses the MitUNet selection stage before moving an existing listing furnitu
   assert.match(pointerHandler, /setSelectedFurnitureId\(furniture\.id\)/);
   assert.doesNotMatch(pointerHandler, /setPendingFurniture\(reopenFurnitureDraft\(furniture\)\)/);
 
-  const moveHandler = between(
+  const moveByIdHandler = between(
+    tourSource,
+    "function beginFurnitureMoveById",
+    "function beginSelectedFurnitureMove"
+  );
+  assert.match(moveByIdHandler, /pendingFurnitureOriginRef\.current = furniture/);
+  assert.match(moveByIdHandler, /setPendingFurniture\(reopenFurnitureDraft\(furniture\)\)/);
+
+  const selectedMoveHandler = between(
     tourSource,
     "function beginSelectedFurnitureMove",
     "function rotateSelectedFurniture"
   );
-  assert.match(moveHandler, /pendingFurnitureOriginRef\.current = furniture/);
-  assert.match(moveHandler, /setPendingFurniture\(reopenFurnitureDraft\(furniture\)\)/);
+  assert.match(selectedMoveHandler, /beginFurnitureMoveById\(selectedFurnitureId\)/);
 });
 
 test("keeps a confirmed listing furniture item selected for the floating toolbar", () => {
