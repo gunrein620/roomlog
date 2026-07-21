@@ -103,4 +103,20 @@ describe("listing-only 3D preview", () => {
       /\.is-furniture-simulation-open \.hero-stage \.hero-furniture-catalog-scroll\s*\{[\s\S]*?flex:\s*1;[\s\S]*?max-height:\s*none/
     );
   });
+
+  it("mounts exactly one camera controller for orbit or walk mode", () => {
+    assert.match(viewerSource, /export type RoomControlMode = "orbit" \| "walk"/);
+    assert.match(viewerSource, /controlMode === "walk" \? \(/);
+    assert.match(viewerSource, /<FloorPlanWalkControls/);
+    assert.match(viewerSource, /:\s*\(\s*<RoomOrbitControls/);
+    assert.match(viewerSource, /controlMode === "orbit" \? \(\s*<RoomCameraAutoFit/);
+  });
+
+  it("makes the scene view-only and shows lock instructions in walk mode", () => {
+    assert.match(viewerSource, /const sceneInteractive = controlMode === "orbit"/);
+    assert.match(viewerSource, /walkStatus === "locked" \? null/);
+    assert.match(viewerSource, /클릭하여 둘러보기/);
+    assert.match(viewerSource, /WASD · 방향키 이동 · Esc 마우스 해제/);
+    assert.match(viewerSource, /워킹뷰를 시작할 수 없습니다/);
+  });
 });

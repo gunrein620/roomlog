@@ -21,6 +21,9 @@ import {
 } from "./mitunet-surfaces";
 import { MitunetGtaoEffects } from "./mitunet-postprocessing";
 import { createConcreteTexture, createFloorTexture, createSourcePlanTexture } from "./mitunet-textures";
+import { FloorPlanWalkControls, type FloorPlanWalkStatus } from "./FloorPlanWalkControls";
+
+export type RoomControlMode = "orbit" | "walk";
 
 Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
   (modelUrl) => useGLTF.preload(modelUrl)
@@ -601,6 +604,7 @@ function RoomCameraAutoFit({
 
 export function RoomlogThreeFloorPlanView({
   cameraPosition = [14, 12, 18],
+  controlMode = "orbit",
   controlsEnabled = true,
   fitDistanceScale = 1,
   frameloop = "demand",
@@ -610,6 +614,8 @@ export function RoomlogThreeFloorPlanView({
   horizontalScale = 1,
   listingPreview = false,
   mitunetPlan,
+  moveInputRef = null,
+  onWalkStatusChange,
   orbitMaxDistance = 42,
   orbitMinDistance = 5,
   orbitZoomEnabled = true,
@@ -634,6 +640,7 @@ export function RoomlogThreeFloorPlanView({
   wallsData
 }: {
   cameraPosition?: [number, number, number];
+  controlMode?: RoomControlMode;
   // 가구 드래그 중 카메라 회전이 같이 돌지 않게 끄는 용도.
   controlsEnabled?: boolean;
   // 편집기는 "demand"(입력 시에만 렌더)로 효율적이지만, 읽기 전용 뷰어는
@@ -648,6 +655,8 @@ export function RoomlogThreeFloorPlanView({
   /** 등록 카드 전용: 건물 바깥 장식과 카메라 조작을 숨긴다. */
   listingPreview?: boolean;
   mitunetPlan?: MitunetFloorPlan;
+  moveInputRef?: { current: { forward: number; strafe: number } } | null;
+  onWalkStatusChange?: (status: FloorPlanWalkStatus) => void;
   orbitMaxDistance?: number;
   orbitMinDistance?: number;
   /** 휠 줌 허용 여부 — 상세 히어로는 false(페이지 스크롤 우선). */
@@ -689,6 +698,19 @@ export function RoomlogThreeFloorPlanView({
     : computeWallBoundsXZ(wallsData);
   const hasMitunetStyle = Boolean(mitunetLayout && mitunetPlan);
   const selectedFurniture = furnitureData.find((furniture) => furniture.id === selectedFurnitureId) ?? null;
+  const sceneInteractive = controlMode === "orbit";
+  const walkPreferredSpawn = useMemo(
+    () => ({
+      x: wallBounds.centerX * sceneHorizontalScale,
+      z: wallBounds.centerZ * sceneHorizontalScale
+    }),
+    [sceneHorizontalScale, wallBounds.centerX, wallBounds.centerZ]
+  );
+  const [walkStatus, setWalkStatus] = useState<FloorPlanWalkStatus>("ready");
+
+  useEffect(() => {
+    onWalkStatusChange?.(walkStatus);
+  }, [onWalkStatusChange, walkStatus]);
 
   // dev(React StrictMode)에서 R3F의 초기 컨테이너 측정이 유실돼 캔버스가 300×150으로
   // 남고 씬이 그려지지 않는 경우가 있다. 마운트 직후 resize를 쏴서 재측정을 강제한다.
@@ -731,7 +753,9 @@ export function RoomlogThreeFloorPlanView({
     >
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} gl={{ alpha: listingPreview }} shadows>
         {/* 상세 3D 히어로는 fitDistanceScale로 방을 화면에 더 작게 배치한다(bounds 오토핏 위에 접붙임). */}
-        <RoomCameraAutoFit bounds={wallBounds} distanceScale={fitDistanceScale} previewFit={previewFit} />
+        {controlMode === "orbit" ? (
+          <RoomCameraAutoFit bounds={wallBounds} distanceScale={fitDistanceScale} previewFit={previewFit} />
+        ) : null}
         {/* 배경: mitunet 룩은 위 CSS 그라데이션이 하늘이라 색을 안 깐다. 비-mitunet은 sceneBackground를 쓰되
             null(상세 3D 히어로)이면 투명하게 둬 히어로와 자연스럽게 겹치게 한다(기본 #626260 = 편집기 회색).
             비-mitunet 조명(ambient 0.72 / directional 1.4)은 MitunetSceneLook의 inactive 분기가 제공한다. */}
@@ -745,16 +769,16 @@ export function RoomlogThreeFloorPlanView({
           <RoomFloor
             boundsOverride={mitunetLayout ? wallBounds : undefined}
             interactionOnly={hasMitunetStyle}
-            onFloorPointerDown={onFloorPointerDown}
-            onFloorPointerMove={onFloorPointerMove}
+            onFloorPointerDown={sceneInteractive ? onFloorPointerDown : ignoreFloorPointer}
+            onFloorPointerMove={sceneInteractive ? onFloorPointerMove : undefined}
             wallsData={wallsData}
           />
           {mitunetLayout ? <MitunetFloorPlanMeshes layout={mitunetLayout} /> : null}
           {wallsData.map((wall) => (
             <WallMesh
-              isSelected={String(selectedWallId ?? "") === String(wall.wall_id)}
+              isSelected={sceneInteractive && String(selectedWallId ?? "") === String(wall.wall_id)}
               key={wall.id}
-              onPointerDown={onWallPointerDown}
+              onPointerDown={sceneInteractive ? onWallPointerDown : ignoreWallPointer}
               wall={wall}
             />
           ))}
@@ -762,12 +786,12 @@ export function RoomlogThreeFloorPlanView({
             <FurnitureMesh
               furniture={furniture}
               verticalScale={furnitureVerticalScale}
-              isSelected={selectedFurnitureId === furniture.id}
+              isSelected={sceneInteractive && selectedFurnitureId === furniture.id}
               key={furniture.id}
-              onPointerDown={onFurniturePointerDown}
+              onPointerDown={sceneInteractive ? onFurniturePointerDown : ignoreFurniturePointer}
             />
           ))}
-          {pendingFurniture ? (
+          {sceneInteractive && pendingFurniture ? (
             <FurnitureMesh
               furniture={pendingFurniture}
               verticalScale={furnitureVerticalScale}
@@ -776,7 +800,7 @@ export function RoomlogThreeFloorPlanView({
               onPointerDown={onFurniturePointerDown}
             />
           ) : null}
-          {selectedFurniture && !pendingFurniture && onSelectedMove && onSelectedRotateLeft && onSelectedRotateRight && onSelectedDelete ? (
+          {sceneInteractive && selectedFurniture && !pendingFurniture && onSelectedMove && onSelectedRotateLeft && onSelectedRotateRight && onSelectedDelete ? (
             <Html
               center
               position={[
@@ -802,7 +826,7 @@ export function RoomlogThreeFloorPlanView({
               </div>
             </Html>
           ) : null}
-          {pendingFurniture && onPendingConfirm && onPendingCancel ? (
+          {sceneInteractive && pendingFurniture && onPendingConfirm && onPendingCancel ? (
             <Html
               center
               position={[
@@ -839,15 +863,41 @@ export function RoomlogThreeFloorPlanView({
           ) : null}
         </group>
         {listingPreview ? null : <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18 * sceneHorizontalScale} />}
-        <RoomOrbitControls
-          enabled={controlsEnabled}
-          maxDistance={orbitMaxDistance}
-          minDistance={orbitMinDistance}
-          target={[wallBounds.centerX * sceneHorizontalScale, 0, wallBounds.centerZ * sceneHorizontalScale]}
-          zoomEnabled={orbitZoomEnabled}
-        />
+        {controlMode === "walk" ? (
+          <FloorPlanWalkControls
+            enabled={controlsEnabled}
+            furnitureData={furnitureData}
+            horizontalScale={sceneHorizontalScale}
+            moveInputRef={moveInputRef}
+            onStatusChange={setWalkStatus}
+            preferredSpawn={walkPreferredSpawn}
+            wallsData={wallsData}
+          />
+        ) : (
+          <RoomOrbitControls
+            enabled={controlsEnabled}
+            maxDistance={orbitMaxDistance}
+            minDistance={orbitMinDistance}
+            target={[wallBounds.centerX * sceneHorizontalScale, 0, wallBounds.centerZ * sceneHorizontalScale]}
+            zoomEnabled={orbitZoomEnabled}
+          />
+        )}
       </Canvas>
+      {controlMode === "walk" && walkStatus === "locked" ? null : controlMode === "walk" ? (
+        <div className={`floor-plan-walk-instruction is-${walkStatus}`} role="status">
+          <strong>{walkStatus === "unavailable" ? "워킹뷰를 시작할 수 없습니다" : "클릭하여 둘러보기"}</strong>
+          <span>
+            {walkStatus === "fallback"
+              ? "마우스를 끌어 시선을 돌리고 WASD로 이동하세요."
+              : "WASD · 방향키 이동 · Esc 마우스 해제"}
+          </span>
+        </div>
+      ) : null}
       {hideHint ? null : <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>}
     </div>
   );
 }
+
+function ignoreFloorPointer(_event: ThreeEvent<PointerEvent>) {}
+function ignoreWallPointer(_wall: WheretoputWall3D, _event: ThreeEvent<PointerEvent>) {}
+function ignoreFurniturePointer(_furniture: PlacedFurniture, _event: ThreeEvent<PointerEvent>) {}
