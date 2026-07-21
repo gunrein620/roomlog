@@ -105,6 +105,11 @@ test("accepts a floor-plan file immediately and processes it once live analysis 
   assert.match(uploadBootstrapSource, /uploadButton\.addEventListener\("click", openFilePicker\)/);
   assert.match(uploadBootstrapSource, /pendingFile = file/);
   assert.match(viewerSource, /window\.dispatchEvent\(new Event\("mitunet-upload-ready"\)\)/);
+  assert.ok(
+    viewerSource.indexOf('window.dispatchEvent(new Event("mitunet-module-loaded"))')
+      > viewerSource.indexOf("const composer = new EffectComposer(renderer)"),
+    "module-loaded must only fire after synchronous 3D initialization",
+  );
   assert.match(viewerSource, /window\.addEventListener\("mitunet-upload-selected"/);
   assert.match(viewerSource, /uploadButton\.setAttribute\("aria-busy", "false"\)/);
   assert.match(viewerSource, /uploadButton\.disabled = !liveUploadAvailable \|\| inFlight/);
