@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
+import type { MitunetSceneLayout } from "../room-scene/mitunet-geometry";
 import {
   WALK_COLLISION_RADIUS_METERS,
   findWalkSpawn,
@@ -109,5 +110,36 @@ describe("floor-plan walk scene adapter", () => {
     assert.deepEqual(world.obstacles.find((item) => item.id === "wall:wall-1")?.center, { x: 2, z: -2 });
     assert.deepEqual(world.obstacles.find((item) => item.id === "furniture:chair-1")?.center, { x: 1, z: 1.5 });
     assert.equal(world.obstacles.length, 2);
+  });
+
+  it("creates a walkable world from MitUNet polygons when legacy walls are empty", () => {
+    const layout: MitunetSceneLayout = {
+      bounds: { centerX: 0, centerZ: 0, width: 6, depth: 4 },
+      hasPhysicalScale: true,
+      wall: [
+        { outer: [[-3, -2], [3, -2], [3, -1.8], [-3, -1.8]], holes: [] },
+        { outer: [[-3, 1.8], [3, 1.8], [3, 2], [-3, 2]], holes: [] },
+        { outer: [[-3, -2], [-2.8, -2], [-2.8, 2], [-3, 2]], holes: [] },
+        { outer: [[2.8, -2], [3, -2], [3, 2], [2.8, 2]], holes: [] }
+      ],
+      door: [],
+      window: []
+    };
+    const createWorldWithMitunet = createFloorPlanWalkWorld as (
+      walls: readonly WheretoputWall3D[],
+      furniture: readonly PlacedFurniture[],
+      horizontalScale: number,
+      mitunetLayout: MitunetSceneLayout
+    ) => WalkCollisionWorld;
+
+    const world = createWorldWithMitunet([], [], 1, layout);
+    const mitunetWorld = world as WalkCollisionWorld & { polygonObstacles?: unknown[] };
+    const spawn = findWalkSpawn({ x: 0, z: 0 }, world);
+
+    assert.deepEqual(world.bounds, { minX: -3, maxX: 3, minZ: -2, maxZ: 2 });
+    assert.equal(mitunetWorld.polygonObstacles?.length, 4);
+    assert.equal(isWalkPointClear({ x: 0, z: -1.9 }, world), false);
+    assert.ok(spawn);
+    assert.equal(isWalkPointClear(spawn, world), true);
   });
 });

@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, type ComponentRef } from "react";
 import { Vector3 } from "three";
 import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
+import type { MitunetSceneLayout } from "./mitunet-geometry";
 import { findWalkSpawn, resolveWalkMovement } from "../walk/walk-collision";
 import { cameraRelativeWalkDelta, combineWalkInput, resolveWalkInputCode, type WalkAction, type WalkInput } from "../walk/walk-input";
 import { createFloorPlanWalkWorld } from "../walk/walk-scene";
@@ -20,6 +21,7 @@ export type FloorPlanWalkControlsProps = {
   enabled: boolean;
   furnitureData: readonly PlacedFurniture[];
   horizontalScale: number;
+  mitunetLayout?: MitunetSceneLayout | null;
   moveInputRef?: { current: WalkInput } | null;
   onStatusChange?: (status: FloorPlanWalkStatus) => void;
   preferredSpawn: { x: number; z: number };
@@ -32,6 +34,7 @@ export function FloorPlanWalkControls({
   enabled,
   furnitureData,
   horizontalScale,
+  mitunetLayout = null,
   moveInputRef = null,
   onStatusChange,
   preferredSpawn,
@@ -45,8 +48,8 @@ export function FloorPlanWalkControls({
   const targetRef = useRef(new Vector3());
   const walkPositionRef = useRef<{ x: number; z: number } | null>(null);
   const world = useMemo(
-    () => createFloorPlanWalkWorld(wallsData, furnitureData, horizontalScale),
-    [furnitureData, horizontalScale, wallsData]
+    () => createFloorPlanWalkWorld(wallsData, furnitureData, horizontalScale, mitunetLayout),
+    [furnitureData, horizontalScale, mitunetLayout, wallsData]
   );
 
   useEffect(() => {
