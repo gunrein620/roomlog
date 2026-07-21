@@ -26,9 +26,12 @@ export type FurnitureFirstPersonControlsProps = {
   onCancel: () => void;
   onCloseSelect: () => void;
   onConfirm: () => void;
+  onLatestPlacementPoint: (point: { x: number; z: number }) => void;
   onOpenSelect: () => void;
   onPickupAimed: (id: string) => void;
   onPlacementPoint: (point: { x: number; z: number }) => void;
+  onRotateLeft: () => void;
+  onRotateRight: () => void;
   onStatusChange: (status: FurnitureFirstPersonStatus) => void;
   pointerLockRequestRef: MutableRefObject<(() => void) | null>;
   preferredSpawn: { x: number; z: number };
@@ -135,6 +138,7 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
         if (shortcut === "pickup-aimed" && aimedFurnitureIdRef.current) {
           callbacksRef.current.onPickupAimed(aimedFurnitureIdRef.current);
         } else if (shortcut === "open-select") {
+          if (modeRef.current === "carry") callbacksRef.current.onCancel();
           keysRef.current.clear();
           if (document.pointerLockElement === canvas) document.exitPointerLock();
           callbacksRef.current.onOpenSelect();
@@ -145,6 +149,10 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
           callbacksRef.current.onConfirm();
         } else if (shortcut === "cancel") {
           callbacksRef.current.onCancel();
+        } else if (shortcut === "rotate-left") {
+          callbacksRef.current.onRotateLeft();
+        } else if (shortcut === "rotate-right") {
+          callbacksRef.current.onRotateRight();
         }
         return;
       }
@@ -236,21 +244,19 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
         aimedFurnitureIdRef.current = nextAimedFurnitureId;
         callbacksRef.current.onAimedFurnitureChange(nextAimedFurnitureId);
       }
-      return;
-    }
-
-    if (aimedFurnitureIdRef.current !== null) {
+    } else if (aimedFurnitureIdRef.current !== null) {
       aimedFurnitureIdRef.current = null;
       callbacksRef.current.onAimedFurnitureChange(null);
     }
-    if (modeRef.current !== "carry") return;
 
     for (const intersection of intersections) {
       const metadata = findSceneHitMetadata(intersection.object);
       if (!metadata) continue;
       if (metadata.kind === "surface" && metadata.surface === "wall") return;
       if (metadata.kind === "surface" && metadata.surface === "floor") {
-        callbacksRef.current.onPlacementPoint({ x: intersection.point.x, z: intersection.point.z });
+        const point = { x: intersection.point.x, z: intersection.point.z };
+        callbacksRef.current.onLatestPlacementPoint(point);
+        if (modeRef.current === "carry") callbacksRef.current.onPlacementPoint(point);
         return;
       }
     }

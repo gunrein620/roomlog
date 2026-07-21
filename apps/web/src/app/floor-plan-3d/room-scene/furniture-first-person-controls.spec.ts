@@ -24,6 +24,10 @@ describe("furniture first-person controls", () => {
     assert.match(controllerSource, /raycaster\.setFromCamera\(CENTER_SCREEN/);
     assert.match(controllerSource, /onPlacementPoint/);
     assert.match(controllerSource, /onAimedFurnitureChange/);
+    assert.match(controllerSource, /onLatestPlacementPoint/);
+    assert.match(controllerSource, /onRotateLeft/);
+    assert.match(controllerSource, /onRotateRight/);
+    assert.match(controllerSource, /modeRef\.current === "carry"[\s\S]*?onCancel\(\)[\s\S]*?onOpenSelect\(\)/);
   });
 
   it("mounts the dedicated controller while retaining orbit fallback", () => {
@@ -39,8 +43,8 @@ describe("furniture first-person controls", () => {
     assert.match(mitunetExtrudedLayerSource, /userData=\{\{ roomlogPlacementSurface: "wall" \}\}/);
     assert.match(viewerSource, /roomlogFurnitureId: furniture\.id/);
     assert.match(viewerSource, /className="floor-plan-furniture-reticle"/);
-    assert.match(viewerSource, /Q 고정 · Esc 취소/);
-    assert.match(viewerSource, /WASD 이동 · 마우스 시점 · E 가구 선택/);
+    assert.match(viewerSource, /1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정/);
+    assert.match(viewerSource, /2 가구 선택 · WASD 이동 · 마우스 시점/);
     assert.match(styles, /\.floor-plan-furniture-reticle/);
   });
 
@@ -53,6 +57,11 @@ describe("furniture first-person controls", () => {
     assert.match(listingSource, /onFurniturePickupAimed=\{beginFurnitureMoveById\}/);
     assert.match(listingSource, /onFurniturePlacementPoint=\{placePendingFurniture\}/);
     assert.match(listingSource, /onFurnitureConfirm=\{confirmPendingFurnitureFromShortcut\}/);
+    assert.match(listingSource, /lastFurniturePlacementPointRef/);
+    assert.match(listingSource, /startCatalogFurnitureCarry/);
+    assert.match(listingSource, /onFurnitureLatestPlacementPoint=\{rememberFurniturePlacementPoint\}/);
+    assert.match(listingSource, /onFurnitureRotateLeft=\{\(\) => rotatePendingFurniture\(-1\)\}/);
+    assert.match(listingSource, /onFurnitureRotateRight=\{\(\) => rotatePendingFurniture\(1\)\}/);
     assert.match(listingSource, /furniturePointerLockRequestRef\.current\?\.\(\)/);
   });
 });

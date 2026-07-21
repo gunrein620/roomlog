@@ -149,6 +149,8 @@ export default function ListingTourRoom3D({
   const pendingTenantFurnitureSourceRef = useRef<TenantFurniture["source"] | null>(null);
   // 집고 있는 가구가 사용자 위치를 한 번이라도 받았는지 — 첫 배치는 벽 통과 검사를 끈다.
   const pendingFurniturePlacedOnceRef = useRef(false);
+  // 1인칭 중앙 조준선이 마지막으로 만난 유효 바닥점. 사이드바에서 고른 새 가구의 첫 위치로 쓴다.
+  const lastFurniturePlacementPointRef = useRef<{ x: number; z: number } | null>(null);
   const furnitureCategoryTabsRef = useRef<HTMLDivElement>(null);
   const [furnitureCategoryScroll, setFurnitureCategoryScroll] = useState({ left: 0, max: 0 });
   const furnitureCategoryCounts = useMemo(
@@ -320,6 +322,10 @@ export default function ListingTourRoom3D({
     setFurnitureInteractionMode("explore");
   }
 
+  function rememberFurniturePlacementPoint(point: { x: number; z: number }) {
+    lastFurniturePlacementPointRef.current = point;
+  }
+
   function closeFurnitureEditor() {
     setIsPlacementOpen(false);
     if (variant === "hero") setIsHeroPanelOpen(false);
@@ -335,6 +341,7 @@ export default function ListingTourRoom3D({
     setSelectedFurnitureId(null);
     setIsFurnitureDragging(false);
     setFurnitureInteractionMode("explore");
+    lastFurniturePlacementPointRef.current = null;
 
     if (simulationOpen) {
       if (pendingFurniture) cancelPendingFurniturePlacement();
@@ -363,36 +370,40 @@ export default function ListingTourRoom3D({
     // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
     restorePendingFurnitureOrigin();
     pendingTenantFurnitureSourceRef.current = null;
-    pendingFurniturePlacedOnceRef.current = false;
     setIsPendingFurnitureEditing(false);
-    setPendingFurniture(
+    const draft =
       floorPlan.mitunet
         ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
-        : createFurnitureModel(item)
-    );
-    setSelectedFurnitureId(null);
-    setIsPlacementOpen(true);
-    setFurnitureInteractionMode("carry");
+        : createFurnitureModel(item);
+    startCatalogFurnitureCarry(draft);
     setSaveMessage(`${item.name}을 선택했습니다. 3D 바닥을 눌러 위치를 잡고 끌어서 옮기세요.`);
-    furniturePointerLockRequestRef.current?.();
   }
 
   function handleTenantFurnitureSelect(furniture: TenantFurniture) {
     const item = tenantFurnitureCatalogItem(furniture);
     restorePendingFurnitureOrigin();
     pendingTenantFurnitureSourceRef.current = furniture.source;
-    pendingFurniturePlacedOnceRef.current = false;
-    setPendingFurniture({
+    const draft = {
       ...(floorPlan.mitunet
         ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
         : createFurnitureModel(item)),
       sizeMm: furniture.sizeMm,
       source: furniture.source
-    });
+    };
+    startCatalogFurnitureCarry(draft);
+    setSaveMessage(`${item.name}을 선택했습니다. 3D 바닥을 눌러 위치를 잡고 끌어서 옮기세요.`);
+  }
+
+  function startCatalogFurnitureCarry(draft: PlacedFurniture) {
+    const placementPoint = lastFurniturePlacementPointRef.current;
+    const nextDraft = placementPoint
+      ? moveFurnitureDraftToPoint(draft, normalizedScenePoint(placementPoint), wallsData, { ignoreCrossing: true })
+      : draft;
+    pendingFurniturePlacedOnceRef.current = placementPoint !== null;
+    setPendingFurniture(nextDraft);
     setSelectedFurnitureId(null);
     setIsPlacementOpen(true);
     setFurnitureInteractionMode("carry");
-    setSaveMessage(`${item.name}을 선택했습니다. 3D 바닥을 눌러 위치를 잡고 끌어서 옮기세요.`);
     furniturePointerLockRequestRef.current?.();
   }
 
@@ -652,9 +663,12 @@ export default function ListingTourRoom3D({
         onFurnitureCancel={cancelPendingFurniturePlacement}
         onFurnitureCloseSelect={closeFurnitureSelection}
         onFurnitureConfirm={confirmPendingFurnitureFromShortcut}
+        onFurnitureLatestPlacementPoint={rememberFurniturePlacementPoint}
         onFurnitureOpenSelect={openFurnitureSelection}
         onFurniturePickupAimed={beginFurnitureMoveById}
         onFurniturePlacementPoint={placePendingFurniture}
+        onFurnitureRotateLeft={() => rotatePendingFurniture(-1)}
+        onFurnitureRotateRight={() => rotatePendingFurniture(1)}
         onFurniturePointerDown={handleFurniturePointerDown}
         onScenePointerMissed={handleScenePointerMissed}
         onPendingCancel={cancelPendingFurniturePlacement}

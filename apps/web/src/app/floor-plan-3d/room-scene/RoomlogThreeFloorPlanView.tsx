@@ -717,9 +717,12 @@ export function RoomlogThreeFloorPlanView({
   onFurnitureCancel,
   onFurnitureCloseSelect,
   onFurnitureConfirm,
+  onFurnitureLatestPlacementPoint,
   onFurnitureOpenSelect,
   onFurniturePickupAimed,
   onFurniturePlacementPoint,
+  onFurnitureRotateLeft,
+  onFurnitureRotateRight,
   onFurniturePointerDown,
   onScenePointerMissed,
   onPendingCancel,
@@ -771,9 +774,12 @@ export function RoomlogThreeFloorPlanView({
   onFurnitureCancel?: () => void;
   onFurnitureCloseSelect?: () => void;
   onFurnitureConfirm?: () => void;
+  onFurnitureLatestPlacementPoint?: (point: { x: number; z: number }) => void;
   onFurnitureOpenSelect?: () => void;
   onFurniturePickupAimed?: (id: string) => void;
   onFurniturePlacementPoint?: (point: { x: number; z: number }) => void;
+  onFurnitureRotateLeft?: () => void;
+  onFurnitureRotateRight?: () => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
   onScenePointerMissed?: () => void;
   // 배치 중에는 취소/완료, 선택 중에는 이동/양방향 회전/삭제 버튼을 표시한다.
@@ -1003,9 +1009,12 @@ export function RoomlogThreeFloorPlanView({
             onCancel={() => onFurnitureCancel?.()}
             onCloseSelect={() => onFurnitureCloseSelect?.()}
             onConfirm={() => onFurnitureConfirm?.()}
+            onLatestPlacementPoint={(point) => onFurnitureLatestPlacementPoint?.(point)}
             onOpenSelect={() => onFurnitureOpenSelect?.()}
             onPickupAimed={(id) => onFurniturePickupAimed?.(id)}
             onPlacementPoint={(point) => onFurniturePlacementPoint?.(point)}
+            onRotateLeft={() => onFurnitureRotateLeft?.()}
+            onRotateRight={() => onFurnitureRotateRight?.()}
             onStatusChange={setFurnitureFirstPersonStatus}
             pointerLockRequestRef={activeFurniturePointerLockRequestRef}
             preferredSpawn={walkPreferredSpawn}
@@ -1042,12 +1051,12 @@ export function RoomlogThreeFloorPlanView({
           )}
           <span className="floor-3d-hint">
             {furnitureInteractionMode === "carry"
-              ? "Q 고정 · Esc 취소"
+              ? "1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정"
               : furnitureInteractionMode === "select"
-                ? "가구를 선택하세요 · E 또는 Esc 닫기"
+                ? "가구를 선택하세요 · 2 또는 Esc 닫기"
                 : aimedFurnitureId
-                  ? "E 가구 이동 · WASD 이동 · 마우스 시점"
-                  : "WASD 이동 · 마우스 시점 · E 가구 선택"}
+                  ? "E 기존 가구 이동 · 2 가구 선택"
+                  : "2 가구 선택 · WASD 이동 · 마우스 시점"}
           </span>
         </>
       ) : orbitKeyboardMoveEnabled ? (
