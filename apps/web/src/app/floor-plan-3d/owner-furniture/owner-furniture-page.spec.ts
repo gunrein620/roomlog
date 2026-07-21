@@ -17,3 +17,9 @@ test("owner save writes the request snapshot before returning to registration", 
   assert.match(component, /floorPlanRequestId/);
   assert.match(component, /#my-page/);
 });
+
+test("owner save-and-exit action stays outside the view modes", () => {
+  assert.match(component, /className="owner-furniture-save"/);
+  assert.match(component, />저장하고 나오기<\/button>/);
+  assert.match(component, /ownerSaveRequestRef=\{ownerSaveRequestRef\}/);
+});

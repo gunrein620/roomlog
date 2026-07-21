@@ -2,7 +2,7 @@
 
 import type { ThreeEvent } from "@react-three/fiber";
 import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
-import type { FormEvent } from "react";
+import type { FormEvent, MutableRefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createMitunetFloorFurnitureDraft,
@@ -80,6 +80,7 @@ type ListingTourRoom3DProps = {
   experience?: "listing" | "owner";
   initialSimulationMode?: SimulationMode;
   onOwnerFurnitureSave?: (furnitures: ListingFloorPlanFurniture[]) => void;
+  ownerSaveRequestRef?: MutableRefObject<(() => void) | null>;
 };
 
 function serializeFurnitureLayout(furnitures: PlacedFurniture[]): ListingFloorPlanFurniture[] {
@@ -166,6 +167,7 @@ export default function ListingTourRoom3D({
   simulationOpen,
   listingId,
   onOwnerFurnitureSave,
+  ownerSaveRequestRef,
   variant = "sheet"
 }: ListingTourRoom3DProps) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
@@ -709,9 +711,16 @@ export default function ListingTourRoom3D({
     setSaveMessage(`${furniture.name}을(를) 삭제했습니다.`);
   }
 
+  function confirmedFurnituresForOwnerSave() {
+    if (!pendingFurniture) return placedFurnitures;
+
+    const originalFurniture = pendingFurnitureOriginRef.current;
+    return originalFurniture ? [...placedFurnitures, originalFurniture] : placedFurnitures;
+  }
+
   function saveFurnitureLayout() {
     if (experience === "owner") {
-      onOwnerFurnitureSave?.(serializeFurnitureLayout(placedFurnitures));
+      onOwnerFurnitureSave?.(serializeFurnitureLayout(confirmedFurnituresForOwnerSave()));
       setSaveMessage("등록용 가구 배치를 저장했습니다.");
       return;
     }
@@ -730,6 +739,17 @@ export default function ListingTourRoom3D({
       return;
     }
   }
+
+  useEffect(() => {
+    if (!ownerSaveRequestRef) return;
+
+    ownerSaveRequestRef.current = saveFurnitureLayout;
+    return () => {
+      if (ownerSaveRequestRef.current === saveFurnitureLayout) {
+        ownerSaveRequestRef.current = null;
+      }
+    };
+  });
 
   function resetFurnitureLayout() {
     // dev(origin/dev)도 같은 되돌리기를 독립 구현했다. 키는 이쪽(listingId 기반)을 쓴다 —

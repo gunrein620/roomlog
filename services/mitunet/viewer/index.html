@@ -1718,7 +1718,7 @@
   </div>
 
   <div class="label" id="upload-label" hidden>Upload floor plan</div>
-  <button class="btn primary with-icon" id="upload-btn" title="Choose a floor plan image" hidden>
+  <button class="btn primary with-icon" id="upload-btn" title="도면 분석 서버 연결을 확인하는 중입니다" aria-busy="true" disabled>
     <span class="upload-empty-icon" aria-hidden="true"><i data-lucide="cloud-upload"></i></span>
     <span class="upload-title">도면 이미지를 업로드하세요</span>
     <span class="upload-helper">PNG 또는 JPG를 선택하세요</span>
@@ -2943,6 +2943,7 @@ const zoomOutButton = document.getElementById("zoom-out-btn");
 const fitViewButton = document.getElementById("fit-view-btn");
 const zoomInButton = document.getElementById("zoom-in-btn");
 const uploadButton = document.getElementById("upload-btn");
+let liveUploadAvailable = false;
 const startSampleButton = document.getElementById("start-sample-btn");
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
@@ -4052,7 +4053,7 @@ function updateEditorControls() {
   deleteButton.disabled = !hasSelection || inFlight;
   typeButton.disabled = !hasSelection || inFlight;
   resetButton.disabled = !hasDocument || inFlight;
-  uploadButton.disabled = inFlight;
+  uploadButton.disabled = !liveUploadAvailable || inFlight;
   const canFurnish = Boolean(currentComposedPlan) && !reviewDocument?.needsCompose();
   const furnishing = currentView === "furnishing";
   furnishButton.hidden = false;
@@ -4773,13 +4774,17 @@ async function enableLiveMode() {
     reviewEditor = new ReviewEditor(reviewCanvas, { onChange: updateEditorControls });
   } catch (error) {
     setStatus(`Editor unavailable: ${error.message}`, "error");
-    return true;
+    return false;
   }
 
   wireReviewControls();
+  liveUploadAvailable = true;
   viewControls.hidden = false;
   document.getElementById("upload-label").hidden = false;
   uploadButton.hidden = false;
+  uploadButton.disabled = false;
+  uploadButton.setAttribute("aria-busy", "false");
+  uploadButton.title = "도면 이미지 올리기";
   renderIcons();
   updateEditorControls();
   const fileInput = document.getElementById("file-input");
@@ -4855,6 +4860,12 @@ async function initializeViewer() {
   if (liveModeEnabled) {
     await initializeRoomLogIntegration();
   } else {
+    uploadButton.hidden = false;
+    uploadButton.disabled = true;
+    uploadButton.setAttribute("aria-busy", "false");
+    uploadButton.title = "도면 분석 서버에 연결할 수 없습니다. 샘플로 확인해 주세요.";
+    const uploadCta = uploadButton.querySelector(".upload-cta");
+    if (uploadCta) uploadCta.textContent = "도면 분석 서버에 연결할 수 없습니다";
     await enableStaticDemoMode();
     roomLogIntegrationReady = true;
     updateEditorControls();

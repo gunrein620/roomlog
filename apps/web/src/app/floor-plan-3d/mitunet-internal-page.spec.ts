@@ -72,6 +72,15 @@ test("keeps the RoomLog save action visible and explains why it cannot be used y
   assert.match(viewerSource, /roomLogSaveHint\.textContent = roomLogSaveReason;/);
 });
 
+test("keeps the floor-plan upload action visible while live analysis initializes", () => {
+  assert.match(viewerSource, /id="upload-btn"[^>]*aria-busy="true"[^>]*disabled/);
+  assert.doesNotMatch(viewerSource, /id="upload-btn"[^>]*hidden/);
+  assert.match(viewerSource, /uploadButton\.setAttribute\("aria-busy", "false"\)/);
+  assert.match(viewerSource, /uploadButton\.disabled = !liveUploadAvailable \|\| inFlight/);
+  assert.match(viewerSource, /Editor unavailable:[\s\S]*return false;/);
+  assert.match(viewerSource, /도면 분석 서버에 연결할 수 없습니다/);
+});
+
 test("saves the current 3D or Floor surface for the RoomLog preview", () => {
   assert.match(
     viewerSource,
@@ -139,10 +148,10 @@ test("renders the camera toolbar as labelled icon buttons without moving the edi
   assert.match(viewerSource, /body\.view-3d:not\(\.upload-empty\)\s+\.camera-preset-row\s*\{\s*padding-bottom:\s*0;/);
 });
 
-test("places the Floor action in the bottom view switch instead of the stage card", () => {
+test("places the furniture action in the bottom view switch instead of the stage card", () => {
   assert.match(
     viewerSource,
-    /id="view-switch"[\s\S]*?<button class="segment" id="furnish-btn"[^>]*>Floor<\/button>/,
+    /id="view-switch"[\s\S]*?<button class="segment" id="furnish-btn"[^>]*>가구 배치<\/button>/,
   );
   assert.match(viewerSource, /data-view="original"[^>]*>2D<\/button>/);
   assert.match(viewerSource, /data-view="3d"[^>]*>3D<\/button>/);

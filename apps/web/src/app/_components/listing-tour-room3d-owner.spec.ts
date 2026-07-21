@@ -9,8 +9,10 @@ test("shared 3D simulation exposes owner overview and persistence adapter", () =
   assert.match(source, /experience\?: "listing" \| "owner"/);
   assert.match(source, /initialSimulationMode\?: SimulationMode/);
   assert.match(source, /onOwnerFurnitureSave\?: \(furnitures: ListingFloorPlanFurniture\[\]\) => void/);
+  assert.match(source, /ownerSaveRequestRef\?: MutableRefObject<\(\(\) => void\) \| null>/);
   assert.match(source, /experience === "owner" \? "전체보기" : "워킹뷰"/);
-  assert.match(source, /onOwnerFurnitureSave\?\.\(serializeFurnitureLayout\(placedFurnitures\)\)/);
+  assert.match(source, /confirmedFurnituresForOwnerSave/);
+  assert.match(source, /ownerSaveRequestRef\.current = saveFurnitureLayout/);
 });
 
 test("owner overview uses orbit controls while furniture keeps first-person controls", () => {

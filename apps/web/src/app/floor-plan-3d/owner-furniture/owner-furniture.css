@@ -17,6 +17,12 @@
   gap: 2px;
 }
 
+.owner-furniture-header .owner-furniture-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
 .owner-furniture-header small,
 .owner-furniture-header span {
   color: var(--on-surface-variant);
@@ -24,6 +30,24 @@
 
 .owner-furniture-page .listing-tour-room3d {
   height: calc(100dvh - 64px);
+}
+
+.owner-furniture-save {
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  color: var(--on-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 42px;
+  padding: 8px 18px;
+  white-space: nowrap;
+}
+
+.owner-furniture-save:focus-visible {
+  outline: 3px solid var(--outline);
+  outline-offset: 2px;
 }
 
 .owner-furniture-error,
@@ -36,7 +60,11 @@
 }
 
 @media (max-width: 720px) {
-  .owner-furniture-header span {
+  .owner-furniture-header-actions span {
     display: none;
+  }
+
+  .owner-furniture-header {
+    padding-inline: 12px;
   }
 }

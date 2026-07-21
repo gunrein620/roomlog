@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import ListingTourRoom3D, { type ListingFloorPlanFurniture } from "../../_components/ListingTourRoom3D";
@@ -15,6 +15,7 @@ export default function OwnerFurnitureSimulation() {
   const requestId = searchParams.get("requestId")?.trim() ?? "";
   const [draft, setDraft] = useState<OwnerFurnitureDraft | null>(null);
   const [error, setError] = useState("");
+  const ownerSaveRequestRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!requestId) {
@@ -78,7 +79,10 @@ export default function OwnerFurnitureSimulation() {
           <small>ROOMLOG 3D</small>
           <strong>등록 가구 배치</strong>
         </div>
-        <span>2 가구 선택 · E 집기 · 1/3 회전 · Q 고정 · R 제거</span>
+        <div className="owner-furniture-header-actions">
+          <span>2 가구 선택 · E 집기 · 1/3 회전 · Q 고정 · R 제거</span>
+          <button className="owner-furniture-save" onClick={() => ownerSaveRequestRef.current?.()} type="button">저장하고 나오기</button>
+        </div>
       </header>
       <ListingTourRoom3D
         experience="owner"
@@ -86,6 +90,7 @@ export default function OwnerFurnitureSimulation() {
         initialSimulationMode="furniture"
         listingId={draft.requestId}
         onOwnerFurnitureSave={saveAndReturn}
+        ownerSaveRequestRef={ownerSaveRequestRef}
         simulationOpen
         variant="hero"
       />
