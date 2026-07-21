@@ -49419,7 +49419,7 @@ class ObjectLoader extends Loader {
 			case 'SkinnedMesh':
 
 				geometry = getGeometry( data.geometry );
-			 	material = getMaterial( data.material );
+				material = getMaterial( data.material );
 
 				object = new SkinnedMesh( geometry, material );
 

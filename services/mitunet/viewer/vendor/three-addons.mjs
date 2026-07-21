@@ -4854,7 +4854,7 @@ var GTAOShader = {
 					return;
 				}
 			#endif
-			
+
 			vec3 viewPos = getViewPosition(vUv, depth);
 			vec3 viewNormal = getViewNormal(vUv);
 
@@ -5236,8 +5236,8 @@ var PoissonDenoiseShader = {
 			vec2 noiseResolution = vec2(textureSize(tNoise, 0));
 			vec2 noiseUv = vUv * resolution / noiseResolution;
 			vec4 noiseTexel = textureLod(tNoise, noiseUv, 0.0);
-      		vec2 noiseVec = vec2(sin(noiseTexel[index % 4] * 2. * PI), cos(noiseTexel[index % 4] * 2. * PI));
-    		mat2 rotationMatrix = mat2(noiseVec.x, -noiseVec.y, noiseVec.x, noiseVec.y);
+		vec2 noiseVec = vec2(sin(noiseTexel[index % 4] * 2. * PI), cos(noiseTexel[index % 4] * 2. * PI));
+		mat2 rotationMatrix = mat2(noiseVec.x, -noiseVec.y, noiseVec.x, noiseVec.y);
 
 			float totalWeight = 1.0;
 			vec3 denoised = texel.rgb;
