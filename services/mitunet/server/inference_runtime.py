@@ -32,8 +32,16 @@ class InferenceRuntime:
             wait_ms = _elapsed_ms(wait_started_at)
             run_started_at = time.perf_counter()
             status = "ok"
+            worker = asyncio.create_task(asyncio.to_thread(operation))
             try:
-                return await asyncio.to_thread(operation)
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                status = "cancelled"
+                try:
+                    await asyncio.shield(worker)
+                except Exception:
+                    pass
+                raise
             except BaseException:
                 status = "error"
                 raise

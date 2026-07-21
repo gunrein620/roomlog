@@ -1674,14 +1674,13 @@
   }
 </style>
 
-<script src="/floor-plan-3d/mitunet-vendor/lucide-0.468.0/dist/umd/lucide.min.js" defer></script>
+<script src="/viewer-assets/vendor/lucide.min.js" defer></script>
 <script type="module" src="/viewer-assets/upload-bootstrap.mjs"></script>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "/floor-plan-3d/mitunet-vendor/three-0.185.0/build/three.module.js",
-    "three/addons/": "/floor-plan-3d/mitunet-vendor/three-0.185.0/examples/jsm/"
+    "three": "/viewer-assets/vendor/three.module.js"
   }
 }
 </script>
@@ -1881,14 +1880,16 @@
 
 <script type="module">
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import {
+  DRACOLoader,
+  EffectComposer,
+  GLTFLoader,
+  GTAOPass,
+  OrbitControls,
+  OutputPass,
+  RenderPass,
+  RoomEnvironment,
+} from "/viewer-assets/vendor/three-addons.mjs";
 import {
   buildPlanExport,
   downloadPlanJson,
@@ -2131,7 +2132,7 @@ placementPreviewGroup.visible = false;
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath(
-  "/floor-plan-3d/mitunet-vendor/three-0.185.0/examples/jsm/libs/draco/",
+  "/viewer-assets/vendor/draco/",
 );
 const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);

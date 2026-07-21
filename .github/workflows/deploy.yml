@@ -429,6 +429,7 @@ jobs:
 
           git fetch origin "$BRANCH"
           git reset --hard "origin/$BRANCH"
+          export ROOMLOG_DEPLOY_SHA="$(git rev-parse --verify HEAD)"
 
           mv -- "$ENV_PATH" .env
           chmod 600 .env

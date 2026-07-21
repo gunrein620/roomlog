@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MITUNET_UPLOAD_FAILED_EVENT,
   MITUNET_UPLOAD_READY_EVENT,
   MITUNET_UPLOAD_SELECTED_EVENT,
   createUploadBridge,
@@ -36,6 +37,7 @@ function fixture() {
   const statusElement = { textContent: "" };
   const selected = [];
   let pickerClicks = 0;
+  let initializationTimeout = null;
   fileInput.files = [];
   fileInput.value = "unchanged";
   fileInput.click = () => { pickerClicks += 1; };
@@ -52,12 +54,18 @@ function fixture() {
     statusElement,
     uploadButton,
     windowTarget,
+    clearTimer: () => { initializationTimeout = null; },
+    setTimer: callback => {
+      initializationTimeout = callback;
+      return 1;
+    },
   });
 
   return {
     bridge,
     fileInput,
     pickerClicks: () => pickerClicks,
+    initializationTimeout: () => initializationTimeout,
     selected,
     statusElement,
     uploadButton,
@@ -71,6 +79,22 @@ test("opens the file picker before the 3D viewer is ready", () => {
   uploadButton.dispatchEvent({ type: "click" });
 
   assert.equal(pickerClicks(), 1);
+});
+
+test("shows a recoverable failure when the 3D module cannot load", () => {
+  const { fileInput, initializationTimeout, selected, statusElement, windowTarget } = fixture();
+  const pendingFile = { name: "retry.png" };
+
+  fileInput.files = [pendingFile];
+  fileInput.dispatchEvent({ type: "change" });
+  windowTarget.dispatchEvent({ type: MITUNET_UPLOAD_FAILED_EVENT });
+
+  assert.deepEqual(selected, []);
+  assert.match(statusElement.textContent, /3D 모듈을 불러오지 못했습니다/);
+  assert.equal(initializationTimeout(), null);
+
+  windowTarget.dispatchEvent({ type: MITUNET_UPLOAD_READY_EVENT });
+  assert.deepEqual(selected, [pendingFile]);
 });
 
 test("queues only the latest file and delivers it once when analysis is ready", () => {

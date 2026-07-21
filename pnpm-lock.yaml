@@ -103,9 +103,6 @@ importers:
       '@sparkjsdev/spark':
         specifier: ^2.1.0
         version: 2.1.0(three@0.185.0)
-      lucide:
-        specifier: 0.468.0
-        version: 0.468.0
       lucide-react:
         specifier: ^1.22.0
         version: 1.22.0(react@19.2.7)
@@ -1976,9 +1973,6 @@ packages:
     resolution: {integrity: sha512-c9o3l0PiNcgOQDW4F31BEYHudE7kgxVt3o30qMl36ZPwTxXlGB4QnLilhERvVM4uh/pl5MDyY1/gzZSYcHDtBg==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-
-  lucide@0.468.0:
-    resolution: {integrity: sha512-UFbgwji/ZnAV7iTTE4jujyTV7J95AILKyATDUrqOJrMcUGfXvGjw3c1mcuHZUX2oJfkrAGU9KoxkrLQk2jjtiA==}
 
   maath@0.10.8:
     resolution: {integrity: sha512-tRvbDF0Pgqz+9XUa4jjfgAQ8/aPKmQdWXilFu2tMy4GWj4NOsx99HlULO4IeREfbO3a0sA145DZYyvXPkybm0g==}
@@ -4819,8 +4813,6 @@ snapshots:
   lucide-react@1.22.0(react@19.2.7):
     dependencies:
       react: 19.2.7
-
-  lucide@0.468.0: {}
 
   maath@0.10.8(@types/three@0.185.0)(three@0.185.0):
     dependencies:

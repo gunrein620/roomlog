@@ -13,11 +13,6 @@ const apiRouteSource = readFileSync(
   join(process.cwd(), "src/app/floor-plan-3d/mitunet-api/[...endpoint]/route.ts"),
   "utf8",
 );
-const vendorRoutePath = join(
-  process.cwd(),
-  "src/app/floor-plan-3d/mitunet-vendor/[...asset]/route.ts",
-);
-const vendorRouteSource = existsSync(vendorRoutePath) ? readFileSync(vendorRoutePath, "utf8") : "";
 const composeSource = readFileSync(join(process.cwd(), "../../docker-compose.yml"), "utf8");
 const productionComposeSource = readFileSync(
   join(process.cwd(), "../../docker-compose.prod.yml"),
@@ -34,6 +29,11 @@ const viewerSource = readFileSync(
 );
 const uploadBootstrapSource = readFileSync(
   join(process.cwd(), "../../services/mitunet/viewer/upload-bootstrap.mjs"),
+  "utf8",
+);
+const viewerVendorDir = join(process.cwd(), "../../services/mitunet/viewer/vendor");
+const mitunetServerSource = readFileSync(
+  join(process.cwd(), "../../services/mitunet/server/main.py"),
   "utf8",
 );
 
@@ -57,15 +57,16 @@ test("serves MitUNet viewer assets without exposing arbitrary local files", () =
   assert.doesNotMatch(assetRouteSource, /\/sell\?flow=listing#my-page/);
 });
 
-test("serves 3D runtime dependencies from an allowlisted RoomLog route", () => {
-  assert.equal(existsSync(vendorRoutePath), true, "MitUNet vendor route must exist");
-  assert.match(vendorRouteSource, /VENDOR_ROOTS/);
-  assert.match(vendorRouteSource, /ALLOWED_VENDOR_EXTENSIONS/);
-  assert.match(vendorRouteSource, /filePath\.startsWith/);
+test("serves local 3D runtime dependencies in RoomLog and standalone MitUNet", () => {
   assert.doesNotMatch(viewerSource, /unpkg\.com/);
-  assert.match(viewerSource, /\/floor-plan-3d\/mitunet-vendor\/three-0\.185\.0\/build\/three\.module\.js/);
-  assert.match(viewerSource, /\/floor-plan-3d\/mitunet-vendor\/lucide-0\.468\.0\/dist\/umd\/lucide\.min\.js/);
-  assert.match(viewerSource, /\/floor-plan-3d\/mitunet-vendor\/three-0\.185\.0\/examples\/jsm\/libs\/draco\//);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/three\.module\.js/);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/three-addons\.mjs/);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/lucide\.min\.js/);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/draco\//);
+  for (const asset of ["three.module.js", "three-addons.mjs", "lucide.min.js", "draco/draco_decoder.wasm"]) {
+    assert.equal(existsSync(join(viewerVendorDir, asset)), true, `missing local runtime asset: ${asset}`);
+  }
+  assert.match(mitunetServerSource, /app\.mount\("\/viewer-assets", StaticFiles\(directory=VIEWER_DIR\)/);
 });
 
 test("proxies MitUNet inference requests from the RoomLog origin", () => {

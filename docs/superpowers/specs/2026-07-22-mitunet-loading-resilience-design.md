@@ -51,7 +51,7 @@
 
 ### 2. 런타임 외부 CDN 제거
 
-Three.js는 `apps/web`에 이미 설치된 `three@0.185.0`의 브라우저 배포 파일을 사용한다. 기존 뷰어의 `three@0.162.0`에서 버전이 바뀌므로 샘플 렌더링과 도면 편집 회귀 테스트를 반드시 통과해야 한다. Lucide는 브라우저용 `lucide@0.468.0`을 `apps/web`의 명시적 의존성으로 추가한다. 허용된 두 패키지 내부 파일만 읽는 Next vendor route를 만들고, production runner 이미지에 두 패키지 디렉터리를 명시적으로 복사한다.
+Three.js는 `apps/web`에 이미 설치된 `three@0.185.0`의 브라우저 배포 파일을 사용한다. 기존 뷰어의 `three@0.162.0`에서 버전이 바뀌므로 샘플 렌더링과 도면 편집 회귀 테스트를 반드시 통과해야 한다. RoomLog와 FastAPI 단독 뷰어가 같은 파일을 쓰도록 Three.js 핵심·필요 addon 번들·Draco·Lucide 브라우저 파일을 `services/mitunet/viewer/vendor`에 고정한다. 두 서버 모두 기존 `/viewer-assets` 정적 경로로 이를 제공하므로 외부 CDN이나 Node 패키지 런타임 탐색이 필요 없다.
 
 import map과 Draco decoder 경로는 같은 오리진의 `/floor-plan-3d/mitunet-assets/vendor/`를 사용한다. Pretendard는 사이트 전체 폰트 정책을 따르되 폰트 실패가 기능 초기화를 막지 않으므로 이번 핵심 범위에서는 유지한다.
 
@@ -63,7 +63,7 @@ import map과 Draco decoder 경로는 같은 오리진의 `/floor-plan-3d/mitune
 - HTML: `no-cache`로 재검증은 허용하되 `no-store`는 제거
 - API 응답: 계속 `no-store`
 
-배포마다 파일 내용이 바뀔 수 있으므로 `transformMitunetViewerHtml`이 `ROOMLOG_DEPLOY_SHA` 환경값을 내부 자산 URL의 `v` 쿼리에 붙인다. 값이 없으면 `dev`를 사용하되 asset route는 실제 요청에 `v`가 있는 경우에만 장기 캐시를 허용한다.
+배포마다 파일 내용이 바뀔 수 있으므로 `transformMitunetViewerHtml`과 모듈 변환이 `ROOMLOG_DEPLOY_SHA`를 내부 자산 URL 경로에 넣는다. 배포 워크플로가 현재 Git SHA를 Docker build/runtime에 전달한다. 값이 없으면 `dev` 경로를 사용하고 짧은 재검증 캐시만 허용한다. 모듈 안의 `/viewer-assets` import도 같은 버전 경로로 변환해 전체 모듈 그래프가 한 배포 버전에 고정된다.
 
 ### 4. GPU 요청 안정성
 

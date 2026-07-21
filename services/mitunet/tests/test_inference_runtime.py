@@ -64,6 +64,31 @@ class InferenceRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entries[0]["status"], "error")
         self.assertNotIn("failure detail", str(entries[0]))
 
+    async def test_cancellation_keeps_gpu_slot_until_worker_finishes(self):
+        runtime = InferenceRuntime(log=lambda _entry: None)
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_started = threading.Event()
+
+        def first_operation():
+            first_started.set()
+            release_first.wait(timeout=1)
+
+        first_task = asyncio.create_task(runtime.run("extract-image", first_operation))
+        await asyncio.to_thread(first_started.wait, 1)
+        first_task.cancel()
+        second_task = asyncio.create_task(
+            runtime.run("extract-image", lambda: second_started.set()),
+        )
+        await asyncio.sleep(0.03)
+        self.assertFalse(second_started.is_set())
+
+        release_first.set()
+        with self.assertRaises(asyncio.CancelledError):
+            await first_task
+        await second_task
+        self.assertTrue(second_started.is_set())
+
     def test_server_routes_use_the_shared_runtime(self):
         server_source = (Path(__file__).parents[1] / "server" / "main.py").read_text()
 

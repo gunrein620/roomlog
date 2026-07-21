@@ -4,7 +4,9 @@
 
 **Goal:** Make floor-plan upload interactive before the 3D engine loads, remove runtime unpkg dependencies, cache immutable viewer assets, and bound/measure GPU requests.
 
-**Architecture:** A small dependency-free upload module owns file selection before the main Three.js module evaluates. A strict Next vendor route serves installed Three.js/Lucide browser files from the RoomLog origin, while focused helpers own cache policy and upstream timeout behavior. The GPU server keeps one loaded model, serializes GPU access explicitly, and moves blocking inference to a worker thread so the event loop remains responsive.
+**Architecture:** A small dependency-free upload module owns file selection before the main Three.js module evaluates. Version-pinned browser runtime files live under the shared MitUNet viewer assets so RoomLog and standalone FastAPI use the same origin-local dependencies, while focused helpers own cache policy and upstream timeout behavior. The GPU server keeps one loaded model, serializes GPU access explicitly, and moves blocking inference to a worker thread so the event loop remains responsive.
+
+**Implementation note (post-review):** The planned Next-only vendor route was replaced by checked-in browser runtime assets under `services/mitunet/viewer/vendor`. This preserves both the RoomLog proxy and the documented standalone FastAPI viewer, removes runtime Node package lookup, and lets both origins use `/viewer-assets`. Deploy-SHA path versioning is applied to the complete proxied module graph.
 
 **Tech Stack:** Next.js 16 route handlers, Node test runner, browser ES modules, FastAPI, asyncio, unittest, Docker Compose.
 

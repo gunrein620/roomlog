@@ -29,19 +29,17 @@ ARG NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=
 ARG NEXT_PUBLIC_SOCKET_URL=
 ARG NEXT_PUBLIC_TOSS_CLIENT_KEY=
 ARG NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL=
+ARG ROOMLOG_DEPLOY_SHA=dev
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=$NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
 ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 ENV NEXT_PUBLIC_TOSS_CLIENT_KEY=$NEXT_PUBLIC_TOSS_CLIENT_KEY
 ENV NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL=$NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL
+ENV ROOMLOG_DEPLOY_SHA=$ROOMLOG_DEPLOY_SHA
 
 COPY assets assets
 COPY packages packages
 COPY apps/web apps/web
-
-RUN mkdir -p /tmp/mitunet-vendor && \
-    cp -RL apps/web/node_modules/three /tmp/mitunet-vendor/three && \
-    cp -RL apps/web/node_modules/lucide /tmp/mitunet-vendor/lucide
 
 RUN pnpm --filter web build
 
@@ -55,18 +53,17 @@ ARG NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=
 ARG NEXT_PUBLIC_SOCKET_URL=
 ARG NEXT_PUBLIC_TOSS_CLIENT_KEY=
 ARG NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL=
+ARG ROOMLOG_DEPLOY_SHA=dev
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=$NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
 ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 ENV NEXT_PUBLIC_TOSS_CLIENT_KEY=$NEXT_PUBLIC_TOSS_CLIENT_KEY
 ENV NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL=$NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL
+ENV ROOMLOG_DEPLOY_SHA=$ROOMLOG_DEPLOY_SHA
 
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static /app/apps/web/.next/static
 COPY --from=builder /app/apps/web/public /app/apps/web/public
-COPY --from=builder /tmp/mitunet-vendor/three /app/apps/web/node_modules/three
-COPY --from=builder /tmp/mitunet-vendor/lucide /app/apps/web/node_modules/lucide
-
 EXPOSE 3000
 
 CMD ["node", "apps/web/server.js"]

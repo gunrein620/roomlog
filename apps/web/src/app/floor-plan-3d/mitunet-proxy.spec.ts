@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { transformMitunetViewerHtml } from "./mitunet-proxy";
+import { MITUNET_ASSET_VERSION, transformMitunetViewerHtml } from "./mitunet-proxy";
 import * as mitunetProxy from "./mitunet-proxy";
 
 const integrationSource = readFileSync(
@@ -33,8 +33,12 @@ test("rewrites relative demo sample paths to the mitunet-assets route", () => {
     </script>
   `);
 
-  assert.match(transformed, /fetch\("\/floor-plan-3d\/mitunet-assets\/demos\/manifest\.json"/);
-  assert.match(transformed, /`\/floor-plan-3d\/mitunet-assets\/demos\/\$\{encodeURIComponent\(demoSelect\.value\)\}\.json`/);
+  assert.ok(transformed.includes(
+    `fetch("/floor-plan-3d/mitunet-assets/${MITUNET_ASSET_VERSION}/demos/manifest.json"`,
+  ));
+  assert.ok(transformed.includes(
+    `\`/floor-plan-3d/mitunet-assets/${MITUNET_ASSET_VERSION}/demos/\${encodeURIComponent(demoSelect.value)}.json\``,
+  ));
   assert.doesNotMatch(transformed, /"\.\/demos\//);
   assert.doesNotMatch(transformed, /`\.\/demos\//);
 });
