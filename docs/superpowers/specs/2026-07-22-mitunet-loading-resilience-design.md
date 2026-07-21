@@ -39,7 +39,7 @@
 
 ### 1. 즉시 동작하는 업로드 부트스트랩
 
-`services/mitunet/viewer/upload-bootstrap.js`를 일반 `defer` 스크립트로 추가한다. 이 스크립트는 DOM 요소를 찾고 다음 계약을 제공한다.
+`services/mitunet/viewer/upload-bootstrap.mjs`를 의존성 없는 선행 모듈로 추가한다. 이 모듈은 Three.js 정적 import가 있는 주 모듈보다 먼저 평가되며 DOM 요소를 찾아 다음 계약을 제공한다.
 
 - 업로드 버튼 클릭 즉시 숨겨진 파일 입력을 연다.
 - 파일 선택 시 `window`에 `mitunet-upload-selected` 커스텀 이벤트를 발생시킨다.
@@ -51,7 +51,7 @@
 
 ### 2. 런타임 외부 CDN 제거
 
-Three.js는 `apps/web`에 이미 설치된 `three@0.185.0`의 브라우저 배포 파일을 사용한다. 기존 뷰어의 `three@0.162.0`에서 버전이 바뀌므로 샘플 렌더링과 도면 편집 회귀 테스트를 반드시 통과해야 한다. Lucide는 브라우저용 `lucide@0.468.0`을 `apps/web`의 명시적 의존성으로 추가한다. 빌드 전 동기화 스크립트가 두 패키지의 필요한 브라우저 파일만 `services/mitunet/viewer/vendor/`에 생성하고, web Docker 이미지에도 같은 디렉터리를 포함한다.
+Three.js는 `apps/web`에 이미 설치된 `three@0.185.0`의 브라우저 배포 파일을 사용한다. 기존 뷰어의 `three@0.162.0`에서 버전이 바뀌므로 샘플 렌더링과 도면 편집 회귀 테스트를 반드시 통과해야 한다. Lucide는 브라우저용 `lucide@0.468.0`을 `apps/web`의 명시적 의존성으로 추가한다. 허용된 두 패키지 내부 파일만 읽는 Next vendor route를 만들고, production runner 이미지에 두 패키지 디렉터리를 명시적으로 복사한다.
 
 import map과 Draco decoder 경로는 같은 오리진의 `/floor-plan-3d/mitunet-assets/vendor/`를 사용한다. Pretendard는 사이트 전체 폰트 정책을 따르되 폰트 실패가 기능 초기화를 막지 않으므로 이번 핵심 범위에서는 유지한다.
 
