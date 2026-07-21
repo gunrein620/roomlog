@@ -18,9 +18,16 @@ export type WalkObstacle = {
   rotationY: number;
 };
 
+export type WalkPolygonObstacle = {
+  holes: WalkPoint[][];
+  id: string;
+  outer: WalkPoint[];
+};
+
 export type WalkCollisionWorld = {
   bounds: WalkBounds;
   obstacles: WalkObstacle[];
+  polygonObstacles?: WalkPolygonObstacle[];
 };
 
 function circleIntersectsObstacle(point: WalkPoint, obstacle: WalkObstacle, radius: number) {
@@ -38,6 +45,49 @@ function circleIntersectsObstacle(point: WalkPoint, obstacle: WalkObstacle, radi
   return distanceX * distanceX + distanceZ * distanceZ < radius * radius;
 }
 
+function pointInRing(point: WalkPoint, ring: readonly WalkPoint[]) {
+  let inside = false;
+  for (let currentIndex = 0, previousIndex = ring.length - 1; currentIndex < ring.length; previousIndex = currentIndex, currentIndex += 1) {
+    const current = ring[currentIndex];
+    const previous = ring[previousIndex];
+    const crosses = (current.z > point.z) !== (previous.z > point.z)
+      && point.x < ((previous.x - current.x) * (point.z - current.z)) / (previous.z - current.z) + current.x;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function squaredDistanceToSegment(point: WalkPoint, start: WalkPoint, end: WalkPoint) {
+  const segmentX = end.x - start.x;
+  const segmentZ = end.z - start.z;
+  const segmentLengthSquared = segmentX * segmentX + segmentZ * segmentZ;
+  const projection = segmentLengthSquared === 0
+    ? 0
+    : Math.min(1, Math.max(0, ((point.x - start.x) * segmentX + (point.z - start.z) * segmentZ) / segmentLengthSquared));
+  const nearestX = start.x + segmentX * projection;
+  const nearestZ = start.z + segmentZ * projection;
+  const distanceX = point.x - nearestX;
+  const distanceZ = point.z - nearestZ;
+  return distanceX * distanceX + distanceZ * distanceZ;
+}
+
+function circleTouchesRing(point: WalkPoint, ring: readonly WalkPoint[], radius: number) {
+  const radiusSquared = radius * radius;
+  return ring.some((start, index) => (
+    squaredDistanceToSegment(point, start, ring[(index + 1) % ring.length]) < radiusSquared
+  ));
+}
+
+function circleIntersectsPolygon(point: WalkPoint, obstacle: WalkPolygonObstacle, radius: number) {
+  if (!pointInRing(point, obstacle.outer)) {
+    return circleTouchesRing(point, obstacle.outer, radius);
+  }
+
+  const containingHole = obstacle.holes.find((hole) => pointInRing(point, hole));
+  if (containingHole) return circleTouchesRing(point, containingHole, radius);
+  return true;
+}
+
 function isInsideWalkBounds(point: WalkPoint, bounds: WalkBounds, radius: number) {
   return point.x >= bounds.minX + radius
     && point.x <= bounds.maxX - radius
@@ -51,7 +101,8 @@ export function isWalkPointClear(
   radius = WALK_COLLISION_RADIUS_METERS
 ) {
   if (!isInsideWalkBounds(point, world.bounds, radius)) return false;
-  return world.obstacles.every((obstacle) => !circleIntersectsObstacle(point, obstacle, radius));
+  return world.obstacles.every((obstacle) => !circleIntersectsObstacle(point, obstacle, radius))
+    && (world.polygonObstacles ?? []).every((obstacle) => !circleIntersectsPolygon(point, obstacle, radius));
 }
 
 export function resolveWalkMovement(

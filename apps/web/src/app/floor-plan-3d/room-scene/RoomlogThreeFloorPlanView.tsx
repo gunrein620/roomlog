@@ -870,6 +870,7 @@ export function RoomlogThreeFloorPlanView({
             enabled={controlsEnabled}
             furnitureData={furnitureData}
             horizontalScale={sceneHorizontalScale}
+            mitunetLayout={mitunetLayout}
             moveInputRef={moveInputRef}
             onStatusChange={setWalkStatus}
             preferredSpawn={walkPreferredSpawn}
