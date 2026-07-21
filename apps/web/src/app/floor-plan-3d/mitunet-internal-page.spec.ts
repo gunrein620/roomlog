@@ -72,9 +72,13 @@ test("keeps the RoomLog save action visible and explains why it cannot be used y
   assert.match(viewerSource, /roomLogSaveHint\.textContent = roomLogSaveReason;/);
 });
 
-test("keeps the floor-plan upload action visible while live analysis initializes", () => {
-  assert.match(viewerSource, /id="upload-btn"[^>]*aria-busy="true"[^>]*disabled/);
+test("accepts a floor-plan file immediately and processes it once live analysis is ready", () => {
+  assert.match(viewerSource, /id="upload-btn"[^>]*aria-busy="true"/);
   assert.doesNotMatch(viewerSource, /id="upload-btn"[^>]*hidden/);
+  assert.doesNotMatch(viewerSource.match(/<button[^>]*id="upload-btn"[^>]*>/)?.[0] ?? "", /disabled/);
+  assert.match(viewerSource, /let pendingUploadFile = null/);
+  assert.match(viewerSource, /if \(!liveUploadAvailable\) \{\s*pendingUploadFile = file;/);
+  assert.match(viewerSource, /const queuedUploadFile = pendingUploadFile;\s*pendingUploadFile = null;\s*if \(queuedUploadFile\) extractForReview\(queuedUploadFile\);/);
   assert.match(viewerSource, /uploadButton\.setAttribute\("aria-busy", "false"\)/);
   assert.match(viewerSource, /uploadButton\.disabled = !liveUploadAvailable \|\| inFlight/);
   assert.match(viewerSource, /Editor unavailable:[\s\S]*return false;/);

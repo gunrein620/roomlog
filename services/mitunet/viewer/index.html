@@ -1718,7 +1718,7 @@
   </div>
 
   <div class="label" id="upload-label" hidden>Upload floor plan</div>
-  <button class="btn primary with-icon" id="upload-btn" title="도면 분석 서버 연결을 확인하는 중입니다" aria-busy="true" disabled>
+  <button class="btn primary with-icon" id="upload-btn" title="도면을 선택하면 준비되는 즉시 분석합니다" aria-busy="true">
     <span class="upload-empty-icon" aria-hidden="true"><i data-lucide="cloud-upload"></i></span>
     <span class="upload-title">도면 이미지를 업로드하세요</span>
     <span class="upload-helper">PNG 또는 JPG를 선택하세요</span>
@@ -2943,7 +2943,9 @@ const zoomOutButton = document.getElementById("zoom-out-btn");
 const fitViewButton = document.getElementById("fit-view-btn");
 const zoomInButton = document.getElementById("zoom-in-btn");
 const uploadButton = document.getElementById("upload-btn");
+const fileInput = document.getElementById("file-input");
 let liveUploadAvailable = false;
+let pendingUploadFile = null;
 const startSampleButton = document.getElementById("start-sample-btn");
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
@@ -4787,14 +4789,10 @@ async function enableLiveMode() {
   uploadButton.title = "도면 이미지 올리기";
   renderIcons();
   updateEditorControls();
-  const fileInput = document.getElementById("file-input");
-  uploadButton.addEventListener("click", () => fileInput.click());
   startSampleButton.addEventListener("click", startLandingSample);
-  fileInput.addEventListener("change", () => {
-    if (!fileInput.files.length) return;
-    extractForReview(fileInput.files[0]);
-    fileInput.value = "";
-  });
+  const queuedUploadFile = pendingUploadFile;
+  pendingUploadFile = null;
+  if (queuedUploadFile) extractForReview(queuedUploadFile);
 
   let dragDepth = 0;
   window.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
@@ -4860,6 +4858,7 @@ async function initializeViewer() {
   if (liveModeEnabled) {
     await initializeRoomLogIntegration();
   } else {
+    pendingUploadFile = null;
     uploadButton.hidden = false;
     uploadButton.disabled = true;
     uploadButton.setAttribute("aria-busy", "false");
@@ -4871,6 +4870,24 @@ async function initializeViewer() {
     updateEditorControls();
   }
 }
+
+function selectOrQueueUpload(file) {
+  if (!liveUploadAvailable) {
+    pendingUploadFile = file;
+    setStatus("분석 서버 준비 중… 선택한 도면은 준비되면 자동으로 시작합니다.");
+    return;
+  }
+  extractForReview(file);
+}
+
+uploadButton.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  if (!fileInput.files.length) return;
+  const file = fileInput.files[0];
+  fileInput.value = "";
+  selectOrQueueUpload(file);
+});
+
 window.addEventListener("load", renderIcons);
 initializeViewer();
 </script>
