@@ -21,6 +21,7 @@ from buildingcv.extraction_pipeline import compose_opening_review
 from buildingcv.local_yolo_openings import LocalYoloSegmentOpeningClient
 from buildingcv.mitunet import MitUNetPolygonExtractor
 from buildingcv.review_edits import compose_review_edits, decode_wall_mask_png, parse_review_openings
+from server.inference_runtime import InferenceRuntime
 from server.integration import integration_config_payload
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -51,6 +52,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MitUNet floorplan to 3D", lifespan=lifespan)
+app.state.inference_runtime = InferenceRuntime()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -109,17 +111,23 @@ async def extract_image(image: UploadFile = File(...)) -> dict:
 
     extractor: MitUNetPolygonExtractor = app.state.extractor
     yolo_client: LocalYoloSegmentOpeningClient = app.state.yolo_client
-    try:
-        source = Image.open(BytesIO(raw))
-        wall_mask, rendered_image = extractor.predict_mask(source)
-    except (UnidentifiedImageError, OSError) as error:
-        raise HTTPException(status_code=422, detail="upload a readable PNG or JPEG floor plan") from error
-    opening_result = yolo_client.detect(rendered_image)
-    result = compose_opening_review(wall_mask, opening_result)
-    # Geometry stays aligned to MitUNet's 1024px render; AI room/OCR analysis
-    # receives the untouched upload so labels are not stretched to a square.
-    attach_input_image(rendered_image, result)
-    return attach_input_image(source, result, "analysis_image_b64")
+    runtime: InferenceRuntime = app.state.inference_runtime
+
+    def run_extraction() -> dict:
+        try:
+            source = Image.open(BytesIO(raw))
+            source.load()
+            wall_mask, rendered_image = extractor.predict_mask(source)
+        except (UnidentifiedImageError, OSError) as error:
+            raise HTTPException(status_code=422, detail="upload a readable PNG or JPEG floor plan") from error
+        opening_result = yolo_client.detect(rendered_image)
+        result = compose_opening_review(wall_mask, opening_result)
+        # Geometry stays aligned to MitUNet's 1024px render; AI room/OCR analysis
+        # receives the untouched upload so labels are not stretched to a square.
+        attach_input_image(rendered_image, result)
+        return attach_input_image(source, result, "analysis_image_b64")
+
+    return await runtime.run("extract-image", run_extraction)
 
 
 @app.post("/compose-edits")
@@ -128,16 +136,22 @@ async def compose_edits(
     openings: str = Form("[]"),
     wall_polygon_mode: Annotated[Literal["exact", "legacy", "copy-wall"], Form()] = "exact",
 ) -> dict:
-    try:
-        mask = decode_wall_mask_png(await wall_mask.read())
-        if not np.any(mask):
-            raise ValueError("at least one wall is required")
-        detections = parse_review_openings(json.loads(openings))
-    except (UnidentifiedImageError, json.JSONDecodeError, TypeError, ValueError) as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+    raw_mask = await wall_mask.read()
+    runtime: InferenceRuntime = app.state.inference_runtime
 
-    return compose_review_edits(
-        mask,
-        detections,
-        wall_polygon_mode=wall_polygon_mode,
-    )
+    def run_composition() -> dict:
+        try:
+            mask = decode_wall_mask_png(raw_mask)
+            if not np.any(mask):
+                raise ValueError("at least one wall is required")
+            detections = parse_review_openings(json.loads(openings))
+        except (UnidentifiedImageError, json.JSONDecodeError, TypeError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+        return compose_review_edits(
+            mask,
+            detections,
+            wall_polygon_mode=wall_polygon_mode,
+        )
+
+    return await runtime.run("compose-edits", run_composition)

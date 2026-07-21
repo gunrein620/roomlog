@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -23,8 +23,18 @@ const furnitureDatasetSource = readFileSync(
   "utf8",
 );
 const dockerIgnoreSource = readFileSync(join(process.cwd(), "../../.dockerignore"), "utf8");
+const webDockerfileSource = readFileSync(join(process.cwd(), "Dockerfile"), "utf8");
 const viewerSource = readFileSync(
   join(process.cwd(), "../../services/mitunet/viewer/index.html"),
+  "utf8",
+);
+const uploadBootstrapSource = readFileSync(
+  join(process.cwd(), "../../services/mitunet/viewer/upload-bootstrap.mjs"),
+  "utf8",
+);
+const viewerVendorDir = join(process.cwd(), "../../services/mitunet/viewer/vendor");
+const mitunetServerSource = readFileSync(
+  join(process.cwd(), "../../services/mitunet/server/main.py"),
   "utf8",
 );
 
@@ -48,6 +58,18 @@ test("serves MitUNet viewer assets without exposing arbitrary local files", () =
   assert.doesNotMatch(assetRouteSource, /\/sell\?flow=listing#my-page/);
 });
 
+test("serves local 3D runtime dependencies in RoomLog and standalone MitUNet", () => {
+  assert.doesNotMatch(viewerSource, /unpkg\.com/);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/three\.module\.js/);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/three-addons\.mjs/);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/lucide\.min\.js/);
+  assert.match(viewerSource, /\/viewer-assets\/vendor\/draco\//);
+  for (const asset of ["three.module.js", "three.core.js", "three-addons.mjs", "lucide.min.js", "draco/draco_decoder.wasm"]) {
+    assert.equal(existsSync(join(viewerVendorDir, asset)), true, `missing local runtime asset: ${asset}`);
+  }
+  assert.match(mitunetServerSource, /app\.mount\("\/viewer-assets", StaticFiles\(directory=VIEWER_DIR\)/);
+});
+
 test("proxies MitUNet inference requests from the RoomLog origin", () => {
   assert.match(apiRouteSource, /MITUNET_INTERNAL_SERVICE_URL/);
   assert.match(apiRouteSource, /extract-image/);
@@ -55,6 +77,9 @@ test("proxies MitUNet inference requests from the RoomLog origin", () => {
   assert.match(apiRouteSource, /integration-config/);
   assert.match(apiRouteSource, /healthz/);
   assert.match(apiRouteSource, /applyRoomLogMitunetFormOptions/);
+  assert.match(apiRouteSource, /timeoutMs: 90_000/);
+  assert.match(apiRouteSource, /timeoutMs: 5_000/);
+  assert.match(apiRouteSource, /MITUNET_UPSTREAM_TIMEOUT/);
 });
 
 test("keeps completion inside RoomLog instead of using legacy external-window messaging", () => {
@@ -76,9 +101,16 @@ test("accepts a floor-plan file immediately and processes it once live analysis 
   assert.match(viewerSource, /id="upload-btn"[^>]*aria-busy="true"/);
   assert.doesNotMatch(viewerSource, /id="upload-btn"[^>]*hidden/);
   assert.doesNotMatch(viewerSource.match(/<button[^>]*id="upload-btn"[^>]*>/)?.[0] ?? "", /disabled/);
-  assert.match(viewerSource, /let pendingUploadFile = null/);
-  assert.match(viewerSource, /if \(!liveUploadAvailable\) \{\s*pendingUploadFile = file;/);
-  assert.match(viewerSource, /const queuedUploadFile = pendingUploadFile;\s*pendingUploadFile = null;\s*if \(queuedUploadFile\) extractForReview\(queuedUploadFile\);/);
+  assert.match(viewerSource, /src="\/viewer-assets\/upload-bootstrap\.mjs"/);
+  assert.match(uploadBootstrapSource, /uploadButton\.addEventListener\("click", openFilePicker\)/);
+  assert.match(uploadBootstrapSource, /pendingFile = file/);
+  assert.match(viewerSource, /window\.dispatchEvent\(new Event\("mitunet-upload-ready"\)\)/);
+  assert.ok(
+    viewerSource.indexOf('window.dispatchEvent(new Event("mitunet-module-loaded"))')
+      > viewerSource.indexOf("const composer = new EffectComposer(renderer)"),
+    "module-loaded must only fire after synchronous 3D initialization",
+  );
+  assert.match(viewerSource, /window\.addEventListener\("mitunet-upload-selected"/);
   assert.match(viewerSource, /uploadButton\.setAttribute\("aria-busy", "false"\)/);
   assert.match(viewerSource, /uploadButton\.disabled = !liveUploadAvailable \|\| inFlight/);
   assert.match(viewerSource, /Editor unavailable:[\s\S]*return false;/);
@@ -94,8 +126,8 @@ test("saves the current 3D or Floor surface for the RoomLog preview", () => {
 });
 
 test("mounts MitUNet and furniture only from paths inside RoomLog", () => {
+  assert.match(composeSource, /\.\/services\/mitunet/);
   for (const source of [composeSource, productionComposeSource]) {
-    assert.match(source, /\.\/services\/mitunet/);
     assert.match(source, /\.\/runtime-assets\/furniture-glb-dataset/);
     assert.doesNotMatch(source, /\.\.\/\.\.\/floorplan-to-3d-mitunet/);
     assert.doesNotMatch(source, /\.\.\/furniture-glb-dataset/);
@@ -110,8 +142,11 @@ test("uses RoomLog-internal defaults instead of deleted sibling fallbacks", () =
 });
 
 test("keeps mounted model and furniture binaries out of the Docker build context", () => {
-  assert.match(dockerIgnoreSource, /^services\/mitunet$/m);
+  assert.match(dockerIgnoreSource, /^services\/mitunet\/\*$/m);
+  assert.match(dockerIgnoreSource, /^!services\/mitunet\/viewer\/\*\*$/m);
   assert.match(dockerIgnoreSource, /^runtime-assets\/furniture-glb-dataset$/m);
+  assert.match(webDockerfileSource, /COPY services\/mitunet\/viewer \/mitunet\/viewer/);
+  assert.doesNotMatch(productionComposeSource, /MITUNET_HOST_PROJECT_ROOT/);
 });
 
 test("keeps label-free floor generation available when room analysis fails", () => {

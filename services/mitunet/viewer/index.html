@@ -1674,13 +1674,13 @@
   }
 </style>
 
-<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+<script src="/viewer-assets/vendor/lucide.min.js" defer></script>
+<script type="module" src="/viewer-assets/upload-bootstrap.mjs"></script>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+    "three": "/viewer-assets/vendor/three.module.js"
   }
 }
 </script>
@@ -1880,14 +1880,16 @@
 
 <script type="module">
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import {
+  DRACOLoader,
+  EffectComposer,
+  GLTFLoader,
+  GTAOPass,
+  OrbitControls,
+  OutputPass,
+  RenderPass,
+  RoomEnvironment,
+} from "/viewer-assets/vendor/three-addons.mjs";
 import {
   buildPlanExport,
   downloadPlanJson,
@@ -2130,7 +2132,7 @@ placementPreviewGroup.visible = false;
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath(
-  "https://unpkg.com/three@0.162.0/examples/jsm/libs/draco/",
+  "/viewer-assets/vendor/draco/",
 );
 const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
@@ -2944,9 +2946,7 @@ const zoomOutButton = document.getElementById("zoom-out-btn");
 const fitViewButton = document.getElementById("fit-view-btn");
 const zoomInButton = document.getElementById("zoom-in-btn");
 const uploadButton = document.getElementById("upload-btn");
-const fileInput = document.getElementById("file-input");
 let liveUploadAvailable = false;
-let pendingUploadFile = null;
 const startSampleButton = document.getElementById("start-sample-btn");
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
@@ -4833,9 +4833,7 @@ async function enableLiveMode() {
   renderIcons();
   updateEditorControls();
   startSampleButton.addEventListener("click", startLandingSample);
-  const queuedUploadFile = pendingUploadFile;
-  pendingUploadFile = null;
-  if (queuedUploadFile) extractForReview(queuedUploadFile);
+  window.dispatchEvent(new Event("mitunet-upload-ready"));
 
   let dragDepth = 0;
   window.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
@@ -4936,7 +4934,6 @@ async function initializeViewer() {
     await initializeRoomLogIntegration();
     await restoreRoomLogEditorSnapshot();
   } else {
-    pendingUploadFile = null;
     uploadButton.hidden = false;
     uploadButton.disabled = true;
     uploadButton.setAttribute("aria-busy", "false");
@@ -4949,24 +4946,13 @@ async function initializeViewer() {
   }
 }
 
-function selectOrQueueUpload(file) {
-  if (!liveUploadAvailable) {
-    pendingUploadFile = file;
-    setStatus("분석 서버 준비 중… 선택한 도면은 준비되면 자동으로 시작합니다.");
-    return;
-  }
-  extractForReview(file);
-}
-
-uploadButton.addEventListener("click", () => fileInput.click());
-fileInput.addEventListener("change", () => {
-  if (!fileInput.files.length) return;
-  const file = fileInput.files[0];
-  fileInput.value = "";
-  selectOrQueueUpload(file);
+window.addEventListener("mitunet-upload-selected", event => {
+  const file = event.detail?.file;
+  if (file) extractForReview(file);
 });
 
 window.addEventListener("load", renderIcons);
+window.dispatchEvent(new Event("mitunet-module-loaded"));
 initializeViewer();
 </script>
 </body>
