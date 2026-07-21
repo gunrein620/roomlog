@@ -3830,9 +3830,19 @@ function placedRootFromObject(object) {
 function selectFurnitureAt(event) {
   updateRayFromPointer(event);
   const hit = furnitureRaycaster.intersectObjects(furnitureGroup.children, true)[0];
-  selectedFurniture = hit ? placedRootFromObject(hit.object) : null;
+  if (!hit) {
+    clearFurnitureSelection();
+    return;
+  }
+  selectedFurniture = placedRootFromObject(hit.object);
   updateFurnitureInteractionUi();
-  if (selectedFurniture) setStatus("가구를 선택했습니다. 이동, 회전 또는 삭제할 수 있습니다.");
+  setStatus("가구를 선택했습니다. 이동, 회전 또는 삭제할 수 있습니다.");
+}
+
+function clearFurnitureSelection() {
+  if (!selectedFurniture || pendingFurniture) return;
+  selectedFurniture = null;
+  updateFurnitureInteractionUi();
 }
 
 function beginMoveSelectedFurniture() {
@@ -4224,6 +4234,12 @@ furnitureNextButton.addEventListener("click", () => {
 for (const eventName of ["pointerdown", "click"]) {
   furnitureToolbar.addEventListener(eventName, event => event.stopPropagation());
 }
+document.addEventListener("pointerdown", event => {
+  if (!selectedFurniture || pendingFurniture || !isFurniturePlacementView()) return;
+  if (!(event.target instanceof Node)) return;
+  if (sceneCanvas.contains(event.target) || furnitureToolbar.contains(event.target)) return;
+  clearFurnitureSelection();
+});
 furnitureMoveButton.addEventListener("click", beginMoveSelectedFurniture);
 furnitureRotateLeftButton.addEventListener("click", () => rotateSelectedFurniture(-1));
 furnitureRotateRightButton.addEventListener("click", () => rotateSelectedFurniture(1));
