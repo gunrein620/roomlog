@@ -501,6 +501,28 @@ function createDirectHandlingTestTicket(service: RoomlogService, title: string) 
 }
 
 describe("RoomlogService", () => {
+  it("refuses to create an intake session for a room linked to another tenant", async () => {
+    const service = new RoomlogService();
+    const otherTenant = service.signup({
+      email: "other-intake-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "다른 세입자",
+      phone: "010-2222-3333",
+      role: "TENANT",
+      buildingName: "다른 세입자 빌라",
+      roomNo: "901호",
+      address: "서울시 성동구 테스트로 901"
+    } as any);
+    const otherRoomId = (await service.getMe(`Bearer ${otherTenant.accessToken}`)).roomId;
+
+    assert.ok(otherRoomId);
+    assert.throws(
+      () => service.createIntakeSession("tenant-demo", { roomId: otherRoomId }),
+      ForbiddenException,
+    );
+  });
+
   it("seeds manager billing dummy rows across every billing management list", () => {
     const service = new RoomlogService();
 

@@ -75,7 +75,7 @@ import {
 import { MobileRoleMenu } from "./_components/MobileRoleMenu";
 import TourActionBell from "./_components/TourActionBell";
 import TourUploadBanner from "./_components/TourUploadBanner";
-import { getRealtimeSocket } from "@/lib/realtime-client";
+import { getRealtimeSocket, resetRealtimeSocket } from "@/lib/realtime-client";
 import { formatTenantLandlordUnreadCount } from "@/lib/tenant-landlord-conversation";
 import { tenantLandlordNavLabel } from "@/lib/tenant-landlord-nav-unread";
 import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
@@ -100,6 +100,7 @@ import {
 import { savedConditions } from "./my/flows/my-shared";
 import LandlordMyPage from "./my/flows/LandlordMyPage";
 import TenantMyPage from "./my/flows/TenantMyPage";
+import { clearTenantAiAssistantSession } from "./my/flows/tenant-ai-assistant-store";
 import {
   naverMapScriptUrl,
   NaverMapPreview,
@@ -2204,6 +2205,8 @@ export default function HomeApp({
   };
 
   const completeServiceAuth = (profile: ViewerProfile) => {
+    clearTenantAiAssistantSession();
+    resetRealtimeSocket();
     // 로그인 화면을 열 때 push한 히스토리 엔트리를 여기서도 소비한다 —
     // 성공 후 뒤로가기가 로그인 화면으로 되돌아가지 않게 (closeAuthScreen과 동일 원칙, QA 5).
     if (isAuthHistoryPushedRef.current) {
@@ -2650,6 +2653,8 @@ export default function HomeApp({
   }, [canAccessProtectedRolePage, isAuthChecked, isRouteReady, protectedConfig]);
 
   const logout = async () => {
+    clearTenantAiAssistantSession();
+    resetRealtimeSocket();
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setViewer(null);
     setActiveRole("seeker");

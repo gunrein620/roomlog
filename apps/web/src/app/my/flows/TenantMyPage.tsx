@@ -32,6 +32,8 @@ import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
 import { TenantAiAssistantPanel } from "./TenantAiAssistantPanel";
 import {
+  activateTenantAiAssistantScope,
+  closeTenantAiAssistant,
   markTenantAiDraftFormOpen,
   openTenantAiAssistant,
   useTenantAiAssistantStore,
@@ -636,6 +638,7 @@ export default function TenantMyPage({
   const [tenancy, setTenancy] = useState<TenantTenancy | null | "loading">("loading");
   const [tenantRooms, setTenantRooms] = useState<TenantRoomOption[]>([]);
   const [selectedTenantRoomId, setSelectedTenantRoomId] = useState("");
+  const [tenantAiScope, setTenantAiScope] = useState<{ userId: string; roomId: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -702,6 +705,8 @@ export default function TenantMyPage({
             setSelectedTenantRoomId(selectedRoom.roomId);
           }
           window.localStorage.setItem("woozuTenantRoomId", selectedRoom.roomId);
+          activateTenantAiAssistantScope({ userId: me.userId, roomId: selectedRoom.roomId });
+          setTenantAiScope({ userId: me.userId, roomId: selectedRoom.roomId });
         }
 
         let contract: TenantContractSummary | null = null;
@@ -1017,7 +1022,7 @@ export default function TenantMyPage({
 
   // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
   const ai = useTenantAiAssistant({
-    roomId: tenancy && tenancy !== "loading" ? tenancy.roomId : undefined,
+    roomId: tenantAiScope?.roomId,
     onComplaintFiled: () => {
       showToast("민원/하자 요청이 접수되었습니다.");
       void loadRepairRequests();
@@ -1635,6 +1640,10 @@ export default function TenantMyPage({
   };
 
   const openAiAssistant = () => {
+    if (!tenantAiScope) {
+      showToast("AI 상담 정보를 불러오는 중입니다.");
+      return;
+    }
     openTenantAiAssistant();
     void ai.startTextSession();
   };
@@ -1699,7 +1708,11 @@ export default function TenantMyPage({
               <span>집 선택</span>
               <select
                 value={selectedTenantRoomId || tenancy.roomId}
-                onChange={(event) => setSelectedTenantRoomId(event.currentTarget.value)}
+                onChange={(event) => {
+                  closeTenantAiAssistant();
+                  setTenantAiScope(null);
+                  setSelectedTenantRoomId(event.currentTarget.value);
+                }}
               >
                 {tenantRooms.map((room) => (
                   <option key={room.roomId} value={room.roomId}>
@@ -1864,6 +1877,7 @@ export default function TenantMyPage({
         className="tenant-ai-assist-button"
         type="button"
         onClick={openAiAssistant}
+        disabled={!tenantAiScope}
         aria-label="AI 생활 도우미 열기"
         aria-controls="tenant-ai-assistant-panel"
         aria-expanded={tenantAiSession.open}
