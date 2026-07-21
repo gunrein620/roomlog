@@ -7,7 +7,7 @@ import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Check, Move, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
-import { type ComponentRef, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentRef, type MutableRefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
@@ -22,6 +22,11 @@ import {
 import { MitunetGtaoEffects } from "./mitunet-postprocessing";
 import { createConcreteTexture, createFloorTexture, createSourcePlanTexture } from "./mitunet-textures";
 import { FloorPlanWalkControls, type FloorPlanWalkStatus } from "./FloorPlanWalkControls";
+import {
+  FurnitureFirstPersonControls,
+  type FurnitureFirstPersonStatus
+} from "./FurnitureFirstPersonControls";
+import type { FurnitureInteractionMode } from "./furniture-first-person-input";
 import {
   isOrbitKeyboardInteractiveTarget,
   orbitKeyboardMovementDelta
@@ -88,6 +93,7 @@ function RoomFloor({
       onPointerMove={onFloorPointerMove}
       position={[bounds.centerX, 0, bounds.centerZ]}
       rotation={[-Math.PI / 2, 0, 0]}
+      userData={{ roomlogPlacementSurface: "floor" }}
     >
       <planeGeometry args={[bounds.width, bounds.height]} />
       <meshLambertMaterial
@@ -393,6 +399,7 @@ function FurnitureBoxMesh({
       // 배치 대기(드래그 추적 중) 가구는 커서 아래 바닥의 pointer 이벤트를 가리지 않게 레이캐스트를 끈다.
       raycast={isPending ? () => null : undefined}
       rotation={furniture.rotation}
+      userData={{ roomlogFurnitureId: furniture.id }}
     >
       <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
       <meshLambertMaterial
@@ -486,6 +493,7 @@ function FurnitureGlbMesh({
       // 뷰어에서 계산한 높이가 그대로 들어와 매물 3D에서도 같은 위치에 뜬다.
       position={[furniture.position[0], furniture.position[1], furniture.position[2]]}
       rotation={furniture.rotation}
+      userData={{ roomlogFurnitureId: furniture.id }}
     >
       <primitive object={scene} position={[0, modelOffsetY, 0]} scale={scale} />
       {isSelected ? (
@@ -529,7 +537,12 @@ function WallMesh({
   wall: WheretoputWall3D;
 }) {
   return (
-    <mesh onPointerDown={(event) => onPointerDown(wall, event)} position={wall.position} rotation={wall.rotation}>
+    <mesh
+      onPointerDown={(event) => onPointerDown(wall, event)}
+      position={wall.position}
+      rotation={wall.rotation}
+      userData={{ roomlogPlacementSurface: "wall" }}
+    >
       <boxGeometry args={[wall.dimensions.width, wall.dimensions.height, wall.dimensions.depth]} />
       <meshLambertMaterial color={isSelected ? "#2f55ff" : "#eeeeec"} />
     </mesh>
@@ -678,6 +691,9 @@ export function RoomlogThreeFloorPlanView({
   fitDistanceScale = 1,
   frameloop = "demand",
   furnitureData,
+  furnitureFirstPersonEnabled = false,
+  furnitureInteractionMode = "explore",
+  furniturePointerLockRequestRef,
   furnitureVerticalScale = 1,
   hideHint = false,
   horizontalScale = 1,
@@ -691,6 +707,12 @@ export function RoomlogThreeFloorPlanView({
   orbitZoomEnabled = true,
   onFloorPointerDown,
   onFloorPointerMove,
+  onFurnitureCancel,
+  onFurnitureCloseSelect,
+  onFurnitureConfirm,
+  onFurnitureOpenSelect,
+  onFurniturePickupAimed,
+  onFurniturePlacementPoint,
   onFurniturePointerDown,
   onScenePointerMissed,
   onPendingCancel,
@@ -720,6 +742,9 @@ export function RoomlogThreeFloorPlanView({
   /** 카메라 오토핏 거리 배율 — 1보다 크면 방이 화면 중앙에 더 작게 뜬다(상세 3D 히어로). */
   fitDistanceScale?: number;
   furnitureData: PlacedFurniture[];
+  furnitureFirstPersonEnabled?: boolean;
+  furnitureInteractionMode?: FurnitureInteractionMode;
+  furniturePointerLockRequestRef?: MutableRefObject<(() => void) | null>;
   furnitureVerticalScale?: number;
   hideHint?: boolean;
   horizontalScale?: number;
@@ -736,6 +761,12 @@ export function RoomlogThreeFloorPlanView({
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   // 가구 드래그 이동용 — 바닥 위 커서 이동을 컨테이너에 전달한다.
   onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
+  onFurnitureCancel?: () => void;
+  onFurnitureCloseSelect?: () => void;
+  onFurnitureConfirm?: () => void;
+  onFurnitureOpenSelect?: () => void;
+  onFurniturePickupAimed?: (id: string) => void;
+  onFurniturePlacementPoint?: (point: { x: number; z: number }) => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
   onScenePointerMissed?: () => void;
   // 배치 중에는 취소/완료, 선택 중에는 이동/양방향 회전/삭제 버튼을 표시한다.
@@ -772,6 +803,7 @@ export function RoomlogThreeFloorPlanView({
   const hasMitunetStyle = Boolean(mitunetLayout && mitunetPlan);
   const selectedFurniture = furnitureData.find((furniture) => furniture.id === selectedFurnitureId) ?? null;
   const sceneInteractive = controlMode === "orbit";
+  const pointerSceneInteractive = sceneInteractive && (!furnitureFirstPersonEnabled || furnitureInteractionMode === "select");
   const walkPreferredSpawn = useMemo(
     () => ({
       x: wallBounds.centerX * sceneHorizontalScale,
@@ -780,6 +812,14 @@ export function RoomlogThreeFloorPlanView({
     [sceneHorizontalScale, wallBounds.centerX, wallBounds.centerZ]
   );
   const [walkStatus, setWalkStatus] = useState<FloorPlanWalkStatus>("ready");
+  const [furnitureFirstPersonStatus, setFurnitureFirstPersonStatus] = useState<FurnitureFirstPersonStatus>("ready");
+  const [aimedFurnitureId, setAimedFurnitureId] = useState<string | null>(null);
+  const fallbackFurniturePointerLockRequestRef = useRef<(() => void) | null>(null);
+  const activeFurniturePointerLockRequestRef = furniturePointerLockRequestRef ?? fallbackFurniturePointerLockRequestRef;
+
+  useEffect(() => {
+    if (!furnitureFirstPersonEnabled) setAimedFurnitureId(null);
+  }, [furnitureFirstPersonEnabled]);
 
   useEffect(() => {
     onWalkStatusChange?.(walkStatus);
@@ -826,7 +866,7 @@ export function RoomlogThreeFloorPlanView({
     >
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} gl={{ alpha: listingPreview }} onPointerMissed={onScenePointerMissed} shadows>
         {/* 상세 3D 히어로는 fitDistanceScale로 방을 화면에 더 작게 배치한다(bounds 오토핏 위에 접붙임). */}
-        {controlMode === "orbit" ? (
+        {controlMode === "orbit" && !furnitureFirstPersonEnabled ? (
           <RoomCameraAutoFit bounds={wallBounds} distanceScale={fitDistanceScale} previewFit={previewFit} />
         ) : null}
         {/* 배경: mitunet 룩은 위 CSS 그라데이션이 하늘이라 색을 안 깐다. 비-mitunet은 sceneBackground를 쓰되
@@ -842,16 +882,16 @@ export function RoomlogThreeFloorPlanView({
           <RoomFloor
             boundsOverride={mitunetLayout ? wallBounds : undefined}
             interactionOnly={hasMitunetStyle}
-            onFloorPointerDown={sceneInteractive ? onFloorPointerDown : ignoreFloorPointer}
-            onFloorPointerMove={sceneInteractive ? onFloorPointerMove : undefined}
+            onFloorPointerDown={pointerSceneInteractive ? onFloorPointerDown : ignoreFloorPointer}
+            onFloorPointerMove={pointerSceneInteractive ? onFloorPointerMove : undefined}
             wallsData={wallsData}
           />
           {mitunetLayout ? <MitunetFloorPlanMeshes layout={mitunetLayout} /> : null}
           {wallsData.map((wall) => (
             <WallMesh
-              isSelected={sceneInteractive && String(selectedWallId ?? "") === String(wall.wall_id)}
+              isSelected={pointerSceneInteractive && String(selectedWallId ?? "") === String(wall.wall_id)}
               key={wall.id}
-              onPointerDown={sceneInteractive ? onWallPointerDown : ignoreWallPointer}
+              onPointerDown={pointerSceneInteractive ? onWallPointerDown : ignoreWallPointer}
               wall={wall}
             />
           ))}
@@ -859,9 +899,9 @@ export function RoomlogThreeFloorPlanView({
             <FurnitureMesh
               furniture={furniture}
               verticalScale={furnitureVerticalScale}
-              isSelected={sceneInteractive && selectedFurnitureId === furniture.id}
+              isSelected={sceneInteractive && (selectedFurnitureId === furniture.id || aimedFurnitureId === furniture.id)}
               key={furniture.id}
-              onPointerDown={sceneInteractive ? onFurniturePointerDown : ignoreFurniturePointer}
+              onPointerDown={pointerSceneInteractive ? onFurniturePointerDown : ignoreFurniturePointer}
             />
           ))}
           {sceneInteractive && pendingFurniture ? (
@@ -947,6 +987,22 @@ export function RoomlogThreeFloorPlanView({
             preferredSpawn={walkPreferredSpawn}
             wallsData={wallsData}
           />
+        ) : furnitureFirstPersonEnabled ? (
+          <FurnitureFirstPersonControls
+            aimedFurnitureId={aimedFurnitureId}
+            enabled={controlsEnabled}
+            interactionMode={furnitureInteractionMode}
+            onAimedFurnitureChange={setAimedFurnitureId}
+            onCancel={() => onFurnitureCancel?.()}
+            onCloseSelect={() => onFurnitureCloseSelect?.()}
+            onConfirm={() => onFurnitureConfirm?.()}
+            onOpenSelect={() => onFurnitureOpenSelect?.()}
+            onPickupAimed={(id) => onFurniturePickupAimed?.(id)}
+            onPlacementPoint={(point) => onFurniturePlacementPoint?.(point)}
+            onStatusChange={setFurnitureFirstPersonStatus}
+            pointerLockRequestRef={activeFurniturePointerLockRequestRef}
+            preferredSpawn={walkPreferredSpawn}
+          />
         ) : (
           <RoomOrbitControls
             enabled={controlsEnabled}
@@ -968,7 +1024,26 @@ export function RoomlogThreeFloorPlanView({
           </span>
         </div>
       ) : null}
-      {orbitKeyboardMoveEnabled ? (
+      {furnitureFirstPersonEnabled ? (
+        <>
+          {furnitureInteractionMode !== "select" ? <span aria-hidden="true" className="floor-plan-furniture-reticle" /> : null}
+          {furnitureFirstPersonStatus === "locked" || furnitureInteractionMode === "select" ? null : (
+            <div className={`floor-plan-walk-instruction is-${furnitureFirstPersonStatus}`} role="status">
+              <strong>클릭하여 가구 배치 시작</strong>
+              <span>마우스 시점 · WASD 이동</span>
+            </div>
+          )}
+          <span className="floor-3d-hint">
+            {furnitureInteractionMode === "carry"
+              ? "Q 고정 · Esc 취소"
+              : furnitureInteractionMode === "select"
+                ? "가구를 선택하세요 · E 또는 Esc 닫기"
+                : aimedFurnitureId
+                  ? "E 가구 이동 · WASD 이동 · 마우스 시점"
+                  : "WASD 이동 · 마우스 시점 · E 가구 선택"}
+          </span>
+        </>
+      ) : orbitKeyboardMoveEnabled ? (
         <span className="floor-3d-hint">WASD 이동 · 드래그 회전</span>
       ) : hideHint ? null : (
         <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>
