@@ -59,6 +59,10 @@ describe("furniture first-person controls", () => {
     assert.match(listingSource, /onFurnitureConfirm=\{confirmPendingFurnitureFromShortcut\}/);
     assert.match(listingSource, /lastFurniturePlacementPointRef/);
     assert.match(listingSource, /startCatalogFurnitureCarry/);
+    assert.match(
+      listingSource,
+      /startCatalogFurnitureCarry[\s\S]*?document\.activeElement instanceof HTMLElement[\s\S]*?document\.activeElement\.blur\(\)/
+    );
     assert.match(listingSource, /onFurnitureLatestPlacementPoint=\{rememberFurniturePlacementPoint\}/);
     assert.match(listingSource, /onFurnitureRotateLeft=\{\(\) => rotatePendingFurniture\(-1\)\}/);
     assert.match(listingSource, /onFurnitureRotateRight=\{\(\) => rotatePendingFurniture\(1\)\}/);

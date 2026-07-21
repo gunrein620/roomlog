@@ -395,6 +395,7 @@ export default function ListingTourRoom3D({
   }
 
   function startCatalogFurnitureCarry(draft: PlacedFurniture) {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const placementPoint = lastFurniturePlacementPointRef.current;
     const nextDraft = placementPoint
       ? moveFurnitureDraftToPoint(draft, normalizedScenePoint(placementPoint), wallsData, { ignoreCrossing: true })
