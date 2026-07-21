@@ -144,7 +144,14 @@ function MitunetExtrudedLayer({
   if (polygons.length === 0) return null;
 
   return (
-    <mesh castShadow geometry={geometry} position={[0, y, 0]} receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh
+      castShadow
+      geometry={geometry}
+      position={[0, y, 0]}
+      receiveShadow
+      rotation={[-Math.PI / 2, 0, 0]}
+      userData={{ roomlogPlacementSurface: "wall" }}
+    >
       {surface === "wall" ? (
         <>
           <meshStandardMaterial
