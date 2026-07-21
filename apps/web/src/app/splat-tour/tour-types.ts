@@ -38,6 +38,15 @@ export interface SplatTransform {
   offsetZ: number;
 }
 
+/**
+ * 투어 진입 시 초기 카메라 시점. SplatAsset.spawnView(Json?)에 자산별로 영속화된다.
+ * 소유자가 "현재 시점을 기본으로 저장"을 누르면 tour-camera.tsx가 읽고 있는 현재 pose가 이 형태로 저장된다.
+ */
+export interface SpawnView {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
 /** ② 캡처 사전검증의 개별 지표 결과. */
 export type CaptureCheckId = "blur" | "exposure" | "parallax";
 

@@ -25,6 +25,7 @@ import {
   parseIntakePresignInput,
   parseOptionalCaptureFloorPlanInput,
   parseRegisterInput,
+  parseSpawnViewInput,
   parseUpdateFileInput
 } from "./splat-asset.types";
 import { workerSecretMatches } from "./worker-secret";
@@ -106,6 +107,18 @@ export class SplatAssetController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
     await this.splatAssetService.assertAssetOwner(id, user.id);
     return this.splatAssetService.register(id, parseRegisterInput(body));
+  }
+
+  @Patch(":id/spawn-view")
+  async updateSpawnView(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id") id: string,
+    @Body() body: unknown
+  ) {
+    // 자산 소유자만 투어 기본 스폰 시점을 바꿀 수 있다 — 등록(registration)과 같은 게이트.
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    await this.splatAssetService.assertAssetOwner(id, user.id);
+    return this.splatAssetService.updateSpawnView(id, parseSpawnViewInput(body));
   }
 
   @Post(":id/auto-register-preview")

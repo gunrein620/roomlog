@@ -74,6 +74,10 @@ describe("SplatAssetController ownership gate", () => {
         calls.push("register");
         return { id: "asset-1" };
       },
+      updateSpawnView: async () => {
+        calls.push("updateSpawnView");
+        return { id: "asset-1" };
+      },
       updateFile: async () => {
         calls.push("updateFile");
         return { id: "asset-1" };
@@ -124,6 +128,21 @@ describe("SplatAssetController ownership gate", () => {
     const del = ownershipController({ owns: false });
     await assert.rejects(() => del.controller.remove("Bearer landlord", "asset-1"), ForbiddenException);
     assert.deepEqual(del.calls, ["assertAssetOwner"]);
+  });
+
+  it("blocks spawn-view update on another landlord's asset, allows it on their own", async () => {
+    const spawnView = { position: [0, 1.45, -0.5], target: [0.2, 0.4, -2.5] };
+
+    const denied = ownershipController({ owns: false });
+    await assert.rejects(
+      () => denied.controller.updateSpawnView("Bearer landlord", "asset-1", { spawnView }),
+      ForbiddenException
+    );
+    assert.deepEqual(denied.calls, ["assertAssetOwner"]); // updateSpawnView는 호출되지 않음
+
+    const allowed = ownershipController({ owns: true });
+    await allowed.controller.updateSpawnView("Bearer landlord", "asset-1", { spawnView });
+    assert.deepEqual(allowed.calls, ["assertAssetOwner", "updateSpawnView"]);
   });
 
   it("enforces ownership on the human updateFile path but exempts the worker secret", async () => {

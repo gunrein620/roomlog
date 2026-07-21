@@ -2235,6 +2235,7 @@ model SplatAsset {
   status            SplatAssetStatus @default(UPLOADED)
   transform         Json? // SplatTransform (tour-types.ts). null이면 미정합
   registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용
+  spawnView         Json? // SpawnView({position:[x,y,z], target:[x,y,z]}, tour-types.ts) — 투어 진입 시 초기 카메라 시점. 소유자가 저장, null이면 뷰어가 폴백 상수를 쓴다
   capturedAt        DateTime? // 촬영 시각 메타 (§7 편향 표기용)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt

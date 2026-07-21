@@ -48,3 +48,6 @@ apps/web/public/samples/room-e2e.tuning.json
 
 # Xcode 개인 IDE 상태 — 창 위치·열린 파일 같은 사람별 상태라 커밋하면 매번 충돌한다
 **/xcuserdata/
+
+# 실매물 도면 픽스처(로컬 확인 전용) — 커밋하지 않는다
+apps/web/public/dev-fixtures/
