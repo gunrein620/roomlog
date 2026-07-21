@@ -56,7 +56,7 @@ export function ListingDetailView({
   onStartChat: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
-  const [isFurnitureSimulationOpen, setIsFurnitureSimulationOpen] = useState(false);
+  const [is3DSimulationOpen, setIs3DSimulationOpen] = useState(false);
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   // 무대 레이아웃 통합으로 갤러리 탭 상태는 사라짐 — 대표 사진은 첫 장, 나머지는 라이트박스가 담당.
@@ -186,24 +186,24 @@ export function ListingDetailView({
       {has3DHero && listing.floorPlan3D ? (
         /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스). */
         <div
-          aria-label={isFurnitureSimulationOpen ? `${listing.title} 가구배치 시뮬레이션` : `${listing.title} 3D 도면 미리보기`}
-          aria-modal={isFurnitureSimulationOpen ? "true" : undefined}
-          className={`detail-3d-hero${isFurnitureSimulationOpen ? " is-furniture-simulation-open" : ""}`}
+          aria-label={is3DSimulationOpen ? `${listing.title} 3D 시뮬레이션` : `${listing.title} 3D 도면 미리보기`}
+          aria-modal={is3DSimulationOpen ? "true" : undefined}
+          className={`detail-3d-hero${is3DSimulationOpen ? " is-3d-simulation-open" : ""}`}
           id="detail-3d-hero"
-          role={isFurnitureSimulationOpen ? "dialog" : undefined}
+          role={is3DSimulationOpen ? "dialog" : undefined}
         >
           <ListingTourRoom3D
             floorPlan={listing.floorPlan3D}
-            furnitureEditorOpen={isFurnitureSimulationOpen}
+            simulationOpen={is3DSimulationOpen}
             listingId={listing.listingNo}
             variant="hero"
           />
-          {isFurnitureSimulationOpen ? (
+          {is3DSimulationOpen ? (
             <button
-              aria-label="가구배치 시뮬레이션 닫기"
-              className="furniture-simulation-close"
+              aria-label="3D 시뮬레이션 닫기"
+              className="simulation-close"
               type="button"
-              onClick={() => setIsFurnitureSimulationOpen(false)}
+              onClick={() => setIs3DSimulationOpen(false)}
             >
               <X aria-hidden size={18} strokeWidth={2.5} />
               닫기
@@ -445,10 +445,10 @@ export function ListingDetailView({
           )}
           <button
             type="button"
-            onClick={() => setIsFurnitureSimulationOpen(true)}
+            onClick={() => setIs3DSimulationOpen(true)}
           >
             <Armchair aria-hidden size={18} strokeWidth={2.4} />
-            가구배치 시뮬레이션
+            3D 시뮬레이션
           </button>
         </div>
       ) : null}

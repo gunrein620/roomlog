@@ -32,13 +32,35 @@ test("uses the same furniture categories as the 3D rendering editor", () => {
   assert.match(tourSource, /listing-tour-furniture-category-tabs/);
 });
 
-test("opens the 500-item furniture editor from the listing detail request", () => {
+test("opens the 500-item furniture editor from the 3D simulation request", () => {
   assert.match(tourSource, /const \[furnitureLimit, setFurnitureLimit\] = useState\(30\)/);
   assert.match(tourSource, /const visibleFurnitureCatalog = useMemo/);
-  assert.match(tourSource, /furnitureEditorOpen\?: boolean/);
-  assert.match(tourSource, /if \(furnitureEditorOpen\) openFurnitureEditor\(\)/);
-  assert.match(tourSource, /else closeFurnitureEditor\(\)/);
+  assert.match(tourSource, /simulationOpen\?: boolean/);
+  assert.match(tourSource, /if \(simulationOpen\)[\s\S]*setSimulationMode\("walk"\)/);
   assert.match(tourSource, /가구 더 보기 \(\{visibleFurnitureCatalog\.length\}\/\{filteredCatalog\.length\}\)/);
+});
+
+test("defaults the fullscreen simulation to walk and switches explicitly to furniture placement", () => {
+  assert.match(tourSource, /type SimulationMode = "walk" \| "furniture"/);
+  assert.match(tourSource, /const \[simulationMode, setSimulationMode\] = useState<SimulationMode>\("walk"\)/);
+  assert.match(tourSource, /role="tablist"[\s\S]*워킹뷰[\s\S]*가구 배치/);
+  assert.match(tourSource, /controlMode=\{simulationOpen && simulationMode === "walk" \? "walk" : "orbit"\}/);
+  assert.match(tourSource, /simulationMode === "furniture"/);
+});
+
+test("cancels an unconfirmed furniture draft before entering walk mode", () => {
+  assert.match(
+    tourSource,
+    /function selectSimulationMode\(nextMode: SimulationMode\)[\s\S]*nextMode === "walk" && pendingFurniture[\s\S]*cancelPendingFurniturePlacement\(\)/
+  );
+  assert.match(tourSource, /restorePendingFurnitureOrigin\(\)/);
+});
+
+test("reuses the touch joystick for coarse-pointer walk input", () => {
+  assert.match(tourSource, /TourJoystick, type TourJoystickVector/);
+  assert.match(tourSource, /window\.matchMedia\("\(pointer: coarse\)"\)/);
+  assert.match(tourSource, /moveInputRef=\{walkMoveInputRef\}/);
+  assert.match(tourSource, /isCoarsePointer[\s\S]*<TourJoystick onChange=\{handleWalkJoystickChange\}/);
 });
 
 test("connects both pending-furniture rotation directions to the listing tour", () => {

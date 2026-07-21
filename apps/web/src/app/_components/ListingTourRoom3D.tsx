@@ -3,7 +3,7 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createMitunetFloorFurnitureDraft,
   createFurnitureModel,
@@ -21,6 +21,7 @@ import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "..
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
 import { resolveMitunetFurnitureSceneScale } from "../floor-plan-3d/room-scene/mitunet-geometry";
 import { listingTourFurnitureStorageKey } from "../splat-tour/splat-furniture";
+import { TourJoystick, type TourJoystickVector } from "../splat-tour/tour-joystick";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 import { fetchTenantFurniture, TenantFurnitureApiError } from "@/lib/tenant-furniture-api";
 import {
@@ -56,6 +57,8 @@ export type ListingFloorPlan3D = {
   name?: string;
   mitunet?: MitunetFloorPlan;
 };
+
+type SimulationMode = "walk" | "furniture";
 
 function readSavedFurnitures(listingId: string) {
   if (typeof window === "undefined") return null;
@@ -106,17 +109,20 @@ function normalizeMitunetListingFurniture(
 
 export default function ListingTourRoom3D({
   floorPlan,
-  furnitureEditorOpen,
+  simulationOpen,
   listingId,
   variant = "sheet"
 }: {
   floorPlan: ListingFloorPlan3D;
-  furnitureEditorOpen?: boolean;
+  simulationOpen?: boolean;
   listingId: string;
   /** hero = 상세 히어로 스테이지(좌측 글래스 가구 패널 + hover 하이라이트), sheet = 기존 3D 시트 */
   variant?: "sheet" | "hero";
 }) {
   const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
+  const [simulationMode, setSimulationMode] = useState<SimulationMode>("walk");
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+  const walkMoveInputRef = useRef<TourJoystickVector>({ forward: 0, strafe: 0 });
   const [isPlacementOpen, setIsPlacementOpen] = useState(false);
   // hero 패널 접기 — 우상단 "가구 편집" 버튼으로 여닫고, 도면을 가리지 않도록 기본은 닫아 둔다.
   const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(false);
@@ -311,10 +317,33 @@ export default function ListingTourRoom3D({
   }
 
   useEffect(() => {
-    if (furnitureEditorOpen === undefined) return;
-    if (furnitureEditorOpen) openFurnitureEditor();
-    else closeFurnitureEditor();
-  }, [furnitureEditorOpen]);
+    if (simulationOpen === undefined) return;
+    walkMoveInputRef.current = { forward: 0, strafe: 0 };
+    setSelectedFurnitureId(null);
+    setIsFurnitureDragging(false);
+
+    if (simulationOpen) {
+      if (pendingFurniture) cancelPendingFurniturePlacement();
+      setSimulationMode("walk");
+      closeFurnitureEditor();
+      return;
+    }
+
+    if (pendingFurniture) cancelPendingFurniturePlacement();
+    closeFurnitureEditor();
+  }, [simulationOpen]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsCoarsePointer(query.matches || navigator.maxTouchPoints > 0);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  const handleWalkJoystickChange = useCallback((vector: TourJoystickVector | null) => {
+    walkMoveInputRef.current = vector ?? { forward: 0, strafe: 0 };
+  }, []);
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
     // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
@@ -425,6 +454,17 @@ export default function ListingTourRoom3D({
     setIsPendingFurnitureEditing(false);
     setSelectedFurnitureId(null);
     setSaveMessage(restored ? `${targetName} 원래 자리로 되돌렸습니다.` : `${targetName} 배치를 취소했습니다.`);
+  }
+
+  function selectSimulationMode(nextMode: SimulationMode) {
+    if (nextMode === "walk" && pendingFurniture) cancelPendingFurniturePlacement();
+    walkMoveInputRef.current = { forward: 0, strafe: 0 };
+    setSelectedFurnitureId(null);
+    setIsFurnitureDragging(false);
+    setSimulationMode(nextMode);
+
+    if (nextMode === "furniture") openFurnitureEditor();
+    else closeFurnitureEditor();
   }
 
   function deletePendingFurniture() {
@@ -539,11 +579,13 @@ export default function ListingTourRoom3D({
       }
     >
       <RoomlogThreeFloorPlanView
+        controlMode={simulationOpen && simulationMode === "walk" ? "walk" : "orbit"}
         controlsEnabled={!isFurnitureDragging}
         frameloop="always"
         furnitureData={placedFurnitures}
         hideHint
         mitunetPlan={floorPlan.mitunet}
+        moveInputRef={walkMoveInputRef}
         orbitMinDistance={1.6}
         fitDistanceScale={0.9}
         listingPreview
@@ -567,7 +609,34 @@ export default function ListingTourRoom3D({
         wallsData={wallsData}
       />
 
-      {variant === "hero" && furnitureEditorOpen && !isHeroPanelOpen ? (
+      {variant === "hero" && simulationOpen ? (
+        <div aria-label="3D 시뮬레이션 모드" className="listing-tour-simulation-modes" role="tablist">
+          <button
+            aria-selected={simulationMode === "walk"}
+            className={simulationMode === "walk" ? "active" : ""}
+            onClick={() => selectSimulationMode("walk")}
+            role="tab"
+            type="button"
+          >
+            워킹뷰
+          </button>
+          <button
+            aria-selected={simulationMode === "furniture"}
+            className={simulationMode === "furniture" ? "active" : ""}
+            onClick={() => selectSimulationMode("furniture")}
+            role="tab"
+            type="button"
+          >
+            가구 배치
+          </button>
+        </div>
+      ) : null}
+
+      {simulationOpen && simulationMode === "walk" && isCoarsePointer ? (
+        <TourJoystick onChange={handleWalkJoystickChange} />
+      ) : null}
+
+      {variant === "hero" && simulationOpen && simulationMode === "furniture" && !isHeroPanelOpen ? (
         <button
           aria-label="가구 목록 열기"
           className="hero-furniture-reopen"
@@ -578,7 +647,7 @@ export default function ListingTourRoom3D({
         </button>
       ) : null}
 
-      {variant !== "hero" || isHeroPanelOpen ? (
+      {variant !== "hero" || (simulationOpen && simulationMode === "furniture" && isHeroPanelOpen) ? (
       <section className={variant === "hero" ? "listing-tour-furniture hero-furniture-drawer" : "listing-tour-furniture"} aria-label="3D 가구 배치">
         <div className="listing-tour-furniture-head">
           <div>

@@ -4369,7 +4369,7 @@ p {
   cursor: default;
 }
 
-.detail-3d-hero.is-furniture-simulation-open {
+.detail-3d-hero.is-3d-simulation-open {
   position: fixed;
   inset: 0;
   z-index: 120;
@@ -4378,19 +4378,19 @@ p {
   max-height: none;
 }
 
-.detail-3d-hero.is-furniture-simulation-open .hero-stage .floor-plan-3d-preview {
+.detail-3d-hero.is-3d-simulation-open .hero-stage .floor-plan-3d-preview {
   inset: 0;
 }
 
-.detail-3d-hero.is-furniture-simulation-open .hero-filmstrip {
+.detail-3d-hero.is-3d-simulation-open .hero-filmstrip {
   display: none;
 }
 
-.is-furniture-simulation-open .listing-tour-room3d.hero-panel-open .floor-plan-3d-preview {
+.is-3d-simulation-open .listing-tour-room3d.hero-panel-open .floor-plan-3d-preview {
   right: 340px;
 }
 
-.is-furniture-simulation-open .hero-stage .hero-furniture-drawer {
+.is-3d-simulation-open .hero-stage .hero-furniture-drawer {
   top: 0;
   right: 0;
   bottom: 0;
@@ -4403,7 +4403,7 @@ p {
   border-radius: 0;
 }
 
-.is-furniture-simulation-open .hero-stage .hero-furniture-drawer > .listing-tour-furniture-body {
+.is-3d-simulation-open .hero-stage .hero-furniture-drawer > .listing-tour-furniture-body {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -4411,7 +4411,7 @@ p {
   overflow: hidden;
 }
 
-.is-furniture-simulation-open .hero-stage .hero-furniture-catalog-scroll {
+.is-3d-simulation-open .hero-stage .hero-furniture-catalog-scroll {
   flex: 1;
   max-height: none;
   overflow-y: auto;
@@ -4432,7 +4432,7 @@ p {
   font-weight: 600;
 }
 
-.furniture-simulation-close {
+.simulation-close {
   position: absolute;
   top: calc(14px + env(safe-area-inset-top));
   right: calc(14px + env(safe-area-inset-right));
@@ -4449,6 +4449,61 @@ p {
   color: var(--ink);
   font-size: 0.8125rem;
   font-weight: 600;
+}
+
+.listing-tour-simulation-modes {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 9;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.listing-tour-simulation-modes button {
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.listing-tour-simulation-modes button.active {
+  background: var(--blue);
+  color: var(--paper);
+}
+
+.floor-plan-walk-instruction {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 6;
+  display: grid;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.floor-plan-walk-instruction span {
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 /* ── 우측 패널 CTA(시안) — 데스크톱 전용, 모바일은 하단 고정 바가 담당 ── */

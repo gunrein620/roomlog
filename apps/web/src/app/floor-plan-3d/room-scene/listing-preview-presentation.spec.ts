@@ -62,18 +62,18 @@ describe("listing-only 3D preview", () => {
     );
   });
 
-  it("opens the existing 3D stage fullscreen with its furniture panel", () => {
+  it("opens the existing 3D stage as a fullscreen 3D simulation", () => {
     assert.match(
       listingDetailSource,
-      /detail-panel-options[\s\S]*?detail-panel-tour-actions[\s\S]*?1인칭 투어[\s\S]*?가구배치 시뮬레이션/
+      /detail-panel-options[\s\S]*?detail-panel-tour-actions[\s\S]*?1인칭 투어[\s\S]*?3D 시뮬레이션/
     );
-    assert.match(listingDetailSource, /const \[isFurnitureSimulationOpen, setIsFurnitureSimulationOpen\] = useState\(false\)/);
-    assert.match(listingDetailSource, /is-furniture-simulation-open/);
-    assert.match(listingDetailSource, /role=\{isFurnitureSimulationOpen \? "dialog" : undefined\}/);
-    assert.match(listingDetailSource, /aria-modal=\{isFurnitureSimulationOpen \? "true" : undefined\}/);
-    assert.match(listingDetailSource, /aria-label="가구배치 시뮬레이션 닫기"/);
-    assert.match(listingDetailSource, /furnitureEditorOpen=\{isFurnitureSimulationOpen\}/);
-    assert.match(listingTourSource, /furnitureEditorOpen\?: boolean/);
+    assert.match(listingDetailSource, /const \[is3DSimulationOpen, setIs3DSimulationOpen\] = useState\(false\)/);
+    assert.match(listingDetailSource, /is-3d-simulation-open/);
+    assert.match(listingDetailSource, /role=\{is3DSimulationOpen \? "dialog" : undefined\}/);
+    assert.match(listingDetailSource, /aria-modal=\{is3DSimulationOpen \? "true" : undefined\}/);
+    assert.match(listingDetailSource, /aria-label="3D 시뮬레이션 닫기"/);
+    assert.match(listingDetailSource, /simulationOpen=\{is3DSimulationOpen\}/);
+    assert.match(listingTourSource, /simulationOpen\?: boolean/);
     assert.doesNotMatch(listingTourSource, /className="hero-furniture-toggle"/);
     assert.match(
       globalCss,
@@ -81,7 +81,7 @@ describe("listing-only 3D preview", () => {
     );
     assert.match(
       globalCss,
-      /\.detail-3d-hero\.is-furniture-simulation-open\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?height:\s*100dvh/
+      /\.detail-3d-hero\.is-3d-simulation-open\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?height:\s*100dvh/
     );
   });
 
@@ -92,15 +92,15 @@ describe("listing-only 3D preview", () => {
     assert.match(listingTourSource, /className="hero-furniture-reopen"/);
     assert.match(
       globalCss,
-      /\.is-furniture-simulation-open \.listing-tour-room3d\.hero-panel-open \.floor-plan-3d-preview\s*\{[\s\S]*?right:\s*340px/
+      /\.is-3d-simulation-open \.listing-tour-room3d\.hero-panel-open \.floor-plan-3d-preview\s*\{[\s\S]*?right:\s*340px/
     );
     assert.match(
       globalCss,
-      /\.is-furniture-simulation-open \.hero-stage \.hero-furniture-drawer\s*\{[\s\S]*?bottom:\s*0;[\s\S]*?width:\s*340px;[\s\S]*?max-height:\s*none/
+      /\.is-3d-simulation-open \.hero-stage \.hero-furniture-drawer\s*\{[\s\S]*?bottom:\s*0;[\s\S]*?width:\s*340px;[\s\S]*?max-height:\s*none/
     );
     assert.match(
       globalCss,
-      /\.is-furniture-simulation-open \.hero-stage \.hero-furniture-catalog-scroll\s*\{[\s\S]*?flex:\s*1;[\s\S]*?max-height:\s*none/
+      /\.is-3d-simulation-open \.hero-stage \.hero-furniture-catalog-scroll\s*\{[\s\S]*?flex:\s*1;[\s\S]*?max-height:\s*none/
     );
   });
 
