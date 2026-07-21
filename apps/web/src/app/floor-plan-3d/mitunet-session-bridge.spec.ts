@@ -36,3 +36,33 @@ test("RoomLog furnishing uses the shared owner simulation while standalone keeps
   assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{[\s\S]*?roomLogFlowRequested[\s\S]*?enterFurnishingStage/);
   assert.match(viewerSource, /if \(!furnitureCatalog\.length \|\| !furnitureCatalogPromise\)/);
 });
+
+test("RoomLog furnishing captures and restores a request-scoped editor snapshot", () => {
+  assert.match(viewerSource, /readRoomLogFurnitureDraft/);
+  assert.match(viewerSource, /async function buildRoomLogEditorSnapshot\(\)/);
+  assert.match(viewerSource, /await reviewEditor\.toWallMaskBlob\(\)/);
+  assert.match(viewerSource, /reviewEditor\.getOpenings\(\)/);
+  assert.match(viewerSource, /reviewEditor\.getCalibration\(\)/);
+  assert.match(viewerSource, /async function restoreRoomLogEditorSnapshot\(\)/);
+  assert.match(viewerSource, /readRoomLogFurnitureDraft\(window\.localStorage, roomLogContext\.requestId\)/);
+  assert.match(viewerSource, /await reviewEditor\.load\(snapshot\.review\)/);
+  assert.match(viewerSource, /await loadPlan\(composedPlan\)/);
+  assert.match(viewerSource, /await restoreRoomLogEditorSnapshot\(\)/);
+});
+
+test("a damaged RoomLog resume draft stays in the editor with an actionable error", () => {
+  const restoreBody = viewerSource.split("async function restoreRoomLogEditorSnapshot()", 2)[1]
+    ?.split("async function enableStaticDemoMode()", 1)[0] ?? "";
+  assert.match(restoreBody, /try\s*\{/);
+  assert.match(restoreBody, /catch \(error\)/);
+  assert.match(restoreBody, /저장된 도면을 복원하지 못했습니다/);
+  assert.match(restoreBody, /return false/);
+});
+
+test("a RoomLog handoff storage failure stays in the 3D editor", () => {
+  const enterBody = viewerSource.split("async function enterFurnishingStage()", 2)[1]
+    ?.split("function leaveFurnishingStage()", 1)[0] ?? "";
+  assert.match(enterBody, /if \(roomLogFlowRequested && roomLogContext\) \{[\s\S]*?try \{/);
+  assert.match(enterBody, /catch \(error\)[\s\S]*?가구 배치 화면을 열지 못했습니다/);
+  assert.match(enterBody, /finally[\s\S]*?inFlight = false/);
+});

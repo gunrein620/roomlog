@@ -3476,6 +3476,7 @@ p {
 
 .detail-header-actions {
   display: flex;
+  align-items: center;
   gap: 6px;
 }
 
@@ -3483,6 +3484,28 @@ p {
   border-color: #ffd2dc;
   background: #fff0f4;
   color: #e32952;
+}
+
+.detail-owner-edit-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 999px;
+  background: var(--surface-container-lowest);
+  color: var(--blue);
+  font-size: 0.84rem;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-soft);
+}
+
+.detail-owner-edit-nav:hover {
+  border-color: var(--blue);
+  background: var(--surface-container-lowest);
 }
 
 .detail-gallery {
@@ -4387,14 +4410,14 @@ p {
 }
 
 .is-3d-simulation-open .listing-tour-room3d.hero-panel-open .floor-plan-3d-preview {
-  right: 340px;
+  right: min(460px, calc(100% - 24px));
 }
 
 .is-3d-simulation-open .hero-stage .hero-furniture-drawer {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 340px;
+  width: min(460px, calc(100% - 24px));
   max-height: none;
   padding: calc(70px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
   border-top: 0;
@@ -4415,6 +4438,69 @@ p {
   flex: 1;
   max-height: none;
   overflow-y: auto;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-grid button {
+  grid-template-columns: 82px minmax(0, 1fr);
+  min-height: 112px;
+  align-content: center;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-thumb {
+  width: 82px;
+  height: 82px;
+  border-radius: 16px;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-thumb img {
+  object-fit: contain;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-grid strong,
+.is-3d-simulation-open .listing-tour-furniture-grid small {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-grid strong {
+  font-size: 0.86rem;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-grid small {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.is-3d-simulation-open .hero-stage .listing-tour-furniture-head strong {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-source-tabs button {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-search input {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-category-tabs button {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-grid strong {
+  font-weight: 700;
+}
+
+.is-3d-simulation-open .listing-tour-furniture-actions button {
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .hero-furniture-reopen {
@@ -5588,6 +5674,72 @@ p {
 .listing-tour-furniture-body {
   display: grid;
   gap: 10px;
+}
+
+.listing-tour-furniture-source-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.listing-tour-furniture-source-tabs button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--blue-soft);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.listing-tour-furniture-source-tabs button.active {
+  border-color: var(--pink);
+  background: var(--pink);
+  color: var(--ink);
+}
+
+.listing-tour-furniture-source-tabs small {
+  color: inherit;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.listing-tour-furniture-source-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.listing-tour-furniture-source-copy,
+.listing-tour-furniture-source-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.listing-tour-furniture-source-empty {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.listing-tour-furniture-source-empty button {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .listing-tour-furniture-search input {

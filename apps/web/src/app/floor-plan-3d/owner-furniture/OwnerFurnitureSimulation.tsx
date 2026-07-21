@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import ListingTourRoom3D, { type ListingFloorPlanFurniture } from "../../_components/ListingTourRoom3D";
+import ListingTourRoom3D, {
+  type ListingFloorPlanFurniture,
+  type OwnerFurnitureSaveDestination
+} from "../../_components/ListingTourRoom3D";
 import {
+  buildOwnerFloorPlanResumePath,
   readOwnerFurnitureDraft,
   writeOwnerFurnitureDraft,
   type OwnerFurnitureDraft
@@ -15,7 +19,8 @@ export default function OwnerFurnitureSimulation() {
   const requestId = searchParams.get("requestId")?.trim() ?? "";
   const [draft, setDraft] = useState<OwnerFurnitureDraft | null>(null);
   const [error, setError] = useState("");
-  const ownerSaveRequestRef = useRef<(() => void) | null>(null);
+  const [actionError, setActionError] = useState("");
+  const ownerSaveRequestRef = useRef<((destination?: OwnerFurnitureSaveDestination) => void) | null>(null);
 
   useEffect(() => {
     if (!requestId) {
@@ -34,9 +39,13 @@ export default function OwnerFurnitureSimulation() {
     }
   }, [requestId]);
 
-  function saveAndReturn(furnitures: ListingFloorPlanFurniture[]) {
+  function saveAndReturn(
+    furnitures: ListingFloorPlanFurniture[],
+    destination: OwnerFurnitureSaveDestination
+  ) {
     if (!draft) return;
     try {
+      setActionError("");
       const savedAt = Date.now();
       const floorPlan = { ...draft.floorPlan, furnitures };
       const nextDraft = { ...draft, floorPlan, savedAt };
@@ -51,13 +60,21 @@ export default function OwnerFurnitureSimulation() {
 
       const requestedOrigin = searchParams.get("returnOrigin");
       const returnOrigin = requestedOrigin === window.location.origin ? requestedOrigin : window.location.origin;
-      const returnUrl = new URL("/?flow=listing", returnOrigin);
-      returnUrl.searchParams.set("floorPlanRequestId", requestId);
-      returnUrl.hash = "my-page";
-      window.location.href = returnUrl.toString();
+      if (destination === "listing") {
+        const returnUrl = new URL("/?flow=listing", returnOrigin);
+        returnUrl.searchParams.set("floorPlanRequestId", requestId);
+        returnUrl.hash = "my-page";
+        window.location.href = returnUrl.toString();
+      } else {
+        window.location.href = buildOwnerFloorPlanResumePath(returnOrigin, requestId, destination);
+      }
     } catch {
-      setError("가구 배치를 저장하지 못했습니다. 브라우저 저장 공간을 확인하고 다시 시도해주세요.");
+      setActionError("가구 배치를 저장하지 못했습니다. 브라우저 저장 공간을 확인하고 다시 시도해주세요.");
     }
+  }
+
+  function requestViewChange(destination: "original" | "3d") {
+    ownerSaveRequestRef.current?.(destination);
   }
 
   if (error) {
@@ -73,7 +90,7 @@ export default function OwnerFurnitureSimulation() {
   if (!draft) return <main className="owner-furniture-loading">3D 가구 배치를 불러오는 중입니다…</main>;
 
   return (
-    <main className="owner-furniture-page">
+    <main className="owner-furniture-page is-3d-simulation-open">
       <header className="owner-furniture-header">
         <div>
           <small>ROOMLOG 3D</small>
@@ -94,6 +111,22 @@ export default function OwnerFurnitureSimulation() {
         simulationOpen
         variant="hero"
       />
+      {actionError ? <p className="owner-furniture-action-error" role="alert">{actionError}</p> : null}
+      <div aria-label="도면 보기 전환" className="owner-floor-plan-view-toggle" role="tablist">
+        <button
+          aria-selected="false"
+          onClick={() => requestViewChange("original")}
+          role="tab"
+          type="button"
+        >2D</button>
+        <button
+          aria-selected="false"
+          onClick={() => requestViewChange("3d")}
+          role="tab"
+          type="button"
+        >3D</button>
+        <button aria-selected="true" className="active" role="tab" type="button">가구 배치</button>
+      </div>
     </main>
   );
 }

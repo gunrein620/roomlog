@@ -19,6 +19,11 @@ function memoryStorage() {
 const draft: OwnerFurnitureDraft = {
   requestId: "request-1",
   savedAt: 123,
+  editorSnapshot: {
+    composedPlan: { polygons: { wall: [] } },
+    review: { input_image_b64: "aW1hZ2U=", wall_mask_b64: "bWFzaw==" },
+    sourceName: "plan.png"
+  },
   floorPlan: {
     walls3D: [],
     furnitures: [{

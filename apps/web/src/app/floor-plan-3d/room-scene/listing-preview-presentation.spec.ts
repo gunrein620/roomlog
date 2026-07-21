@@ -86,6 +86,14 @@ describe("listing-only 3D preview", () => {
     );
   });
 
+  it("keeps the incoming owner edit action on shared color and shadow tokens", () => {
+    const ownerEditStyles = globalCss.match(/\.detail-owner-edit-nav\s*\{[\s\S]*?\}\s*\.detail-owner-edit-nav:hover\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    assert.match(ownerEditStyles, /border:\s*1px solid var\(--outline-variant\)/);
+    assert.match(ownerEditStyles, /background:\s*var\(--surface-container-lowest\)/);
+    assert.match(ownerEditStyles, /box-shadow:\s*var\(--shadow-soft\)/);
+    assert.doesNotMatch(ownerEditStyles, /#[\da-f]{3,8}|rgba?\(/i);
+  });
+
   it("docks a collapsible furniture sidebar beside the fullscreen 3D stage", () => {
     assert.match(listingTourSource, /hero-panel-open/);
     assert.match(listingTourSource, /function collapseHeroPanel\(\)/);

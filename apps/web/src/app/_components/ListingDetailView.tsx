@@ -149,6 +149,14 @@ export function ListingDetailView({
           <h1 id="clicked-detail-title">{listing.title}</h1>
         </div>
         <div className="detail-header-actions">
+          {isOwner ? (
+            <a
+              className="detail-owner-edit-nav"
+              href={`/sell?listingId=${encodeURIComponent(listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length))}`}
+            >
+              수정
+            </a>
+          ) : null}
           <button type="button" aria-label="공유하기" onClick={() => setIsShareSheetOpen(true)}>
             <Share2 size={22} strokeWidth={2.5} />
           </button>
@@ -157,41 +165,6 @@ export function ListingDetailView({
           </button>
         </div>
       </header>
-
-      {isOwner ? (
-        <div
-          className="detail-owner-bar"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            padding: "10px 18px",
-            background: "var(--surface-container)",
-            borderBottom: "1px solid var(--border)"
-          }}
-        >
-          <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--on-surface-variant)" }}>
-            내가 등록한 매물이에요
-          </span>
-          <a
-            href={`/sell?listingId=${encodeURIComponent(listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length))}`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: 32,
-              padding: "0 14px",
-              borderRadius: 999,
-              background: "var(--primary)",
-              color: "var(--on-primary)",
-              fontSize: "0.82rem",
-              fontWeight: 800
-            }}
-          >
-            관리/수정
-          </a>
-        </div>
-      ) : null}
 
       {/* 시안 구조 — 좌 스테이지 + 우 고정폭 패널이 한 행(데스크톱), 모바일은 자연 스택. */}
       <div className="detail-hero-row">

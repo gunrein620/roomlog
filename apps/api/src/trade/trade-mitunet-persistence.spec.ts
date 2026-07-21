@@ -58,6 +58,32 @@ describe("TradeService MitUNet persistence", () => {
     assert.deepEqual(new TradeService(filePath).listListings()[0]?.floorPlan?.mitunet, sourcePlan);
   });
 
+  it("preserves elevated furniture attachment metadata after restart", () => {
+    const filePath = storePath();
+    const service = new TradeService(filePath);
+    const surfaceFurniture = {
+      id: "monitor-1",
+      furniture_id: "monitor",
+      name: "모니터",
+      color: "white",
+      length: [600, 400, 200] as [number, number, number],
+      modelUrl: "/floor-plan-3d/furniture-assets/electronics/monitor.glb",
+      placement: { mode: "surface" as const, supportFurnitureId: "desk-1" },
+      position: [1, 0.754, 2] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      scale: 1
+    };
+
+    service.createListing(owner, {
+      ...baseInput,
+      floorPlan: { walls3D: [], furnitures: [surfaceFurniture], mitunet }
+    });
+
+    const restored = new TradeService(filePath).listListings()[0]?.floorPlan?.furnitures[0];
+    assert.deepEqual(restored?.position, surfaceFurniture.position);
+    assert.deepEqual(restored?.placement, surfaceFurniture.placement);
+  });
+
   it("rejects a malformed MitUNet payload instead of silently dropping it", () => {
     const service = new TradeService(storePath());
     const malformed = { ...mitunet, polygons: { ...mitunet.polygons, wall: [] } };

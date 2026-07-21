@@ -21,6 +21,11 @@ export type ListingFloorPlanWall = {
   rotation: [number, number, number];
 };
 
+export type ListingFloorPlanFurniturePlacement =
+  | { mode: "floor" }
+  | { mode: "surface"; supportFurnitureId: string }
+  | { mode: "wall"; wallId: string };
+
 /** 3D 도면에 배치된 임대인 옵션 가구 한 점 — GLB/박스 렌더에 필요한 필드만 저장한다. */
 export type ListingFloorPlanFurniture = {
   id: string;
@@ -29,6 +34,7 @@ export type ListingFloorPlanFurniture = {
   color: string;
   length: [number, number, number];
   modelUrl?: string;
+  placement?: ListingFloorPlanFurniturePlacement;
   position: [number, number, number];
   rotation: [number, number, number];
   scale: number;
@@ -250,6 +256,26 @@ function finiteTriple(value: unknown): [number, number, number] | null {
   return nums.every((num) => Number.isFinite(num)) ? [nums[0], nums[1], nums[2]] : null;
 }
 
+function normalizeFurniturePlacement(value: unknown): ListingFloorPlanFurniturePlacement | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const placement = value as Record<string, unknown>;
+  if (placement.mode === "floor") return { mode: "floor" };
+
+  if (placement.mode === "surface") {
+    const supportFurnitureId = typeof placement.supportFurnitureId === "string"
+      ? placement.supportFurnitureId.trim().slice(0, 200)
+      : "";
+    return supportFurnitureId ? { mode: "surface", supportFurnitureId } : undefined;
+  }
+
+  if (placement.mode === "wall") {
+    const wallId = typeof placement.wallId === "string" ? placement.wallId.trim().slice(0, 200) : "";
+    return wallId ? { mode: "wall", wallId } : undefined;
+  }
+
+  return undefined;
+}
+
 /**
  * 매물에 연결할 3D 도면 스냅샷을 정규화한다.
  * 신뢰할 수 없는 클라이언트 입력이므로 렌더에 필요한 필드만 뽑고, 좌표는 유한수만, 개수는 상한을 둔다.
@@ -291,6 +317,7 @@ function normalizeFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan |
     const sizeWidth = Number(raw?.sizeMm?.width);
     const sizeDepth = Number(raw?.sizeMm?.depth);
     const sizeHeight = Number(raw?.sizeMm?.height);
+    const placement = normalizeFurniturePlacement(raw?.placement);
     furnitures.push({
       id: String(raw?.id ?? `furniture-${furnitures.length}`),
       furniture_id: String(raw?.furniture_id ?? raw?.id ?? furnitures.length),
@@ -298,6 +325,7 @@ function normalizeFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan |
       color: typeof raw?.color === "string" ? raw.color.slice(0, 32) : "#c9c9c9",
       length,
       modelUrl: typeof raw?.modelUrl === "string" ? raw.modelUrl.slice(0, 500) : undefined,
+      ...(placement ? { placement } : {}),
       position,
       rotation,
       scale: Number.isFinite(Number(raw?.scale)) ? Number(raw.scale) : 1,

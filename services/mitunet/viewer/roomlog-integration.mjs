@@ -7,6 +7,7 @@ import { decodeRoomFloorLabels } from "./room-floor-zones.mjs";
 const FURNITURE_ASSET_BASE_URL = "/floor-plan-3d/furniture-assets/";
 const UNCALIBRATED_FURNITURE_SCALE = 0.55 / 2.7;
 const MAX_PREVIEW_IMAGE_BASE64_LENGTH = 4_000_000;
+const OWNER_FURNITURE_DRAFT_PREFIX = "roomlogOwnerFurnitureDraft";
 const FURNITURE_PASTELS = [
   "#93B7F2",
   "#F4AE62",
@@ -25,6 +26,38 @@ export function readRoomLogContext(locationLike, allowedOrigins = []) {
   if (!allowedOrigins.includes(returnOrigin) || !requestId) return null;
 
   return { requestId, returnOrigin };
+}
+
+export function readRoomLogFurnitureDraft(storage, requestId) {
+  if (!storage?.getItem || typeof requestId !== "string" || !requestId.trim()) return null;
+  const raw = storage.getItem(`${OWNER_FURNITURE_DRAFT_PREFIX}:${requestId}`);
+  if (raw === null) return null;
+  const draft = JSON.parse(raw);
+  if (!draft || draft.requestId !== requestId) {
+    throw new Error("RoomLog furniture draft request does not match");
+  }
+  return draft;
+}
+
+export function buildRoomLogEditorResumeUrl(context, view) {
+  if (view !== "original" && view !== "3d") {
+    throw new RangeError(`Unknown RoomLog resume view: ${view}`);
+  }
+  const editorUrl = new URL("/floor-plan-3d/mitunet", context.returnOrigin);
+  editorUrl.searchParams.set("integration", "roomlog");
+  editorUrl.searchParams.set("returnOrigin", context.returnOrigin);
+  editorUrl.searchParams.set("requestId", context.requestId);
+  editorUrl.searchParams.set("resumeView", view);
+  return editorUrl.toString();
+}
+
+function savedOwnerFurnitures(storage, requestId, inputImageB64, fallback) {
+  const existingDraft = readRoomLogFurnitureDraft(storage, requestId);
+  const sameEditor = typeof inputImageB64 === "string"
+    && existingDraft?.editorSnapshot?.review?.input_image_b64 === inputImageB64;
+  return sameEditor && Array.isArray(existingDraft?.floorPlan?.furnitures)
+    ? existingDraft.floorPlan.furnitures
+    : fallback;
 }
 
 function clonePolygons(polygons) {
@@ -242,11 +275,18 @@ export function sendRoomLogCompletion(
     throw new Error("RoomLog storage is not available in this browser");
   }
 
+  const savedFurnitures = savedOwnerFurnitures(
+    window.localStorage,
+    context.requestId,
+    plan?.input_image_b64,
+    message.payload.furnitures,
+  );
+
   const storageValue = {
     name: message.payload.name,
     savedAt: Date.now(),
     walls3D: [],
-    furnitures: message.payload.furnitures,
+    furnitures: savedFurnitures,
     mitunet: message.payload,
   };
   const storageKey = `roomlogListingFloorPlan3D:${context.requestId}`;
@@ -265,6 +305,7 @@ export function beginRoomLogFurnitureSimulation(
   furnitures = [],
   previewMode = "floor",
   previewImageB64,
+  editorSnapshot,
 ) {
   const message = buildRoomLogCompletion(
     context,
@@ -278,15 +319,23 @@ export function beginRoomLogFurnitureSimulation(
     throw new Error("RoomLog storage is not available in this browser");
   }
 
+  const savedFurnitures = savedOwnerFurnitures(
+    window.localStorage,
+    context.requestId,
+    editorSnapshot?.review?.input_image_b64,
+    message.payload.furnitures,
+  );
+
   const draft = {
     requestId: context.requestId,
     savedAt: Date.now(),
     floorPlan: {
       name: message.payload.name,
       walls3D: [],
-      furnitures: message.payload.furnitures,
+      furnitures: savedFurnitures,
       mitunet: message.payload,
     },
+    ...(editorSnapshot ? { editorSnapshot: JSON.parse(JSON.stringify(editorSnapshot)) } : {}),
   };
   const storageKey = `roomlogOwnerFurnitureDraft:${context.requestId}`;
   window.localStorage.setItem(storageKey, JSON.stringify(draft));

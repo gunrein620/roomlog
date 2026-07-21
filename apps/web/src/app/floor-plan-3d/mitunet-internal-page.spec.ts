@@ -256,6 +256,17 @@ test("keeps furniture placement available in both 3D and Floor while the slide d
   assert.match(viewerSource, /window\.addEventListener\("keydown", event => \{\s*if \(!isFurniturePlacementView\(\)\) return;/);
 });
 
+test("passes a restorable editor snapshot into the RoomLog owner furniture handoff", () => {
+  assert.match(
+    viewerSource,
+    /const editorSnapshot = await buildRoomLogEditorSnapshot\(\);[\s\S]*?beginRoomLogFurnitureSimulation\([\s\S]*?editorSnapshot,[\s\S]*?\);/,
+  );
+  assert.match(viewerSource, /wall_mask_b64:\s*await blobToBase64\(wallMaskBlob\)/);
+  assert.match(viewerSource, /resumeView === "original" \? "original" : "3d"/);
+  assert.match(viewerSource, /input_image_b64:\s*undefined/);
+  assert.match(viewerSource, /input_image_b64:\s*snapshot\.review\.input_image_b64/);
+});
+
 test("keeps the original plan inside the walls while making its outer margin transparent in 3D", () => {
   assert.match(
     viewerSource,
