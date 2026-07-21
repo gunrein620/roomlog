@@ -604,6 +604,7 @@ export default function ListingTourRoom3D({
         hideHint
         mitunetPlan={floorPlan.mitunet}
         moveInputRef={walkMoveInputRef}
+        orbitKeyboardMoveEnabled={simulationOpen && simulationMode === "furniture"}
         orbitMinDistance={1.6}
         fitDistanceScale={0.9}
         listingPreview

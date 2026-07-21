@@ -26,6 +26,7 @@ describe("listing-only 3D preview", () => {
     assert.match(viewerSource, /showGround=\{!listingPreview\}/);
     assert.match(viewerSource, /enabled=\{controlsEnabled\}/);
     assert.match(viewerSource, /gl=\{\{ alpha: listingPreview \}\}/);
+    assert.match(listingTourSource, /orbitKeyboardMoveEnabled=\{simulationOpen && simulationMode === "furniture"\}/);
   });
 
   it("keeps the render background, rotates on drag, and opens the editor on a click", () => {

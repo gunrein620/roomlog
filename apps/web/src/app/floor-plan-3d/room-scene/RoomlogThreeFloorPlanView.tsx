@@ -4,10 +4,10 @@
 // 클릭 등 인터랙션 이벤트를 props 콜백으로 컨테이너에 돌려준다.
 
 import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Check, Move, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { type ComponentRef, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
@@ -22,6 +22,11 @@ import {
 import { MitunetGtaoEffects } from "./mitunet-postprocessing";
 import { createConcreteTexture, createFloorTexture, createSourcePlanTexture } from "./mitunet-textures";
 import { FloorPlanWalkControls, type FloorPlanWalkStatus } from "./FloorPlanWalkControls";
+import {
+  isOrbitKeyboardInteractiveTarget,
+  orbitKeyboardMovementDelta
+} from "./orbit-keyboard-movement";
+import { resolveWalkInputCode, type WalkAction } from "../walk/walk-input";
 
 export type RoomControlMode = "orbit" | "walk";
 
@@ -533,19 +538,83 @@ function WallMesh({
 
 function RoomOrbitControls({
   enabled = true,
+  keyboardMoveEnabled = false,
   maxDistance = 42,
   minDistance = 5,
   target,
   zoomEnabled = true
 }: {
   enabled?: boolean;
+  keyboardMoveEnabled?: boolean;
   maxDistance?: number;
   minDistance?: number;
   target: [number, number, number];
   /** false면 휠 줌 비활성 — 페이지 스크롤 흐름 속 뷰(상세 히어로)에서 휠을 뺏지 않게. */
   zoomEnabled?: boolean;
 }) {
+  const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
+  const controlsRef = useRef<ComponentRef<typeof OrbitControls>>(null);
+  const pressedKeysRef = useRef<Set<WalkAction>>(new Set());
+  const forwardVector = useMemo(() => new THREE.Vector3(), []);
+  const movementEnabled = enabled && keyboardMoveEnabled;
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    controls.target.set(target[0], target[1], target[2]);
+    controls.update();
+    invalidate();
+  }, [invalidate, target[0], target[1], target[2]]);
+
+  useEffect(() => {
+    pressedKeysRef.current.clear();
+    if (!movementEnabled) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const action = resolveWalkInputCode(event.code);
+      if (!action || isOrbitKeyboardInteractiveTarget(event.target)) return;
+      event.preventDefault();
+      pressedKeysRef.current.add(action);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const action = resolveWalkInputCode(event.code);
+      if (!action) return;
+      pressedKeysRef.current.delete(action);
+      if (!isOrbitKeyboardInteractiveTarget(event.target)) event.preventDefault();
+    };
+    const clearPressedKeys = () => pressedKeysRef.current.clear();
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", clearPressedKeys);
+    return () => {
+      pressedKeysRef.current.clear();
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", clearPressedKeys);
+    };
+  }, [movementEnabled]);
+
+  useFrame((_, frameDeltaSeconds) => {
+    const controls = controlsRef.current;
+    if (!movementEnabled || !controls || pressedKeysRef.current.size === 0) return;
+
+    camera.getWorldDirection(forwardVector);
+    const delta = orbitKeyboardMovementDelta(
+      pressedKeysRef.current,
+      { x: forwardVector.x, z: forwardVector.z },
+      frameDeltaSeconds
+    );
+    if (delta.x === 0 && delta.z === 0) return;
+
+    camera.position.x += delta.x;
+    camera.position.z += delta.z;
+    controls.target.x += delta.x;
+    controls.target.z += delta.z;
+    controls.update();
+    invalidate();
+  });
 
   return (
     <OrbitControls
@@ -558,7 +627,7 @@ function RoomOrbitControls({
       minDistance={minDistance}
       minPolarAngle={0.2}
       onChange={() => invalidate()}
-      target={target}
+      ref={controlsRef}
     />
   );
 }
@@ -616,6 +685,7 @@ export function RoomlogThreeFloorPlanView({
   mitunetPlan,
   moveInputRef = null,
   onWalkStatusChange,
+  orbitKeyboardMoveEnabled = false,
   orbitMaxDistance = 42,
   orbitMinDistance = 5,
   orbitZoomEnabled = true,
@@ -658,6 +728,7 @@ export function RoomlogThreeFloorPlanView({
   mitunetPlan?: MitunetFloorPlan;
   moveInputRef?: { current: { forward: number; strafe: number } } | null;
   onWalkStatusChange?: (status: FloorPlanWalkStatus) => void;
+  orbitKeyboardMoveEnabled?: boolean;
   orbitMaxDistance?: number;
   orbitMinDistance?: number;
   /** 휠 줌 허용 여부 — 상세 히어로는 false(페이지 스크롤 우선). */
@@ -879,6 +950,7 @@ export function RoomlogThreeFloorPlanView({
         ) : (
           <RoomOrbitControls
             enabled={controlsEnabled}
+            keyboardMoveEnabled={orbitKeyboardMoveEnabled}
             maxDistance={orbitMaxDistance}
             minDistance={orbitMinDistance}
             target={[wallBounds.centerX * sceneHorizontalScale, 0, wallBounds.centerZ * sceneHorizontalScale]}
@@ -896,7 +968,11 @@ export function RoomlogThreeFloorPlanView({
           </span>
         </div>
       ) : null}
-      {hideHint ? null : <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>}
+      {orbitKeyboardMoveEnabled ? (
+        <span className="floor-3d-hint">WASD 이동 · 드래그 회전</span>
+      ) : hideHint ? null : (
+        <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>
+      )}
     </div>
   );
 }
