@@ -27,6 +27,10 @@ const viewerSource = readFileSync(
   join(process.cwd(), "../../services/mitunet/viewer/index.html"),
   "utf8",
 );
+const uploadBootstrapSource = readFileSync(
+  join(process.cwd(), "../../services/mitunet/viewer/upload-bootstrap.mjs"),
+  "utf8",
+);
 
 test("serves the MitUNet viewer through a RoomLog route", () => {
   assert.match(routeSource, /readMitunetViewerFile\("index\.html"\)/);
@@ -76,9 +80,11 @@ test("accepts a floor-plan file immediately and processes it once live analysis 
   assert.match(viewerSource, /id="upload-btn"[^>]*aria-busy="true"/);
   assert.doesNotMatch(viewerSource, /id="upload-btn"[^>]*hidden/);
   assert.doesNotMatch(viewerSource.match(/<button[^>]*id="upload-btn"[^>]*>/)?.[0] ?? "", /disabled/);
-  assert.match(viewerSource, /let pendingUploadFile = null/);
-  assert.match(viewerSource, /if \(!liveUploadAvailable\) \{\s*pendingUploadFile = file;/);
-  assert.match(viewerSource, /const queuedUploadFile = pendingUploadFile;\s*pendingUploadFile = null;\s*if \(queuedUploadFile\) extractForReview\(queuedUploadFile\);/);
+  assert.match(viewerSource, /src="\/viewer-assets\/upload-bootstrap\.mjs"/);
+  assert.match(uploadBootstrapSource, /uploadButton\.addEventListener\("click", openFilePicker\)/);
+  assert.match(uploadBootstrapSource, /pendingFile = file/);
+  assert.match(viewerSource, /window\.dispatchEvent\(new Event\("mitunet-upload-ready"\)\)/);
+  assert.match(viewerSource, /window\.addEventListener\("mitunet-upload-selected"/);
   assert.match(viewerSource, /uploadButton\.setAttribute\("aria-busy", "false"\)/);
   assert.match(viewerSource, /uploadButton\.disabled = !liveUploadAvailable \|\| inFlight/);
   assert.match(viewerSource, /Editor unavailable:[\s\S]*return false;/);
