@@ -964,6 +964,11 @@ test("public discovery surfaces show only listings returned by the trade API", (
   assert.doesNotMatch(homeAppSource, /\bdemoMapItems\b/);
   assert.match(homeAppSource, /const allListings = tradeListingsStatus === "ready"\s*\n\s*\? sortedTradeListings\.map\(tradeListingToCard\)/);
   assert.match(homeAppSource, /const allMapItems = tradeListings\.map\(/);
+  assert.match(homeAppSource, /const \[walkingTourAvailability, setWalkingTourAvailability\]/);
+  assert.match(homeAppSource, /listSplatAssetsByListing\(listingId\)/);
+  assert.match(homeAppSource, /hasWalkingTourAsset\(assets\)/);
+  assert.match(homeAppSource, /walkingTourAvailability\[listing\.listingNo\]\s*\?/);
+  assert.doesNotMatch(homeAppSource, /listing\.has3DTour \? \(\s*<span className="thumb-sticker-walk"/);
 });
 
 test("login success consumes the pushed auth history entry so back does not reopen the login screen", () => {

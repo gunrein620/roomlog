@@ -233,6 +233,15 @@ const HOME_LISTINGS_PAGE_SIZE = 9;
 const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
 
 // 가격 게이지바 상한(만원) — 슬라이더 우측 끝 = 제한 없음.
+const WALKING_TOUR_READY_STATUSES = new Set<SplatAsset["status"]>([
+  "REGISTERED",
+  "UPLOADED",
+  "PROCESSING"
+]);
+
+function hasWalkingTourAsset(assets: SplatAsset[]): boolean {
+  return assets.some((asset) => WALKING_TOUR_READY_STATUSES.has(asset.status));
+}
 const PRICE_DEPOSIT_LIMIT = 50000; // 보증금 5억
 const PRICE_MONTHLY_LIMIT = 200; // 월세 200만
 
@@ -1680,6 +1689,7 @@ export default function HomeApp({
   const [tradeListingsStatus, setTradeListingsStatus] = useState<PublicListingLoadStatus>(
     initialTradeListings === null ? "loading" : "ready"
   );
+  const [walkingTourAvailability, setWalkingTourAvailability] = useState<Record<string, boolean>>({});
   // 등록 직후 홈 피드 복귀 시에도 호출한다 — 30초 폴링을 기다리지 않고 방금 등록한 매물이 바로 보이게.
   const loadTradeListings = useCallback(
     () =>
@@ -1865,9 +1875,42 @@ export default function HomeApp({
     homeListingPageStart,
     homeListingPageStart + HOME_LISTINGS_PAGE_SIZE
   );
+  const homeFeedListingNos = homeFeedListings.map((listing) => listing.listingNo).join("|");
   useEffect(() => {
     setHomeListingPage(1);
   }, [activeCategory, activeQuickFilters, searchKeyword, priceRange]);
+  useEffect(() => {
+    const listingNos = homeFeedListingNos
+      .split("|")
+      .filter((listingNo) => listingNo.startsWith(TRADE_LISTING_NO_PREFIX));
+    if (listingNos.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      listingNos.map(async (listingNo) => {
+        const listingId = listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
+        try {
+          const assets = await listSplatAssetsByListing(listingId);
+          return [listingNo, hasWalkingTourAsset(assets)] as const;
+        } catch {
+          return [listingNo, false] as const;
+        }
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      setWalkingTourAvailability((current) => {
+        const next = { ...current };
+        for (const [listingNo, available] of results) {
+          next[listingNo] = available;
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [homeFeedListingNos, tradeListings]);
   useEffect(() => {
     if (homeListingPage > homeListingPageCount) setHomeListingPage(homeListingPageCount);
   }, [homeListingPage, homeListingPageCount]);
@@ -2839,7 +2882,7 @@ export default function HomeApp({
                         <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />
                         {/* 워킹뷰 스티커(시안) — 실제 기능이 있는 매물에만: 골드 버스트=1인칭 투어, pill=3D 가구 배치.
                             텍스트 신뢰 배지(확인매물 등)는 계속 상세 전용 — 여기 스티커는 3D 차별점 표식만. */}
-                        {listing.has3DTour ? (
+                        {walkingTourAvailability[listing.listingNo] ? (
                           <span className="thumb-sticker-walk" aria-label="1인칭 워킹뷰 가능">
                             <Footprints size={17} strokeWidth={2.2} aria-hidden="true" />
                             워킹뷰
