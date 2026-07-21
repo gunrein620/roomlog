@@ -22,7 +22,9 @@ yarn-error.log*
 docs/technical-challenges
 tmp
 tools
-services/mitunet
+services/mitunet/*
+!services/mitunet/viewer
+!services/mitunet/viewer/**
 runtime-assets/furniture-glb-dataset
 
 # 대용량 로컬 전용 샘플 — 이미지에 넣지 않는다 (뷰어는 spz만 로드)

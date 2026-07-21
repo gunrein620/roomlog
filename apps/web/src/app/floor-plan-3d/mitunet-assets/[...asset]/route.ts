@@ -18,7 +18,7 @@ type RouteContext = {
 export async function GET(_request: Request, context: RouteContext) {
   const { asset } = await context.params;
   const [version, ...assetSegments] = asset;
-  if (version !== MITUNET_ASSET_VERSION || assetSegments.length === 0) {
+  if (!/^[a-zA-Z0-9._-]{1,64}$/.test(version ?? "") || assetSegments.length === 0) {
     return new Response("Not found", { status: 404 });
   }
   if (assetSegments.some(segment => !segment || segment === "." || segment === ".." || /[\\/]/.test(segment))) {
@@ -35,10 +35,9 @@ export async function GET(_request: Request, context: RouteContext) {
 
   return new Response(body, {
     headers: {
-      "Cache-Control": mitunetAssetCacheControl(
-        assetPath,
-        version !== "dev",
-      ),
+      "Cache-Control": version === MITUNET_ASSET_VERSION
+        ? mitunetAssetCacheControl(assetPath, version !== "dev")
+        : "no-store",
       "Content-Type": contentTypeFor(filePath),
     },
   });

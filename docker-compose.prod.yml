@@ -37,7 +37,6 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ${MITUNET_HOST_PROJECT_ROOT:-./services/mitunet}:/mitunet:ro
       - ${FURNITURE_HOST_DATASET_ROOT:-./runtime-assets/furniture-glb-dataset}:/furniture:ro
 
   api:

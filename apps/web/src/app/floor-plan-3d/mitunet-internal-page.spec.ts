@@ -23,6 +23,7 @@ const furnitureDatasetSource = readFileSync(
   "utf8",
 );
 const dockerIgnoreSource = readFileSync(join(process.cwd(), "../../.dockerignore"), "utf8");
+const webDockerfileSource = readFileSync(join(process.cwd(), "Dockerfile"), "utf8");
 const viewerSource = readFileSync(
   join(process.cwd(), "../../services/mitunet/viewer/index.html"),
   "utf8",
@@ -63,7 +64,7 @@ test("serves local 3D runtime dependencies in RoomLog and standalone MitUNet", (
   assert.match(viewerSource, /\/viewer-assets\/vendor\/three-addons\.mjs/);
   assert.match(viewerSource, /\/viewer-assets\/vendor\/lucide\.min\.js/);
   assert.match(viewerSource, /\/viewer-assets\/vendor\/draco\//);
-  for (const asset of ["three.module.js", "three-addons.mjs", "lucide.min.js", "draco/draco_decoder.wasm"]) {
+  for (const asset of ["three.module.js", "three.core.js", "three-addons.mjs", "lucide.min.js", "draco/draco_decoder.wasm"]) {
     assert.equal(existsSync(join(viewerVendorDir, asset)), true, `missing local runtime asset: ${asset}`);
   }
   assert.match(mitunetServerSource, /app\.mount\("\/viewer-assets", StaticFiles\(directory=VIEWER_DIR\)/);
@@ -120,8 +121,8 @@ test("saves the current 3D or Floor surface for the RoomLog preview", () => {
 });
 
 test("mounts MitUNet and furniture only from paths inside RoomLog", () => {
+  assert.match(composeSource, /\.\/services\/mitunet/);
   for (const source of [composeSource, productionComposeSource]) {
-    assert.match(source, /\.\/services\/mitunet/);
     assert.match(source, /\.\/runtime-assets\/furniture-glb-dataset/);
     assert.doesNotMatch(source, /\.\.\/\.\.\/floorplan-to-3d-mitunet/);
     assert.doesNotMatch(source, /\.\.\/furniture-glb-dataset/);
@@ -136,8 +137,11 @@ test("uses RoomLog-internal defaults instead of deleted sibling fallbacks", () =
 });
 
 test("keeps mounted model and furniture binaries out of the Docker build context", () => {
-  assert.match(dockerIgnoreSource, /^services\/mitunet$/m);
+  assert.match(dockerIgnoreSource, /^services\/mitunet\/\*$/m);
+  assert.match(dockerIgnoreSource, /^!services\/mitunet\/viewer\/\*\*$/m);
   assert.match(dockerIgnoreSource, /^runtime-assets\/furniture-glb-dataset$/m);
+  assert.match(webDockerfileSource, /COPY services\/mitunet\/viewer \/mitunet\/viewer/);
+  assert.doesNotMatch(productionComposeSource, /MITUNET_HOST_PROJECT_ROOT/);
 });
 
 test("keeps label-free floor generation available when room analysis fails", () => {

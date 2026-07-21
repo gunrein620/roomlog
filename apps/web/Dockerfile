@@ -64,6 +64,7 @@ ENV ROOMLOG_DEPLOY_SHA=$ROOMLOG_DEPLOY_SHA
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static /app/apps/web/.next/static
 COPY --from=builder /app/apps/web/public /app/apps/web/public
+COPY services/mitunet/viewer /mitunet/viewer
 EXPOSE 3000
 
 CMD ["node", "apps/web/server.js"]

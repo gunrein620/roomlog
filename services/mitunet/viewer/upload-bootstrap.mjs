@@ -1,3 +1,4 @@
+export const MITUNET_MODULE_LOADED_EVENT = "mitunet-module-loaded";
 export const MITUNET_UPLOAD_FAILED_EVENT = "mitunet-upload-failed";
 export const MITUNET_UPLOAD_READY_EVENT = "mitunet-upload-ready";
 export const MITUNET_UPLOAD_SELECTED_EVENT = "mitunet-upload-selected";
@@ -16,6 +17,7 @@ export function createUploadBridge({
 }) {
   let analysisReady = false;
   let initializationFailed = false;
+  let moduleLoaded = false;
   let pendingFile = null;
   let timeoutId = null;
 
@@ -56,8 +58,13 @@ export function createUploadBridge({
     }
   }
 
-  function markReady() {
+  function markModuleLoaded() {
+    moduleLoaded = true;
     clearInitializationTimeout();
+  }
+
+  function markReady() {
+    markModuleLoaded();
     analysisReady = true;
     initializationFailed = false;
     if (!pendingFile) return;
@@ -67,7 +74,7 @@ export function createUploadBridge({
   }
 
   function markFailed() {
-    if (analysisReady) return;
+    if (moduleLoaded) return;
     clearInitializationTimeout();
     initializationFailed = true;
     showLoadFailure();
@@ -80,6 +87,7 @@ export function createUploadBridge({
   uploadButton.addEventListener("click", openFilePicker);
   fileInput.addEventListener("change", selectCurrentFile);
   windowTarget.addEventListener(MITUNET_UPLOAD_READY_EVENT, markReady);
+  windowTarget.addEventListener(MITUNET_MODULE_LOADED_EVENT, markModuleLoaded);
   windowTarget.addEventListener(MITUNET_UPLOAD_FAILED_EVENT, markFailed);
   windowTarget.addEventListener("error", handleModuleError, true);
   windowTarget.addEventListener("unhandledrejection", handleModuleError);
@@ -92,6 +100,7 @@ export function createUploadBridge({
       uploadButton.removeEventListener("click", openFilePicker);
       fileInput.removeEventListener("change", selectCurrentFile);
       windowTarget.removeEventListener(MITUNET_UPLOAD_READY_EVENT, markReady);
+      windowTarget.removeEventListener(MITUNET_MODULE_LOADED_EVENT, markModuleLoaded);
       windowTarget.removeEventListener(MITUNET_UPLOAD_FAILED_EVENT, markFailed);
       windowTarget.removeEventListener("error", handleModuleError, true);
       windowTarget.removeEventListener("unhandledrejection", handleModuleError);

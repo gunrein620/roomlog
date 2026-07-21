@@ -16,10 +16,21 @@ test("serves a local versioned MitUNet runtime asset", async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /text\/javascript/);
-  assert.ok((await response.text()).length > 100_000);
+  const moduleSource = await response.text();
+  assert.ok(moduleSource.length > 100_000);
+
+  const relativeImports = [...moduleSource.matchAll(/from\s+["']\.\/([^"']+)["']/g)];
+  assert.ok(relativeImports.length > 0, "expected Three.js to expose its relative module graph");
+  for (const [, dependency] of relativeImports) {
+    const dependencyResponse = await GET(
+      new Request(`http://roomlog.test/floor-plan-3d/mitunet-assets/${MITUNET_ASSET_VERSION}/vendor/${dependency}`),
+      context([MITUNET_ASSET_VERSION, "vendor", dependency]),
+    );
+    assert.equal(dependencyResponse.status, 200, `missing Three.js dependency: ${dependency}`);
+  }
 });
 
-test("rejects stale versions and path traversal", async () => {
+test("serves stale versions without caching during deploy overlap and rejects traversal", async () => {
   const stale = await GET(
     new Request("http://roomlog.test/floor-plan-3d/mitunet-assets/stale/vendor/three.module.js"),
     context(["stale", "vendor", "three.module.js"]),
@@ -29,6 +40,7 @@ test("rejects stale versions and path traversal", async () => {
     context([MITUNET_ASSET_VERSION, "..", "index.html"]),
   );
 
-  assert.equal(stale.status, 404);
+  assert.equal(stale.status, 200);
+  assert.equal(stale.headers.get("cache-control"), "no-store");
   assert.equal(traversal.status, 404);
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MITUNET_MODULE_LOADED_EVENT,
   MITUNET_UPLOAD_FAILED_EVENT,
   MITUNET_UPLOAD_READY_EVENT,
   MITUNET_UPLOAD_SELECTED_EVENT,
@@ -92,6 +93,21 @@ test("shows a recoverable failure when the 3D module cannot load", () => {
   assert.deepEqual(selected, []);
   assert.match(statusElement.textContent, /3D 모듈을 불러오지 못했습니다/);
   assert.equal(initializationTimeout(), null);
+
+  windowTarget.dispatchEvent({ type: MITUNET_UPLOAD_READY_EVENT });
+  assert.deepEqual(selected, [pendingFile]);
+});
+
+test("module load clears the failure timer without releasing a queued upload", () => {
+  const { fileInput, initializationTimeout, selected, windowTarget } = fixture();
+  const pendingFile = { name: "offline-demo.png" };
+
+  fileInput.files = [pendingFile];
+  fileInput.dispatchEvent({ type: "change" });
+  windowTarget.dispatchEvent({ type: MITUNET_MODULE_LOADED_EVENT });
+
+  assert.equal(initializationTimeout(), null);
+  assert.deepEqual(selected, []);
 
   windowTarget.dispatchEvent({ type: MITUNET_UPLOAD_READY_EVENT });
   assert.deepEqual(selected, [pendingFile]);

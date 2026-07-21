@@ -1924,6 +1924,8 @@ import {
   cameraPresetPosition,
 } from "/viewer-assets/camera-view-presets.mjs";
 
+window.dispatchEvent(new Event("mitunet-module-loaded"));
+
 // -----------------------------------------------------------------------------
 // Constants — physical dimensions are in arbitrary world units. We rescale each
 // plan so its longest axis spans TARGET_PLAN_SIZE units; everything else is

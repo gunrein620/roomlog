@@ -65,6 +65,8 @@ import map과 Draco decoder 경로는 같은 오리진의 `/floor-plan-3d/mitune
 
 배포마다 파일 내용이 바뀔 수 있으므로 `transformMitunetViewerHtml`과 모듈 변환이 `ROOMLOG_DEPLOY_SHA`를 내부 자산 URL 경로에 넣는다. 배포 워크플로가 현재 Git SHA를 Docker build/runtime에 전달한다. 값이 없으면 `dev` 경로를 사용하고 짧은 재검증 캐시만 허용한다. 모듈 안의 `/viewer-assets` import도 같은 버전 경로로 변환해 전체 모듈 그래프가 한 배포 버전에 고정된다.
 
+운영 web 이미지는 viewer 파일을 이미지 안의 `/mitunet/viewer`로 복사해 실행 중 checkout 변경과 분리한다. 현재 SHA 경로만 immutable로 캐시하고, 배포 교체 중 이미 열려 있던 화면이 이전 SHA 자산을 늦게 요청하면 현재 이미지 자산을 `no-store`로 제공해 404를 피한다.
+
 ### 4. GPU 요청 안정성
 
 FastAPI에는 프로세스당 `asyncio.Semaphore(1)`을 두어 GPU 진입을 명시적으로 직렬화한다. 동기 추론은 `asyncio.to_thread`로 이벤트 루프 밖에서 실행한다. 대기와 실행 시간을 로그로 남기며, 헬스체크는 추론 중에도 응답할 수 있어야 한다. 여러 Uvicorn 워커는 GPU 메모리에 모델을 중복 적재하므로 사용하지 않는다.
