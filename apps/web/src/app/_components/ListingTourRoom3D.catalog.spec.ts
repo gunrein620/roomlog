@@ -6,6 +6,14 @@ import test from "node:test";
 const tourSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
 const editorSource = readFileSync(join(process.cwd(), "src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx"), "utf8");
 
+function between(source: string, start: string, end: string) {
+  const afterStart = source.split(start, 2)[1];
+  assert.ok(afterStart, `missing start marker: ${start}`);
+  const body = afterStart.split(end, 1)[0];
+  assert.ok(body, `missing end marker: ${end}`);
+  return body;
+}
+
 test("loads the 3D rendering GLB furniture catalog for the listing tour", () => {
   assert.match(tourSource, /loadGlbDatasetCatalog/);
   assert.match(tourSource, /const \[furnitureCatalog, setFurnitureCatalog\] = useState<FurnitureCatalogItem\[\]>\(FURNITURE_CATALOG\)/);
@@ -45,4 +53,30 @@ test("only enables pending deletion while an existing tour furniture item is bei
   assert.match(tourSource, /setIsPendingFurnitureEditing\(true\)/);
   assert.match(tourSource, /pendingFurnitureCanBeDeleted=\{isPendingFurnitureEditing\}/);
   assert.match(tourSource, /function deletePendingFurniture\(\)[\s\S]*?setIsPendingFurnitureEditing\(false\)/);
+});
+
+test("uses the MitUNet selection stage before moving an existing listing furniture item", () => {
+  const pointerHandler = between(
+    tourSource,
+    "function handleFurniturePointerDown",
+    "function confirmPendingFurniturePlacement"
+  );
+  assert.match(pointerHandler, /setSelectedFurnitureId\(furniture\.id\)/);
+  assert.doesNotMatch(pointerHandler, /setPendingFurniture\(reopenFurnitureDraft\(furniture\)\)/);
+
+  const moveHandler = between(
+    tourSource,
+    "function beginSelectedFurnitureMove",
+    "function rotateSelectedFurniture"
+  );
+  assert.match(moveHandler, /pendingFurnitureOriginRef\.current = furniture/);
+  assert.match(moveHandler, /setPendingFurniture\(reopenFurnitureDraft\(furniture\)\)/);
+});
+
+test("keeps a confirmed listing furniture item selected for the floating toolbar", () => {
+  assert.match(tourSource, /setSelectedFurnitureId\(nextFurniture\.id\)/);
+  assert.match(tourSource, /onSelectedMove=\{beginSelectedFurnitureMove\}/);
+  assert.match(tourSource, /onSelectedRotateLeft=\{\(\) => rotateSelectedFurniture\(-1\)\}/);
+  assert.match(tourSource, /onSelectedRotateRight=\{\(\) => rotateSelectedFurniture\(1\)\}/);
+  assert.match(tourSource, /onSelectedDelete=\{deleteSelectedFurniture\}/);
 });

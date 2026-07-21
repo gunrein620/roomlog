@@ -4249,6 +4249,7 @@ controls.addEventListener("end", () => {
 sceneCanvas.addEventListener("pointerdown", event => {
   furniturePointerStart = { x: event.clientX, y: event.clientY };
   furniturePointerMoved = false;
+  orbitGestureMoved = false;
   suppressCanvasClick = false;
 });
 sceneCanvas.addEventListener("pointermove", event => {

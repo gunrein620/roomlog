@@ -175,6 +175,16 @@ test("keeps the furniture catalog below the 3D toolbar with eight compact items 
   );
 });
 
+test("does not suppress a furniture selection click after an earlier camera drag", () => {
+  const pointerDownHandler = viewerSource.match(
+    /sceneCanvas\.addEventListener\("pointerdown", event => \{[\s\S]*?\n\}\);/,
+  )?.[0] ?? "";
+
+  assert.match(pointerDownHandler, /furniturePointerMoved = false;/);
+  assert.match(pointerDownHandler, /orbitGestureMoved = false;/);
+  assert.match(pointerDownHandler, /suppressCanvasClick = false;/);
+});
+
 test("keeps furniture placement available in both 3D and Floor while the slide drawer starts closed", () => {
   assert.match(
     viewerSource,

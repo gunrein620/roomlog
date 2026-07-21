@@ -99,8 +99,25 @@ describe("RoomLog furniture floating controls", () => {
     assert.match(editorSource, /setSelectedFurnitureId\(nextFurniture\.id\)/);
   });
 
-  it("uses conspicuous green confirmation and red cancellation buttons", () => {
-    assert.match(globalCss, /\.floor-plan-pending-actions button\.is-confirm[\s\S]*?background: #16a34a;/);
-    assert.match(globalCss, /\.floor-plan-pending-actions button\.is-cancel[\s\S]*?background: #dc2626;/);
+  it("uses the compact neutral MitUNet icon toolbar styling", () => {
+    const toolbarCss = between(
+      globalCss,
+      ".floor-plan-pending-actions {",
+      ".floor-plan-pending-actions button {"
+    );
+    const buttonCss = between(
+      globalCss,
+      ".floor-plan-pending-actions button {",
+      ".floor-plan-pending-actions button svg"
+    );
+
+    assert.match(toolbarCss, /padding: 6px;/);
+    assert.match(toolbarCss, /border-radius: 14px;/);
+    assert.match(buttonCss, /width: 42px;/);
+    assert.match(buttonCss, /height: 42px;/);
+    assert.match(buttonCss, /border-radius: 10px;/);
+    assert.match(buttonCss, /background: transparent;/);
+    assert.match(globalCss, /\.floor-plan-pending-actions button\.is-confirm[\s\S]*?color: #16a34a;/);
+    assert.match(globalCss, /\.floor-plan-pending-actions button\.is-cancel[\s\S]*?color: #dc2626;/);
   });
 });

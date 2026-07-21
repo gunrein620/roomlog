@@ -6,9 +6,15 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(scriptDir, "..");
 const rootEnvPath = resolve(appDir, "..", "..", ".env");
+const rootLocalEnvPath = resolve(appDir, "..", "..", ".env.local");
 const nextBin = resolve(appDir, "node_modules", "next", "dist", "bin", "next");
+const inheritedEnvKeys = new Set(Object.keys(process.env));
 
-function loadEnvFallback(filePath) {
+function loadRootEnv(filePath, overrideLoadedValues = false) {
+  if (!existsSync(filePath)) {
+    return;
+  }
+
   const contents = readFileSync(filePath, "utf8");
 
   for (const rawLine of contents.split(/\r?\n/)) {
@@ -23,7 +29,7 @@ function loadEnvFallback(filePath) {
     }
 
     const [, key, rawValue] = match;
-    if (process.env[key] !== undefined) {
+    if (inheritedEnvKeys.has(key) || (!overrideLoadedValues && process.env[key] !== undefined)) {
       continue;
     }
 
@@ -37,13 +43,8 @@ function loadEnvFallback(filePath) {
   }
 }
 
-if (existsSync(rootEnvPath)) {
-  if (typeof process.loadEnvFile === "function") {
-    process.loadEnvFile(rootEnvPath);
-  } else {
-    loadEnvFallback(rootEnvPath);
-  }
-}
+loadRootEnv(rootEnvPath, false);
+loadRootEnv(rootLocalEnvPath, true);
 
 const nextArgs = process.argv.slice(2);
 if (nextArgs.length === 0) {
