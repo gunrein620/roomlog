@@ -36,6 +36,7 @@ import {
 import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
+import { normalizeWorldToMinimap } from "./tour-minimap-geometry";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
 import {
@@ -67,12 +68,14 @@ function clamp01to100(value: number): number {
 
 // 월드(splat 배치) 바닥좌표 → 미니맵 정규화(%) 좌표. 실 도면 벽이 있으면 그 bbox(bounds)를
 // 기준으로 매핑하고, 없으면 데모의 원점 중심 고정 배치(SPLAT_CLIP_ROOM)로 매핑한다.
+//
+// 벽이 있을 땐 반드시 미니맵이 벽 발자국을 그릴 때 쓰는 것과 **같은** 규칙(normalizeWorldToMinimap:
+// 비율 유지 균등 스케일 + 6% 여백 + 짧은 변 중앙정렬)을 써야 한다. 여기서 축별 독립 스트레치를
+// 쓰면 정사각형이 아닌 방에서 카메라 점이 벽 바깥으로 벗어난다(3m×6m 방이면 벽은 28~72%만
+// 차지하는데 점은 0~100%를 훑는다).
 function worldToMinimapPercent(x: number, z: number, bounds: PlanBounds | null): { x: number; y: number } {
   if (bounds && bounds.width > 0 && bounds.depth > 0) {
-    return {
-      x: clamp01to100(((x - bounds.minX) / bounds.width) * 100),
-      y: clamp01to100(((z - bounds.minZ) / bounds.depth) * 100)
-    };
+    return normalizeWorldToMinimap(x, z, bounds);
   }
 
   return {
@@ -137,11 +140,14 @@ export default function TourViewer() {
   // undefined/null/잘못된 JSON은 모두 브라우저 폴백으로 해석한다. 서버 JSON도 아래 resolver에서
   // 형태 검증을 통과해야만 실제 벽으로 채택된다.
   const [serverPlanWallsPayload, setServerPlanWallsPayload] = useState<unknown>(null);
+  // RoomPlan(iOS) 캡처 도면(SplatAsset.captureFloorPlan) — splat과 같은 ARSession이라 정합 없이
+  // 최우선으로 채택한다(resolveViewerPlanWalls 1순위). 마찬가지로 미검증 JSON.
+  const [serverCaptureFloorPlan, setServerCaptureFloorPlan] = useState<unknown>(null);
   // 가구 배치 저장 키의 매물 신원. null이면 이 자산은 매물에 연결돼 있지 않다.
   const [assetListingId, setAssetListingId] = useState<string | null>(null);
   const planWallsState = useMemo(
-    () => resolveViewerPlanWalls(serverPlanWallsPayload, browserPlanWallsState),
-    [browserPlanWallsState, serverPlanWallsPayload]
+    () => resolveViewerPlanWalls(serverCaptureFloorPlan, serverPlanWallsPayload, browserPlanWallsState),
+    [browserPlanWallsState, serverCaptureFloorPlan, serverPlanWallsPayload]
   );
   const planWalls = planWallsState.walls;
   const planBounds = useMemo<PlanBounds | null>(
@@ -371,6 +377,7 @@ export default function TourViewer() {
     setAssetTransform(null);
     // 서버 벽도 해당 자산에 귀속된 형상이므로 로컬 파일로 바꾸면 브라우저 도면 폴백으로 되돌린다.
     setServerPlanWallsPayload(null);
+    setServerCaptureFloorPlan(null);
     setShowPlanWalls(resolveWallReplace(window.location.search, false));
   }, []);
 
@@ -386,6 +393,8 @@ export default function TourViewer() {
         if (cancelled) return;
         // 공개 자산에 동봉된 벽을 최우선으로 채택한다. 미검증 API JSON은 resolver가 다시 거른다.
         setServerPlanWallsPayload(asset.walls);
+        // RoomPlan 캡처 도면은 splat과 좌표계가 같아 resolver 1순위로 채택된다(정합 불필요).
+        setServerCaptureFloorPlan(asset.captureFloorPlan);
         // 가구 배치 저장 키를 매물별로 가르기 위해 자산의 매물 연결을 붙든다.
         setAssetListingId(asset.listingId);
         // PROCESSING: 아직 spz가 없다(fileUrl 빈 문자열). 예전엔 여기서 샘플로 조용히 폴백됐지만,
@@ -1288,6 +1297,8 @@ export default function TourViewer() {
           onSelect={setActiveId}
           planIsPlaceholder={planWallsState.source === "placeholder"}
           presets={[]}
+          walls={planWalls}
+          bounds={planBounds}
         />
       </div>
 

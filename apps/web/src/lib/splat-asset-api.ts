@@ -31,6 +31,9 @@ export interface SplatAsset {
   furnitures?: unknown[] | null;
   /** 공개 뷰어 동봉 벽 — 연결된 도면(floorPlanId)/매물 스냅샷의 벽. 미검증 JSON이라 웹에서 planWallsFromPayload로 거른다. */
   walls?: unknown[] | null;
+  /** RoomPlan(iOS) 캡처 도면(roomplan.json) — intake/complete가 저장. splat과 같은 ARSession이라
+   * 좌표계가 같아 정합 없이 항등으로 쓸 수 있다. 미검증 JSON이라 웹에서 planWallsFromCaptureFloorPlan으로 거른다. */
+  captureFloorPlan?: unknown | null;
   capturedAt: string | null;
   createdAt: string;
   updatedAt: string;
