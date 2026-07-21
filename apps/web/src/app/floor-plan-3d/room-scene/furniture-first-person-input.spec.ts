@@ -7,7 +7,7 @@ import {
 } from "./furniture-first-person-input";
 
 describe("furniture first-person input", () => {
-  it("uses E contextually for aimed pickup or cursor selection", () => {
+  it("uses E only for an aimed existing furniture item", () => {
     assert.equal(
       resolveFurnitureShortcut({
         aimedFurnitureId: "chair",
@@ -26,17 +26,49 @@ describe("furniture first-person input", () => {
         repeat: false,
         target: null
       }),
-      "open-select"
+      null
     );
     assert.equal(
       resolveFurnitureShortcut({
         aimedFurnitureId: null,
-        code: "KeyE",
+        code: "Digit2",
         mode: "select",
         repeat: false,
         target: null
       }),
       "close-select"
+    );
+  });
+
+  it("uses 2 to open selection from explore or carry", () => {
+    for (const code of ["Digit2", "Numpad2"]) {
+      assert.equal(
+        resolveFurnitureShortcut({ aimedFurnitureId: null, code, mode: "explore", repeat: false, target: null }),
+        "open-select"
+      );
+      assert.equal(
+        resolveFurnitureShortcut({ aimedFurnitureId: null, code, mode: "carry", repeat: false, target: null }),
+        "open-select"
+      );
+    }
+  });
+
+  it("uses 1 and 3 to rotate a carried furniture item", () => {
+    for (const code of ["Digit1", "Numpad1"]) {
+      assert.equal(
+        resolveFurnitureShortcut({ aimedFurnitureId: null, code, mode: "carry", repeat: false, target: null }),
+        "rotate-left"
+      );
+    }
+    for (const code of ["Digit3", "Numpad3"]) {
+      assert.equal(
+        resolveFurnitureShortcut({ aimedFurnitureId: null, code, mode: "carry", repeat: false, target: null }),
+        "rotate-right"
+      );
+    }
+    assert.equal(
+      resolveFurnitureShortcut({ aimedFurnitureId: null, code: "Digit1", mode: "explore", repeat: false, target: null }),
+      null
     );
   });
 

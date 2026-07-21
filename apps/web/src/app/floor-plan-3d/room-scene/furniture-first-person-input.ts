@@ -14,6 +14,8 @@ export type FurnitureShortcutAction =
   | "pickup-aimed"
   | "open-select"
   | "close-select"
+  | "rotate-left"
+  | "rotate-right"
   | "confirm"
   | "cancel";
 
@@ -26,11 +28,16 @@ export function resolveFurnitureShortcut(input: {
 }): FurnitureShortcutAction | null {
   if (input.repeat || isOrbitKeyboardInteractiveTarget(input.target)) return null;
   if (input.code === "KeyE" && input.mode === "explore") {
-    return input.aimedFurnitureId ? "pickup-aimed" : "open-select";
+    return input.aimedFurnitureId ? "pickup-aimed" : null;
   }
-  if ((input.code === "KeyE" || input.code === "Escape") && input.mode === "select") {
+  if ((input.code === "Digit2" || input.code === "Numpad2") && input.mode !== "select") {
+    return "open-select";
+  }
+  if ((input.code === "Digit2" || input.code === "Numpad2" || input.code === "Escape") && input.mode === "select") {
     return "close-select";
   }
+  if ((input.code === "Digit1" || input.code === "Numpad1") && input.mode === "carry") return "rotate-left";
+  if ((input.code === "Digit3" || input.code === "Numpad3") && input.mode === "carry") return "rotate-right";
   if (input.code === "KeyQ" && input.mode === "carry") return "confirm";
   if (input.code === "Escape" && input.mode === "carry") return "cancel";
   return null;
