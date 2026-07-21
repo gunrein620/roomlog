@@ -82,15 +82,12 @@ import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/l
 import { useTenantLandlordUnreadCount } from "@/lib/use-tenant-landlord-unread-count";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
 import {
-  demoListings as listings,
-  demoMapItems,
   getListingPriceRows,
   isRemotePhoto,
   LISTING_PHOTO_PLACEHOLDER,
   listingDetailAddressLabel,
   listingHas3DPlacement,
   listingRegisteredAgoLabel,
-  mapListings,
   monthlyDealLabel,
   tradeListingToCard,
   tradePriceLabel,
@@ -1656,7 +1653,7 @@ export default function HomeApp({
   const [isFooterTeamOpen, setIsFooterTeamOpen] = useState(false);
   const [homeListingPage, setHomeListingPage] = useState(1);
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
-  const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
+  const [selectedMapListingNo, setSelectedMapListingNo] = useState("");
   // 찜은 localStorage와 동기화 — 상세 라우트(/listing/[id])와 같은 키를 써서 라우트를 오가도 유지된다.
   // 기본값은 빈 목록 — 계정과 무관하게 데모 매물이 찜돼 있던 하드코딩 제거.
   const [savedListingNos, setSavedListingNos] = useState<string[]>([]);
@@ -1811,7 +1808,7 @@ export default function HomeApp({
     .filter((listing) => listing.status !== "계약완료")
     .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
   const allListings = tradeListingsStatus === "ready"
-    ? [...sortedTradeListings.map(tradeListingToCard), ...listings]
+    ? sortedTradeListings.map(tradeListingToCard)
     : [];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const mapTopbarDisplaySearchValue = mapTopbarInputValueForArea(mapTopbarSearchValue);
@@ -1877,10 +1874,9 @@ export default function HomeApp({
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
   const mapFilterOptions = ["시세", "원룸·투룸", "보증금", "안전", "3D 가능", "찜한 매물"];
   // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
-  const allMapItems = [
-    ...tradeListings.map((listing, index) => tradeListingToMapItem(listing, index, tradeListings.length)),
-    ...demoMapItems
-  ];
+  const allMapItems = tradeListings.map((listing, index) =>
+    tradeListingToMapItem(listing, index, tradeListings.length)
+  );
   // 검색어에 명시된 행정구역·도로명을 모두 만족하는 매물만 표시한다.
   const hasAreaSearchQuery = Boolean(parseMapSearch(mapAreaTitle).normalized);
   const areaMatchedMapItems = hasAreaSearchQuery

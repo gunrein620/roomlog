@@ -9,6 +9,7 @@ const viewerSource = readFileSync(
 );
 const landlordSource = readFileSync(join(process.cwd(), "src/app/my/flows/LandlordMyPage.tsx"), "utf8");
 const listingTourSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
+const listingDetailSource = readFileSync(join(process.cwd(), "src/app/_components/ListingDetailView.tsx"), "utf8");
 const globalCss = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
 
 describe("listing-only 3D preview", () => {
@@ -58,6 +59,48 @@ describe("listing-only 3D preview", () => {
     assert.match(
       globalCss,
       /\.hero-stage \.listing-tour-furniture-category-tabs\s*\{[\s\S]*?scrollbar-width: thin/
+    );
+  });
+
+  it("opens the existing 3D stage fullscreen with its furniture panel", () => {
+    assert.match(
+      listingDetailSource,
+      /detail-panel-options[\s\S]*?detail-panel-tour-actions[\s\S]*?1인칭 투어[\s\S]*?가구배치 시뮬레이션/
+    );
+    assert.match(listingDetailSource, /const \[isFurnitureSimulationOpen, setIsFurnitureSimulationOpen\] = useState\(false\)/);
+    assert.match(listingDetailSource, /is-furniture-simulation-open/);
+    assert.match(listingDetailSource, /role=\{isFurnitureSimulationOpen \? "dialog" : undefined\}/);
+    assert.match(listingDetailSource, /aria-modal=\{isFurnitureSimulationOpen \? "true" : undefined\}/);
+    assert.match(listingDetailSource, /aria-label="가구배치 시뮬레이션 닫기"/);
+    assert.match(listingDetailSource, /furnitureEditorOpen=\{isFurnitureSimulationOpen\}/);
+    assert.match(listingTourSource, /furnitureEditorOpen\?: boolean/);
+    assert.doesNotMatch(listingTourSource, /className="hero-furniture-toggle"/);
+    assert.match(
+      globalCss,
+      /\.detail-panel-tour-actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/
+    );
+    assert.match(
+      globalCss,
+      /\.detail-3d-hero\.is-furniture-simulation-open\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?height:\s*100dvh/
+    );
+  });
+
+  it("docks a collapsible furniture sidebar beside the fullscreen 3D stage", () => {
+    assert.match(listingTourSource, /hero-panel-open/);
+    assert.match(listingTourSource, /function collapseHeroPanel\(\)/);
+    assert.match(listingTourSource, /aria-label="가구 목록 열기"/);
+    assert.match(listingTourSource, /className="hero-furniture-reopen"/);
+    assert.match(
+      globalCss,
+      /\.is-furniture-simulation-open \.listing-tour-room3d\.hero-panel-open \.floor-plan-3d-preview\s*\{[\s\S]*?right:\s*340px/
+    );
+    assert.match(
+      globalCss,
+      /\.is-furniture-simulation-open \.hero-stage \.hero-furniture-drawer\s*\{[\s\S]*?bottom:\s*0;[\s\S]*?width:\s*340px;[\s\S]*?max-height:\s*none/
+    );
+    assert.match(
+      globalCss,
+      /\.is-furniture-simulation-open \.hero-stage \.hero-furniture-catalog-scroll\s*\{[\s\S]*?flex:\s*1;[\s\S]*?max-height:\s*none/
     );
   });
 });

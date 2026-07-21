@@ -2,7 +2,6 @@
 
 import type { ThreeEvent } from "@react-three/fiber";
 import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
-import { Armchair } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -107,10 +106,12 @@ function normalizeMitunetListingFurniture(
 
 export default function ListingTourRoom3D({
   floorPlan,
+  furnitureEditorOpen,
   listingId,
   variant = "sheet"
 }: {
   floorPlan: ListingFloorPlan3D;
+  furnitureEditorOpen?: boolean;
   listingId: string;
   /** hero = 상세 히어로 스테이지(좌측 글래스 가구 패널 + hover 하이라이트), sheet = 기존 3D 시트 */
   variant?: "sheet" | "hero";
@@ -304,6 +305,16 @@ export default function ListingTourRoom3D({
     setIsPlacementOpen(false);
     if (variant === "hero") setIsHeroPanelOpen(false);
   }
+
+  function collapseHeroPanel() {
+    setIsHeroPanelOpen(false);
+  }
+
+  useEffect(() => {
+    if (furnitureEditorOpen === undefined) return;
+    if (furnitureEditorOpen) openFurnitureEditor();
+    else closeFurnitureEditor();
+  }, [furnitureEditorOpen]);
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
     // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
@@ -520,7 +531,13 @@ export default function ListingTourRoom3D({
   }
 
   return (
-    <div className={variant === "hero" ? "listing-tour-room3d hero-stage" : "listing-tour-room3d"}>
+    <div
+      className={
+        variant === "hero"
+          ? `listing-tour-room3d hero-stage${isHeroPanelOpen ? " hero-panel-open" : ""}`
+          : "listing-tour-room3d"
+      }
+    >
       <RoomlogThreeFloorPlanView
         controlsEnabled={!isFurnitureDragging}
         frameloop="always"
@@ -550,16 +567,14 @@ export default function ListingTourRoom3D({
         wallsData={wallsData}
       />
 
-      {variant === "hero" ? (
+      {variant === "hero" && furnitureEditorOpen && !isHeroPanelOpen ? (
         <button
-          aria-expanded={isPlacementOpen}
-          aria-label="가구 편집 열기"
-          className="hero-furniture-toggle"
+          aria-label="가구 목록 열기"
+          className="hero-furniture-reopen"
           type="button"
           onClick={openFurnitureEditor}
         >
-          <Armchair aria-hidden size={16} strokeWidth={2.4} />
-          가구 편집
+          가구 목록 열기
         </button>
       ) : null}
 
@@ -573,8 +588,11 @@ export default function ListingTourRoom3D({
             </strong>
             {variant !== "hero" ? <span>{saveMessage}</span> : null}
           </div>
-          <button type="button" onClick={isPlacementOpen ? closeFurnitureEditor : openFurnitureEditor}>
-            {isPlacementOpen ? "닫기" : "가구 편집"}
+          <button
+            type="button"
+            onClick={isPlacementOpen ? (variant === "hero" ? collapseHeroPanel : closeFurnitureEditor) : openFurnitureEditor}
+          >
+            {isPlacementOpen ? (variant === "hero" ? "접기" : "닫기") : "가구 편집"}
           </button>
         </div>
 

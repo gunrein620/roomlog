@@ -938,6 +938,13 @@ test("owner registration state survives refresh via a versioned local draft with
   assert.doesNotMatch(pageSource, /title: "방배 루미에르 402호",\s*\n\s*address: "서울특별시 서초구 방배동"/);
 });
 
+test("public discovery surfaces show only listings returned by the trade API", () => {
+  assert.doesNotMatch(homeAppSource, /demoListings as listings/);
+  assert.doesNotMatch(homeAppSource, /\bdemoMapItems\b/);
+  assert.match(homeAppSource, /const allListings = tradeListingsStatus === "ready"\s*\n\s*\? sortedTradeListings\.map\(tradeListingToCard\)/);
+  assert.match(homeAppSource, /const allMapItems = tradeListings\.map\(/);
+});
+
 test("login success consumes the pushed auth history entry so back does not reopen the login screen", () => {
   // QA 5 회귀 방지(앱 내부 히스토리): completeServiceAuth도 closeAuthScreen처럼 push 엔트리를 소비한다.
   assert.match(pageSource, /const completeServiceAuth[\s\S]{0,400}isAuthHistoryPushedRef\.current = false;\s*\n\s*window\.history\.back\(\)/);
