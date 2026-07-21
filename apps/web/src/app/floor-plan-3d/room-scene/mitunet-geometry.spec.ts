@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 import * as geometry from "./mitunet-geometry";
 
-const { createMitunetSceneLayout } = geometry;
+const { createMitunetSceneLayout, mitunetSceneLayoutFromPayload } = geometry;
 
 const round = (value: number) => Math.round(value * 1e6) / 1e6;
 
@@ -79,5 +79,18 @@ describe("createMitunetSceneLayout", () => {
       x: 2,
       z: -1,
     });
+  });
+});
+
+describe("mitunetSceneLayoutFromPayload", () => {
+  it("검증된 JSON을 createMitunetSceneLayout과 같은 결과로 변환한다", () => {
+    const layout = mitunetSceneLayoutFromPayload(plan);
+    assert.deepEqual(layout, createMitunetSceneLayout(plan));
+  });
+
+  it("스키마·버전이 안 맞거나 폴리곤이 없으면 null", () => {
+    assert.equal(mitunetSceneLayoutFromPayload(null), null);
+    assert.equal(mitunetSceneLayoutFromPayload({}), null);
+    assert.equal(mitunetSceneLayoutFromPayload({ schema: "roomlog-mitunet-floor-plan", version: 1 }), null);
   });
 });

@@ -15,7 +15,11 @@ import {
   wallsToPlanBounds
 } from "../splat-plan-shape";
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
-import { mitunetToPlanWalls } from "../../floor-plan-3d/room-scene/mitunet-to-walls";
+import {
+  mitunetSceneLayoutFromPayload,
+  type MitunetSceneLayout,
+  type MitunetScenePolygon
+} from "../../floor-plan-3d/room-scene/mitunet-geometry";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
 import { PICK_DRAG_THRESHOLD_PX, pointerTravelPx, rayPlaneIntersectionXZ } from "../register-pick";
 import {
@@ -49,6 +53,16 @@ type PickView = "splat" | "plan";
 
 type PlanSource = "placeholder" | "storage" | "upload" | "listing-db" | "listing-mitunet";
 
+// 도면 패널이 그리는 두 형태. "walls"는 실측 박스 벽(도면 에디터 저장본·업로드·캡처) — 기존 경로.
+// "polygons"는 mitunet 벽 폴리곤을 박스로 근사하지 않고 그대로 흘리는 경로(도면 이미지 업로드 매물).
+// 2점 픽 좌표 변환(minX/minZ/scale)은 두 형태가 공유한다 — PlanPicker 참조.
+type PlanShape = { kind: "walls"; walls: WheretoputWall3D[] } | { kind: "polygons"; layout: MitunetSceneLayout };
+
+function planShapeWallCount(shape: PlanShape | null): number {
+  if (!shape) return 0;
+  return shape.kind === "walls" ? shape.walls.length : shape.layout.wall.length;
+}
+
 type AssetBanner = {
   tone: "info" | "warning" | "error";
   message: string;
@@ -57,7 +71,7 @@ type AssetBanner = {
 export default function Page() {
   const [splatPicks, setSplatPicks] = useState<Point2[]>([]);
   const [planPicks, setPlanPicks] = useState<Point2[]>([]);
-  const [planWalls, setPlanWalls] = useState<WheretoputWall3D[] | null>(null);
+  const [planShape, setPlanShape] = useState<PlanShape | null>(null);
   const [planSource, setPlanSource] = useState<PlanSource>("placeholder");
   const [planMessage, setPlanMessage] = useState("");
   const [splatReady, setSplatReady] = useState(false);
@@ -96,7 +110,7 @@ export default function Page() {
   useEffect(() => {
     const stored = loadPlanWallsFromBrowser();
     if (stored) {
-      setPlanWalls(stored.walls);
+      setPlanShape({ kind: "walls", walls: stored.walls });
       setPlanSource("storage");
       // 에디터 저장본(floor-plan-draft)일 때만 서버 id가 존재한다. 거주자 디자인은 서버 도면이 아님.
       setPlanServerId(stored.source === "floor-plan-draft" ? readFloorPlanDraftServerId(window.localStorage) : null);
@@ -110,7 +124,7 @@ export default function Page() {
         setPlanMessage("이 JSON에서 유효한 벽을 못 찾았습니다 (walls / room3d.walls 필요).");
         return;
       }
-      setPlanWalls(walls);
+      setPlanShape({ kind: "walls", walls });
       setPlanSource("upload");
       setPlanServerId(null); // 업로드 도면은 서버 FloorPlan이 아님 — 가구 연결 대상에서 제외
       setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
@@ -153,28 +167,36 @@ export default function Page() {
       const listings = await fetchOwnerListings();
       if (cancelled) return;
       const listing = (listings ?? []).find((item) => item.id === asset.listingId);
-      // walls3D(도면 에디터 저장본)가 있으면 우선, 없으면 mitunet(도면 이미지 업로드→벡터화)에서
-      // 근사 변환한다 — 이미지 업로드 경로는 walls3D를 채우지 않고 mitunet만 남기므로(trade.service.ts
-      // normalizeFloorPlan), 여기서 폴백하지 않으면 도면이 있는 매물도 "정합할 도면 없음"으로 보인다.
+
+      // walls3D(도면 에디터 저장본)가 있으면 우선 — 실측 박스 벽이라 그대로 쓴다.
       const editorWalls = planWallsFromPayload({ walls: listing?.floorPlan?.walls3D ?? [] });
-      const usingMitunetFallback = editorWalls.length === 0;
-      const listingWalls = usingMitunetFallback
-        ? mitunetToPlanWalls(listing?.floorPlan?.mitunet)
-        : editorWalls;
-      const decision = resolveRegisterPlanSource(asset, listingWalls);
-      if (decision.source !== "listing-db") return;
-      setPlanWalls(decision.walls);
-      setPlanSource(usingMitunetFallback ? "listing-mitunet" : "listing-db");
+      if (editorWalls.length > 0) {
+        const decision = resolveRegisterPlanSource(asset, editorWalls);
+        if (decision.source !== "listing-db") return;
+        setPlanShape({ kind: "walls", walls: decision.walls });
+        setPlanSource("listing-db");
+        setPlanServerId(null); // 매물 임베드 스냅샷은 서버 FloorPlan row가 아님 — 가구 연결 대상 아님
+        setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
+        setPreview(false);
+        setPlanMessage(`매물 도면 사용 중 (벽 ${decision.walls.length}개)`);
+        return;
+      }
+
+      // walls3D가 비어 있으면 mitunet(도면 이미지 업로드→벡터화) 폴리곤으로 폴백한다 — 이미지 업로드
+      // 경로는 walls3D를 채우지 않고 mitunet만 남기므로(trade.service.ts normalizeFloorPlan), 여기서
+      // 폴백하지 않으면 도면이 있는 매물도 "정합할 도면 없음"으로 보인다. 폴리곤을 박스로 근사하지
+      // 않고 그대로 흘린다 — 링 위상(폴리곤+holes) 도면에서 OBB는 방 전체를 덮는 상자 하나로
+      // 뭉개졌다(2026-07-2x 걷어냄).
+      const mitunetLayout = mitunetSceneLayoutFromPayload(listing?.floorPlan?.mitunet);
+      if (!mitunetLayout) return;
+      setPlanShape({ kind: "polygons", layout: mitunetLayout });
+      setPlanSource("listing-mitunet");
       setPlanServerId(null); // 매물 임베드 스냅샷은 서버 FloorPlan row가 아님 — 가구 연결 대상 아님
       setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
       setPreview(false);
-      setPlanMessage(
-        usingMitunetFallback
-          // 도면 이미지에서 벽 폴리곤을 박스로 근사한 것이라 실측 대비 정확도가 낮다 — 왜 벽 모양이
-          // 대략적인지 사용자가 알 수 있게 출처를 명시한다.
-          ? `매물 도면 사용 중 (도면 이미지에서 자동 추출 · 벽 ${decision.walls.length}개, 정확도 낮음)`
-          : `매물 도면 사용 중 (벽 ${decision.walls.length}개)`
-      );
+      // 도면 이미지에서 벽 폴리곤을 그대로 옮긴 것이라 실측 대비 정확도가 낮다 — 왜 벽 모양이 대략적인지
+      // 사용자가 알 수 있게 출처를 명시한다.
+      setPlanMessage(`매물 도면 사용 중 (도면 이미지에서 자동 추출 · 벽 ${mitunetLayout.wall.length}개, 정확도 낮음)`);
     };
 
     getSplatAsset(queryAssetId)
@@ -565,7 +587,7 @@ export default function Page() {
           <PaneTitle step="2" label="도면 — 같은 모서리 클릭" picks={planPicks.length} />
           {/* 업로드·출처 안내는 패널 안 좌상단 오버레이 — 좌측 패널(천장 자르기)과 같은 코너 문법, 좌우 시작선도 맞는다. */}
           <PlanPicker
-            walls={planWalls}
+            plan={planShape}
             picks={planPicks}
             onPick={(x, y) => addPick("plan", { x, y })}
             overlay={
@@ -587,11 +609,11 @@ export default function Page() {
                   {planSource === "upload"
                     ? planMessage
                     : planSource === "listing-db"
-                      ? `매물 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                      ? `매물 도면 사용 중 (벽 ${planShapeWallCount(planShape)}개)`
                       : planSource === "listing-mitunet"
-                        ? `매물 도면 사용 중 (도면 이미지 자동 추출 · 벽 ${planWalls?.length ?? 0}개)`
+                        ? `매물 도면 사용 중 (도면 이미지 자동 추출 · 벽 ${planShapeWallCount(planShape)}개)`
                         : planSource === "storage"
-                          ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                          ? `에디터 저장 도면 사용 중 (벽 ${planShapeWallCount(planShape)}개)`
                           : planMessage || "도면 없음 — 정합 건너뜀 (3D는 그대로 표시)"}
                 </span>
               </div>
@@ -680,19 +702,21 @@ function PickPlane({ onPick }: { onPick: (x: number, z: number) => void }) {
   );
 }
 
-// 도면 2D SVG. 실벽(walls)이 있으면 발자국 폴리곤을 그린다. 도면이 없으면 가짜
-// 플레이스홀더 박스를 깔지 않고 "도면 없음" 빈 상태를 보여준다(정합 건너뜀).
-// 클릭 → 도면 프레임 미터 좌표(투어 월드와 동일 프레임 — 벽·가구·미니맵이 쓰는 그 좌표계).
-// overlay(업로드 버튼·출처 칩)는 도면 유무와 무관하게 좌상단에 떠야 해서 양쪽 분기 모두에 그린다.
+// 도면 2D SVG. 도면이 있으면 그린다 — "walls"(실측 박스 벽: 도면 에디터·업로드·캡처)는 발자국
+// 폴리곤을, "polygons"(mitunet 벽 폴리곤: 도면 이미지 업로드 매물)는 outer+holes를 그대로 그린다.
+// 도면이 없으면 가짜 플레이스홀더 박스를 깔지 않고 "도면 없음" 빈 상태를 보여준다(정합 건너뜀).
+// 클릭 → 도면 프레임 미터 좌표(투어 월드와 동일 프레임 — 벽·가구·미니맵이 쓰는 그 좌표계). 두 형태
+// 모두 같은 minX/minZ/scale로 투영하므로 픽 좌표 변환은 형태와 무관하게 동일하다.
+// overlay(업로드 버튼·출처 칩)는 도면 유무와 무관하게 좌상단에 떠야 해서 모든 분기에 그린다.
 const PLAN_MAX_PX_PER_M = 160; // 초소형 도면이 우스꽝스럽게 확대되지 않는 상한
 
 function PlanPicker({
-  walls,
+  plan,
   picks,
   onPick,
   overlay
 }: {
-  walls: WheretoputWall3D[] | null;
+  plan: PlanShape | null;
   picks: Point2[];
   onPick: (x: number, y: number) => void;
   overlay?: ReactNode;
@@ -711,7 +735,7 @@ function PlanPicker({
     return () => observer.disconnect();
   }, []);
 
-  if (!walls || walls.length === 0) {
+  if (!plan) {
     return (
       <div ref={wrapRef} style={canvasWrap}>
         {overlay}
@@ -723,7 +747,17 @@ function PlanPicker({
       </div>
     );
   }
-  const bounds = wallsToPlanBounds(walls);
+  // "polygons"(mitunet)는 createMitunetSceneLayout이 이미 픽셀 bbox 중심을 원점으로 잡아 만들었으므로
+  // bounds가 항상 원점 대칭(centerX/centerZ=0) — width/depth 절반이 곧 min/max다.
+  const bounds =
+    plan.kind === "walls"
+      ? wallsToPlanBounds(plan.walls)
+      : {
+          minX: -plan.layout.bounds.width / 2,
+          minZ: -plan.layout.bounds.depth / 2,
+          width: plan.layout.bounds.width,
+          depth: plan.layout.bounds.depth
+        };
   const minX = bounds.minX;
   const minZ = bounds.minZ;
   const width = bounds.width;
@@ -735,6 +769,7 @@ function PlanPicker({
   const scale = Math.min(PLAN_MAX_PX_PER_M, availW / Math.max(width, 0.5), availH / Math.max(depth, 0.5));
   const w = width * scale;
   const h = depth * scale;
+  const project = (x: number, z: number) => `${pad + (x - minX) * scale},${pad + (z - minZ) * scale}`;
   return (
     <div ref={wrapRef} style={canvasWrap}>
       {overlay}
@@ -751,17 +786,28 @@ function PlanPicker({
           onPick(Number(x.toFixed(3)), Number(y.toFixed(3)));
         }}
       >
-        {walls.map((wall) => (
-          <polygon
-            key={wall.id}
-            points={planWallFootprint(wall)
-              .map((c) => `${pad + (c.x - minX) * scale},${pad + (c.z - minZ) * scale}`)
-              .join(" ")}
-            fill="#ddd6f3"
-            stroke="#8b83c0"
-            strokeWidth={1}
-          />
-        ))}
+        {plan.kind === "walls"
+          ? plan.walls.map((wall) => (
+              <polygon
+                key={wall.id}
+                points={planWallFootprint(wall)
+                  .map((c) => project(c.x, c.z))
+                  .join(" ")}
+                fill="#ddd6f3"
+                stroke="#8b83c0"
+                strokeWidth={1}
+              />
+            ))
+          : plan.layout.wall.map((polygon, index) => (
+              <path
+                key={index}
+                d={mitunetPolygonPath(polygon, project)}
+                fill="#ddd6f3"
+                stroke="#8b83c0"
+                strokeWidth={1}
+                fillRule="evenodd"
+              />
+            ))}
         {picks.map((p, i) => (
           <circle
             key={i}
@@ -775,6 +821,15 @@ function PlanPicker({
       <span style={hint}>클릭 → 도면 좌표 (m)</span>
     </div>
   );
+}
+
+// mitunet 벽 폴리곤(outer + holes, 미터 좌표) → SVG path "d". holes를 같은 path에 별도 서브패스로
+// 넣고 evenodd로 채우면 구멍(문·창 개구부 등)이 뚫린 채로 렌더된다(RoomlogThreeFloorPlanView.tsx의
+// THREE.Shape.holes와 같은 발상 — 여긴 3D가 아니라 2D SVG라 evenodd로 대신한다).
+function mitunetPolygonPath(polygon: MitunetScenePolygon, project: (x: number, z: number) => string): string {
+  const ring = (points: readonly [number, number][]) =>
+    points.length === 0 ? "" : `M${points.map(([x, z]) => project(x, z)).join("L")}Z`;
+  return [ring(polygon.outer), ...polygon.holes.map(ring)].join(" ");
 }
 
 function PaneTitle({ step, label, picks }: { step: string; label: string; picks: number }) {
