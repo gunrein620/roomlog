@@ -21,6 +21,10 @@ const messagingLayout = readFileSync(
   path.join(webRoot, "app/manager/messaging/layout.tsx"),
   "utf8",
 );
+const managerGlobals = readFileSync(
+  path.join(webRoot, "app/manager/globals.css"),
+  "utf8",
+);
 
 test("formats a messaging thread with its building and unit", () => {
   assert.equal(
@@ -111,34 +115,34 @@ test("places compact reply status beside the building and title-content search",
   assert.doesNotMatch(listPage, /aria-label="티켓 검색"/);
 });
 
-test("keeps communication tickets fixed and truncates only overflowing message content", () => {
-  assert.match(listPage, /height: 206/);
-  assert.match(listPage, /overflow: "hidden"/);
+test("truncates only overflowing message content in communication table rows", () => {
+  assert.match(listPage, /className="manager-messaging-thread-table"/);
+  assert.match(listPage, /className={`manager-messaging-thread-row/);
   assert.match(
-    listPage,
-    /data-testid="manager-thread-message"[\s\S]*whiteSpace: "nowrap"[\s\S]*textOverflow: "ellipsis"/,
+    managerGlobals,
+    /\.manager-messaging-thread-row__body span\s*\{[\s\S]*text-overflow: ellipsis;[\s\S]*white-space: nowrap;/,
   );
   assert.doesNotMatch(
     listPage,
-    /data-testid="manager-thread-title"[^>]*textOverflow: "ellipsis"/,
+    /data-testid="manager-thread-title"[^>]*textOverflow/,
   );
 });
 
 test("shows linked ticket unread separately from message unread state", () => {
   assert.match(listPage, /thread\.isManagerTicketUnread/);
-  assert.match(listPage, /aria-label="티켓 미확인"/);
+  assert.match(listPage, /className="manager-messaging-thread-row__unread" aria-label="상대방 미확인"/);
   assert.match(listPage, />미확인<\/span>/);
   assert.match(
-    listPage,
-    /aria-label="티켓 미확인"[\s\S]*background: "var\(--primary\)"/,
+    managerGlobals,
+    /\.manager-messaging-thread-row__unread\s*\{[\s\S]*background: var\(--primary-container\);/,
   );
   assert.doesNotMatch(listPage, /미읽음 \{thread\.unreadCount\}/);
   assert.match(listPage, /managerThreadConfirmationLabel\(thread\)/);
-  assert.match(listPage, />\{confirmationLabel\}<\/span>/);
+  assert.match(listPage, />\s*\{confirmationLabel\}\s*<\/span>/);
 });
 
 test("uses manager-facing reply and sorting rules", () => {
-  assert.match(listPage, /sortManagerThreads\(searchedThreads\)/);
+  assert.match(listPage, /sortManagerThreads\(statusFilteredThreads\)/);
   assert.match(listPage, /managerThreadNeedsReply\(thread\)/);
   assert.doesNotMatch(listPage, /thread\.unreadCount > 0 \|\| thread\.pendingRequest/);
 });
@@ -153,6 +157,16 @@ test("replaces messaging tabs with the building ticket filter", () => {
 
 test("loads contract recipients and mounts the new conversation form", () => {
   assert.match(listPage, /listManagerMessagingRecipients/);
-  assert.match(listPage, /getBuildingOptions\(threads, recipients\)/);
-  assert.match(listPage, /<NewConversationForm/);
+  assert.match(listPage, /getBuildingOptions\(uniqueThreads, recipientsWithLatestThreads\)/);
+  assert.match(listPage, /<NewConversationForm[\s\S]*recipients=\{recipientsWithLatestThreads\}/);
+});
+
+test("uses the same unfilled summary tile treatment for reply-needed conversations", () => {
+  assert.match(listPage, /<SummaryTile label="전체 대화" value=\{searchedThreads\.length\} \/>/);
+  assert.match(listPage, /<SummaryTile label="답장 필요" value=\{needsReply\} \/>/);
+  assert.doesNotMatch(
+    listPage,
+    /<SummaryTile label="답장 필요" value=\{needsReply\} emphasis \/>/,
+  );
+  assert.doesNotMatch(managerGlobals, /\.manager-messaging-summary-tile\.is-emphasis/);
 });
