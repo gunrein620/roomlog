@@ -233,16 +233,12 @@ const HOME_LISTINGS_PAGE_SIZE = 9;
 // 검색바 거래유형 탭 — 택일. 필터 체인의 거래유형 OR 매칭(dealTypeFilters)과 같은 어휘를 쓴다.
 const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
 
-// 가격 게이지바 상한(만원) — 슬라이더 우측 끝 = 제한 없음.
-const WALKING_TOUR_READY_STATUSES = new Set<SplatAsset["status"]>([
-  "REGISTERED",
-  "UPLOADED",
-  "PROCESSING"
-]);
-
+// 워킹뷰 딱지는 실제 1인칭 Splat 투어가 준비된 자산에만 노출한다.
 function hasWalkingTourAsset(assets: SplatAsset[]): boolean {
-  return assets.some((asset) => WALKING_TOUR_READY_STATUSES.has(asset.status));
+  return assets.some((asset) => asset.status === "REGISTERED");
 }
+
+// 가격 게이지바 상한(만원) — 슬라이더 우측 끝 = 제한 없음.
 const PRICE_DEPOSIT_LIMIT = 50000; // 보증금 5억
 const PRICE_MONTHLY_LIMIT = 200; // 월세 200만
 

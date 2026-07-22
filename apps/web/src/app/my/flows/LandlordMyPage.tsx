@@ -21,14 +21,15 @@ import {
   emptyOwnerForm,
   initialOwnerListings,
   parseOwnerDraft,
-  saveOwnerDraft
+  saveOwnerDraft,
+  type OwnerFormValues
 } from "@/lib/owner-draft";
 import { listSplatAssetsByListing, requeueSplatAsset } from "@/lib/splat-asset-api";
 import { startTourUpload } from "@/lib/tour-upload-store";
 import { pickListingSplatAsset } from "@/lib/owner-tour-assets";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus } from "@roomlog/types";
-import { listingRoomTypes, optionItems } from "@/lib/listing-catalog";
+import { hasSavedFloorPlan3D, listingRoomTypes, optionItems, type TradeListing } from "@/lib/listing-catalog";
 import { clearOwnerPhotos, loadOwnerPhotos, saveOwnerPhotos } from "@/lib/owner-photo-store";
 import {
   buildRoomlogMitunetEditorPath,
@@ -345,6 +346,31 @@ function writeListingFloorPlanSnapshot(snapshot: ListingFloorPlan3D, requestId: 
   window.localStorage.setItem(getListingFloorPlanStorageKey(requestId), JSON.stringify(storageSnapshot));
 }
 
+function extractMoveInDate(description: string | undefined): string {
+  const match = description?.match(/입주 가능일\s*(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] ?? "";
+}
+
+function tradeListingToOwnerForm(listing: TradeListing): OwnerFormValues {
+  const deposit = String(listing.depositManwon || "");
+  return {
+    title: listing.title,
+    buildingName: listing.buildingName ?? "",
+    address: listing.location,
+    detailAddress: listing.detailAddress ?? "",
+    tradeType: listing.tradeType,
+    roomType: listing.roomType || "원룸",
+    moveIn: extractMoveInDate(listing.description),
+    deposit: listing.tradeType === "전세" ? "" : deposit,
+    monthly: String(listing.monthlyRentManwon || ""),
+    jeonse: listing.tradeType === "전세" ? deposit : "",
+    maintenance: listing.maintenanceFeeManwon != null ? String(listing.maintenanceFeeManwon) : "",
+    area: listing.exclusiveAreaM2 != null ? String(listing.exclusiveAreaM2) : "",
+    floor: listing.floorInfo ?? "",
+    options: Array.isArray(listing.options) ? listing.options : []
+  };
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("ko-KR")}KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
@@ -353,14 +379,17 @@ function formatFileSize(bytes: number): string {
 export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } = {}) {
   const searchParams = useSearchParams();
   const editListingId = searchParams.get("listingId");
+  const isEditingListing = Boolean(editListingId);
   const returnedFloorPlanRequestId = searchParams.get("floorPlanRequestId")?.trim() || null;
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
   // 선택한 실제 파일(등록 시 업로드) — 초안 저장 대상은 아니다(파일은 직렬화 불가).
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   // 선택 즉시 보이는 미리보기 URL — photoFiles가 바뀌면 이전 objectURL은 회수한다.
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  const allPhotoPreviewUrls = [...existingImageUrls, ...photoPreviewUrls];
   // IndexedDB에서 사진 복원이 끝났는지 — 복원 전에 저장 효과가 돌면 저장분을 지워버리는 경쟁을 막는다.
   const [arePhotosRestored, setArePhotosRestored] = useState(false);
   // 등록 요약 사진 캐러셀의 현재 인덱스, 3D 도면 스냅샷.
@@ -385,12 +414,20 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   }, [photoFiles]);
   // 사진이 줄면 캐러셀 인덱스가 범위를 벗어나지 않게 클램프.
   useEffect(() => {
-    setPhotoIndex((index) => (photoPreviewUrls.length === 0 ? 0 : Math.min(index, photoPreviewUrls.length - 1)));
-  }, [photoPreviewUrls.length]);
+    setPhotoIndex((index) => (allPhotoPreviewUrls.length === 0 ? 0 : Math.min(index, allPhotoPreviewUrls.length - 1)));
+  }, [allPhotoPreviewUrls.length]);
   const removePhotoAt = (index: number) => {
-    const next = photoFiles.filter((_, i) => i !== index);
+    if (index < existingImageUrls.length) {
+      const nextExisting = existingImageUrls.filter((_, i) => i !== index);
+      setExistingImageUrls(nextExisting);
+      setPhotoCount(nextExisting.length + photoFiles.length);
+      setRegistrationStatus("작성 중");
+      return;
+    }
+    const fileIndex = index - existingImageUrls.length;
+    const next = photoFiles.filter((_, i) => i !== fileIndex);
     setPhotoFiles(next);
-    setPhotoCount(next.length);
+    setPhotoCount(existingImageUrls.length + next.length);
   };
   // 사진 추가 — 파일 인풋 onChange와 패널 드롭이 공유하는 병합·중복제거 로직.
   const addPhotoFiles = (incoming: File[]) => {
@@ -400,7 +437,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     const seen = new Set(photoFiles.map(fileKey));
     const merged = [...photoFiles, ...added.filter((file) => !seen.has(fileKey(file)))];
     setPhotoFiles(merged);
-    setPhotoCount(merged.length);
+    setPhotoCount(existingImageUrls.length + merged.length);
     setRegistrationStatus("작성 중");
   };
   const handlePhotoInputChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -687,7 +724,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
 
   // 복원: 반드시 마운트 후에만 localStorage 접근 — SSR 초기 렌더와의 hydration 불일치 방지 (QA 8).
   useEffect(() => {
-    const draft = parseOwnerDraft(window.localStorage.getItem(OWNER_DRAFT_STORAGE_KEY));
+    const draft = isEditingListing ? null : parseOwnerDraft(window.localStorage.getItem(OWNER_DRAFT_STORAGE_KEY));
 
     if (draft) {
       setOwnerForm(draft.ownerForm);
@@ -708,6 +745,12 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     }
 
     // 사진(File)은 IndexedDB에서 복원 — 3D 도면 에디터 왕복(전체 새로고침) 후에도 유지된다.
+    if (isEditingListing) {
+      setArePhotosRestored(true);
+      setIsDraftLoaded(true);
+      return;
+    }
+
     void loadOwnerPhotos().then((files) => {
       if (files.length > 0) {
         setPhotoFiles(files);
@@ -717,7 +760,63 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     });
 
     setIsDraftLoaded(true);
-  }, []);
+  }, [isEditingListing, returnedFloorPlanRequestId]);
+
+  useEffect(() => {
+    if (!editListingId) return;
+
+    let cancelled = false;
+    void fetch("/api/trade/listings?mine=1", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (response.status === 401) throw new Error("unauthorized");
+        if (!response.ok) throw new Error("failed");
+        return (await response.json()) as TradeListing[];
+      })
+      .then((listings) => {
+        if (cancelled) return;
+        const listing = listings.find((item) => item.id === editListingId);
+        if (!listing) {
+          setOwnerToast("수정할 매물 정보를 찾지 못했습니다.");
+          return;
+        }
+
+        setOwnerForm(tradeListingToOwnerForm(listing));
+        const images = Array.isArray(listing.images) ? listing.images.filter(Boolean) : [];
+        setExistingImageUrls(images);
+        setPhotoFiles([]);
+        setPhotoCount(images.length);
+        setGeoCoords(
+          Number.isFinite(listing.lat) && Number.isFinite(listing.lng)
+            ? { lat: listing.lat as number, lng: listing.lng as number }
+            : null
+        );
+        setRegistrationStatus(listing.status || "작성 중");
+
+        if (hasSavedFloorPlan3D(listing.floorPlan)) {
+          const requestId = `edit-${listing.id}`;
+          writeListingFloorPlanSnapshot(listing.floorPlan, requestId);
+          setFloorPlanRequestId(requestId);
+          setFloorPlan3D(listing.floorPlan);
+          setHas3DRoom(true);
+        } else {
+          setFloorPlanRequestId(null);
+          setFloorPlan3D(null);
+          setHas3DRoom(false);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setOwnerToast(
+          error instanceof Error && error.message === "unauthorized"
+            ? "매물을 수정하려면 WOOZU 계정 로그인이 필요합니다."
+            : "기존 매물 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editListingId]);
 
   const openMitunetEditor = () => {
     const requestId = getOrCreateFloorPlanRequestId();
@@ -780,13 +879,15 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   // 사진 선택이 바뀌면 IndexedDB에 반영 — 도면 에디터로 갔다가 돌아와도 사진이 남게.
   // 최초 복원이 끝난 뒤에만 저장한다(복원 전 빈 배열로 저장분을 덮어쓰지 않도록).
   useEffect(() => {
+    if (isEditingListing) return;
     if (!arePhotosRestored) return;
     if (photoFiles.length > 0) void saveOwnerPhotos(photoFiles);
     else void clearOwnerPhotos();
-  }, [arePhotosRestored, photoFiles]);
+  }, [arePhotosRestored, isEditingListing, photoFiles]);
 
   // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
   useEffect(() => {
+    if (isEditingListing) return;
     if (!isDraftLoaded) return;
 
     const savedAt = saveOwnerDraft(window.localStorage, {
@@ -798,7 +899,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
       myListings
     });
     setDraftSavedAt(savedAt);
-  }, [isDraftLoaded, ownerForm, photoCount, has3DRoom, floorPlanRequestId, registrationStatus, myListings]);
+  }, [isDraftLoaded, isEditingListing, ownerForm, photoCount, has3DRoom, floorPlanRequestId, registrationStatus, myListings]);
   const submitOwnerListing = () => {
     // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
     if (isSubmittingListingRef.current) {
@@ -812,30 +913,30 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
 
     isSubmittingListingRef.current = true;
     setIsSubmittingListing(true);
-    // 등록은 서버(/api/trade/listings)로 보낸다 — 다른 계정의 홈 피드에 실제로 노출되고,
-    // 문의가 오면 "받은 문의" 채팅으로 이어진다.
+    // 신규 등록은 POST, 기존 매물 편집은 PATCH로 보낸다.
     void (async () => {
       try {
-        // 1) 사진이 있으면 먼저 업로드해 공개 URL을 확보한다(멀티파트 프록시).
-        let images: string[] = [];
+        // 1) 새 사진 파일이 있으면 먼저 업로드해 공개 URL을 확보한다(멀티파트 프록시).
+        let images: string[] = isEditingListing ? [...existingImageUrls] : [];
         if (photoFiles.length > 0) {
           const form = new FormData();
           photoFiles.forEach((file) => form.append("files", file));
           const uploadRes = await fetch("/api/trade/uploads", { method: "POST", body: form });
           if (uploadRes.status === 401) {
-            setSubmitResult({ ok: false, message: "매물을 등록하려면 WOOZU 계정 로그인이 필요합니다." });
+            setSubmitResult({ ok: false, message: "매물을 저장하려면 WOOZU 계정 로그인이 필요합니다." });
             return;
           }
           if (uploadRes.ok) {
             const uploaded = (await uploadRes.json()) as { images?: string[] };
-            images = Array.isArray(uploaded.images) ? uploaded.images : [];
+            const uploadedImages = Array.isArray(uploaded.images) ? uploaded.images : [];
+            images = [...images, ...uploadedImages];
           } else {
             setSubmitResult({ ok: false, message: "사진 업로드에 실패했습니다. 사진 없이 등록하거나 잠시 후 다시 시도해 주세요." });
             return;
           }
         }
 
-        // 2) 매물 등록 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
+        // 2) 매물 저장 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
         const detailAddress = ownerForm.detailAddress.trim();
         const listingAddress = ownerForm.address.trim();
         const listingCoords = geoCoords ?? await geocodeAddress(listingAddress);
@@ -863,18 +964,23 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
         const floorPlanSnapshot = has3DRoom ? readListingFloorPlanSnapshot(floorPlanRequestId) : null;
         if (floorPlanSnapshot) payload.floorPlan = floorPlanSnapshot;
 
-        const response = await fetch("/api/trade/listings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+        const response = await fetch(
+          isEditingListing && editListingId
+            ? `/api/trade/listings/${encodeURIComponent(editListingId)}`
+            : "/api/trade/listings",
+          {
+            method: isEditingListing ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          }
+        );
 
         if (response.status === 401) {
-          setSubmitResult({ ok: false, message: "매물을 등록하려면 WOOZU 계정 로그인이 필요합니다." });
+          setSubmitResult({ ok: false, message: "매물을 저장하려면 WOOZU 계정 로그인이 필요합니다." });
           return;
         }
         if (!response.ok) {
-          setSubmitResult({ ok: false, message: "매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요." });
+          setSubmitResult({ ok: false, message: isEditingListing ? "매물 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." : "매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요." });
           return;
         }
 
@@ -884,9 +990,10 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
         // 전역 스토어의 백그라운드 업로드로 넘긴다 — 상단 진행바가 진행률을 보여주고,
         // 완료되면 자산이 생겨 TourActionBell이 이어받는다(실패는 진행바 에러 + 벨 FAILED로 커버).
         let splatIntakeNote = "";
-        if (savedListing?.id && tourSourceFile) {
+        const savedListingId = savedListing?.id ?? editListingId ?? null;
+        if (savedListingId && tourSourceFile) {
           startTourUpload({
-            listingId: savedListing.id,
+            listingId: savedListingId,
             title: ownerForm.title,
             address: [ownerForm.address, detailAddress].filter(Boolean).join(" "),
             file: tourSourceFile
@@ -894,29 +1001,37 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           splatIntakeNote = "3D 투어 업로드는 백그라운드에서 계속됩니다 — 상단 진행바에서 확인할 수 있어요.";
         }
 
-        // 등록 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
-        // (파일 참조는 백그라운드 업로드 스토어가 붙잡으므로 여기서 비워도 전송은 계속된다.)
-        setOwnerForm(emptyOwnerForm);
-        setPhotoFiles([]);
-        setPhotoCount(0);
+        if (isEditingListing) {
+          setExistingImageUrls(images);
+          setPhotoFiles([]);
+          setPhotoCount(images.length);
+        } else {
+          // 등록 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
+          // (파일 참조는 백그라운드 업로드 스토어가 붙잡으므로 여기서 비워도 전송은 계속된다.)
+          setOwnerForm(emptyOwnerForm);
+          setPhotoFiles([]);
+          setPhotoCount(0);
+          setHas3DRoom(false);
+          setGeoCoords(null);
+          void clearOwnerPhotos();
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(getListingFloorPlanStorageKey(floorPlanRequestId));
+          }
+          setFloorPlanRequestId(null);
+        }
         setTourSourceFile(null);
         if (tourSourceInputRef.current) tourSourceInputRef.current.value = "";
-        setHas3DRoom(false);
-        setGeoCoords(null);
-        void clearOwnerPhotos();
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem(getListingFloorPlanStorageKey(floorPlanRequestId));
-        }
-        setFloorPlanRequestId(null);
         setRegistrationStatus("노출중");
-        const listingSuccessMessage = "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
+        const listingSuccessMessage = isEditingListing
+          ? "매물 정보가 수정됐습니다. 홈 피드와 상세 화면에 반영됩니다."
+          : "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
         // 등록 성공과 투어 접수 결과를 하나의 팝업 메시지로 합친다.
         setSubmitResult({
           ok: true,
           message: splatIntakeNote ? `${listingSuccessMessage} ${splatIntakeNote}` : listingSuccessMessage
         });
       } catch {
-        setSubmitResult({ ok: false, message: "매물 등록에 실패했습니다. 네트워크를 확인해 주세요." });
+        setSubmitResult({ ok: false, message: isEditingListing ? "매물 수정에 실패했습니다. 네트워크를 확인해 주세요." : "매물 등록에 실패했습니다. 네트워크를 확인해 주세요." });
       } finally {
         isSubmittingListingRef.current = false;
         setIsSubmittingListing(false);
@@ -985,11 +1100,6 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               <p role="status">이 매물에 접수된 3D 투어 자산이 없습니다.</p>
             )}
 
-            {/* TODO(kjw): 매물 메타데이터(제목·가격·주소·사진) 수정은 이 폼의 create(POST) 흐름과 충돌해 이번엔 보류.
-                아래 폼은 새 매물 등록용이며, 이 화면의 목적은 위 3D 재작업이다. 전체 편집은 관리 화면으로 유도한다. */}
-            <a className="summary-media-btn summary-media-btn--ghost" href="/manager/listing">
-              매물 정보(제목·가격·사진) 전체 수정은 관리 화면에서 →
-            </a>
           </section>
         ) : null}
 
@@ -998,7 +1108,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           <section className="owner-card owner-lane-form">
             <div className="form-heading">
               <div>
-                <h3 id="owner-registration-title" className="owner-form-title">매물등록</h3>
+                <h3 id="owner-registration-title" className="owner-form-title">{isEditingListing ? "매물 수정" : "매물등록"}</h3>
               </div>
             </div>
 
@@ -1165,27 +1275,27 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 드롭은 상태와 무관하게 항상 동작(있어도 병합) — 핸들러가 패널 자체에 붙어 있다. */}
             <div className="summary-media-col">
               <figure
-                className={`summary-media-card summary-media-photos${photoPreviewUrls.length > 0 ? "" : " is-empty"}${isPhotoDragOver ? " is-dragover" : ""}`}
+                className={`summary-media-card summary-media-photos${allPhotoPreviewUrls.length > 0 ? "" : " is-empty"}${isPhotoDragOver ? " is-dragover" : ""}`}
                 aria-label="등록한 사진 미리보기"
                 onDragOver={handlePhotoDragOver}
                 onDragLeave={handlePhotoDragLeave}
                 onDrop={handlePhotoDrop}
               >
-                {photoPreviewUrls.length > 0 ? (
+                {allPhotoPreviewUrls.length > 0 ? (
                   <>
                     {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={photoPreviewUrls[Math.min(photoIndex, photoPreviewUrls.length - 1)]}
-                      alt={`매물 사진 ${Math.min(photoIndex, photoPreviewUrls.length - 1) + 1}`}
+                      src={allPhotoPreviewUrls[Math.min(photoIndex, allPhotoPreviewUrls.length - 1)]}
+                      alt={`매물 사진 ${Math.min(photoIndex, allPhotoPreviewUrls.length - 1) + 1}`}
                     />
-                    {photoPreviewUrls.length > 1 ? (
+                    {allPhotoPreviewUrls.length > 1 ? (
                       <>
                         <button
                           type="button"
                           className="summary-media-nav prev"
                           aria-label="이전 사진"
-                          onClick={() => setPhotoIndex((index) => (index - 1 + photoPreviewUrls.length) % photoPreviewUrls.length)}
+                          onClick={() => setPhotoIndex((index) => (index - 1 + allPhotoPreviewUrls.length) % allPhotoPreviewUrls.length)}
                         >
                           ‹
                         </button>
@@ -1193,12 +1303,12 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                           type="button"
                           className="summary-media-nav next"
                           aria-label="다음 사진"
-                          onClick={() => setPhotoIndex((index) => (index + 1) % photoPreviewUrls.length)}
+                          onClick={() => setPhotoIndex((index) => (index + 1) % allPhotoPreviewUrls.length)}
                         >
                           ›
                         </button>
                         <span className="summary-media-count">
-                          {Math.min(photoIndex, photoPreviewUrls.length - 1) + 1} / {photoPreviewUrls.length}
+                          {Math.min(photoIndex, allPhotoPreviewUrls.length - 1) + 1} / {allPhotoPreviewUrls.length}
                         </span>
                       </>
                     ) : null}
@@ -1212,9 +1322,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
                 )}
               </figure>
 
-              {photoPreviewUrls.length > 0 ? (
+              {allPhotoPreviewUrls.length > 0 ? (
                 <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
-                  {photoPreviewUrls.map((url, index) => (
+                  {allPhotoPreviewUrls.map((url, index) => (
                     <figure key={url}>
                       {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1347,15 +1457,17 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           </aside>
         </div>
 
-        <p className="owner-submit-note">등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
+        <p className="owner-submit-note">
+          {isEditingListing ? "수정하면 홈 피드와 상세 화면의 매물 정보가 갱신됩니다." : "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다."}
+        </p>
         <button className="submit-listing" type="button" onClick={submitOwnerListing} disabled={isSubmittingListing} aria-busy={isSubmittingListing}>
           {isSubmittingListing ? (
             <>
               <span className="btn-spinner" aria-hidden="true" />
-              등록 처리 중…
+              {isEditingListing ? "수정 처리 중…" : "등록 처리 중…"}
             </>
           ) : (
-            "매물 등록하기"
+            isEditingListing ? "매물 수정하기" : "매물 등록하기"
           )}
         </button>
       </form>
@@ -1404,7 +1516,15 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
             <span className="listing-result-icon" aria-hidden="true">
               {submitResult.ok ? <CheckCircle2 size={30} strokeWidth={2.2} /> : <CircleAlert size={30} strokeWidth={2.2} />}
             </span>
-            <h2 id="listing-result-title">{submitResult.ok ? "매물 등록 완료" : "매물 등록 실패"}</h2>
+            <h2 id="listing-result-title">
+              {submitResult.ok
+                ? isEditingListing
+                  ? "매물 수정 완료"
+                  : "매물 등록 완료"
+                : isEditingListing
+                  ? "매물 수정 실패"
+                  : "매물 등록 실패"}
+            </h2>
             <p id="listing-result-desc">{submitResult.message}</p>
             <button type="button" onClick={closeSubmitResult}>
               {submitResult.ok ? "홈 피드에서 확인하기" : "닫기"}

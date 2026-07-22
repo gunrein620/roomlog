@@ -6,7 +6,7 @@ import {
   updateManagerContractManualValues,
 } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
-import { ApiError } from "@/lib/server-api";
+import { ApiError, serverFetch } from "@/lib/server-api";
 import { getUser } from "@/lib/session";
 import { ContractShell, PageStack } from "../_components";
 import {
@@ -16,6 +16,17 @@ import {
 } from "./ContractRegisterForm";
 
 export const dynamic = "force-dynamic";
+
+type OwnerTradeListing = {
+  roomId?: string;
+};
+
+type ManagedRoom = {
+  id: string;
+  buildingName?: string;
+  roomNo?: string;
+  address?: string;
+};
 
 async function createContractAction(
   _state: ContractRegisterActionState,
@@ -94,12 +105,7 @@ async function createContractAction(
 
 export default async function Page() {
   const user = await getUser();
-  const managedRooms: ManagedContractRoomOption[] = (user?.managedRooms ?? []).map((room) => ({
-    id: room.id,
-    buildingName: room.buildingName || "이름 미입력 건물",
-    roomNo: room.roomNo || "-",
-    address: room.address || "",
-  }));
+  const managedRooms = await visibleContractRooms(user?.managedRooms ?? []);
 
   return (
     <ContractShell id="M-DOC-02" title="계약서 등록">
@@ -108,6 +114,34 @@ export default async function Page() {
       </PageStack>
     </ContractShell>
   );
+}
+
+async function visibleContractRooms(
+  rooms: readonly ManagedRoom[],
+): Promise<ManagedContractRoomOption[]> {
+  const currentListingRoomIds = await currentOwnerListingRoomIds();
+
+  return rooms
+    .filter((room) => currentListingRoomIds.has(room.id))
+    .map((room) => ({
+      id: room.id,
+      buildingName: room.buildingName || "이름 미입력 건물",
+      roomNo: room.roomNo || "-",
+      address: room.address || "",
+    }));
+}
+
+async function currentOwnerListingRoomIds(): Promise<Set<string>> {
+  try {
+    const listings = await serverFetch<OwnerTradeListing[]>("/trade/listings?mine=1");
+    return new Set(
+      listings
+        .map((listing) => listing.roomId?.trim())
+        .filter((roomId): roomId is string => Boolean(roomId)),
+    );
+  } catch {
+    return new Set<string>();
+  }
 }
 
 function textValue(formData: FormData, name: string) {

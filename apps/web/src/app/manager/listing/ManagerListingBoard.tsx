@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { Badge, Card } from "@roomlog/ui";
 import { isDialogBackdropPoint } from "@/lib/manager-assistant";
+import { buildRoomlogMitunetEditorPath } from "@/lib/mitunet-floor-plan";
 import {
   removeManagerListing,
   terminateManagerListingContract,
@@ -68,6 +69,16 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function floorPlanStatusLabel(floorPlan: ManagerListingFloorPlan | null) {
+  if (!floorPlan) return "연결된 3D 도면이 없습니다.";
+  if (floorPlan.walls3D.length > 0) return `${floorPlan.walls3D.length}개 벽 연결됨`;
+  return "3D 도면 연결됨";
+}
+
+function managerFloorPlanRequestId(listingId: string) {
+  return `manager-listing-${listingId}`;
+}
+
 export function ManagerListingBoard({
   initialListings,
   activeStatus,
@@ -86,8 +97,14 @@ export function ManagerListingBoard({
   const [newPhotoPreviewUrls, setNewPhotoPreviewUrls] = useState<string[]>([]);
   const [floorPlanDraft, setFloorPlanDraft] = useState<ManagerListingFloorPlan | null>(null);
   const [mediaMessage, setMediaMessage] = useState<string | null>(null);
+  const [roomlogOrigin, setRoomlogOrigin] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const selected = listings.find((listing) => listing.id === selectedId) ?? null;
+  const selectedFloorPlanRequestId = selected ? managerFloorPlanRequestId(selected.id) : null;
+
+  useEffect(() => {
+    setRoomlogOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     const urls = newPhotoFiles.map((file) => URL.createObjectURL(file));
@@ -96,13 +113,13 @@ export function ManagerListingBoard({
   }, [newPhotoFiles]);
 
   useEffect(() => {
-    if (mode !== "edit") return;
+    if (mode !== "edit" || !selectedFloorPlanRequestId) return;
     const syncFloorPlan = () => {
       if (document.visibilityState !== "visible") return;
-      const snapshot = readManagerListingFloorPlanSnapshot();
+      const snapshot = readManagerListingFloorPlanSnapshot(window.localStorage, selectedFloorPlanRequestId);
       if (!snapshot) return;
       setFloorPlanDraft(snapshot);
-      setMediaMessage(`3D 도면 ${snapshot.walls3D.length}개 벽을 연결했습니다.`);
+      setMediaMessage(`${floorPlanStatusLabel(snapshot)}.`);
       setError(null);
     };
     window.addEventListener("focus", syncFloorPlan);
@@ -111,7 +128,7 @@ export function ManagerListingBoard({
       window.removeEventListener("focus", syncFloorPlan);
       document.removeEventListener("visibilitychange", syncFloorPlan);
     };
-  }, [mode]);
+  }, [mode, selectedFloorPlanRequestId]);
 
   function openListing(listingId: string) {
     setSelectedId(listingId);
@@ -262,6 +279,9 @@ export function ManagerListingBoard({
     activeStatus === "contracted" ? listing.statusLabel === "계약완료" : listing.statusLabel === "노출중",
   );
   const activeStatusLabel = STATUS_TAB_LABELS[activeStatus];
+  const managerFloorPlanEditorPath = selectedFloorPlanRequestId && roomlogOrigin
+    ? buildRoomlogMitunetEditorPath(roomlogOrigin, selectedFloorPlanRequestId)
+    : "/floor-plan-3d/mitunet";
 
   return (
     <>
@@ -478,11 +498,11 @@ export function ManagerListingBoard({
                     <div className={styles.sectionHeader}>
                       <div>
                         <h3 id="manager-listing-floor-plan-title">3D 도면</h3>
-                        <p>{floorPlanDraft ? `${floorPlanDraft.walls3D.length}개 벽 연결됨` : "연결된 3D 도면이 없습니다."}</p>
+                        <p>{floorPlanStatusLabel(floorPlanDraft)}</p>
                       </div>
                     </div>
                     <div className={styles.mediaActions}>
-                      <Link href="/floor-plan-3d" target="_blank" rel="noopener" className={styles.mediaLink}>
+                      <Link href={managerFloorPlanEditorPath} target="_blank" rel="noopener" className={styles.mediaLink}>
                         3D 도면 다시 열기
                       </Link>
                       <label className={styles.fileButton}>

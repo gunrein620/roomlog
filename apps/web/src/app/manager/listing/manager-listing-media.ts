@@ -1,3 +1,5 @@
+import { normalizeMitunetPayload, type MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
+
 export const MAX_MANAGER_LISTING_PHOTOS = 10;
 export const MANAGER_LISTING_FLOOR_PLAN_STORAGE_KEY = "roomlogListingFloorPlan3D";
 
@@ -15,6 +17,7 @@ export interface ManagerListingFloorPlan {
   walls3D: ManagerListingFloorPlanWall[];
   furnitures: Array<Record<string, unknown>>;
   name?: string;
+  mitunet?: MitunetFloorPlan;
 }
 
 export interface ManagerListingPhotoSelection {
@@ -71,16 +74,20 @@ export function normalizeManagerListingFloorPlan(value: unknown): ManagerListing
     nameSource = value.name ?? room3d?.name;
   }
 
-  if (!Array.isArray(wallsSource)) return null;
-  const walls3D = wallsSource
-    .map(normalizeWall)
-    .filter((wall): wall is ManagerListingFloorPlanWall => wall !== null);
-  if (walls3D.length === 0) return null;
+  const mitunet = isRecord(value) ? normalizeMitunetPayload(value.mitunet) : null;
+  if (!Array.isArray(wallsSource) && !mitunet) return null;
+  const walls3D = Array.isArray(wallsSource)
+    ? wallsSource
+      .map(normalizeWall)
+      .filter((wall): wall is ManagerListingFloorPlanWall => wall !== null)
+    : [];
+  if (walls3D.length === 0 && !mitunet) return null;
 
   return {
     walls3D,
     furnitures: Array.isArray(furnituresSource) ? furnituresSource.filter(isRecord) : [],
     ...(typeof nameSource === "string" && nameSource.trim() ? { name: nameSource.trim() } : {}),
+    ...(mitunet ? { mitunet } : {}),
   };
 }
 
@@ -94,8 +101,12 @@ export function parseManagerListingFloorPlan(raw: string): ManagerListingFloorPl
 
 export function readManagerListingFloorPlanSnapshot(
   storage: Pick<Storage, "getItem"> | null = typeof window === "undefined" ? null : window.localStorage,
+  requestId?: string | null,
 ): ManagerListingFloorPlan | null {
-  const raw = storage?.getItem(MANAGER_LISTING_FLOOR_PLAN_STORAGE_KEY);
+  const key = requestId?.trim()
+    ? `${MANAGER_LISTING_FLOOR_PLAN_STORAGE_KEY}:${requestId.trim()}`
+    : MANAGER_LISTING_FLOOR_PLAN_STORAGE_KEY;
+  const raw = storage?.getItem(key);
   return raw ? parseManagerListingFloorPlan(raw) : null;
 }
 

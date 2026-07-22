@@ -35,6 +35,9 @@ test("edit mode exposes individual photo and 3D floor plan controls", () => {
   assert.match(component, /aria-label=\{`사진 \$\{index \+ 1\} 삭제`\}/);
   assert.match(component, /accept="\.json,application\/json"/);
   assert.match(component, /target="_blank"/);
+  assert.match(component, /buildRoomlogMitunetEditorPath/);
+  assert.match(component, /managerFloorPlanRequestId/);
+  assert.match(component, /\/floor-plan-3d\/mitunet/);
   assert.match(component, /readManagerListingFloorPlanSnapshot/);
 });
 
