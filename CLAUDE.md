@@ -24,8 +24,9 @@ pnpm docker:prod                     # 프로덕션 compose (docker-compose.prod
 pnpm dev:web / pnpm dev:api          # 호스트에서 개별 프로세스 (Next :3000 / Nest :4000)
 
 pnpm db:generate                     # prisma generate (스키마 변경 후 필수)
-pnpm db:push                         # 스키마 → DB (마이그레이션 히스토리는 db push 베이스라인)
-pnpm db:migrate                      # prisma migrate dev — init 마이그레이션 부재로 재생 불가(부채), 신규 도메인엔 db push 사용
+pnpm db:push                         # 스키마 → 로컬 DB 반영 (⚠️ 프로드엔 안 감 — 아래 마이그레이션 필수)
+pnpm db:migrate                      # prisma migrate dev — init 마이그레이션 부재로 재생 불가(부채)
+bash scripts/check-schema-drift.sh   # schema.prisma ↔ 마이그레이션 드리프트 검사 (CI에서도 강제)
 pnpm seed:vendor-credit-demo         # 업체 크레딧 데모 시드
 ```
 
@@ -72,12 +73,14 @@ bash scripts/verify.sh               # 원커맨드 스모크(types/ui typecheck
 - web `splat-tour`·`floor-plan-3d` 뷰어. 타입은 `packages/types/src/splat-pipeline.ts`.
 
 ## 데이터 모델 (Prisma 7, Postgres 18)
-`prisma/schema.prisma` — 75+ 모델(하자·티켓·수리·비용·빌링·계약·이사정산·메시징·리포트·크레딧/결제·3D). 스키마 변경 후 `pnpm db:generate` 필수, DB엔 `roomlog-postgres` 컨테이너가 떠 있어야 함. 마이그레이션은 db push 베이스라인(migrate dev 재생 불가 — 부채). 프로덕션은 `docker-compose.prod.yml`의 `migration` 서비스가 담당.
+`prisma/schema.prisma` — 75+ 모델(하자·티켓·수리·비용·빌링·계약·이사정산·메시징·리포트·크레딧/결제·3D). 스키마 변경 후 `pnpm db:generate` 필수, DB엔 `roomlog-postgres` 컨테이너가 떠 있어야 함. 프로덕션은 `docker-compose.prod.yml`의 `migration` 서비스(`migrate deploy`)가 담당.
+
+**⚠️ 스키마 변경 = 마이그레이션 파일 필수.** 로컬은 `db push`로 즉시 반영되지만 **프로덕션은 `prisma/migrations/`의 파일만 재생**한다 — 파일 없이 schema.prisma만 바꾸면 배포는 초록불로 통과하고 Prisma가 없는 컬럼을 SELECT해서 해당 도메인 API 전체가 500 난다(20260720 · 20260722 두 번 터진 실사고). 규칙: ① schema.prisma 변경 시 같은 변경분의 SQL을 `prisma/migrations/<timestamp>_<name>/migration.sql`로 추가(개발 DB엔 이미 있을 수 있으니 `ADD COLUMN IF NOT EXISTS` 패턴) ② `bash scripts/check-schema-drift.sh`로 검증(CI `schema-drift.yml`이 PR에서도 강제) ③ raw SQL로 인덱스 등을 만들면 schema.prisma에도 `@@index` 선언을 같이 추가. 빈 DB 전체 재생은 동결 베이스라인 픽스처(`pre-vendor-catalog-baseline.sql`)가 처음 12장을 대체하므로 `migrate-database.mjs` 경유로만 가능하다.
 
 ## 도메인 작업 시 (요약)
 **실배선 레퍼런스 슬라이스**(그대로 따라할 예시): 세입자 하자=`src/app/my/flows/TenantMyPage.tsx`(세입자탭 시트, 클라 fetch → `/api/tenant/*` 프록시), 업체잡=`src/app/vendor/job/**` — Prisma·쿠키인증·데모폴백까지 실제로 돈다.
 1. **좁은 목 먼저**: `packages/types/src/<domain>.ts` 계약 확정 + `index.ts` re-export.
-2. **모델**: `schema.prisma` 추가 → `db push`(또는 migrate) + `db:generate`.
+2. **모델**: `schema.prisma` 추가 → `db push` + `db:generate` + **`prisma/migrations/` 마이그레이션 파일 작성**(위 ⚠️ 규칙 — 안 쓰면 프로드만 깨진다).
 3. **모듈**: core면 `roomlog.controller`/`roomlog.service`(+projector), 독립이면 새 Nest 모듈 → `app.module.ts` 등록. 역할 가드 필수.
 4. **화면 배선**: `src/app/<role>/<domain>/**` → `src/lib/<domain>-api.ts` serverFetch. (공개 표면 기능이면 `HomeApp.tsx` 탭 — 대형 파일이니 컴포넌트 분리 검토.)
 5. **원칙 게이트**: 클라 disabled 버튼이 아니라 **서버에서 강제**.

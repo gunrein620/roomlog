@@ -1,0 +1,60 @@
+# schema.prisma ↔ 마이그레이션 원장 드리프트 게이트.
+#
+# 로컬 개발은 db push(스키마 직행), 프로덕션은 migrate deploy(마이그레이션 파일만 재생)라서
+# 마이그레이션 파일 없이 schema.prisma만 바꾸면 로컬은 되고 프로드만 깨진다(없는 컬럼 SELECT → 500).
+# 반복 사고를 막기 위해 빈 DB에 실제 프로덕션 부트스트랩을 재생한 결과를 schema.prisma와 비교한다.
+# 상세: scripts/check-schema-drift.sh
+name: Schema drift check
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    paths:
+      - "prisma/**"
+      - "apps/api/scripts/migrate-database.mjs"
+      - "scripts/check-schema-drift.sh"
+      - ".github/workflows/schema-drift.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # migrate-database.mjs의 카탈로그 계약이 PostgreSQL 18.x(>=18.3)를 요구한다 — 프로드 RDS와 동일 메이저.
+        image: postgres:18
+        env:
+          POSTGRES_USER: roomlog
+          POSTGRES_PASSWORD: roomlog
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U roomlog -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check schema drift
+        env:
+          ROOMLOG_DRIFT_DATABASE_URL: postgresql://roomlog:roomlog@localhost:5432/roomlog_driftcheck
+        run: bash scripts/check-schema-drift.sh

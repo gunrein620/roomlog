@@ -977,6 +977,8 @@ model VendorEstimate {
 
   @@unique([repairId, version])
   @@index([vendorId, status])
+  // 20260716100000_tenant_vendor_workflow가 raw SQL로 만든 인덱스 — 스키마 선언 누락을 보정(드리프트 정합)
+  @@index([reviewedByTenantId, status])
 }
 
 model VendorEstimateLineItem {
@@ -1042,6 +1044,9 @@ model RepairCompletionDecision {
   paymentAttempts    VendorPaymentAttempt[]
   paymentAuditEvent  VendorPaymentAuditEvent?
   domainEvents       DomainEventOutbox[]
+
+  // 20260716100000_tenant_vendor_workflow가 raw SQL로 만든 인덱스 — 스키마 선언 누락을 보정(드리프트 정합)
+  @@index([tenantId, decidedAt])
 }
 
 model VendorPaymentRequest {
