@@ -9,8 +9,9 @@ name: Schema drift check
 on:
   push:
     branches:
+      # main만 검사한다 — 이 레포는 dev를 main과 같은 커밋으로 동시에 밀어서
+      # dev 트리거는 같은 SHA를 두 번 검사하는 순수 중복이었다(릴리스당 런 3개 → 2개).
       - main
-      - dev
   pull_request:
     paths:
       - "prisma/**"
