@@ -38,6 +38,17 @@ jobs:
 
           ssh-keyscan -p "$SSH_PORT" -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
+          # 도커 빌드 중 EC2(t3.medium)가 스왑 스래싱으로 수십 초씩 무응답이 되면 러너 쪽이
+          # 연결을 포기해 "원격은 배포 완주, Actions만 ❌"가 난다(2026-07-22 Deploy #310).
+          # keepalive를 15초 간격 × 40회(10분)로 늘려 느린 서버를 실패로 오판하지 않게 한다.
+          cat >> ~/.ssh/config <<'SSHCFG'
+          Host *
+            ServerAliveInterval 15
+            ServerAliveCountMax 40
+            TCPKeepAlive yes
+          SSHCFG
+          chmod 600 ~/.ssh/config
+
       - name: Write production environment
         env:
           PROD_ENV: "${{ secrets.PROD_ENV }}"
@@ -446,7 +457,11 @@ jobs:
           echo "Container state before deploy:"
           dump_docker_state
 
-          compose -f docker-compose.prod.yml build web api
+          # web·api를 병렬로 빌드하면 t3.medium(3.7GB)에서 메모리 피크가 겹쳐 스왑 스래싱
+          # (sar 기준 pswpin/out 각 1,400페이지/s)으로 ssh까지 무응답이 된다 — 직렬로 빌드해
+          # 피크를 절반으로 낮춘다. Next 빌드가 제일 무거우니 web을 먼저, 단독으로 돌린다.
+          compose -f docker-compose.prod.yml build web
+          compose -f docker-compose.prod.yml build api
 
           if docker container inspect roomlog-api >/dev/null 2>&1; then
             if [ "$(docker inspect --format '{{.State.Running}}' roomlog-api)" = "true" ]; then
