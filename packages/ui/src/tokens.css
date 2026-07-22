@@ -128,6 +128,7 @@
   /* --- stacking --- */
   --z-floating: 20;
   --z-overlay: 30;
+  --z-modal: 60;
 
   /* --- phone frame --- */
   --phone-w: 390px;

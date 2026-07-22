@@ -50,7 +50,17 @@ export const initialTenantAiAssistantState: TenantAiAssistantStoreState = Object
   busy: false,
 });
 
-const STORAGE_KEY = "tenant-ai-assistant-session-v1";
+const LEGACY_STORAGE_KEY = "tenant-ai-assistant-session-v1";
+const STORAGE_KEY_PREFIX = "tenant-ai-assistant-session-v2";
+
+export type TenantAiAssistantScope = {
+  userId: string;
+  roomId: string;
+};
+
+export function tenantAiAssistantStorageKey(scope: TenantAiAssistantScope) {
+  return `${STORAGE_KEY_PREFIX}:${encodeURIComponent(scope.userId)}:${encodeURIComponent(scope.roomId)}`;
+}
 
 export function parseTenantAiAssistantState(
   raw: string | null,
@@ -86,26 +96,29 @@ function isTenantAiChatMessage(value: unknown): value is TenantAiChatMessage {
   );
 }
 
-function restoreState() {
+function restoreState(storageKey: string) {
   if (typeof window === "undefined") return initialTenantAiAssistantState;
   try {
-    return parseTenantAiAssistantState(window.sessionStorage.getItem(STORAGE_KEY));
+    return parseTenantAiAssistantState(window.sessionStorage.getItem(storageKey));
   } catch {
     return initialTenantAiAssistantState;
   }
 }
 
 function persistState(next: TenantAiAssistantStoreState) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !activeStorageKey) return;
   try {
     const { busy: _busy, ...persistable } = next;
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
+    window.sessionStorage.setItem(activeStorageKey, JSON.stringify(persistable));
   } catch {
     // 저장할 수 없는 브라우저에서도 현재 메모리 세션은 유지한다.
   }
 }
 
-let state = restoreState();
+// 계정을 확인하기 전에는 어떤 브라우저 저장본도 복원하지 않는다. 같은 탭에서
+// 계정을 바꿔도 이전 계정의 대화가 잠깐 보이는 것을 막는다.
+let activeStorageKey: string | null = null;
+let state: TenantAiAssistantStoreState = initialTenantAiAssistantState;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -137,6 +150,43 @@ export function useTenantAiAssistantStore() {
 
 export function getTenantAiAssistantState() {
   return state;
+}
+
+/**
+ * 인증된 사용자와 선택 호실이 확정된 뒤에만 대화를 복원한다.
+ * v1은 소유 계정을 식별할 수 없으므로 의도적으로 마이그레이션하지 않는다.
+ */
+export function activateTenantAiAssistantScope(scope: TenantAiAssistantScope) {
+  const storageKey = tenantAiAssistantStorageKey(scope);
+  if (activeStorageKey === storageKey) return;
+
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // 저장소 접근이 막힌 브라우저는 현재 메모리 세션만 사용한다.
+    }
+  }
+
+  activeStorageKey = storageKey;
+  state = restoreState(storageKey);
+  emit();
+}
+
+/** 로그아웃 시 현재 계정의 브라우저 대화와 메모리 상태를 함께 제거한다. */
+export function clearTenantAiAssistantSession() {
+  if (typeof window !== "undefined") {
+    try {
+      if (activeStorageKey) window.sessionStorage.removeItem(activeStorageKey);
+      window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // 저장소 접근이 막힌 브라우저도 메모리 상태는 초기화한다.
+    }
+  }
+
+  activeStorageKey = null;
+  state = initialTenantAiAssistantState;
+  emit();
 }
 
 export function openTenantAiAssistant() {

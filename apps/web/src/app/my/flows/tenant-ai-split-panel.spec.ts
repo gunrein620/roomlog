@@ -9,6 +9,7 @@ const tenantPageSource = readFileSync(
   "utf8",
 );
 const cssSource = readFileSync(join(root, "src/app/globals.css"), "utf8");
+const tokenSource = readFileSync(join(root, "../../packages/ui/src/tokens.css"), "utf8");
 
 function firstCssRule(selector: string) {
   const start = cssSource.indexOf(`${selector} {`);
@@ -35,7 +36,7 @@ describe("tenant AI split panel", () => {
     assert.match(firstCssRule(".tenant-ai-assistant-panel"), /right:\s*0/);
     assert.match(
       firstCssRule(".tenant-ai-assistant-panel"),
-      /z-index:\s*var\(--z-overlay\)/,
+      /z-index:\s*var\(--z-modal\)/,
     );
   });
 
@@ -43,7 +44,7 @@ describe("tenant AI split panel", () => {
     assert.match(cssSource, /@media \(max-width:\s*1024px\)/);
     assert.match(
       cssSource,
-      /@media \(max-width:\s*1024px\)[\s\S]*\.tenant-ai-assistant-panel\s*\{[\s\S]*inset:\s*0[\s\S]*z-index:\s*var\(--z-overlay\)/,
+      /@media \(max-width:\s*1024px\)[\s\S]*\.tenant-ai-assistant-panel\s*\{[\s\S]*inset:\s*0[\s\S]*z-index:\s*var\(--z-modal\)/,
     );
     assert.match(
       cssSource,
@@ -63,5 +64,10 @@ describe("tenant AI split panel", () => {
       cssSource,
       /\.tenant-ai-workspace--open[\s\S]*\.notification-sheet-backdrop[\s\S]*right:\s*var\(--tenant-ai-panel-width\)/,
     );
+  });
+
+  it("stacks the assistant above the desktop top bar so its close control receives clicks", () => {
+    assert.match(tokenSource, /--z-modal:\s*60;/);
+    assert.match(firstCssRule(".tenant-ai-assistant-panel"), /z-index:\s*var\(--z-modal\)/);
   });
 });

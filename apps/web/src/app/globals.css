@@ -17209,7 +17209,7 @@ p {
   position: fixed;
   inset-block: 0;
   right: 0;
-  z-index: var(--z-overlay);
+  z-index: var(--z-modal);
   width: min(100%, var(--tenant-ai-panel-width));
   height: 100dvh;
   min-width: 0;
@@ -17350,7 +17350,7 @@ p {
   .tenant-ai-assistant-panel {
     position: fixed;
     inset: 0;
-    z-index: var(--z-overlay);
+    z-index: var(--z-modal);
     width: 100%;
     height: 100dvh;
     padding-bottom: 0;

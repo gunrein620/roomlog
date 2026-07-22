@@ -4530,7 +4530,17 @@ export class RoomlogService implements OnModuleDestroy {
   }
 
   createIntakeSession(tenantId: string, input: CreateIntakeSessionInput = {}) {
-    const roomId = input.roomId ?? this.store.tenantRooms[tenantId] ?? "room-301";
+    const requestedRoomId = input.roomId?.trim();
+    const linkedRooms = this.listTenantRooms(tenantId);
+    const roomId = requestedRoomId ?? this.store.tenantRooms[tenantId] ?? linkedRooms[0]?.roomId;
+
+    if (!roomId) {
+      throw new NotFoundException("임차인 호실을 찾을 수 없습니다.");
+    }
+    if (!linkedRooms.some((room) => room.roomId === roomId)) {
+      throw new ForbiddenException("연결된 호실에만 상담을 시작할 수 있습니다.");
+    }
+
     const createdAt = now();
     const session: IntakeSession = {
       id: id("sess"),
