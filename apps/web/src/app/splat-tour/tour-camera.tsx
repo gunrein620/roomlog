@@ -35,11 +35,18 @@ export interface TourMoveInput {
   strafe: number;
 }
 
+// "현재 시점을 기본으로 저장" 버튼이 클릭 시점에 읽는 pose 형태 — SpawnView(tour-types.ts)와 같은 shape.
+export interface TourCameraPose {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
 export function TourCamera({
   presets,
   activeId,
   onArrive,
   onCameraMove,
+  onPoseChange,
   walkBounds = null,
   spawnView = null,
   moveInputRef = null
@@ -49,11 +56,16 @@ export function TourCamera({
   onArrive?: (id: string) => void;
   // 미니맵 위치점용 — 카메라가 바닥평면에서 움직일 때(임계 초과) 월드 좌표를 보고한다.
   onCameraMove?: (position: [number, number, number]) => void;
+  // "현재 시점을 기본으로 저장" 버튼용 — 매 프레임 현재 pose를 보고한다. 부모가 state가 아니라
+  // ref에만 담아두므로(예: currentPoseRef.current = pose) 매 프레임 호출돼도 리렌더가 없다.
+  onPoseChange?: (pose: TourCameraPose) => void;
   // 실도면 경계(있으면) — 걷기 이동을 이 안으로 클램프. 없으면 넉넉한 폴백 박스(createWalkClipBox).
   walkBounds?: PlanBounds | null;
   // 투어가 열릴 때 스냅할 초기 시점. 프리셋(현관/방중앙/창가)과 별개 — activeId가 어떤
-  // 프리셋과도 안 맞을 때(스폰 상태)만 마운트 1회 적용한다. null이면 기존 프리셋 스폰 유지.
-  spawnView?: { position: [number, number, number]; target: [number, number, number] } | null;
+  // 프리셋과도 안 맞을 때(스폰 상태)만 마운트 1회 적용한다. null이면 아직 결정 전(스냅 보류) —
+  // 부모가 자산별 spawnView 로딩을 마치기 전까지는 null을 유지해 폴백값이 먼저 적용됐다가
+  // 실제 값으로 덮어써지지 못하는 경합을 피한다(스냅은 spawnAppliedRef로 평생 1회뿐).
+  spawnView?: TourCameraPose | null;
   // 모바일 조이스틱의 아날로그 이동 입력(부모가 ref.current를 갱신). RAF 루프가 매 프레임 읽어
   // WASD 방향에 더한다. 데스크탑은 WASD, 모바일은 조이스틱 — 서로 다른 채널이라 충돌 없이 합산.
   moveInputRef?: { current: TourMoveInput } | null;
@@ -72,6 +84,7 @@ export function TourCamera({
   const frameMoveRef = useRef(new Vector3());
   const walkClipBox = useMemo(() => createWalkClipBox(walkBounds), [walkBounds]);
   const reportPositionRef = useRef(new Vector3());
+  const reportTargetRef = useRef(new Vector3());
   const lastReportedRef = useRef<[number, number, number] | null>(null);
 
   useEffect(() => {
@@ -241,17 +254,28 @@ export function TourCamera({
   // 바닥평면 이동을 임계(2cm) 초과 시에만 보고 — 매 프레임 setState 리렌더 방지.
   useFrame(() => {
     const controls = controlsRef.current;
-    if (!controls || !onCameraMove) return;
+    if (!controls) return;
 
-    const position = controls.getPosition(reportPositionRef.current, false);
-    const last = lastReportedRef.current;
-    if (last && Math.abs(last[0] - position.x) < 0.02 && Math.abs(last[2] - position.z) < 0.02) {
-      return;
+    if (onCameraMove) {
+      const position = controls.getPosition(reportPositionRef.current, false);
+      const last = lastReportedRef.current;
+      if (!last || Math.abs(last[0] - position.x) >= 0.02 || Math.abs(last[2] - position.z) >= 0.02) {
+        const next: [number, number, number] = [position.x, position.y, position.z];
+        lastReportedRef.current = next;
+        onCameraMove(next);
+      }
     }
 
-    const next: [number, number, number] = [position.x, position.y, position.z];
-    lastReportedRef.current = next;
-    onCameraMove(next);
+    // "현재 시점 저장" 버튼은 클릭 시점의 최신값만 필요하다 — 부모가 ref로만 받으므로 매 프레임
+    // 호출해도 리렌더 비용이 없다(위 onCameraMove와 달리 임계 게이트를 두지 않는다).
+    if (onPoseChange) {
+      const position = controls.getPosition(reportPositionRef.current, false);
+      const target = controls.getTarget(reportTargetRef.current, false);
+      onPoseChange({
+        position: [position.x, position.y, position.z],
+        target: [target.x, target.y, target.z]
+      });
+    }
   });
 
   // 스폰 스냅: 프리셋 전환과 별개로, 투어가 열릴 때 지정 시점으로 한 번 순간이동한다.

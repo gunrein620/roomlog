@@ -4,12 +4,12 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { Armchair, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
+import { Armchair, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
 import { TourJoystick, type TourJoystickVector } from "./tour-joystick";
-import type { TourMoveInput } from "./tour-camera";
+import type { TourCameraPose, TourMoveInput } from "./tour-camera";
 import { SplatDropzone } from "./splat-dropzone";
 import { listingTourFurnitureStorageKey, loadViewerFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
 import { SplatFurnitureLayer } from "./splat-furniture-layer";
@@ -38,7 +38,8 @@ import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { normalizeWorldToMinimap } from "./tour-minimap-geometry";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
-import { getSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
+import { getSplatAsset, resolveAssetFileUrl, updateSplatAssetSpawnView } from "@/lib/splat-asset-api";
+import { resolveTourSpawnView } from "./tour-spawn-view";
 import {
   FURNITURE_CATALOG,
   furnitureCategoryLabel,
@@ -47,7 +48,7 @@ import {
   loadGlbDatasetCatalog
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture } from "../floor-plan-3d/room-model/types";
-import type { SplatTransform } from "./tour-types";
+import type { SpawnView, SplatTransform } from "./tour-types";
 
 // cap2_sharp.spz: 자체 캡처앱(capture-ios) 촬영본의 샤픈 산출 SPZ(756K 가우시안). 배치는 같은
 // basename의 cap2_sharp.tuning.json이 담당한다 — auto fit(폰 캡처는 미터 스케일 미보정이라 native
@@ -57,7 +58,9 @@ const SPLAT_SRC = "/samples/cap2_sharp.spz";
 
 // 투어가 열릴 때의 초기 시점(방 안쪽 소파 구역). 프리셋 버튼(현관/방중앙/창가)과 별개이며,
 // cap2_sharp 배치에서 실측한 카메라 포즈다(라이브 컨트롤에서 getPosition/getTarget으로 캡처).
-const SPAWN_VIEW: { position: [number, number, number]; target: [number, number, number] } = {
+// 자산별 spawnView(SplatAsset.spawnView)가 없을 때의 폴백 — 샘플 splat(자산 없이 여는 경우)은
+// 항상 이 값을 쓴다. 소유자가 저장한 값이 있으면 그게 이 상수를 대신한다(resolveTourSpawnView).
+const SPAWN_VIEW: SpawnView = {
   position: [-0.304, 1.45, -0.731],
   target: [0.22, 0.477, -2.505]
 };
@@ -84,12 +87,21 @@ function worldToMinimapPercent(x: number, z: number, bounds: PlanBounds | null):
   };
 }
 
-export default function TourViewer() {
+export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = {}) {
   const objectUrlRef = useRef<string | null>(null);
   const [src, setSrc] = useState(SPLAT_SRC);
   const [acceptedFileName, setAcceptedFileName] = useState("");
   // 스폰은 프리셋이 아니라 SPAWN_VIEW가 담당 — 시작 시엔 어떤 프리셋도 활성 아님(빈 문자열).
   const [activeId, setActiveId] = useState("");
+  // ?asset= 자산 id — 로드 후 "현재 시점을 기본으로 저장" 호출 대상. 자산 없이 연 샘플 투어면 null.
+  const [assetId, setAssetId] = useState<string | null>(null);
+  // 투어 진입 스폰 시점. null이면 아직 결정 전(자산 조회 대기) — TourCamera는 null을 스냅 보류로
+  // 해석한다(spawnAppliedRef가 평생 1회만 적용하므로, 결정 전에 폴백을 먼저 넣으면 나중에 온
+  // 실제 값으로 덮어쓰지 못한다). 자산이 없으면 즉시 SPAWN_VIEW로, 있으면 응답을 기다린다.
+  const [spawnView, setSpawnView] = useState<SpawnView | null>(null);
+  const [spawnSaveStatus, setSpawnSaveStatus] = useState<string | null>(null);
+  // 버튼 클릭 시점에 읽을 최신 카메라 pose. TourCamera가 매 프레임 갱신하지만 ref라 리렌더는 없다.
+  const currentPoseRef = useRef<TourCameraPose | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoadingVisible, setIsLoadingVisible] = useState(true);
   const [showHint, setShowHint] = useState(true);
@@ -223,6 +235,30 @@ export default function TourViewer() {
   const handleJoystickChange = useCallback((vector: TourJoystickVector | null) => {
     moveInputRef.current = vector ?? { forward: 0, strafe: 0 };
   }, []);
+
+  // "현재 시점 저장" 버튼이 클릭 시점에 읽을 최신 pose를 ref에만 담는다(매 프레임 호출돼도 리렌더 없음).
+  const handlePoseChange = useCallback((pose: TourCameraPose) => {
+    currentPoseRef.current = pose;
+  }, []);
+
+  async function handleSaveSpawnView() {
+    if (!assetId) return;
+    const pose = currentPoseRef.current;
+    if (!pose) {
+      setSpawnSaveStatus("아직 카메라 위치를 읽지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+
+    setSpawnSaveStatus("저장 중…");
+    try {
+      const updated = await updateSplatAssetSpawnView(assetId, pose);
+      setSpawnView(resolveTourSpawnView(updated.spawnView, SPAWN_VIEW));
+      setSpawnSaveStatus("현재 시점을 이 매물의 기본 시점으로 저장했습니다.");
+    } catch (error) {
+      console.warn("[splat-tour] spawn-view 저장 실패", error);
+      setSpawnSaveStatus("저장에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  }
 
   function handleFurnitureCategoryScroll() {
     syncFurnitureCategoryScroll();
@@ -360,6 +396,8 @@ export default function TourViewer() {
     return () => query.removeEventListener("change", update);
   }, []);
 
+  // Canvas 최초 정적 카메라 위치 — TourCamera가 spawnView(state)로 스냅하기 전까지의 임시값이라
+  // 항상 폴백 상수를 쓴다(로딩 오버레이 뒤에 가려지므로 자산별 값과 달라도 보이지 않는다).
   const initialCamera: [number, number, number] = SPAWN_VIEW.position;
 
   const handleAcceptSplat = useCallback((url: string, fileName: string) => {
@@ -385,7 +423,12 @@ export default function TourViewer() {
   // "정합 저장 → 투어 링크 공유"의 뷰어 쪽 진입로. 실패 시 기본 샘플로 폴백.
   useEffect(() => {
     const assetId = new URLSearchParams(window.location.search).get("asset");
-    if (!assetId) return;
+    setAssetId(assetId);
+    if (!assetId) {
+      // 자산 연결이 없는 샘플 투어 — 결정할 것이 없으니 즉시 폴백 상수로 스폰을 확정한다.
+      setSpawnView(SPAWN_VIEW);
+      return;
+    }
 
     let cancelled = false;
     getSplatAsset(assetId)
@@ -397,6 +440,9 @@ export default function TourViewer() {
         setServerCaptureFloorPlan(asset.captureFloorPlan);
         // 가구 배치 저장 키를 매물별로 가르기 위해 자산의 매물 연결을 붙든다.
         setAssetListingId(asset.listingId);
+        // 저장된 스폰 시점(있으면)을 검증해 채택 — 무효/없음이면 폴백. 자산 상태(PROCESSING/FAILED)와
+        // 무관하게 여기서 확정해둔다(재시도 후 같은 컴포넌트가 살아남아도 스냅 대상이 이미 준비돼 있게).
+        setSpawnView(resolveTourSpawnView(asset.spawnView, SPAWN_VIEW));
         // PROCESSING: 아직 spz가 없다(fileUrl 빈 문자열). 예전엔 여기서 샘플로 조용히 폴백됐지만,
         // 그 은폐를 걷어내고 "제작 중" 안내를 전면에 띄운다.
         if (asset.status === "PROCESSING") {
@@ -443,6 +489,7 @@ export default function TourViewer() {
         if (cancelled) return;
         // 조회 자체 실패 — 샘플 폴백은 유지하되 배너로 사용자에게 알린다.
         setAssetNotice("load-error");
+        setSpawnView(SPAWN_VIEW);
         console.warn("[splat-tour] asset load failed — 기본 샘플로 폴백", error);
       });
 
@@ -462,6 +509,13 @@ export default function TourViewer() {
       window.clearTimeout(hintTimer);
     };
   }, [isLoaded]);
+
+  // "현재 시점 저장" 결과 배너 자동 소멸 — furnitureCatalogStatus와 달리 이건 일회성 토스트다.
+  useEffect(() => {
+    if (!spawnSaveStatus) return;
+    const timer = window.setTimeout(() => setSpawnSaveStatus(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [spawnSaveStatus]);
 
   useEffect(() => {
     return () => {
@@ -580,6 +634,28 @@ export default function TourViewer() {
             position: absolute;
             z-index: 6;
             top: 16px;
+            left: 50%;
+            max-width: calc(100% - 32px);
+            transform: translateX(-50%);
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 8px 16px;
+            background: color-mix(in srgb, var(--paper) 92%, transparent);
+            box-shadow: var(--shadow);
+            color: var(--ink);
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.2;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            backdrop-filter: blur(12px);
+          }
+
+          .tour-spawn-save-banner {
+            position: absolute;
+            z-index: 6;
+            bottom: 66px;
             left: 50%;
             max-width: calc(100% - 32px);
             transform: translateX(-50%);
@@ -1243,8 +1319,9 @@ export default function TourViewer() {
           moveInputRef={moveInputRef}
           onArrive={setActiveId}
           onCameraMove={handleCameraMove}
+          onPoseChange={isOwner ? handlePoseChange : undefined}
           presets={[]}
-          spawnView={SPAWN_VIEW}
+          spawnView={spawnView}
           walkBounds={planBounds}
         />
       </Canvas>
@@ -1464,6 +1541,12 @@ export default function TourViewer() {
         ) : null}
       </div>
 
+      {spawnSaveStatus ? (
+        <p className="tour-spawn-save-banner" role="status">
+          {spawnSaveStatus}
+        </p>
+      ) : null}
+
       <div role="group" aria-label="3D 투어 옵션" className="tour-preset-bar">
         <button
           aria-expanded={isFurnitureCatalogOpen}
@@ -1475,6 +1558,14 @@ export default function TourViewer() {
           <Armchair aria-hidden size={16} strokeWidth={2.4} />
           <span>가구</span>
         </button>
+        {/* 자산 소유자에게만 노출 — 서버(page.tsx)가 판정한 isOwner를 그대로 신뢰한다.
+            비소유자가 URL을 조작해 눌러도 서버 소유권 검사(assertAssetOwner)가 막는다. */}
+        {isOwner && assetId ? (
+          <button className="tour-walk-toggle" onClick={handleSaveSpawnView} type="button">
+            <Camera aria-hidden size={16} strokeWidth={2.4} />
+            <span>현재 시점을 기본으로 저장</span>
+          </button>
+        ) : null}
       </div>
     </div>
   );

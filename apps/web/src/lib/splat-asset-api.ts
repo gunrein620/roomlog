@@ -1,4 +1,4 @@
-import type { RegistrationPointPair, SplatTransform } from "@/app/splat-tour/tour-types";
+import type { RegistrationPointPair, SpawnView, SplatTransform } from "@/app/splat-tour/tour-types";
 import type {
   RoomPlanCaptureFloorPlan,
   SplatAssetStatus,
@@ -27,6 +27,8 @@ export interface SplatAsset {
   status: SplatAssetStatus;
   transform: SplatTransform | null;
   registrationPairs: RegistrationPointPair[] | null;
+  /** 자산별 투어 진입 초기 카메라 시점. 소유자가 저장, null이면 뷰어가 SPAWN_VIEW 상수로 폴백. 미검증 JSON이라 웹에서 resolveTourSpawnView로 거른다. */
+  spawnView?: SpawnView | null;
   /** 공개 뷰어 동봉 가구 — 연결된 도면(floorPlanId)/매물 스냅샷의 furnitures. 미검증 JSON이라 웹에서 isValidPlacedFurniture로 거른다. */
   furnitures?: unknown[] | null;
   /** 공개 뷰어 동봉 벽 — 연결된 도면(floorPlanId)/매물 스냅샷의 벽. 미검증 JSON이라 웹에서 planWallsFromPayload로 거른다. */
@@ -317,6 +319,16 @@ export async function registerSplatAsset(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ transform, registrationPairs, ...(floorPlanId ? { floorPlanId } : {}) })
+  });
+  return asJson<SplatAsset>(response);
+}
+
+/** 자산별 투어 진입 시점 저장 — 소유자가 "현재 시점을 기본으로 저장"을 눌렀을 때 호출한다. */
+export async function updateSplatAssetSpawnView(id: string, spawnView: SpawnView): Promise<SplatAsset> {
+  const response = await fetch(apiUrl(`/splat-assets/${encodeURIComponent(id)}/spawn-view`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ spawnView })
   });
   return asJson<SplatAsset>(response);
 }

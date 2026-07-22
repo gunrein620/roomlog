@@ -34,6 +34,12 @@ export interface CreateSplatAssetInput {
   capturedAt?: string; // ISO 8601
 }
 
+/** SplatAsset.spawnView(Json?) 입력 — web tour-types.ts SpawnView와 같은 shape. */
+export interface SpawnViewInput {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
 export interface RegisterSplatAssetInput {
   transform: SplatTransformInput;
   registrationPairs?: RegistrationPointPairInput[];
@@ -169,6 +175,27 @@ function parsePoint2(value: unknown, field: string): [number, number] {
     throw new BadRequestException(`${field}는 유한한 숫자 2개여야 합니다.`);
   }
   return [x, z];
+}
+
+function parseFiniteVector3(value: unknown, field: string): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new BadRequestException(`${field}는 [x, y, z] 형태의 좌표 3개여야 합니다.`);
+  }
+  const parsed = value.map((v) => Number(v));
+  if (!parsed.every((n) => Number.isFinite(n))) {
+    throw new BadRequestException(`${field}는 유한한 숫자 3개여야 합니다.`);
+  }
+  return [parsed[0], parsed[1], parsed[2]];
+}
+
+/** PATCH :id/spawn-view 입력 검증 — position/target이 유한수 3튜플이 아니면 400. */
+export function parseSpawnViewInput(body: unknown): SpawnViewInput {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  const spawnView = (raw.spawnView ?? {}) as Record<string, unknown>;
+  return {
+    position: parseFiniteVector3(spawnView.position, "spawnView.position"),
+    target: parseFiniteVector3(spawnView.target, "spawnView.target")
+  };
 }
 
 function parsePositiveNumber(value: unknown, field: string): number {

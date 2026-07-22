@@ -32,6 +32,7 @@ import {
   type CreateSplatAssetInput,
   type IntakeSplatAssetInput,
   type RegisterSplatAssetInput,
+  type SpawnViewInput,
   type UpdateSplatAssetFileInput
 } from "./splat-asset.types";
 import {
@@ -441,6 +442,15 @@ export class SplatAssetService {
         status: "REGISTERED",
         ...(floorPlanId ? { floorPlanId } : {})
       }
+    });
+  }
+
+  /** 자산별 스폰(투어 진입 초기 카메라) 시점 저장 — 소유자가 "현재 시점을 기본으로 저장"으로 확정한다. */
+  async updateSpawnView(id: string, input: SpawnViewInput) {
+    await this.getById(id); // 존재 검증(없으면 404)
+    return this.getPrisma().splatAsset.update({
+      where: { id },
+      data: { spawnView: input as unknown as Prisma.InputJsonValue }
     });
   }
 
