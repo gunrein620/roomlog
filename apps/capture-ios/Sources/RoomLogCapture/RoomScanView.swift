@@ -404,6 +404,7 @@ struct TenantFurnitureSummary: Decodable, Equatable, Identifiable {
     let id: String
     let category: String
     let label: String?
+    let thumbnailUrl: String?
 }
 
 private struct RoomPlanImportPayload: Encodable {

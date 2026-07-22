@@ -86,7 +86,17 @@ export default function TenantFurniturePage() {
                   <Card className={styles.furnitureCard}>
                     <div className={styles.cardTop}>
                       <div className={styles.furnitureIdentity}>
-                        <FurniturePreview3D furniture={item} />
+                        {item.thumbnailUrl ? (
+                          <img
+                            alt=""
+                            className={styles.thumbnailImage}
+                            decoding="async"
+                            loading="lazy"
+                            src={item.thumbnailUrl}
+                          />
+                        ) : (
+                          <FurniturePreview3D furniture={item} />
+                        )}
                         <div className={styles.headingBlock}>
                           <h3 className={styles.itemName}>{tenantFurnitureName(item)}</h3>
                           <p className={styles.itemMeta}>

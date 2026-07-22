@@ -948,7 +948,11 @@ export default function ListingTourRoom3D({
                               className="listing-tour-furniture-thumb"
                               style={{ backgroundColor: "var(--surface-container-high)" }}
                             >
-                              {TENANT_FURNITURE_CATEGORY_ICONS[furniture.category] ?? "◇"}
+                              {furniture.thumbnailUrl ? (
+                                <img alt="" decoding="async" loading="lazy" src={furniture.thumbnailUrl} />
+                              ) : (
+                                TENANT_FURNITURE_CATEGORY_ICONS[furniture.category] ?? "◇"
+                              )}
                             </span>
                             <strong>{item.name}</strong>
                             <small>{furniture.sizeMm.width} × {furniture.sizeMm.depth} mm</small>

@@ -11,6 +11,7 @@
 		0C87C1BECAC58ABE9DBD5EB8 /* CaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0FC79F6247CE4E10F48CFD /* CaptureEngine.swift */; };
 		1705DAC6B003A708777DFD27 /* ARPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C99A2BD45BEA9EAF4C6B8D /* ARPreviewView.swift */; };
 		1AE96A53B1D532304556B6FF /* RoomScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87FC12E0EF19D61AB4AFF837 /* RoomScanView.swift */; };
+		25B96294BA56CA6E966D639E /* TenantFurnitureThumbnailUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8BB5E022AC33C69E8FA0818 /* TenantFurnitureThumbnailUploader.swift */; };
 		27872E0D80D7C5423A70B74A /* ListingPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A9C6E86E7B6321316B852F /* ListingPicker.swift */; };
 		344D975959598890A27A505E /* CaptureFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEA95A01CEC6F42E6C879D39 /* CaptureFormat.swift */; };
 		424ACAF5BEDBBBB455CC9657 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13497E1702C727AE62E9CA70 /* Assets.xcassets */; };
@@ -20,6 +21,8 @@
 		6BE51DD936EF758DAB08693F /* UploadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F612DC1ADA8DA1F7D645B007 /* UploadManager.swift */; };
 		6E1E65F7336A7766E3C85C38 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75FB75DA21380A537DCDC563 /* AccountStore.swift */; };
 		6F1406A193BD278D2FA284DB /* RoomPlanExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 621F6DDBC2D85FFD8476BB3E /* RoomPlanExporter.swift */; };
+		7BA9B455653B2EFF3B92E5BB /* ThumbnailCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6D629D5A3D3FA75CA917CA0 /* ThumbnailCapture.swift */; };
+		921229DD8F8223A924D07770 /* TenantFurnitureRenamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3C70695CF07A03F6D3E92D /* TenantFurnitureRenamer.swift */; };
 		BDEAE99B88913498CF346BAE /* ObjectCaptureScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5817BDF9F30E87D1A9258B2A /* ObjectCaptureScanView.swift */; };
 		C66380E77283672CE217C64F /* CaptureListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6E594D92DFC7A03867991D /* CaptureListView.swift */; };
 		C7149FD4858EFCADF517FDA4 /* SharedSessionProbeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EAE870E662244A2F62ED36 /* SharedSessionProbeView.swift */; };
@@ -43,12 +46,15 @@
 		5C235DD1569C4569AA567D4C /* ObjectCaptureUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectCaptureUploader.swift; sourceTree = "<group>"; };
 		60F8BB9B0F486A64E12FF345 /* RoomLogCapture.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RoomLogCapture.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		621F6DDBC2D85FFD8476BB3E /* RoomPlanExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomPlanExporter.swift; sourceTree = "<group>"; };
+		6D3C70695CF07A03F6D3E92D /* TenantFurnitureRenamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantFurnitureRenamer.swift; sourceTree = "<group>"; };
 		75FB75DA21380A537DCDC563 /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
 		7F6E594D92DFC7A03867991D /* CaptureListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureListView.swift; sourceTree = "<group>"; };
 		80D37DC313C6CCF72308AA15 /* RoomLogCaptureApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomLogCaptureApp.swift; sourceTree = "<group>"; };
 		87FC12E0EF19D61AB4AFF837 /* RoomScanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScanView.swift; sourceTree = "<group>"; };
 		952BDECD328D426AE83A9804 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		99C99A2BD45BEA9EAF4C6B8D /* ARPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARPreviewView.swift; sourceTree = "<group>"; };
+		B6D629D5A3D3FA75CA917CA0 /* ThumbnailCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailCapture.swift; sourceTree = "<group>"; };
+		B8BB5E022AC33C69E8FA0818 /* TenantFurnitureThumbnailUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantFurnitureThumbnailUploader.swift; sourceTree = "<group>"; };
 		BA0FC79F6247CE4E10F48CFD /* CaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureEngine.swift; sourceTree = "<group>"; };
 		F612DC1ADA8DA1F7D645B007 /* UploadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadManager.swift; sourceTree = "<group>"; };
 		FEA95A01CEC6F42E6C879D39 /* CaptureFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFormat.swift; sourceTree = "<group>"; };
@@ -84,6 +90,9 @@
 				87FC12E0EF19D61AB4AFF837 /* RoomScanView.swift */,
 				46CE549F2A6626A74BF9D769 /* SettingsView.swift */,
 				31EAE870E662244A2F62ED36 /* SharedSessionProbeView.swift */,
+				6D3C70695CF07A03F6D3E92D /* TenantFurnitureRenamer.swift */,
+				B8BB5E022AC33C69E8FA0818 /* TenantFurnitureThumbnailUploader.swift */,
+				B6D629D5A3D3FA75CA917CA0 /* ThumbnailCapture.swift */,
 				370A94B9E095B2186B9D8A39 /* UnifiedCaptureView.swift */,
 				F612DC1ADA8DA1F7D645B007 /* UploadManager.swift */,
 				0D4F224147899D0CF9953326 /* ZipExporter.swift */,
@@ -193,6 +202,9 @@
 				1AE96A53B1D532304556B6FF /* RoomScanView.swift in Sources */,
 				D71398D9FA348D5ED52FF39E /* SettingsView.swift in Sources */,
 				C7149FD4858EFCADF517FDA4 /* SharedSessionProbeView.swift in Sources */,
+				921229DD8F8223A924D07770 /* TenantFurnitureRenamer.swift in Sources */,
+				25B96294BA56CA6E966D639E /* TenantFurnitureThumbnailUploader.swift in Sources */,
+				7BA9B455653B2EFF3B92E5BB /* ThumbnailCapture.swift in Sources */,
 				FD64C9E49E9DFDA934A63701 /* UnifiedCaptureView.swift in Sources */,
 				6BE51DD936EF758DAB08693F /* UploadManager.swift in Sources */,
 				44100C7950D019600856DA9B /* ZipExporter.swift in Sources */,
