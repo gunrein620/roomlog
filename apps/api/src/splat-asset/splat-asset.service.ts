@@ -24,7 +24,7 @@ import {
   fromOwnerFloorPlan,
   matchFloorPlans,
   type MatchResult,
-  type OwnerWallLike
+  type WallSegments
 } from "../roomlog/services/floor-plan-match";
 import { TradeService } from "../trade/trade.service";
 import {
@@ -40,7 +40,7 @@ import {
   normalizePublicWalls3D,
   parseOwnerWalls3D
 } from "./owner-floor-plan-walls";
-import { mitunetToOwnerWalls } from "./mitunet-floor-plan-walls";
+import { mitunetToWallSegments } from "./mitunet-floor-plan-walls";
 
 export const SPLAT_ASSET_DATABASE_URL = "SPLAT_ASSET_DATABASE_URL";
 
@@ -486,7 +486,7 @@ export class SplatAssetService {
 
     let result: MatchResult;
     try {
-      result = matchFloorPlans(capture, fromOwnerFloorPlan(owner.walls));
+      result = matchFloorPlans(capture, owner.walls);
     } catch (error) {
       // matchFloorPlans는 입력 벽이 없으면 RangeError를 던진다 — 검증 실패로 400 처리.
       if (error instanceof RangeError) throw new BadRequestException(error.message);
@@ -497,22 +497,23 @@ export class SplatAssetService {
   }
 
   /**
-   * 자산에 연결된 소유자 도면 벽을 조회한다 — 우선순위: SplatAsset.floorPlanId가 있으면
-   * FloorPlan.room3d.walls, 없으면 SplatAsset.listingId의 TradeListing.floorPlan.walls3D 스냅샷.
-   * register 픽 화면의 resolveRegisterPlanSource(owner-tour-assets.ts)와 동일한 우선순위를
-   * 서버에서 재현한다. 벽이 하나도 없으면(둘 다 없거나 파싱 결과가 빈 배열) null.
+   * 자산에 연결된 소유자 도면을 매처 입력(WallSegments)으로 조회한다 — 우선순위: SplatAsset.floorPlanId가
+   * 있으면 FloorPlan.room3d.walls, 없으면 SplatAsset.listingId의 TradeListing.floorPlan.walls3D 스냅샷,
+   * 그마저 없으면 도면 이미지 업로드(mitunet) 폴리곤. register 픽 화면의
+   * resolveRegisterPlanSource(owner-tour-assets.ts)와 동일한 우선순위를 서버에서 재현한다.
+   * 벽이 하나도 없으면(모든 소스가 비었거나 파싱 실패) null.
    */
   private async resolveOwnerFloorPlanWalls(asset: {
     floorPlanId: string | null;
     listingId: string | null;
-  }): Promise<{ floorPlanId: string | null; walls: OwnerWallLike[] } | null> {
+  }): Promise<{ floorPlanId: string | null; walls: WallSegments } | null> {
     if (asset.floorPlanId) {
       const plan = await this.getPrisma().floorPlan.findUnique({
         where: { id: asset.floorPlanId },
         select: { room3d: true }
       });
       const walls = parseOwnerWalls3D(extractJsonField(plan?.room3d, "walls"));
-      if (walls.length > 0) return { floorPlanId: asset.floorPlanId, walls };
+      if (walls.length > 0) return { floorPlanId: asset.floorPlanId, walls: fromOwnerFloorPlan(walls) };
     }
 
     if (asset.listingId) {
@@ -522,13 +523,15 @@ export class SplatAssetService {
       });
       // 매물 스냅샷은 서버 FloorPlan row가 아니므로 floorPlanId는 null로 반환(register 연결 대상 아님).
       const walls = parseOwnerWalls3D(extractJsonField(listing?.floorPlan, "walls3D"));
-      if (walls.length > 0) return { floorPlanId: null, walls };
+      if (walls.length > 0) return { floorPlanId: null, walls: fromOwnerFloorPlan(walls) };
 
       // walls3D가 비어 있어도 도면 이미지 업로드 경로(mitunet)만 채워진 매물이 있다
       // (trade.service.ts normalizeFloorPlan — 이미지 업로드는 walls3D를 만들지 않는다).
-      // mitunet-floor-plan-walls.ts가 폴리곤을 박스 벽으로 근사 변환해 자동정합을 계속 진행시킨다.
-      const mitunetWalls = mitunetToOwnerWalls(extractJsonField(listing?.floorPlan, "mitunet"));
-      if (mitunetWalls.length > 0) return { floorPlanId: null, walls: mitunetWalls };
+      // mitunet-floor-plan-walls.ts가 폴리곤 변을 그대로 세그먼트로 흘려 자동정합을 계속 진행시킨다
+      // (예전엔 폴리곤마다 OBB를 씌워 박스로 근사했으나, 실데이터 다수가 링 위상이라 방 전체를 덮는
+      // 상자 하나로 뭉개져 걷어냈다).
+      const mitunetSegments = mitunetToWallSegments(extractJsonField(listing?.floorPlan, "mitunet"));
+      if (mitunetSegments.segments.length > 0) return { floorPlanId: null, walls: mitunetSegments };
     }
 
     return null;

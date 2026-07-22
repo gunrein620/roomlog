@@ -1,4 +1,8 @@
 import type { MitunetFloorPlan, MitunetPolygon } from "@/lib/mitunet-floor-plan";
+// 값 import는 상대경로로 — "@/" 별칭은 타입만 지워지는 import type이면 무해하지만, 런타임에 실제로
+// require되는 값 import로 쓰면 ts-node 유닛테스트 러너(tsconfig-paths 미등록)가 모듈을 못 찾는다
+// (2026-07-2x 실측 회귀 — mitunetSceneLayoutFromPayload 추가하며 걸림).
+import { normalizeMitunetPayload } from "../../../lib/mitunet-floor-plan";
 
 export type MitunetScenePolygon = {
   outer: [number, number][];
@@ -82,6 +86,21 @@ export function createMitunetSceneLayout(plan: MitunetFloorPlan): MitunetSceneLa
     door: plan.polygons.door.map(polygon),
     window: plan.polygons.window.map(polygon)
   };
+}
+
+/**
+ * mitunet 도면(미검증 JSON, 예: 매물 floorPlan.mitunet 스냅샷) → MitunetSceneLayout.
+ * 파싱 실패하거나(스키마·버전 불일치) 폴리곤 정점이 없으면 null — 호출측이 "이 도면은 못 쓴다"로
+ * 처리할 수 있게(dev/floor-plan-fixtures 페이지의 loadFixture와 같은 패턴).
+ */
+export function mitunetSceneLayoutFromPayload(payload: unknown): MitunetSceneLayout | null {
+  const plan = normalizeMitunetPayload(payload);
+  if (!plan) return null;
+  try {
+    return createMitunetSceneLayout(plan);
+  } catch {
+    return null;
+  }
 }
 
 export function resolveTourSceneScale(

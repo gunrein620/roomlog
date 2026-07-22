@@ -1,23 +1,32 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { mitunetToOwnerWalls } from "./mitunet-floor-plan-walls";
+import { mitunetToWallSegments } from "./mitunet-floor-plan-walls";
+import type { WallSegment } from "../roomlog/services/floor-plan-match";
 
-// 웹 포팅(apps/web/src/app/floor-plan-3d/room-scene/mitunet-to-walls.spec.ts)과 같은 픽스처·같은
-// 기대값을 쓴다 — api는 web 모듈을 import하지 않는 원칙이라 알고리즘을 복제했으니, 두 스펙이 같은
-// 입력에 같은 수치를 내는지가 곧 두 포팅이 어긋나지 않았다는 증거다.
+// 실픽스처(apps/web/public/dev-fixtures/*.json, gitignore라 CI에서 못 읽는다)의 위상을 합성으로
+// 재현한 픽스처들이다: mitunet-56829a98.json류(폴리곤 1개 + hole)가 링, 옛 프로덕션 폴리곤
+// (아래 THIN_STRIP_OUTER)이 얇은 띠, millimetersPerPixel 없는 3개가 미보정 폴백 케이스다.
 
-// 실제 프로덕션 매물(listing 938decc8)에서 나온 벽 폴리곤 좌표 그대로 — 벽 발자국 외곽선(중심선 아님).
-const PRODUCTION_WALL_OUTER: [number, number][] = [
-  [221, 656],
-  [298, 657],
-  [298, 639],
-  [302, 637],
-  [221, 638]
-];
+const EPSILON = 1e-9;
+
+// 부동소수 곱셈(예: (2-5)*0.1)은 딱 떨어지는 소수로 안 남을 수 있어(-0.30000000000000004 등) 근사 비교.
+function assertPointClose(actual: [number, number], expected: [number, number]) {
+  assert.ok(Math.abs(actual[0] - expected[0]) < EPSILON, `x: ${actual[0]} vs ${expected[0]}`);
+  assert.ok(Math.abs(actual[1] - expected[1]) < EPSILON, `y: ${actual[1]} vs ${expected[1]}`);
+}
+function assertSegmentsClose(actual: WallSegment[], expected: { start: [number, number]; end: [number, number] }[]) {
+  assert.equal(actual.length, expected.length);
+  actual.forEach((segment, index) => {
+    assertPointClose(segment.start, expected[index].start);
+    assertPointClose(segment.end, expected[index].end);
+  });
+}
 
 function testPlan(overrides: {
   millimetersPerPixel?: number | null;
   wall?: { outer: [number, number][]; holes: [number, number][][] }[];
+  door?: { outer: [number, number][]; holes: [number, number][][] }[];
+  window?: { outer: [number, number][]; holes: [number, number][][] }[];
 }) {
   return {
     schema: "roomlog-mitunet-floor-plan",
@@ -27,101 +36,109 @@ function testPlan(overrides: {
     contentRect: [0, 0, 800, 800],
     millimetersPerPixel: overrides.millimetersPerPixel ?? null,
     polygons: {
-      wall: overrides.wall ?? [{ outer: PRODUCTION_WALL_OUTER, holes: [] }],
-      door: [],
-      window: []
+      wall: overrides.wall ?? [],
+      door: overrides.door ?? [],
+      window: overrides.window ?? []
     }
   };
 }
 
-describe("mitunetToOwnerWalls", () => {
-  it("프로덕션 폴리곤 형태에서 OBB가 약 0.77m×0.19m를 낸다", () => {
-    const walls = mitunetToOwnerWalls(testPlan({ millimetersPerPixel: 9.5 }));
+describe("mitunetToWallSegments — 링 위상(outer + holes)", () => {
+  it("outer·holes 둘 다 세그먼트로 낸다 — 벽 안팎 면 모두가 실제 벽면", () => {
+    // 10×8 사각 외곽선(outer) + 6×4 사각 구멍(holes) — mitunet-56829a98.json류(폴리곤 1개 + hole)의
+    // 단순화. millimetersPerPixel=100 → metresPerPixel=0.1로 손계산이 쉽게.
+    const outer: [number, number][] = [[0, 0], [10, 0], [10, 8], [0, 8]];
+    const hole: [number, number][] = [[2, 2], [8, 2], [8, 6], [2, 6]];
+    const result = mitunetToWallSegments(
+      testPlan({ millimetersPerPixel: 100, wall: [{ outer, holes: [hole] }] })
+    );
 
-    assert.equal(walls.length, 1);
-    const [wall] = walls;
-    assert.ok(Math.abs(wall.dimensions.width - 0.7695) < 0.01, `width=${wall.dimensions.width}`);
-    assert.ok(Math.abs(wall.dimensions.depth - 0.19) < 0.01, `depth=${wall.dimensions.depth}`);
-    assert.equal(wall.dimensions.height, 2.4);
-  });
+    // 원점 = outer 픽셀 bbox 중심([0,10]×[0,8] → (5,4)). holes는 원점 계산에서 제외된다.
+    assert.equal(result.segments.length, 8, "outer 4변 + hole 4변");
 
-  it("yaw 왕복 — wallLocalToWorldXZ로 되돌리면 OBB 모서리와 일치한다", () => {
-    const walls = mitunetToOwnerWalls(testPlan({ millimetersPerPixel: 9.5 }));
-    assert.equal(walls.length, 1);
-    const [wall] = walls;
+    assertSegmentsClose(result.segments.slice(0, 4), [
+      { start: [-0.5, -0.4], end: [0.5, -0.4] },
+      { start: [0.5, -0.4], end: [0.5, 0.4] },
+      { start: [0.5, 0.4], end: [-0.5, 0.4] },
+      { start: [-0.5, 0.4], end: [-0.5, -0.4] }
+    ]);
 
-    const corners = wallFootprintCorners(wall);
-    assert.equal(corners.length, 4);
-
-    // 기대 모서리 — 웹 스펙과 동일하게 손으로 재도출(이 폴리곤의 최소면적 OBB는 축정렬 픽셀
-    // bbox([221,637]-[302,657])와 우연히 일치한다).
-    const metresPerPixel = 0.0095;
-    const centerPixelX = (221 + 302) / 2;
-    const centerPixelY = (637 + 657) / 2;
-    const expectedPixelCorners: [number, number][] = [
-      [221, 637],
-      [302, 637],
-      [302, 657],
-      [221, 657]
-    ];
-    const expectedWorldCorners = expectedPixelCorners.map(([x, y]) => ({
-      x: (x - centerPixelX) * metresPerPixel,
-      z: (y - centerPixelY) * metresPerPixel
-    }));
-
-    for (const expected of expectedWorldCorners) {
-      const found = corners.some(
-        (corner) => Math.abs(corner.x - expected.x) < 1e-6 && Math.abs(corner.z - expected.z) < 1e-6
-      );
-      assert.ok(found, `expected corner ${JSON.stringify(expected)} not found in ${JSON.stringify(corners)}`);
-    }
-  });
-
-  it("millimetersPerPixel 없으면 8m/최장변 폴백을 쓴다", () => {
-    const square = {
-      outer: [
-        [0, 0],
-        [100, 0],
-        [100, 10],
-        [0, 10]
-      ] as [number, number][],
-      holes: []
-    };
-    const walls = mitunetToOwnerWalls(testPlan({ millimetersPerPixel: null, wall: [square] }));
-
-    assert.equal(walls.length, 1);
-    // metresPerPixel = 8 / 100 = 0.08 → width = 100 * 0.08 = 8m, depth = 10 * 0.08 = 0.8m
-    assert.ok(Math.abs(walls[0].dimensions.width - 8) < 1e-6, `width=${walls[0].dimensions.width}`);
-    assert.ok(Math.abs(walls[0].dimensions.depth - 0.8) < 1e-6, `depth=${walls[0].dimensions.depth}`);
-  });
-
-  it("유효하지 않은 입력은 빈 배열", () => {
-    assert.deepEqual(mitunetToOwnerWalls(null), []);
-    assert.deepEqual(mitunetToOwnerWalls({}), []);
-    assert.deepEqual(mitunetToOwnerWalls({ schema: "roomlog-mitunet-floor-plan", version: 1 }), []);
+    assertSegmentsClose(result.segments.slice(4), [
+      { start: [-0.3, -0.2], end: [0.3, -0.2] },
+      { start: [0.3, -0.2], end: [0.3, 0.2] },
+      { start: [0.3, 0.2], end: [-0.3, 0.2] },
+      { start: [-0.3, 0.2], end: [-0.3, -0.2] }
+    ]);
   });
 });
 
-// floor-plan-match.ts의 wallLocalToWorldXZ와 동일 규약(z = position[2] − localX·sin(ry) +
-// localZ·cos(ry))을 그대로 복제 — api는 web 모듈을 import하지 않는 원칙이라 여기서도 로컬 포팅.
-function wallFootprintCorners(wall: {
-  position: [number, number, number];
-  rotation: [number, number, number];
-  dimensions: { width: number; depth: number };
-}): { x: number; z: number }[] {
-  const halfWidth = wall.dimensions.width / 2;
-  const halfDepth = wall.dimensions.depth / 2;
-  const localCorners = [
-    { x: -halfWidth, z: -halfDepth },
-    { x: halfWidth, z: -halfDepth },
-    { x: halfWidth, z: halfDepth },
-    { x: -halfWidth, z: halfDepth }
+describe("mitunetToWallSegments — 얇은 띠(outer만)", () => {
+  // 실제 프로덕션 매물(listing 938decc8)에서 나온 벽 폴리곤 좌표 그대로 — 벽 발자국 외곽선(중심선 아님).
+  const THIN_STRIP_OUTER: [number, number][] = [
+    [221, 656],
+    [298, 657],
+    [298, 639],
+    [302, 637],
+    [221, 638]
   ];
-  const ry = wall.rotation[1];
-  const cos = Math.cos(ry);
-  const sin = Math.sin(ry);
-  return localCorners.map((corner) => ({
-    x: wall.position[0] + corner.x * cos + corner.z * sin,
-    z: wall.position[2] - corner.x * sin + corner.z * cos
-  }));
-}
+
+  it("폐다각형 세그먼트를 낸다(점 개수만큼, 마지막이 첫 점과 닫힘)", () => {
+    const result = mitunetToWallSegments(
+      testPlan({ millimetersPerPixel: 9.5, wall: [{ outer: THIN_STRIP_OUTER, holes: [] }] })
+    );
+
+    assert.equal(result.segments.length, THIN_STRIP_OUTER.length);
+    const last = result.segments[result.segments.length - 1];
+    assert.deepEqual(last.end, result.segments[0].start, "마지막 세그먼트가 첫 점으로 닫혀야 함");
+  });
+});
+
+describe("mitunetToWallSegments — millimetersPerPixel 미보정 폴백", () => {
+  it("8m / 최장변 폴백을 web(mitunet-geometry.ts)과 동일하게 쓴다", () => {
+    const square: [number, number][] = [[0, 0], [100, 0], [100, 10], [0, 10]];
+    const result = mitunetToWallSegments(testPlan({ millimetersPerPixel: null, wall: [{ outer: square, holes: [] }] }));
+
+    // metresPerPixel = 8 / 100 = 0.08 → 원점(50,5) 기준 첫 변 (0,0)-(100,0) → (-4,-0.4)-(4,-0.4)
+    assert.equal(result.segments.length, 4);
+    assertSegmentsClose(result.segments.slice(0, 1), [{ start: [-4, -0.4], end: [4, -0.4] }]);
+  });
+});
+
+describe("mitunetToWallSegments — web(createMitunetSceneLayout)과 동일 입력·동일 스케일", () => {
+  // apps/web/src/app/floor-plan-3d/room-scene/mitunet-geometry.spec.ts의
+  // "uses millimetres-per-pixel calibration when available" 테스트와 완전히 같은
+  // wall/door/window 폴리곤·millimetersPerPixel(5)를 쓴다 — 그 테스트가
+  // layout.door[0].outer[0] = [-0.25, -0.6]을 검증하므로, 여기서 같은 입력에 같은 원점·스케일로
+  // 같은 문 중심점이 나오면 두 포팅이 어긋나지 않았다는 증거다.
+  const wall = { outer: [[200, 100], [600, 100], [600, 140], [200, 140]] as [number, number][], holes: [] };
+  const door = { outer: [[350, 100], [450, 100], [450, 140], [350, 140]] as [number, number][], holes: [] };
+  const windowPolygon = { outer: [[300, 300], [500, 300], [500, 340], [300, 340]] as [number, number][], holes: [] };
+
+  it("벽 세그먼트 4개 + 문/창 개구부 중심이 web과 같은 좌표계로 나온다", () => {
+    const result = mitunetToWallSegments(
+      testPlan({ millimetersPerPixel: 5, wall: [wall], door: [door], window: [windowPolygon] })
+    );
+
+    // 원점 = 모든 outer 점(200~600, 100~340) bbox 중심 (400, 220), metresPerPixel = 5/1000 = 0.005.
+    assertSegmentsClose(result.segments, [
+      { start: [-1, -0.6], end: [1, -0.6] },
+      { start: [1, -0.6], end: [1, -0.4] },
+      { start: [1, -0.4], end: [-1, -0.4] },
+      { start: [-1, -0.4], end: [-1, -0.6] }
+    ]);
+
+    assert.equal(result.openings?.length, 2);
+    assert.equal(result.openings?.[0].kind, "door");
+    assertPointClose(result.openings![0].center, [0, -0.5]);
+    assert.equal(result.openings?.[1].kind, "window");
+    assertPointClose(result.openings![1].center, [0, 0.5]);
+  });
+});
+
+describe("mitunetToWallSegments — 유효하지 않은 입력", () => {
+  it("빈 세그먼트를 돌려준다", () => {
+    assert.deepEqual(mitunetToWallSegments(null), { segments: [] });
+    assert.deepEqual(mitunetToWallSegments({}), { segments: [] });
+    assert.deepEqual(mitunetToWallSegments({ schema: "roomlog-mitunet-floor-plan", version: 1 }), { segments: [] });
+  });
+});

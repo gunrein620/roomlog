@@ -5583,6 +5583,7 @@ p {
 
 /* 실제 3D 도면 뷰 — 편집기와 같은 R3F 캔버스를 상세 시트 크기에 맞춰 채운다. */
 .tour-room-3d {
+  position: relative;
   width: 100%;
   height: 100%;
 }

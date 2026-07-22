@@ -4,7 +4,7 @@
 // "문자로 문의하기"는 폼(간편문의 시트) 대신 채팅 탭의 빈 대화로 바로 보낸다(onStartChat, 당근식).
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Armchair,
   ArrowLeft,
@@ -30,6 +30,7 @@ import {
   type Listing
 } from "@/lib/listing-catalog";
 import { listSplatAssetsByListing } from "@/lib/splat-asset-api";
+import { captureFloorPlanToSceneLayout } from "../floor-plan-3d/room-scene/capture-to-layout";
 import { NaverMapPreview } from "./NaverMapPreview";
 
 // 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
@@ -79,6 +80,9 @@ export function ListingDetailView({
   const isTradeDirectListing = isDirectListing && listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX);
   // 직접등록 매물의 대표 3D 자산 id — 있으면 "1인칭 체험"이 이 매물 전용 투어로 연결된다.
   const [splatAssetId, setSplatAssetId] = useState<string | null>(null);
+  // 대표 자산의 캡처 도면(RoomPlan, ARKit 실측) — splat과 같은 ARSession이라 정합 없이 항등으로
+  // 쓴다. 있으면 아래 captureFloorPlanLayout이 mitunet/walls3D보다 우선해 3D 도면 뷰에 연결된다.
+  const [splatAssetCaptureFloorPlan, setSplatAssetCaptureFloorPlan] = useState<unknown | null>(null);
   // 자산 조회 완료 여부 — 조회 중엔 "준비 안 됨"을 성급히 띄우지 않는다(로딩과 없음을 구분).
   const [splatChecked, setSplatChecked] = useState(false);
 
@@ -87,6 +91,7 @@ export function ListingDetailView({
   useEffect(() => {
     if (!isTradeDirectListing) {
       setSplatAssetId(null);
+      setSplatAssetCaptureFloorPlan(null);
       setSplatChecked(false);
       return;
     }
@@ -101,6 +106,7 @@ export function ListingDetailView({
           .filter((asset) => asset.status in priority)
           .sort((a, b) => priority[b.status] - priority[a.status])[0];
         setSplatAssetId(pick?.id ?? null);
+        setSplatAssetCaptureFloorPlan(pick?.captureFloorPlan ?? null);
         setSplatChecked(true);
       })
       .catch(() => {
@@ -112,6 +118,13 @@ export function ListingDetailView({
       cancelled = true;
     };
   }, [isTradeDirectListing, listing.listingNo]);
+
+  // 캡처 도면 → 뷰어 레이아웃 변환. 유효하지 않으면(자산 없음/파싱 실패) null — 이 경우
+  // ListingTourRoom3D는 기존 mitunet/walls3D 경로로 무변경 동작한다(캡처 없는 매물은 그대로).
+  const captureFloorPlanLayout = useMemo(
+    () => captureFloorPlanToSceneLayout(splatAssetCaptureFloorPlan),
+    [splatAssetCaptureFloorPlan]
+  );
 
   // 직접등록 매물은 집주인이 등록 시 고른 옵션만, 데모 매물(options 없음)은 기존 고정 목록을 보여준다.
   const listingOptions = listing.options ?? optionItems;
@@ -166,6 +179,7 @@ export function ListingDetailView({
           role={is3DSimulationOpen ? "dialog" : undefined}
         >
           <ListingTourRoom3D
+            captureFloorPlanLayout={captureFloorPlanLayout}
             floorPlan={listing.floorPlan3D}
             simulationOpen={is3DSimulationOpen}
             listingId={listing.listingNo}
@@ -574,7 +588,11 @@ export function ListingDetailView({
             <div className="tour-preview-stage" aria-label="3D 투어 미리보기">
               {listing.floorPlan3D ? (
                 <div className="tour-room-3d">
-                  <ListingTourRoom3D floorPlan={listing.floorPlan3D} listingId={listing.listingNo} />
+                  <ListingTourRoom3D
+                    captureFloorPlanLayout={captureFloorPlanLayout}
+                    floorPlan={listing.floorPlan3D}
+                    listingId={listing.listingNo}
+                  />
                 </div>
               ) : (
                 <div className="tour-room-empty-wrap">
