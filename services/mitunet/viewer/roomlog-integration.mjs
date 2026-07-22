@@ -292,7 +292,11 @@ export function sendRoomLogCompletion(
   const storageKey = `roomlogListingFloorPlan3D:${context.requestId}`;
   window.localStorage.setItem(storageKey, JSON.stringify(storageValue));
 
-  const returnUrl = new URL("/?flow=listing#my-page", context.returnOrigin);
+  // /sell 직행 — 루트(/?flow=listing) 경유는 홈 탭이 먼저 페인트된 뒤 클라 이펙트가 sell로
+  // 전환해 홈 화면이 깜빡였다. /sell은 공개 라우트(<HomeApp initialTab="sell">)라 첫 페인트부터
+  // 등록 폼이고, LandlordMyPage는 경로와 무관하게 useSearchParams로 floorPlanRequestId를 읽는다.
+  // (HomeApp의 flow=listing 분기는 기존 링크 호환용으로 남아 있다.)
+  const returnUrl = new URL("/sell#my-page", context.returnOrigin);
   returnUrl.searchParams.set("floorPlanRequestId", context.requestId);
   window.location.href = returnUrl.toString();
   return message;

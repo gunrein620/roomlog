@@ -61,7 +61,9 @@ export default function OwnerFurnitureSimulation() {
       const requestedOrigin = searchParams.get("returnOrigin");
       const returnOrigin = requestedOrigin === window.location.origin ? requestedOrigin : window.location.origin;
       if (destination === "listing") {
-        const returnUrl = new URL("/?flow=listing", returnOrigin);
+        // /sell 직행 — 루트(/?flow=listing) 경유는 홈 탭 첫 페인트 후 전환이라 홈이 깜빡인다.
+        // 등록 폼(LandlordMyPage)은 경로 무관하게 useSearchParams로 floorPlanRequestId를 읽는다.
+        const returnUrl = new URL("/sell", returnOrigin);
         returnUrl.searchParams.set("floorPlanRequestId", requestId);
         returnUrl.hash = "my-page";
         window.location.href = returnUrl.toString();
@@ -82,7 +84,7 @@ export default function OwnerFurnitureSimulation() {
       <main className="owner-furniture-error">
         <strong>3D 가구 배치를 열 수 없습니다</strong>
         <p>{error}</p>
-        <a href="/?flow=listing#my-page">매물 등록으로 돌아가기</a>
+        <a href="/sell#my-page">매물 등록으로 돌아가기</a>
       </main>
     );
   }
