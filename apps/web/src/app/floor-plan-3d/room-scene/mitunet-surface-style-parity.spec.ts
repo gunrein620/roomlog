@@ -30,10 +30,14 @@ describe("MitUNet saved-view surface parity", () => {
     assert.match(source, /RoomFloor/);
   });
 
-  it("keeps a visible floor when an older saved source image is unavailable", () => {
+  it("waits for the source-plan texture before falling back to the wood floor", () => {
     assert.match(
       source,
-      /const activeFloorTexture = plan\.surfaceMode === "source" \? sourceTexture \?\? woodTexture : woodTexture;/,
+      /const sourceTexturePending = plan\.surfaceMode === "source" && loadedSourceTextureKey !== sourceTextureKey;/,
+    );
+    assert.match(
+      source,
+      /const activeFloorTexture = plan\.surfaceMode === "source"\s*\? sourceTexturePending \? null : sourceTexture \?\? woodTexture\s*:\ woodTexture;/,
     );
   });
 });

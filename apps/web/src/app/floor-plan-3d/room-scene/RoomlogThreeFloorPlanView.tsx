@@ -350,28 +350,41 @@ function MitunetDecorativeFloor({
     }
   }, [plan]);
   const [sourceTexture, setSourceTexture] = useState<THREE.Texture | null>(null);
+  const sourceTextureKey = plan.sourceImageB64 ?? "";
+  const [loadedSourceTextureKey, setLoadedSourceTextureKey] = useState<string | null>(null);
 
   useEffect(() => {
     let disposed = false;
     if (plan.surfaceMode !== "source") {
       setSourceTexture(null);
+      setLoadedSourceTextureKey(null);
       return () => { disposed = true; };
     }
+    setSourceTexture(null);
     void createSourcePlanTexture(plan)
       .then((texture) => {
         if (disposed) texture?.dispose();
-        else setSourceTexture(texture);
+        else {
+          setSourceTexture(texture);
+          setLoadedSourceTextureKey(sourceTextureKey);
+        }
       })
       .catch(() => {
-        if (!disposed) setSourceTexture(null);
+        if (!disposed) {
+          setSourceTexture(null);
+          setLoadedSourceTextureKey(sourceTextureKey);
+        }
       });
     return () => { disposed = true; };
-  }, [plan]);
+  }, [plan, sourceTextureKey]);
 
   useEffect(() => () => concreteTexture?.dispose(), [concreteTexture]);
   useEffect(() => () => woodTexture?.dispose(), [woodTexture]);
   useEffect(() => () => sourceTexture?.dispose(), [sourceTexture]);
-  const activeFloorTexture = plan.surfaceMode === "source" ? sourceTexture ?? woodTexture : woodTexture;
+  const sourceTexturePending = plan.surfaceMode === "source" && loadedSourceTextureKey !== sourceTextureKey;
+  const activeFloorTexture = plan.surfaceMode === "source"
+    ? sourceTexturePending ? null : sourceTexture ?? woodTexture
+    : woodTexture;
 
   return (
     <>
