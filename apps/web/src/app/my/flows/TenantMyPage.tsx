@@ -40,6 +40,10 @@ import {
 } from "./tenant-ai-assistant-store";
 import { TenantPaymentHistoryModal } from "./TenantPaymentHistoryModal";
 import {
+  findTenantContractListing,
+  tenantContractOptions,
+} from "./tenant-contract-options";
+import {
   createTenantComplaintDraftMutationGuard,
   deleteTenantComplaintDraft,
   loadTenantComplaintDraft,
@@ -82,6 +86,7 @@ type TenantTenancy = {
   address: string;
   landlordId?: string;
   imageUrl?: string;
+  listingOptions: string[];
   contract: TenantContractSummary | null;
   leaseContract: Contract | null;
 };
@@ -106,6 +111,7 @@ type TenantListingPhotoSummary = {
   images?: string[];
   coverImage?: string;
   gallery?: string[];
+  options?: unknown;
 };
 
 type TenantRepairRequest = {
@@ -408,26 +414,6 @@ function firstListingImage(listing?: TenantListingPhotoSummary): string | undefi
   return candidates.find((image): image is string => typeof image === "string" && image.trim().length > 0);
 }
 
-function findTenantListingImage(
-  listings: TenantListingPhotoSummary[],
-  listingId: string | undefined,
-  room: { buildingName: string; roomNo: string; address: string }
-): string | undefined {
-  const listing =
-    listings.find((item) => item.id === listingId) ??
-    listings.find((item) => {
-      const detailAddress = item.detailAddress ?? "";
-      return (
-        item.title === room.buildingName ||
-        item.location === room.address ||
-        detailAddress.includes(room.roomNo) ||
-        `${item.location ?? ""} ${detailAddress}`.includes(room.address)
-      );
-    });
-
-  return firstListingImage(listing);
-}
-
 function TenantFloorPlanPreview({
   imageUrl,
   title
@@ -720,6 +706,7 @@ export default function TenantMyPage({
         let contract: TenantContractSummary | null = null;
         let leaseContract: Contract | null = null;
         let residenceImageUrl: string | undefined;
+        let listingOptions: string[] = [];
         let acceptedListingId: string | undefined;
         try {
           if (contractsSettled.status === "fulfilled" && contractsSettled.value.ok) {
@@ -760,8 +747,8 @@ export default function TenantMyPage({
 
         // 2단계: 방이 확정돼야 쏠 수 있는 두 요청 — 서로는 독립이라 병렬.
         // listings(매물 사진)는 기존처럼 accepted 계약이 있을 때만 요청한다(무의미한 전체 목록 당김 방지).
-        // 주의: listingId가 아니라 계약 존재로 게이트한다 — findTenantListingImage는 listingId가
-        // 없어도 방 정보(건물명·주소)로 폴백 매칭하므로 기존 동작을 좁히면 안 된다.
+        // 주의: listingId가 아니라 계약 존재로 게이트한다 — 매물 매칭은 listingId가 없어도
+        // 방 정보(건물명·주소)로 폴백하므로 사진과 옵션의 기존 조회 범위를 좁히면 안 된다.
         const [listingsSettled, leaseSettled] = await Promise.allSettled([
           contract
             ? fetch("/api/trade/listings", { cache: "no-store" })
@@ -775,11 +762,18 @@ export default function TenantMyPage({
           if (contract && listingsSettled.status === "fulfilled" && listingsSettled.value?.ok) {
             const listings = (await listingsSettled.value.json()) as TenantListingPhotoSummary[];
             if (Array.isArray(listings)) {
-              residenceImageUrl = findTenantListingImage(listings, acceptedListingId, selectedRoom);
+              const matchedListing = findTenantContractListing(
+                listings,
+                acceptedListingId,
+                selectedRoom,
+              );
+              residenceImageUrl = firstListingImage(matchedListing);
+              listingOptions = tenantContractOptions(matchedListing);
             }
           }
         } catch {
           residenceImageUrl = undefined;
+          listingOptions = [];
         }
 
         try {
@@ -798,6 +792,7 @@ export default function TenantMyPage({
             address: selectedRoom.address,
             landlordId: selectedRoom.landlordId,
             imageUrl: residenceImageUrl,
+            listingOptions,
             contract,
             leaseContract
           });
@@ -1990,6 +1985,22 @@ export default function TenantMyPage({
                 </div>
               ))}
             </dl>
+
+            <section
+              className="tenant-contract-options"
+              aria-labelledby="tenant-contract-options-title"
+            >
+              <h3 id="tenant-contract-options-title">옵션 (선택)</h3>
+              {tenancy && tenancy !== "loading" && tenancy.listingOptions.length > 0 ? (
+                <ul className="tenant-contract-option-list" role="list">
+                  {tenancy.listingOptions.map((option) => (
+                    <li key={option}>{option}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="tenant-contract-options-empty">등록된 옵션이 없습니다.</p>
+              )}
+            </section>
 
             <button className="notification-action" type="button" onClick={() => setIsContractSheetOpen(false)}>
               확인
