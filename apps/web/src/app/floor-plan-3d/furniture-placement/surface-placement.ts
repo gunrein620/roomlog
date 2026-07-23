@@ -6,7 +6,7 @@ import type {
   WheretoputWall3D
 } from "../room-model/types";
 import { getFurnitureDimensions } from "./catalog";
-import { moveFurnitureDraftToPoint } from "./placement";
+import { moveFurnitureDraftToPoint, quarterTurnSnapAngle } from "./placement";
 
 const WALL_MOUNT_MAX_DEPTH_MM = 300;
 const STACKABLE_MAX_SIDE_MM = 1000;
@@ -77,7 +77,8 @@ export function resolveFurniturePlacement(input: ResolveFurniturePlacementInput)
 export function rotateFurnitureForPlacement(furniture: PlacedFurniture, direction: -1 | 1): PlacedFurniture {
   const rotation = [...furniture.rotation] as [number, number, number];
   const axis = furniturePlacementMode(furniture) === "wall" ? 2 : 1;
-  rotation[axis] = roundAngle(rotation[axis] + direction * Math.PI / 2);
+  // 섬세 회전으로 어긋난 각도여도 90도 버튼은 절대 그리드(0·90·180·270)로 맞춘다.
+  rotation[axis] = roundAngle(quarterTurnSnapAngle(rotation[axis], direction));
   return { ...furniture, rotation };
 }
 

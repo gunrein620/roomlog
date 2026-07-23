@@ -24,10 +24,10 @@ describe("furniture first-person controls", () => {
     // 자유시점(비행) — Y를 눈높이 상수로 고정하지 않고, 클램프 범위 안에서 시선 방향 그대로 이동한다.
     assert.match(controllerSource, /FURNITURE_MIN_EYE_HEIGHT_METERS/);
     assert.match(controllerSource, /FURNITURE_MAX_EYE_HEIGHT_METERS/);
-    // 1/3 홀드 연속 회전 — 짧은 탭은 90도 스냅, 길게 누르면 onRotateBy로 매 프레임 회전.
-    assert.match(controllerSource, /rotateHoldRef/);
+    // 회전 키 분담 — 1/3은 90도 스냅(즉시), Q/E는 누르고 있는 동안 onRotateBy 연속 섬세 회전.
+    assert.match(controllerSource, /fineRotateKeysRef/);
+    assert.match(controllerSource, /fineRotateKeyDirection/);
     assert.match(controllerSource, /onRotateBy/);
-    assert.match(controllerSource, /FURNITURE_ROTATE_HOLD_THRESHOLD_MS/);
     // 포인터록 중 좌클릭 = 잡기(탐색·조준 시)/배치 고정(운반) — E/Q 단축키와 병행.
     assert.match(
       controllerSource,
@@ -61,7 +61,7 @@ describe("furniture first-person controls", () => {
     assert.match(mitunetExtrudedLayerSource, /userData=\{\{ roomlogPlacementSurface: "wall", roomlogWallId: "mitunet-wall" \}\}/);
     assert.match(viewerSource, /roomlogFurnitureId: furniture\.id/);
     assert.match(viewerSource, /className=\{`floor-plan-furniture-reticle is-/);
-    assert.match(viewerSource, /1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전\(길게 누르면 천천히\) · 클릭\/Q 고정/);
+    assert.match(viewerSource, /1\/3 90도 회전 · Q\/E 섬세 회전 · 2 다시 선택 · 클릭 고정/);
     assert.match(viewerSource, /클릭\/E 가구 잡기/);
     assert.match(viewerSource, /2 가구 선택 · WASD 이동 · 마우스 시점/);
     assert.match(styles, /\.floor-plan-furniture-reticle/);

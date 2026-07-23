@@ -48,10 +48,26 @@ export function moveFurnitureDraftToPoint(
   };
 }
 
+const QUARTER_TURN_RADIANS = Math.PI / 2;
+const QUARTER_TURN_EPSILON = 1e-4;
+
+/**
+ * 90도 회전은 상대 가산이 아니라 절대 그리드(0·90·180·270)로 스냅한다 —
+ * 섬세 회전으로 13도쯤 돌린 상태에서 90도 버튼을 누르면 103도가 아니라
+ * 진행 방향의 다음 그리드 각도(오른쪽이면 90도, 왼쪽이면 0도)로 맞춘다.
+ */
+export function quarterTurnSnapAngle(angle: number, direction: -1 | 1): number {
+  const steps = angle / QUARTER_TURN_RADIANS;
+  const nextStep = direction === 1
+    ? Math.floor(steps + QUARTER_TURN_EPSILON) + 1
+    : Math.ceil(steps - QUARTER_TURN_EPSILON) - 1;
+  return nextStep * QUARTER_TURN_RADIANS;
+}
+
 export function rotateFurnitureQuarterTurn(furniture: PlacedFurniture, direction: -1 | 1 = 1): PlacedFurniture {
   return {
     ...furniture,
-    rotation: [0, Number((furniture.rotation[1] + direction * Math.PI / 2).toFixed(4)), 0]
+    rotation: [0, Number(quarterTurnSnapAngle(furniture.rotation[1], direction).toFixed(4)), 0]
   };
 }
 

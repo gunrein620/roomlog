@@ -1104,7 +1104,7 @@ export function RoomlogThreeFloorPlanView({
           )}
           <span className="floor-3d-hint">
             {furnitureInteractionMode === "carry"
-              ? "1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전(길게 누르면 천천히) · 클릭/Q 고정 · R 제거/취소"
+              ? "1/3 90도 회전 · Q/E 섬세 회전 · 2 다시 선택 · 클릭 고정 · R 제거/취소"
               : furnitureInteractionMode === "select"
                 ? "가구를 선택하세요 · 2 또는 Esc 닫기"
                 : aimedFurnitureId

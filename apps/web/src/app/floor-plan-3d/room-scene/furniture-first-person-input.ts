@@ -1,11 +1,10 @@
 import { combineWalkInput, type WalkAction } from "../walk/walk-input";
 import { isOrbitKeyboardInteractiveTarget } from "./orbit-keyboard-movement";
 
-export const FURNITURE_MOVE_SPEED_METERS_PER_SECOND = 6;
+// 6m/s는 방 안에서 너무 빨랐다 — 25% 감속(사용자 피드백).
+export const FURNITURE_MOVE_SPEED_METERS_PER_SECOND = 4.5;
 export const FURNITURE_MAX_FRAME_DELTA_SECONDS = 0.1;
-/** 1/3 키를 이 시간 이상 누르고 있으면 90도 스냅 대신 연속 회전으로 전환한다. */
-export const FURNITURE_ROTATE_HOLD_THRESHOLD_MS = 250;
-/** 연속 회전 속도 — 초당 90도. */
+/** Q/E 섬세(연속) 회전 속도 — 초당 90도. */
 export const FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND = Math.PI / 2;
 
 export type FurnitureFlyPoint = { x: number; y: number; z: number };
@@ -17,7 +16,6 @@ export type FurnitureShortcutAction =
   | "close-select"
   | "rotate-left"
   | "rotate-right"
-  | "confirm"
   | "cancel"
   | "remove";
 
@@ -40,16 +38,16 @@ export function resolveFurnitureShortcut(input: {
   }
   if ((input.code === "Digit1" || input.code === "Numpad1") && input.mode === "carry") return "rotate-left";
   if ((input.code === "Digit3" || input.code === "Numpad3") && input.mode === "carry") return "rotate-right";
-  if (input.code === "KeyQ" && input.mode === "carry") return "confirm";
+  // Q는 더 이상 배치 고정이 아니다 — 고정은 좌클릭, Q/E는 섬세 회전(fineRotateKeyDirection).
   if (input.code === "KeyR" && input.mode === "carry") return "remove";
   if (input.code === "Escape" && input.mode === "carry") return "cancel";
   return null;
 }
 
-/** 1/3(넘패드 포함) 키의 회전 방향 — 회전 키가 아니면 null. keyup 스냅 판정에 쓴다. */
-export function rotateKeyDirection(code: string): -1 | 1 | null {
-  if (code === "Digit1" || code === "Numpad1") return -1;
-  if (code === "Digit3" || code === "Numpad3") return 1;
+/** Q/E 섬세(연속) 회전 키의 방향 — Q=왼쪽, E=오른쪽. 운반(carry) 중에만 적용한다. */
+export function fineRotateKeyDirection(code: string): -1 | 1 | null {
+  if (code === "KeyQ") return -1;
+  if (code === "KeyE") return 1;
   return null;
 }
 

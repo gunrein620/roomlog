@@ -507,7 +507,7 @@ export default function ListingTourRoom3D({
     }
     pendingFurniturePlacedOnceRef.current = true;
     if (!sameFurnitureTransform(pendingFurniture, placement.furniture)) setPendingFurniture(placement.furniture);
-    setSaveMessage(`${placement.furniture.name} 위치를 잡았습니다. 클릭 또는 Q로 배치를 확정하세요.`);
+    setSaveMessage(`${placement.furniture.name} 위치를 잡았습니다. 클릭으로 배치를 확정하세요.`);
   }
 
   function placePendingFurniture(point: { x: number; z: number }) {
@@ -568,7 +568,7 @@ export default function ListingTourRoom3D({
   function confirmPendingFurniturePlacement() {
     if (!pendingFurniture) return;
     if (!pendingFurniturePlacementRef.current?.valid) {
-      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 클릭하거나 Q를 눌러주세요.");
+      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 클릭해 확정해주세요.");
       return;
     }
     // 재편집이면 원본 분류(source)를 보존한다 — 임대인 옵션 가구가 세입자 배치로 둔갑하지 않게.
@@ -599,7 +599,7 @@ export default function ListingTourRoom3D({
 
   function confirmPendingFurnitureFromShortcut() {
     if (!pendingFurniturePlacementRef.current?.valid) {
-      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 클릭하거나 Q를 눌러주세요.");
+      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 클릭해 확정해주세요.");
       return;
     }
     confirmPendingFurniturePlacement();

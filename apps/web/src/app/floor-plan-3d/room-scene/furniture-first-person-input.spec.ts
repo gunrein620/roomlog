@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   FURNITURE_MOVE_SPEED_METERS_PER_SECOND,
-  FURNITURE_ROTATE_HOLD_THRESHOLD_MS,
   FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND,
+  fineRotateKeyDirection,
   furnitureFlyMovementDelta,
-  resolveFurnitureShortcut,
-  rotateKeyDirection
+  resolveFurnitureShortcut
 } from "./furniture-first-person-input";
 
 describe("furniture first-person input", () => {
@@ -75,7 +74,8 @@ describe("furniture first-person input", () => {
     );
   });
 
-  it("uses Q to confirm carry and Escape to close or cancel", () => {
+  it("no longer maps Q to confirm (fixing is left-click), keeps Escape close or cancel", () => {
+    // Q는 이제 섬세 회전(fineRotateKeyDirection) 담당 — 단축키 리졸버에서는 아무것도 아니다.
     assert.equal(
       resolveFurnitureShortcut({
         aimedFurnitureId: null,
@@ -84,7 +84,7 @@ describe("furniture first-person input", () => {
         repeat: false,
         target: null
       }),
-      "confirm"
+      null
     );
     assert.equal(
       resolveFurnitureShortcut({
@@ -154,11 +154,11 @@ describe("furniture first-person input", () => {
     );
   });
 
-  it("moves at exactly six metres per second with bounded delta", () => {
-    assert.equal(FURNITURE_MOVE_SPEED_METERS_PER_SECOND, 6);
+  it("moves at 4.5 metres per second (25% slower) with bounded delta", () => {
+    assert.equal(FURNITURE_MOVE_SPEED_METERS_PER_SECOND, 4.5);
     assert.deepEqual(
       furnitureFlyMovementDelta(new Set(["forward"]), { x: 0, y: 0, z: -1 }, 1),
-      { x: 0, y: 0, z: -0.6000000000000001 }
+      { x: 0, y: 0, z: -0.45 }
     );
   });
 
@@ -179,13 +179,11 @@ describe("furniture first-person input", () => {
     assert.ok(strafe.x > 0);
   });
 
-  it("maps 1/3 keys to hold-rotation directions with a snap threshold", () => {
-    assert.equal(rotateKeyDirection("Digit1"), -1);
-    assert.equal(rotateKeyDirection("Numpad1"), -1);
-    assert.equal(rotateKeyDirection("Digit3"), 1);
-    assert.equal(rotateKeyDirection("Numpad3"), 1);
-    assert.equal(rotateKeyDirection("KeyW"), null);
-    assert.equal(FURNITURE_ROTATE_HOLD_THRESHOLD_MS, 250);
+  it("maps Q/E to fine-rotation directions at ninety degrees per second", () => {
+    assert.equal(fineRotateKeyDirection("KeyQ"), -1);
+    assert.equal(fineRotateKeyDirection("KeyE"), 1);
+    assert.equal(fineRotateKeyDirection("Digit1"), null);
+    assert.equal(fineRotateKeyDirection("KeyW"), null);
     assert.equal(FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND, Math.PI / 2);
   });
 });
