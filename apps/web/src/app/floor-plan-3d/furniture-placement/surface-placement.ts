@@ -8,16 +8,10 @@ import type {
 import { getFurnitureDimensions } from "./catalog";
 import { moveFurnitureDraftToPoint, quarterTurnSnapAngle } from "./placement";
 
-const WALL_MOUNT_MAX_DEPTH_MM = 300;
-const STACKABLE_MAX_SIDE_MM = 1000;
-const STACKABLE_MAX_HEIGHT_MM = 1200;
 const SURFACE_EDGE_MARGIN_M = 0.01;
 const SURFACE_LIFT_M = 0.004;
 const WALL_OFFSET_M = 0.002;
 const VERTICAL_EPSILON_M = 0.003;
-
-const FLOOR_ONLY_PATTERN = /소파|침대|매트리스|옷장|식탁|책상|테이블|의자|스툴|벤치|냉장고|세탁기|건조기/i;
-const SUPPORT_PATTERN = /테이블|책상|수납|선반|장|서랍|캐비닛|주방|아일랜드|식탁/i;
 
 export type FurniturePlacementPoint = { x: number; y: number; z: number };
 export type FurniturePlacementHit =
@@ -50,17 +44,11 @@ export function furniturePlacementMode(furniture: Pick<PlacedFurniture, "placeme
   return furniture.placement?.mode ?? "floor";
 }
 
-export function canPlaceFurniture(furniture: PlacedFurniture, mode: FurniturePlacementMode) {
-  const capability = furniture.placementCapability;
-  if (capability) return capability === "any" || capability === mode;
-  if (mode === "floor") return true;
-
-  const scale = Number.isFinite(furniture.scale) && furniture.scale > 0 ? furniture.scale : 1;
-  const [widthMm, heightMm, depthMm] = furniture.length.map((value) => value * scale);
-  const label = `${furniture.category ?? ""} ${furniture.name}`;
-  if (FLOOR_ONLY_PATTERN.test(label)) return false;
-  if (mode === "wall") return depthMm <= WALL_MOUNT_MAX_DEPTH_MM;
-  return Math.max(widthMm, depthMm) <= STACKABLE_MAX_SIDE_MM && heightMm <= STACKABLE_MAX_HEIGHT_MM;
+// 배치 자유화(사용자 결정 2026-07-23): 어떤 가구든 바닥·가구 위·벽에 붙일 수 있다.
+// 품목(소파·침대 등)·크기(벽걸이 깊이, 적재 한도)·placementCapability 게이트를 모두 제거하고,
+// 물리적으로 불가능한 것(벽 높이 초과, 2단 적재)만 resolve 단계에서 막는다.
+export function canPlaceFurniture(_furniture: PlacedFurniture, _mode: FurniturePlacementMode) {
+  return true;
 }
 
 export function furnitureBaseY(furniture: PlacedFurniture) {
@@ -137,7 +125,9 @@ function resolveSurfacePlacement(input: ResolveFurniturePlacementInput): Furnitu
   const support = input.placed.find((furniture) => furniture.id === hit.furnitureId);
   if (!support) return invalid(input.draft, "surface", "받침 가구를 찾지 못했습니다.");
   if (!canPlaceFurniture(input.draft, "surface")) return invalid(input.draft, "surface", "이 가구는 위에 놓을 수 없습니다.");
-  if (furniturePlacementMode(support) !== "floor" || !canSupportFurniture(support)) {
+  // 받침 품목 제한은 폐지 — 어떤 가구든 받침이 될 수 있다. 2단 적재(가구 위 가구 위 가구)만
+  // 막는다(따라 움직이기 전파가 1단만 지원).
+  if (furniturePlacementMode(support) !== "floor") {
     return invalid(input.draft, "surface", "이 가구는 받침대로 사용할 수 없습니다.");
   }
 
@@ -148,9 +138,9 @@ function resolveSurfacePlacement(input: ResolveFurniturePlacementInput): Furnitu
     + Math.abs(Math.sin(relativeYaw)) * draftDimensions.depth / 2;
   const halfZ = Math.abs(Math.sin(relativeYaw)) * draftDimensions.width / 2
     + Math.abs(Math.cos(relativeYaw)) * draftDimensions.depth / 2;
-  const limitX = supportDimensions.width / 2 - halfX - SURFACE_EDGE_MARGIN_M;
-  const limitZ = supportDimensions.depth / 2 - halfZ - SURFACE_EDGE_MARGIN_M;
-  if (limitX < 0 || limitZ < 0) return invalid(input.draft, "surface", "받침 가구보다 크기가 큽니다.");
+  // 받침보다 큰 가구도 허용한다 — 클램프 범위가 뒤집히지 않게 0으로 눌러 받침 중앙에 스냅.
+  const limitX = Math.max(0, supportDimensions.width / 2 - halfX - SURFACE_EDGE_MARGIN_M);
+  const limitZ = Math.max(0, supportDimensions.depth / 2 - halfZ - SURFACE_EDGE_MARGIN_M);
 
   const local = worldToLocal(hit.point, support.position, support.rotation[1]);
   const snappedLocalX = clamp(local.x, -limitX, limitX);
@@ -195,10 +185,6 @@ function resolveWallPlacement(input: ResolveFurniturePlacementInput): FurnitureP
   }, attachment), baseY);
 
   return validateCollision(furniture, input.placed, attachment);
-}
-
-function canSupportFurniture(furniture: PlacedFurniture) {
-  return SUPPORT_PATTERN.test(`${furniture.category ?? ""} ${furniture.name}`);
 }
 
 function validateCollision(

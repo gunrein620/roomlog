@@ -30,7 +30,7 @@ export class TradeController {
     });
   }
 
-  private ensureRoomForListing(listing: TradeListing): TradeListing {
+  private async ensureRoomForListing(listing: TradeListing): Promise<TradeListing> {
     const room = this.roomlogService.ensureRoomFromTradeListing(listing.ownerId, {
       roomId: listing.roomId,
       title: listing.title,
@@ -38,6 +38,12 @@ export class TradeController {
       detailAddress: listing.detailAddress,
       buildingName: listing.buildingName
     });
+
+    // Room(roomlog 큐)과 TradeListing(trade 큐)은 서로 다른 비동기 저장 큐를 탄다.
+    // roomId를 매물에 붙이는 순간 trade 프로젝션이 시작되므로, 그 전에 Room의 DB 반영을
+    // 확실히 기다려야 한다 — 안 그러면 TradeListing upsert가 Room insert보다 먼저 도착해
+    // FK(P2003, TradeListing_roomId_fkey) 위반으로 첫 등록만 실패한다(2026-07-23 운영 재현).
+    await this.roomlogService.ensurePersistenceDurability();
 
     return this.tradeService.attachListingRoom(listing.ownerId, listing.id, room.id);
   }
@@ -50,14 +56,16 @@ export class TradeController {
   // 기본은 전체 반환(공개 매물 브라우징이 이 경로를 씀 — 스코프 걸면 깨진다).
   // ?mine=1 + Bearer면 소유자 매물만 — 마이페이지 배지·앱 매물 픽커용(fail-closed: 토큰 없으면 던짐).
   @Get("listings")
-  listListings(
+  async listListings(
     @Headers("authorization") authorization: string | undefined,
     @Query("mine") mine?: string
   ) {
     if (mine === "1" || mine === "true") {
-      return this.tradeService
-        .listListingsByOwner(this.user(authorization).id)
-        .map((listing) => this.ensureRoomForListing(listing));
+      return await Promise.all(
+        this.tradeService
+          .listListingsByOwner(this.user(authorization).id)
+          .map((listing) => this.ensureRoomForListing(listing))
+      );
     }
     return this.tradeService.listListings();
   }
@@ -71,7 +79,7 @@ export class TradeController {
     const listing = this.tradeService.createListing(user, body);
     try {
       await this.tradeService.ensureListingDurability();
-      const linked = this.ensureRoomForListing(listing);
+      const linked = await this.ensureRoomForListing(listing);
       await this.tradeService.ensureListingDurability();
       return linked;
     } catch (error) {
@@ -89,7 +97,7 @@ export class TradeController {
     @Body() body: Partial<TradeListingInput>
   ) {
     const user = this.user(authorization);
-    const listing = this.ensureRoomForListing(
+    const listing = await this.ensureRoomForListing(
       this.tradeService.updateListing(user, listingId, body)
     );
     await this.tradeService.ensureListingDurability();

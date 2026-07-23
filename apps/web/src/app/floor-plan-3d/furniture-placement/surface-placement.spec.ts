@@ -28,20 +28,16 @@ function furniture(overrides: Partial<PlacedFurniture> = {}): PlacedFurniture {
 }
 
 describe("automatic furniture surface placement", () => {
-  it("defaults legacy furniture to floor and honours an explicit capability", () => {
-    const legacy = furniture();
-    const wallOnly = furniture({ placementCapability: "wall" });
-
-    assert.equal(furniturePlacementMode(legacy), "floor");
-    assert.equal(canPlaceFurniture(wallOnly, "wall"), true);
-    assert.equal(canPlaceFurniture(wallOnly, "surface"), false);
+  it("defaults legacy furniture to floor placement mode", () => {
+    assert.equal(furniturePlacementMode(furniture()), "floor");
   });
 
-  it("uses permissive size heuristics while keeping obvious large furniture on the floor", () => {
-    assert.equal(canPlaceFurniture(furniture({ length: [900, 1000, 300], name: "장식장 소품" }), "surface"), true);
-    assert.equal(canPlaceFurniture(furniture({ length: [250, 700, 180], name: "거울" }), "wall"), true);
-    assert.equal(canPlaceFurniture(furniture({ length: [900, 700, 700], name: "소파" }), "surface"), false);
-    assert.equal(canPlaceFurniture(furniture({ length: [250, 700, 420], name: "거울" }), "wall"), false);
+  it("allows any furniture on walls and surfaces (배치 자유화)", () => {
+    // 품목·크기·capability 게이트 폐지 — 소파도 벽에, 깊은 가구도 위에 올릴 수 있다.
+    assert.equal(canPlaceFurniture(furniture({ length: [900, 700, 700], name: "소파" }), "surface"), true);
+    assert.equal(canPlaceFurniture(furniture({ length: [900, 700, 700], name: "소파" }), "wall"), true);
+    assert.equal(canPlaceFurniture(furniture({ length: [250, 700, 420], name: "거울" }), "wall"), true);
+    assert.equal(canPlaceFurniture(furniture({ placementCapability: "wall" }), "surface"), true);
   });
 
   it("places floor furniture and records a floor attachment", () => {
@@ -77,6 +73,27 @@ describe("automatic furniture surface placement", () => {
     assert.deepEqual(result.attachment, { mode: "surface", supportFurnitureId: "table" });
     assert.equal(furnitureBaseY(result.furniture), 0.754);
     assert.ok(result.furniture.position[0] < 0.58);
+  });
+
+  it("snaps an oversized item to the support centre instead of rejecting it", () => {
+    const stool = furniture({
+      id: "stool",
+      length: [400, 450, 400],
+      name: "스툴",
+      position: [2, 0, 2]
+    });
+    const result = resolveFurniturePlacement({
+      // 받침(스툴)보다 큰 수납장 — 거부하지 않고 받침 중앙 위에 올린다.
+      draft: furniture({ id: "cabinet", length: [800, 700, 600], name: "수납장" }),
+      hit: { kind: "furniture", furnitureId: stool.id, point: { x: 2.19, y: 0.45, z: 1.87 }, supportTopY: 0.45 },
+      placed: [stool],
+      walls: []
+    });
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.attachment, { mode: "surface", supportFurnitureId: "stool" });
+    assert.equal(result.furniture.position[0], 2);
+    assert.equal(result.furniture.position[2], 2);
   });
 
   it("rejects second-level stacking and keeps the draft transform", () => {
