@@ -5073,7 +5073,7 @@ async function restoreRoomLogEditorSnapshot() {
     const hasRestorableEditorSnapshot = Boolean(snapshot?.review && snapshot?.composedPlan)
       && typeof snapshot.review.input_image_b64 === "string"
       && typeof snapshot.review.wall_mask_b64 === "string";
-    const restorePayload = hasRestorableEditorSnapshot
+    const snapshotRestorePayload = hasRestorableEditorSnapshot
       ? {
           composedPlan: {
             ...snapshot.composedPlan,
@@ -5083,36 +5083,46 @@ async function restoreRoomLogEditorSnapshot() {
           review: snapshot.review,
           sourceName: typeof snapshot.sourceName === "string" ? snapshot.sourceName : "",
         }
-      : fallbackPlan;
-    if (!restorePayload) {
+      : null;
+    const restoreCandidates = [snapshotRestorePayload, fallbackPlan].filter(Boolean);
+    if (restoreCandidates.length === 0) {
       setStatus("저장된 가구 배치 도면을 찾지 못했습니다. 도면을 다시 열어주세요.", "error");
       return false;
     }
 
-    if (restorePayload.review) {
-      await reviewEditor.load(restorePayload.review);
-      reviewEditor.calibration = restorePayload.review.calibration ?? reviewEditor.getCalibration();
-    }
-    const rendered = await loadPlan(restorePayload.composedPlan);
-    if (!rendered) throw new Error("저장된 3D 도면을 복원할 수 없습니다.");
-
     const savedFurnitures = draft?.floorPlan?.furnitures;
-    await restoreSavedFurniturePlacements(savedFurnitures);
+    let lastRestoreError = null;
+    for (const restorePayload of restoreCandidates) {
+      try {
+        if (restorePayload.review) {
+          await reviewEditor.load(restorePayload.review);
+          reviewEditor.calibration = restorePayload.review.calibration ?? reviewEditor.getCalibration();
+        }
+        const rendered = await loadPlan(restorePayload.composedPlan);
+        if (!rendered) throw new Error("저장된 3D 도면을 복원할 수 없습니다.");
 
-    currentExtraction = restorePayload.review ?? null;
-    currentComposedPlan = restorePayload.composedPlan;
-    currentSourceName = restorePayload.sourceName;
-    if (restorePayload.review) reviewEditor.document.markRendered();
-    document.body.classList.remove("upload-empty");
-    if (resumeView === "floor") {
-      await showFloorView();
-    } else {
-      const targetView = resumeView === "original" ? "original" : "3d";
-      setView(targetView);
+        await restoreSavedFurniturePlacements(savedFurnitures);
+
+        currentExtraction = restorePayload.review ?? null;
+        currentComposedPlan = restorePayload.composedPlan;
+        currentSourceName = restorePayload.sourceName;
+        if (restorePayload.review) reviewEditor.document.markRendered();
+        document.body.classList.remove("upload-empty");
+        if (resumeView === "floor") {
+          await showFloorView();
+        } else {
+          const targetView = resumeView === "original" ? "original" : "3d";
+          setView(targetView);
+        }
+        setStatus(summarize(currentComposedPlan));
+        updateEditorControls();
+        return true;
+      } catch (error) {
+        lastRestoreError = error;
+        continue;
+      }
     }
-    setStatus(summarize(currentComposedPlan));
-    updateEditorControls();
-    return true;
+    throw lastRestoreError ?? new Error("Saved 3D floor plan could not be restored.");
   } catch (error) {
     setStatus(`저장된 도면을 복원하지 못했습니다: ${error.message}`, "error");
     return false;

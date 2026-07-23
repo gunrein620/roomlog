@@ -333,8 +333,23 @@ test("returns to the saved 3D plan when an owner furniture draft has no editor s
   assert.match(viewerSource, /if \(!Array\.isArray\(polygons\?\.wall\) \|\| polygons\.wall\.length === 0\) return null;/);
   assert.match(viewerSource, /const fallbackPlan = planFromRoomLogFurnitureDraft\(draft\);/);
   assert.match(viewerSource, /const hasRestorableEditorSnapshot = Boolean\(snapshot\?\.review && snapshot\?\.composedPlan\)/);
-  assert.match(viewerSource, /const restorePayload = hasRestorableEditorSnapshot[\s\S]*?fallbackPlan/);
+  assert.match(viewerSource, /const snapshotRestorePayload = hasRestorableEditorSnapshot[\s\S]*?: null;/);
+  assert.match(viewerSource, /const restoreCandidates = \[snapshotRestorePayload, fallbackPlan\]\.filter\(Boolean\);/);
   assert.match(viewerSource, /const rendered = await loadPlan\(restorePayload\.composedPlan\);/);
+});
+
+test("falls back to the saved 3D plan when restoring an editor snapshot fails", () => {
+  const restoreBody = viewerSource.split("async function restoreRoomLogEditorSnapshot()", 2)[1]
+    ?.split("async function enableStaticDemoMode()", 1)[0] ?? "";
+
+  assert.match(
+    restoreBody,
+    /const restoreCandidates = \[snapshotRestorePayload, fallbackPlan\]\.filter\(Boolean\);/,
+  );
+  assert.match(
+    restoreBody,
+    /for \(const restorePayload of restoreCandidates\) \{[\s\S]*?catch \(error\) \{[\s\S]*?continue;/,
+  );
 });
 
 test("keeps owner furniture available after a fallback 3D return", () => {
