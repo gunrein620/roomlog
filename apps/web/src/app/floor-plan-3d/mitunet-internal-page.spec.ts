@@ -198,7 +198,10 @@ test("uses the bottom Floor view only for floor finish while the 3D toolbar star
   assert.doesNotMatch(viewerSource, /다음:\s*가구 배치/);
   assert.doesNotMatch(viewerSource, /id="structure-btn"/);
   assert.doesNotMatch(viewerSource, /구조 확인/);
-  assert.match(viewerSource, /viewButtons\.forEach\(button => \{\s*button\.disabled = !hasDocument \|\| inFlight;/);
+  assert.match(
+    viewerSource,
+    /viewButtons\.forEach\(button => \{\s*const canUseView = button\.dataset\.view === "original" \? hasDocument : Boolean\(currentComposedPlan\);\s*button\.disabled = !canUseView \|\| inFlight;/,
+  );
   assert.match(
     viewerSource,
     /async function showFloorView\(\)\s*\{[\s\S]*?currentView = "floor";[\s\S]*?setPlanFloorSurfaceVisible\(true\);[\s\S]*?setFurniturePanelOpen\(false\);/,
@@ -350,6 +353,11 @@ test("falls back to the saved 3D plan when restoring an editor snapshot fails", 
     restoreBody,
     /for \(const restorePayload of restoreCandidates\) \{[\s\S]*?catch \(error\) \{[\s\S]*?continue;/,
   );
+});
+
+test("keeps the view switch visible after restoring a 3D plan without an editor snapshot", () => {
+  assert.match(viewerSource, /const hasViewControls = hasDocument \|\| Boolean\(currentComposedPlan\);/);
+  assert.match(viewerSource, /viewControls\.hidden = !hasViewControls;/);
 });
 
 test("keeps owner furniture available after a fallback 3D return", () => {

@@ -4161,7 +4161,8 @@ function updateEditorControls() {
   document.querySelectorAll("[data-count]").forEach(node => {
     node.textContent = counts[node.dataset.count] ?? 0;
   });
-  viewControls.hidden = !hasDocument;
+  const hasViewControls = hasDocument || Boolean(currentComposedPlan);
+  viewControls.hidden = !hasViewControls;
   toolButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   navigationButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   visibilityInputs.forEach(input => { input.disabled = !hasDocument || inFlight; });
@@ -4183,7 +4184,10 @@ function updateEditorControls() {
   connectRoomLogButton.title = roomLogSaveReason || "3D 도면을 저장하고 매물 등록으로 돌아가기";
   roomLogSaveHint.hidden = !roomLogFlowRequested || !roomLogSaveReason;
   roomLogSaveHint.textContent = roomLogSaveReason;
-  viewButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
+  viewButtons.forEach(button => {
+    const canUseView = button.dataset.view === "original" ? hasDocument : Boolean(currentComposedPlan);
+    button.disabled = !canUseView || inFlight;
+  });
   document.body.classList.toggle("is-busy", inFlight);
   reviewCanvas.setAttribute("aria-busy", String(inFlight));
   updateCameraPresetControls();
