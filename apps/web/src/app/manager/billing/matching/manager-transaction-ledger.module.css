@@ -361,12 +361,21 @@
 
 .detailField dd {
   margin: 0;
+  white-space: normal;
   overflow-wrap: anywhere;
   color: var(--on-surface);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   font-weight: var(--fw-subtitle);
   font-variant-numeric: tabular-nums;
+}
+
+.billItems {
+  display: grid;
+}
+
+.billItem {
+  white-space: nowrap;
 }
 
 .detailContent > span strong {

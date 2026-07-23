@@ -41,6 +41,14 @@ export interface SplatAsset {
   updatedAt: string;
 }
 
+export function isWalkingTourAvailableAsset(asset: Pick<SplatAsset, "status" | "fileUrl">): boolean {
+  return (asset.status === "REGISTERED" || asset.status === "UPLOADED") && asset.fileUrl.trim().length > 0;
+}
+
+export function hasWalkingTourAvailableAsset(assets: Pick<SplatAsset, "status" | "fileUrl">[]): boolean {
+  return assets.some(isWalkingTourAvailableAsset);
+}
+
 export interface CreateSplatAssetInput {
   roomId: string;
   fileUrl: string;

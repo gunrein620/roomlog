@@ -107,7 +107,7 @@ export function InstrumentPanel({
           </div>
         </div>
 
-        <InstrumentRing label="티켓 처리율" pct={ticketPct} sub={ticketSub} href={ticketHref} accent={ARC_TICKET} />
+        <InstrumentRing label="민원 처리율" pct={ticketPct} sub={ticketSub} href={ticketHref} accent={ARC_TICKET} />
       </div>
 
       <div className="manager-instrument-bottom">

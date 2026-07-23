@@ -17,7 +17,7 @@ import type { DashboardSourceKey, TodayTask, TodayTaskKind } from "./dashboard-c
 
 const kindLabels: Record<TodayTaskKind, string> = {
   overdue: "연체",
-  urgent_ticket: "긴급 하자",
+  urgent_ticket: "민원·하자",
   expiring: "계약",
   unanswered: "답장"
 };

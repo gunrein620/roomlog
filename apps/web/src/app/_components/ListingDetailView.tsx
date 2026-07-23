@@ -29,7 +29,7 @@ import {
   TRADE_LISTING_NO_PREFIX,
   type Listing
 } from "@/lib/listing-catalog";
-import { listSplatAssetsByListing } from "@/lib/splat-asset-api";
+import { isWalkingTourAvailableAsset, listSplatAssetsByListing } from "@/lib/splat-asset-api";
 import { captureFloorPlanToSceneLayout } from "../floor-plan-3d/room-scene/capture-to-layout";
 import { NaverMapPreview } from "./NaverMapPreview";
 
@@ -101,9 +101,9 @@ export function ListingDetailView({
     listSplatAssetsByListing(listingId)
       .then((assets) => {
         if (cancelled) return;
-        const priority: Record<string, number> = { REGISTERED: 3, UPLOADED: 2, PROCESSING: 1 };
+        const priority: Record<string, number> = { REGISTERED: 2, UPLOADED: 1 };
         const pick = assets
-          .filter((asset) => asset.status in priority)
+          .filter(isWalkingTourAvailableAsset)
           .sort((a, b) => priority[b.status] - priority[a.status])[0];
         setSplatAssetId(pick?.id ?? null);
         setSplatAssetCaptureFloorPlan(pick?.captureFloorPlan ?? null);
