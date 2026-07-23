@@ -3,6 +3,18 @@
   gap: var(--space-md);
 }
 
+.tabCriteriaNote {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.tabCriteriaNote a {
+  color: var(--primary);
+  font-weight: 700;
+}
+
 .viewToggle {
   display: inline-flex;
   gap: var(--space-sm);

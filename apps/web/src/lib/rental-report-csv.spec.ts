@@ -11,6 +11,8 @@ test("임대 현황 CSV는 실제 수납액과 비율 원천값을 그대로 내
         collectedAmount: 275_000,
         repairCostAmount: 48_000,
         occupancyRate: 0.875,
+        occupiedRoomCount: 7,
+        totalRoomCount: 8,
         ticketResolutionRate: null
       }
     ]

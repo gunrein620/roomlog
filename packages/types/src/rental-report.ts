@@ -14,6 +14,10 @@ export interface RentalReportPoint {
   repairCostAmount: number;
   /** 해당 월 말일 기준 유효 계약 호실 비율. 관리 호실이 없으면 null. */
   occupancyRate: number | null;
+  /** 해당 월 말일 기준 유효 계약(검토 확정) 호실 수 — occupancyRate의 분자. */
+  occupiedRoomCount: number;
+  /** 관리 호실 수 — occupancyRate의 분모. */
+  totalRoomCount: number;
   /** 해당 월 접수 민원 중 같은 달 완료된 비율. 접수 민원이 없으면 null. */
   ticketResolutionRate: number | null;
 }

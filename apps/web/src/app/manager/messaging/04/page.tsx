@@ -139,7 +139,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             }}
           >
             <input type="hidden" name="threadId" value={thread.id} />
-            <Input name="body" aria-label="답장 입력" placeholder="답장을 입력하세요" />
+            {/* 세입자 채팅과 동일하게 빈 입력은 제출되지 않는다(required) — 서버 액션도 빈 body는 무시 */}
+            <Input name="body" aria-label="답장 입력" placeholder="답장을 입력하세요" required />
             <Button type="submit">답장 보내기</Button>
           </form>
         </Card>

@@ -184,18 +184,25 @@ export function AnnouncementDetailDialog({
         </div>
 
         <footer className={styles.dialogActions}>
-          <button
-            type="button"
-            className={styles.primaryAction}
-            disabled={pendingAction !== null || stateActionComplete}
-            onClick={() => void updateAnnouncementState()}
-          >
-            {pendingAction === "state"
-              ? "처리 중..."
-              : announcement.confirmRequired
-                ? stateActionComplete ? "확인 완료" : "확인"
-                : stateActionComplete ? "읽음 완료" : "읽음"}
-          </button>
+          {stateActionComplete ? (
+            // 이미 처리된 상태는 동작이 아니므로 버튼이 아니라 상태 표시로 보여준다.
+            <span className={styles.stateDoneBadge} role="status">
+              {announcement.confirmRequired ? "확인 완료" : "읽음 완료"}
+            </span>
+          ) : (
+            <button
+              type="button"
+              className={styles.primaryAction}
+              disabled={pendingAction !== null}
+              onClick={() => void updateAnnouncementState()}
+            >
+              {pendingAction === "state"
+                ? "처리 중..."
+                : announcement.confirmRequired
+                  ? "확인"
+                  : "읽음"}
+            </button>
+          )}
           <button
             type="button"
             className={styles.secondaryAction}

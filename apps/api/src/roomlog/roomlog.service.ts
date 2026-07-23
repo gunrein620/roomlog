@@ -3733,7 +3733,7 @@ export class RoomlogService implements OnModuleDestroy {
           repairCostAmount: vendorCreditPayouts
             .filter((payout) => this.monthKey(payout.occurredAt) === month)
             .reduce((sum, payout) => sum + payout.amount, 0),
-          occupancyRate: this.occupancyRateAtMonthEnd(rooms, month),
+          ...this.occupancyAtMonthEnd(rooms, month),
           ticketResolutionRate:
             receivedTickets.length > 0
               ? completedTicketIds.size / receivedTickets.length
@@ -4556,7 +4556,8 @@ export class RoomlogService implements OnModuleDestroy {
     const greeting = this.createIntakeMessage(
       session.id,
       "AI_ASSISTANT",
-      "안녕하세요. 어떤 문제인지 편하게 적어주세요. 위치, 언제부터 발생했는지, 현재 위험 여부, 방문 가능한 시간을 함께 알려주시면 접수 초안을 바로 정리할게요.",
+      // 클라이언트 도우미 패널이 이미 인사를 띄우므로 여기서 다시 인사하지 않는다(인사 중복 방지).
+      "어떤 문제인지 편하게 적어주세요. 위치, 언제부터 발생했는지, 현재 위험 여부, 방문 가능한 시간을 함께 알려주시면 접수 초안을 바로 정리할게요.",
       "CHAT"
     );
 
@@ -10067,8 +10068,11 @@ export class RoomlogService implements OnModuleDestroy {
     return `${year}-${month}`;
   }
 
-  private occupancyRateAtMonthEnd(rooms: Room[], month: string) {
-    if (rooms.length === 0) return null;
+  // 대시보드 상단 입주율 링과 임대 현황 리포트가 같은 산식(분자·분모)을 쓰도록 카운트도 함께 내린다.
+  private occupancyAtMonthEnd(rooms: Room[], month: string) {
+    if (rooms.length === 0) {
+      return { occupancyRate: null, occupiedRoomCount: 0, totalRoomCount: 0 };
+    }
 
     const monthEnd = this.billingMonthEnd(month);
     const occupiedRoomCount = rooms.filter((room) =>
@@ -10079,7 +10083,11 @@ export class RoomlogService implements OnModuleDestroy {
       )
     ).length;
 
-    return occupiedRoomCount / rooms.length;
+    return {
+      occupancyRate: occupiedRoomCount / rooms.length,
+      occupiedRoomCount,
+      totalRoomCount: rooms.length
+    };
   }
 
   private contractIsValidAtMonthEnd(contract: Contract, monthEnd: string) {

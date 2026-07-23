@@ -1616,6 +1616,17 @@ const tabForPathname = (pathname: string): AppTab | null => {
   return entry ? (entry[0] as AppTab) : null;
 };
 
+// 탭 전환이 shallow pushState라 라우트 metadata가 다시 적용되지 않는다 —
+// 브라우저 탭 제목이 이전 탭(예: 매물등록)으로 남지 않게 여기서 맞춘다.
+const TAB_DOCUMENT_TITLES: Record<AppTab, string> = {
+  home: "집우집주",
+  map: "지도로 방 찾기 | 집우집주 WOOZU",
+  saved: "찜목록 | 집우집주 WOOZU",
+  inquiry: "채팅 | 집우집주 WOOZU",
+  sell: "매물등록 | 집우집주 WOOZU",
+  living: "세입자 | 집우집주 WOOZU"
+};
+
 export default function HomeApp({
   initialTab = "home",
   initialTradeListings = null
@@ -1670,6 +1681,8 @@ export default function HomeApp({
   const [buyerFocusThreadId, setBuyerFocusThreadId] = useState<string | undefined>(undefined);
   // 상세 "문자로 문의하기"로 진입 시 이 매물의 대화(초안)를 바로 연다 (/inquiry?compose=&title=)
   const [composeListing, setComposeListing] = useState<{ listingNo: string; title: string } | undefined>(undefined);
+  // 관리 콘솔로 가려다 임대인 연결이 없어 /sell로 우회된 경우(?notice=landlord-onboarding) 안내 배너
+  const [showLandlordOnboardingNotice, setShowLandlordOnboardingNotice] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
@@ -2154,6 +2167,11 @@ export default function HomeApp({
     if (activeTab === "inquiry") setUnseenTradeCount(0);
   }, [activeTab]);
 
+  // shallow pushState 탭 전환은 라우트 metadata를 다시 적용하지 않으므로 탭 제목을 직접 동기화한다.
+  useEffect(() => {
+    document.title = TAB_DOCUMENT_TITLES[activeTab];
+  }, [activeTab]);
+
   const inquiryBadgeCount = unseenTradeCount;
   const tenantLandlordUnreadCount = useTenantLandlordUnreadCount(
     Boolean(viewer && hasCapability(viewer, "TENANT")),
@@ -2514,6 +2532,17 @@ export default function HomeApp({
     const focusThread = params.get("thread");
     if (focusThread) {
       setBuyerFocusThreadId(focusThread);
+    }
+    // 관리 콘솔 접근이 임대인 연결 부재로 /sell로 우회된 경우 — 이유를 배너로 설명한다.
+    if (params.get("notice") === "landlord-onboarding") {
+      setShowLandlordOnboardingNotice(true);
+      params.delete("notice");
+      const query = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + (query ? `?${query}` : "") + window.location.hash
+      );
     }
     // 상세 "문자로 문의하기" → /inquiry?compose=<listingNo>&title=<제목> — 이 매물 대화(초안)를 연다.
     const composeNo = params.get("compose");
@@ -3291,6 +3320,17 @@ export default function HomeApp({
         ) : null}
         {activeTab === "sell" ? (
           <>
+            {showLandlordOnboardingNotice ? (
+              <div className="landlord-onboarding-notice" role="status">
+                <strong>관리 화면은 임대인 연결 후 이용할 수 있어요.</strong>
+                <span>
+                  지금 계정에는 아직 관리 중인 집이 없습니다. 매물을 등록하면 임대인으로 연결되고 관리 기능이 열립니다.
+                </span>
+                <button type="button" onClick={() => setShowLandlordOnboardingNotice(false)} aria-label="안내 닫기">
+                  닫기
+                </button>
+              </div>
+            ) : null}
             <LandlordMyPage
               onGoHome={() => {
                 // 등록 성공 팝업 확인 → 홈 피드로. 목록을 즉시 갱신해 방금 등록한 매물이 바로 보이게 한다.

@@ -131,10 +131,12 @@ export function getManagerContractDetail(id?: string): Promise<ManagerContractDe
   return serverFetch(`/contracts/manager/${encodeURIComponent(contractId)}`);
 }
 
-export function confirmManagerContract(id: string): Promise<ManagerContractDetail> {
+// confirmNeedsCheck는 "확인 필요 항목을 원문과 대조했다"는 관리인의 명시적 확인이다 —
+// 화면의 체크 여부를 그대로 전달해야 서버 게이트가 실제로 작동한다(무조건 true 금지).
+export function confirmManagerContract(id: string, confirmNeedsCheck = false): Promise<ManagerContractDetail> {
   return serverFetch<ManagerContractDetail>(`/contracts/manager/${encodeURIComponent(id)}/confirm`, {
     method: "POST",
-    body: JSON.stringify({ confirmNeedsCheck: true }),
+    body: JSON.stringify({ confirmNeedsCheck }),
   });
 }
 

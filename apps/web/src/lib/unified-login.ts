@@ -84,7 +84,10 @@ export function resolvePostLoginDestination(
   redirectTo?: string | null
 ): string {
   if (intent && !hasCapability(user, roleForIntent(intent))) {
-    return linkEntryPathByIntent[intent];
+    const entry = linkEntryPathByIntent[intent];
+    // 관리 콘솔로 가려던 계정이 임대인 연결이 없어 매물등록으로 우회될 때,
+    // 도착 화면이 "왜 여기로 왔는지"를 설명할 수 있게 notice 파라미터를 붙인다.
+    return intent === "landlord" ? `${entry}?notice=landlord-onboarding` : entry;
   }
 
   return safeRedirectPath(redirectTo, defaultRedirectForIntent(intent));

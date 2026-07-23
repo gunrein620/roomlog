@@ -251,6 +251,42 @@ img {
   font-weight: 800;
 }
 
+/* 관리 콘솔 접근이 임대인 연결 부재로 /sell로 우회됐을 때의 이유 설명 배너 */
+.landlord-onboarding-notice {
+  display: grid;
+  gap: 4px;
+  margin: 14px 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.landlord-onboarding-notice strong {
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.landlord-onboarding-notice span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.landlord-onboarding-notice button {
+  justify-self: end;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .login-phone,
 .service-frame {
   width: min(100%, 430px);
