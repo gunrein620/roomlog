@@ -20,7 +20,19 @@ describe("furniture first-person controls", () => {
     assert.match(controllerSource, /document\.addEventListener\("pointerlockchange"/);
     assert.match(controllerSource, /document\.addEventListener\("mousemove"/);
     assert.match(controllerSource, /resolveFurnitureShortcut/);
-    assert.match(controllerSource, /furnitureFirstPersonMovementDelta/);
+    assert.match(controllerSource, /furnitureFlyMovementDelta/);
+    // 자유시점(비행) — Y를 눈높이 상수로 고정하지 않고, 클램프 범위 안에서 시선 방향 그대로 이동한다.
+    assert.match(controllerSource, /FURNITURE_MIN_EYE_HEIGHT_METERS/);
+    assert.match(controllerSource, /FURNITURE_MAX_EYE_HEIGHT_METERS/);
+    // 1/3 홀드 연속 회전 — 짧은 탭은 90도 스냅, 길게 누르면 onRotateBy로 매 프레임 회전.
+    assert.match(controllerSource, /rotateHoldRef/);
+    assert.match(controllerSource, /onRotateBy/);
+    assert.match(controllerSource, /FURNITURE_ROTATE_HOLD_THRESHOLD_MS/);
+    // 포인터록 중 좌클릭 = 잡기(탐색·조준 시)/배치 고정(운반) — E/Q 단축키와 병행.
+    assert.match(
+      controllerSource,
+      /pointerLockElement === canvas[\s\S]*?"explore" && aimedFurnitureIdRef\.current[\s\S]*?onPickupAimed[\s\S]*?"carry"[\s\S]*?onConfirm\(\)/
+    );
     assert.match(controllerSource, /raycaster\.setFromCamera\(CENTER_SCREEN/);
     assert.match(controllerSource, /onPlacementPoint/);
     assert.match(controllerSource, /onAimedFurnitureChange/);
@@ -49,7 +61,8 @@ describe("furniture first-person controls", () => {
     assert.match(mitunetExtrudedLayerSource, /userData=\{\{ roomlogPlacementSurface: "wall", roomlogWallId: "mitunet-wall" \}\}/);
     assert.match(viewerSource, /roomlogFurnitureId: furniture\.id/);
     assert.match(viewerSource, /className=\{`floor-plan-furniture-reticle is-/);
-    assert.match(viewerSource, /1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정/);
+    assert.match(viewerSource, /1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전\(길게 누르면 천천히\) · 클릭\/Q 고정/);
+    assert.match(viewerSource, /클릭\/E 가구 잡기/);
     assert.match(viewerSource, /2 가구 선택 · WASD 이동 · 마우스 시점/);
     assert.match(styles, /\.floor-plan-furniture-reticle/);
   });
@@ -90,6 +103,7 @@ describe("furniture first-person controls", () => {
     assert.match(listingSource, /onFurnitureLatestPlacementPoint=\{rememberFurniturePlacementPoint\}/);
     assert.match(listingSource, /onFurnitureRotateLeft=\{\(\) => rotatePendingFurniture\(-1\)\}/);
     assert.match(listingSource, /onFurnitureRotateRight=\{\(\) => rotatePendingFurniture\(1\)\}/);
+    assert.match(listingSource, /onFurnitureRotateBy=\{rotatePendingFurnitureBy\}/);
     assert.match(listingSource, /furniturePointerLockRequestRef\.current\?\.\(\)/);
   });
 });
