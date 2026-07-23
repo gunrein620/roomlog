@@ -4820,6 +4820,8 @@ async function showFloorView() {
     controls.enabled = true;
     controls.enableRotate = true;
     updateViewButtons("floor");
+    const reducedMotion = reducedMotionQuery.matches;
+    replayRiseAnimations(animations, performance.now(), reducedMotion);
     assertViewState("floor");
     if (roomMaterialWarning) {
       setStatus(roomMaterialWarning, "warning");

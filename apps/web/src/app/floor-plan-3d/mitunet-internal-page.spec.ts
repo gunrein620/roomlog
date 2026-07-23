@@ -211,6 +211,13 @@ test("uses the bottom Floor view only for floor finish while the 3D toolbar star
   assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{\s*void openFurniturePlacement\(\);\s*\}\);/);
 });
 
+test("animates the 3D-to-Floor switch with the same scene rise used when returning to 3D", () => {
+  assert.match(
+    viewerSource,
+    /async function showFloorView\(\)\s*\{[\s\S]*?const reducedMotion = reducedMotionQuery\.matches;[\s\S]*?replayRiseAnimations\(animations, performance\.now\(\), reducedMotion\);/,
+  );
+});
+
 test("preserves the floor surface used to open furniture placement", () => {
   assert.match(viewerSource, /const enteringFromFloor = currentView === "floor";/);
   assert.match(
