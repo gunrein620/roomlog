@@ -17,8 +17,9 @@ const REST_THRESHOLD = 0.002;
 const WALK_EYE_HEIGHT_METERS = 1.45;
 const WALK_SPEED_METERS_PER_SECOND = 1.5;
 const VECTOR_EPSILON = 1e-6;
-// 실도면 걷기 경계: 벽 안쪽으로 살짝 들여서(벽에 얼굴 박기 방지) 방 밖 이탈을 막는다.
-const WALK_BOUNDS_INSET_METERS = 0.25;
+// 실도면 걷기 경계: 벽 안쪽으로 들여서(벽에 얼굴 박기 방지) 방 밖 이탈을 막는다.
+// 0.25 → 0.5m (2026-07-23): 벽에 너무 붙으면 splat 가우시안이 흩어져 보여서 접근 한계를 늘렸다.
+const WALK_BOUNDS_INSET_METERS = 0.5;
 // 실도면 경계가 없을 때의 폴백 걷기 반경(원점 기준 ±, m)과 천장 높이(m). 예전엔 3×4m 플레이스홀더
 // 방(createRoomClipBox)에 가뒀지만, 가짜 방에 갇히는 대신 넉넉히 열어 자유롭게 걷되 검은 void로의
 // 이탈만 막는다. 스플랫은 원점 근처에 fit되므로 ±4m면 실내를 넉넉히 덮는다.
