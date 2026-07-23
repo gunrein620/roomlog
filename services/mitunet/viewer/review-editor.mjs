@@ -367,6 +367,25 @@ export class ReviewEditor {
     this.resize();
   }
 
+  clear() {
+    this.document = null;
+    this.inputImage = null;
+    this.selectedId = null;
+    this.previewOpening = null;
+    this.gesture = null;
+    this.activeWallMask = null;
+    this.wallDimensionSegments = [];
+    this.roomAreas = [];
+    this.scalePoints = [];
+    this.calibration = null;
+    this.manualCounter = 1;
+    this.maskContext.clearRect(0, 0, INTERNAL_SIZE, INTERNAL_SIZE);
+    this.wallLayerContext.clearRect(0, 0, INTERNAL_SIZE, INTERNAL_SIZE);
+    this.resetViewport();
+    this.render();
+    this.onChange(null);
+  }
+
   async load(payload) {
     if (!payload?.input_image_b64 || !payload?.wall_mask_b64) {
       throw new TypeError("Review payload requires input_image_b64 and wall_mask_b64");

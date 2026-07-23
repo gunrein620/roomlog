@@ -3081,17 +3081,128 @@ let cameraPresetTransitionId = 0;
 let cameraPresetTransitionActive = false;
 const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)")
   ?? { matches: false };
+const REVIEW_CANVAS_SIZE = 1024;
 
 function originalPreviewImageB64() {
   return [
-    currentExtraction?.input_image_b64,
     currentComposedPlan?.input_image_b64,
     currentComposedPlan?.analysis_image_b64,
+    currentExtraction?.input_image_b64,
   ].find(value => typeof value === "string" && value.length > 0) ?? "";
+}
+
+function resetReviewState() {
+  currentExtraction = null;
+  originalPreviewImage = null;
+  originalPreviewImageB64Value = "";
+  reviewEditor?.clear();
 }
 
 function canShowOriginalView() {
   return Boolean(reviewEditor?.document || originalPreviewImageB64());
+}
+
+function reviewCanvasDimensions(plan) {
+  const [width, height] = Array.isArray(plan?.canvas_size) ? plan.canvas_size : [];
+  return [
+    Number.isFinite(width) && width > 0 ? width : REVIEW_CANVAS_SIZE,
+    Number.isFinite(height) && height > 0 ? height : REVIEW_CANVAS_SIZE,
+  ];
+}
+
+function drawReviewMaskPolygon(context, polygon, scaleX, scaleY) {
+  const outer = polygon?.outer;
+  if (!Array.isArray(outer) || outer.length < 3) return;
+  const traceRing = ring => {
+    ring.forEach(([x, y], index) => {
+      const drawX = Number(x) * scaleX;
+      const drawY = Number(y) * scaleY;
+      if (index === 0) context.moveTo(drawX, drawY);
+      else context.lineTo(drawX, drawY);
+    });
+    context.closePath();
+  };
+
+  context.beginPath();
+  traceRing(outer);
+  for (const hole of polygon.holes ?? []) {
+    if (Array.isArray(hole) && hole.length >= 3) traceRing(hole);
+  }
+  context.fill("evenodd");
+}
+
+function scaleOpeningForReview(opening, scaleX, scaleY) {
+  const scaled = { ...opening };
+  for (const key of ["center_x", "width"]) {
+    if (Number.isFinite(Number(opening?.[key]))) scaled[key] = Number(opening[key]) * scaleX;
+  }
+  for (const key of ["center_y", "height"]) {
+    if (Number.isFinite(Number(opening?.[key]))) scaled[key] = Number(opening[key]) * scaleY;
+  }
+  if (Array.isArray(opening?.mask_polygon)) {
+    scaled.mask_polygon = opening.mask_polygon.map(([x, y]) => [Number(x) * scaleX, Number(y) * scaleY]);
+  }
+  return scaled;
+}
+
+function buildEditableReviewPayload(plan) {
+  const inputImageB64 = typeof plan?.input_image_b64 === "string" && plan.input_image_b64.length > 0
+    ? plan.input_image_b64
+    : plan?.analysis_image_b64;
+  const walls = plan?.polygons?.wall;
+  if (typeof inputImageB64 !== "string" || inputImageB64.length === 0 || !Array.isArray(walls) || walls.length === 0) {
+    return null;
+  }
+
+  const [sourceWidth, sourceHeight] = reviewCanvasDimensions(plan);
+  const scaleX = REVIEW_CANVAS_SIZE / sourceWidth;
+  const scaleY = REVIEW_CANVAS_SIZE / sourceHeight;
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = REVIEW_CANVAS_SIZE;
+  maskCanvas.height = REVIEW_CANVAS_SIZE;
+  const maskContext = maskCanvas.getContext("2d");
+  if (!maskContext) return null;
+  maskContext.fillStyle = "#fff";
+  walls.forEach(polygon => drawReviewMaskPolygon(maskContext, polygon, scaleX, scaleY));
+  const wallMaskB64 = maskCanvas.toDataURL("image/png").split(",", 2)[1] ?? "";
+  if (!wallMaskB64) return null;
+
+  const millimetersPerPixel = Number(plan?.calibration?.millimetersPerPixel);
+  const calibration = Number.isFinite(millimetersPerPixel) && millimetersPerPixel > 0
+    ? {
+        start: { x: 0, y: 0 },
+        end: { x: 1, y: 0 },
+        pixelDistance: 1,
+        actualMillimeters: millimetersPerPixel,
+        millimetersPerPixel,
+      }
+    : null;
+
+  return {
+    input_image_b64: inputImageB64,
+    analysis_image_b64: typeof plan?.analysis_image_b64 === "string" ? plan.analysis_image_b64 : inputImageB64,
+    wall_mask_b64: wallMaskB64,
+    openings: (plan.openings ?? []).map(opening => scaleOpeningForReview(opening, scaleX, scaleY)),
+    calibration,
+  };
+}
+
+async function prepareEditableReviewDocument() {
+  if (reviewEditor?.document) return true;
+  if (!reviewEditor) return false;
+  const editablePayload = buildEditableReviewPayload(currentComposedPlan);
+  if (!editablePayload) return false;
+
+  await reviewEditor.load(editablePayload);
+  reviewEditor.calibration = editablePayload.calibration ?? reviewEditor.getCalibration();
+  reviewEditor.document.markRendered();
+  reviewEditor.setTool("select");
+  reviewEditor.render();
+  toolButtons.forEach(button => button.classList.toggle("active", button.dataset.tool === "select"));
+  currentExtraction = editablePayload;
+  originalPreviewImage = null;
+  originalPreviewImageB64Value = "";
+  return true;
 }
 
 function drawOriginalPreview(image) {
@@ -4715,15 +4826,15 @@ async function showOriginalView() {
   cameraPresetTransitionActive = false;
   stopAutoOrbit();
   inFlight = true;
-  updateViewButtons("original");
   updateEditorControls();
-  controls.enabled = false;
-  controls.enableRotate = false;
-  setPlanGeometryVisible(false);
 
   try {
-    const previewReady = await renderOriginalPreview();
+    const previewReady = await prepareEditableReviewDocument();
     if (!previewReady) return;
+    await renderOriginalPreview();
+    controls.enabled = false;
+    controls.enableRotate = false;
+    setPlanGeometryVisible(false);
     if (!currentFraming) {
       await transitionCanvasView("original");
       return;
@@ -4735,7 +4846,14 @@ async function showOriginalView() {
       await tweenCamera(overheadPosition(center, radius), center, CAMERA_TWEEN_MS);
     }
     await transitionCanvasView("original");
+  } catch (error) {
+    setStatus(`원본 도면을 열지 못했습니다: ${error.message}`, "error");
   } finally {
+    if (currentView !== "original") {
+      controls.enabled = true;
+      controls.enableRotate = true;
+      updateViewButtons(currentView);
+    }
     inFlight = false;
     updateEditorControls();
   }
@@ -4915,6 +5033,7 @@ async function fetchAndLoad(url, init) {
       setStatus("This sample has no renderable polygons. Choose another sample to retry.", "error");
       return false;
     }
+    resetReviewState();
     currentComposedPlan = data;
     setStatus(summarize(data));
     return true;
@@ -5189,7 +5308,8 @@ async function restoreRoomLogEditorSnapshot() {
           await showFloorView();
         } else {
           const targetView = resumeView === "original" ? "original" : "3d";
-          setView(targetView);
+          if (targetView === "original") await showOriginalView();
+          else setView(targetView);
         }
         setStatus(summarize(currentComposedPlan));
         updateEditorControls();
