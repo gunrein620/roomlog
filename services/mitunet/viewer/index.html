@@ -280,6 +280,7 @@
   body:not(.upload-empty) #landing-intro,
   body:not(.upload-empty) #start-sample-btn,
   body:not(.upload-empty) .landing-feature-row { display: none; }
+  body:not(.upload-empty) #ui:has(#camera-view-controls[hidden]) { display: none; }
   body.view-original #ui { display: none !important; }
   #editor-tools {
     flex: 0 1 auto;
@@ -2988,6 +2989,7 @@ const zoomInButton = document.getElementById("zoom-in-btn");
 const uploadButton = document.getElementById("upload-btn");
 let liveUploadAvailable = false;
 const startSampleButton = document.getElementById("start-sample-btn");
+let startSampleActionWired = false;
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
 const roomLogSaveHint = document.getElementById("roomlog-save-hint");
@@ -4874,6 +4876,12 @@ async function startLandingSample() {
   setView("3d");
 }
 
+function wireStartSampleAction() {
+  if (startSampleActionWired) return;
+  startSampleActionWired = true;
+  startSampleButton.addEventListener("click", startLandingSample);
+}
+
 function wireReviewControls() {
   saveJsonButton.addEventListener("click", () => {
     try {
@@ -5002,7 +5010,6 @@ async function enableLiveMode() {
   uploadButton.title = "도면 이미지 올리기";
   renderIcons();
   updateEditorControls();
-  startSampleButton.addEventListener("click", startLandingSample);
   window.dispatchEvent(new Event("mitunet-upload-ready"));
 
   let dragDepth = 0;
@@ -5100,7 +5107,7 @@ async function restoreRoomLogEditorSnapshot() {
     let lastRestoreError = null;
     for (const restorePayload of restoreCandidates) {
       try {
-        if (restorePayload.review) {
+        if (restorePayload.review && reviewEditor) {
           await reviewEditor.load(restorePayload.review);
           reviewEditor.calibration = restorePayload.review.calibration ?? reviewEditor.getCalibration();
         }
@@ -5112,7 +5119,7 @@ async function restoreRoomLogEditorSnapshot() {
         currentExtraction = restorePayload.review ?? null;
         currentComposedPlan = restorePayload.composedPlan;
         currentSourceName = restorePayload.sourceName;
-        if (restorePayload.review) reviewEditor.document.markRendered();
+        if (restorePayload.review && reviewEditor?.document) reviewEditor.document.markRendered();
         document.body.classList.remove("upload-empty");
         if (resumeView === "floor") {
           await showFloorView();
@@ -5166,11 +5173,13 @@ async function enableStaticDemoMode() {
 
 async function initializeViewer() {
   try {
+    wireStartSampleAction();
+    await initializeRoomLogIntegration();
     const liveModeEnabled = await enableLiveMode();
+    const restored = await restoreRoomLogEditorSnapshot();
+    if (restored) return;
     if (liveModeEnabled) {
-      await initializeRoomLogIntegration();
-      const restored = await restoreRoomLogEditorSnapshot();
-      if (!restored) document.body.classList.add("upload-empty");
+      document.body.classList.add("upload-empty");
     } else {
       uploadButton.hidden = false;
       uploadButton.disabled = true;
