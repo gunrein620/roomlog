@@ -81,6 +81,15 @@ export function rotateFurnitureForPlacement(furniture: PlacedFurniture, directio
   return { ...furniture, rotation };
 }
 
+// 1/3 홀드 연속 회전용 임의 각도 회전 — 바닥·표면 가구만.
+// 벽걸이는 렌더 높이 계산이 90도 단위 회전을 가정하므로 스냅(rotateFurnitureForPlacement)을 유지한다.
+export function rotateFurnitureBy(furniture: PlacedFurniture, angleDelta: number): PlacedFurniture {
+  if (furniturePlacementMode(furniture) === "wall") return furniture;
+  const rotation = [...furniture.rotation] as [number, number, number];
+  rotation[1] = roundAngle(rotation[1] + angleDelta);
+  return { ...furniture, rotation };
+}
+
 export function hasAttachedFurniture(furnitureId: string, placed: readonly PlacedFurniture[]) {
   return placed.some((furniture) => furniture.placement?.mode === "surface" && furniture.placement.supportFurnitureId === furnitureId);
 }

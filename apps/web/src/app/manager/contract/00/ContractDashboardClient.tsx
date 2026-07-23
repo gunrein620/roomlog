@@ -182,7 +182,7 @@ export function ContractDashboardClient({
 
       <footer className="manager-contract-dashboard__pagination">
         <span>
-          Showing {firstResult} to {lastResult} of {filteredRows.length} entries
+          전체 {filteredRows.length}건 중 {firstResult}–{lastResult}건 표시
         </span>
         <nav aria-label="계약 목록 페이지">
           <button

@@ -203,7 +203,7 @@ function tenancyDateLabel(iso?: string): string {
 }
 
 function formatKrw(amount: number): string {
-  return `${amount.toLocaleString("ko-KR")} KRW`;
+  return `${amount.toLocaleString("ko-KR")}원`;
 }
 
 function TenantComplaintMessageAttachments({ urls }: { urls: string[] }) {
@@ -474,7 +474,7 @@ function TenantLandlordChatModal({
   onClose,
   onSubmit
 }: {
-  thread: Thread;
+  thread: Thread | null;
   draft: string;
   isSending: boolean;
   latestAnnouncement: Announcement | null;
@@ -482,21 +482,21 @@ function TenantLandlordChatModal({
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const messages = thread.messages ?? [];
-  const unitLabel = compactTenantThreadUnit(thread.unitId);
+  const messages = thread?.messages ?? [];
+  const unitLabel = compactTenantThreadUnit(thread?.unitId);
   const inputRef = useRef<HTMLInputElement>(null);
   const messageStreamRef = useRef<HTMLDivElement>(null);
   const [isNoticeOpen, setIsNoticeOpen] = useState(false);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, [thread.id]);
+  }, [thread?.id]);
 
   useEffect(() => {
     const stream = messageStreamRef.current;
     if (!stream) return;
     stream.scrollTo({ top: stream.scrollHeight, behavior: "smooth" });
-  }, [thread.id, messages.length]);
+  }, [thread?.id, messages.length]);
 
   const modal = (
     <div className="tenant-chat-backdrop" role="presentation" onClick={onClose}>
@@ -514,7 +514,7 @@ function TenantLandlordChatModal({
           </button>
           <div>
             <h2 id="tenant-landlord-chat-title">관리인</h2>
-            <p>{unitLabel ? `${unitLabel} · ${thread.contextLabel ?? "일반 문의"}` : thread.contextLabel ?? "일반 문의"}</p>
+            <p>{unitLabel ? `${unitLabel} · ${thread?.contextLabel ?? "일반 문의"}` : thread?.contextLabel ?? "일반 문의"}</p>
           </div>
         </header>
 
@@ -622,8 +622,8 @@ function formatTenantMessageTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-function compactTenantThreadUnit(unitId: string): string {
-  return unitId.replace(/\s*호$/u, "").trim();
+function compactTenantThreadUnit(unitId?: string): string {
+  return (unitId ?? "").replace(/\s*호$/u, "").trim();
 }
 
 export default function TenantMyPage({
@@ -933,6 +933,7 @@ export default function TenantMyPage({
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
   const [landlordUnreadCount, setLandlordUnreadCount] = useState(0);
+  const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
   const [landlordChatThread, setLandlordChatThread] = useState<Thread | null>(null);
   const [landlordChatDraft, setLandlordChatDraft] = useState("");
   const [isLandlordMessageSending, setIsLandlordMessageSending] = useState(false);
@@ -943,6 +944,7 @@ export default function TenantMyPage({
   const requestImagesRef = useRef<RequestImagePreview[]>([]);
   const requestDraftMutationGuardRef = useRef(createTenantComplaintDraftMutationGuard());
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const requestSheetRef = useRef<HTMLElement>(null);
   const [isLoadingRequestDraft, setIsLoadingRequestDraft] = useState(false);
   const [isSavingRequestDraft, setIsSavingRequestDraft] = useState(false);
   const [requestError, setRequestError] = useState("");
@@ -1059,6 +1061,8 @@ export default function TenantMyPage({
         throw new Error(payload?.message || "대화 정보를 불러오지 못했습니다.");
       }
 
+      // 스레드가 아직 없으면 만들지 않고 빈 대화창만 연다 —
+      // 실제 스레드는 첫 메시지 전송 시점에 생성한다(열기만 해도 관리인 허브에 빈 대화가 생기는 것 방지).
       let thread: Thread | null = null;
       if (payload?.threadId) {
         thread = await fetchTenantMessageThread(String(payload.threadId));
@@ -1070,26 +1074,11 @@ export default function TenantMyPage({
             // 메시지는 보여주되 서버 읽음 처리 실패 시 배지는 유지한다.
           }
         }
-      } else {
-        const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(tenantLandlordThreadInput("", tenancy.roomId))
-        });
-        const created = await createResponse.json().catch(() => ({}));
-        if (!createResponse.ok) {
-          throw new Error(created?.message || "대화를 시작하지 못했습니다.");
-        }
-        thread = created as Thread;
-        setLandlordUnreadCount(0);
-      }
-
-      if (!thread?.id) {
-        throw new Error("대화 스레드를 만들지 못했습니다.");
       }
 
       setLandlordChatThread(thread);
       setLandlordChatDraft("");
+      setIsLandlordChatOpen(true);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {
@@ -1098,6 +1087,7 @@ export default function TenantMyPage({
   };
 
   const closeLandlordChat = () => {
+    setIsLandlordChatOpen(false);
     setLandlordChatThread(null);
     setLandlordChatDraft("");
   };
@@ -1132,11 +1122,30 @@ export default function TenantMyPage({
   const handleLandlordMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const body = landlordChatDraft.trim();
-    if (!landlordChatThread || !body || isLandlordMessageSending) return;
+    if (!body || isLandlordMessageSending) return;
 
     setIsLandlordMessageSending(true);
     try {
-      const nextThread = await sendTenantMessageToThread(landlordChatThread.id, body);
+      let nextThread: Thread;
+      if (landlordChatThread) {
+        nextThread = await sendTenantMessageToThread(landlordChatThread.id, body);
+      } else {
+        // 첫 메시지 전송 시점에 스레드를 생성한다.
+        if (!tenancy || tenancy === "loading") {
+          throw new Error("입주 연결이 완료되면 임대인에게 문의할 수 있습니다.");
+        }
+        const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(tenantLandlordThreadInput(body, tenancy.roomId))
+        });
+        const created = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok) {
+          throw new Error(created?.message || "대화를 시작하지 못했습니다.");
+        }
+        nextThread = created as Thread;
+        setLandlordUnreadCount(0);
+      }
       setLandlordChatThread(nextThread);
       setLandlordChatDraft("");
     } catch (error) {
@@ -1242,14 +1251,9 @@ export default function TenantMyPage({
       : leaseContract?.paymentDay
         ? `청구 전 · 매월 ${leaseContract.paymentDay}일`
         : "정보 없음";
+  // 계약 기간은 시작·종료일이 있을 때만 표시한다 — 체결일은 별도 필드이므로 기간 자리에 대신 넣지 않는다.
   const contractPeriodLabel =
-    tenancy === "loading"
-      ? "확인 중"
-      : leaseContract?.startDate && leaseContract.endDate
-        ? contractPeriodText(leaseContract)
-        : tenancy?.contract?.respondedAt
-          ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결`
-          : "정보 없음";
+    tenancy === "loading" ? "확인 중" : contractPeriodText(leaseContract);
   // 서버 접수 내역이 진실 — 비어 있으면 데모를 지어내지 않고 빈 상태를 그대로 보여준다.
   const repairHistory = repairRequests.slice(0, 4).map((item, index) => ({
     id: item.id,
@@ -1588,6 +1592,15 @@ export default function TenantMyPage({
     }
   };
 
+  // 시트 열림·접수 오류 시 시트를 맨 위로 — 헤더와 요청 유형(오류 메시지 포함)이 화면 밖으로 밀리지 않게.
+  useEffect(() => {
+    if (isRequestSheetOpen) requestSheetRef.current?.scrollTo({ top: 0 });
+  }, [isRequestSheetOpen]);
+
+  useEffect(() => {
+    if (requestError) requestSheetRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [requestError]);
+
   // 신규 민원/하자 접수 — 실제 민원 API(POST /tenant/complaints)로 보내 관리자 대시보드와 연결된다.
   const handleRequestSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1766,7 +1779,13 @@ export default function TenantMyPage({
             </div>
           </dl>
           <div className="tenant-residence-actions">
-            <button className="tenant-primary-button" type="button" onClick={() => setIsContractSheetOpen(true)}>
+            {/* 연결된 집 데이터가 준비되기 전에는 두 버튼 모두 비활성 — 로딩 중 눌러도 빈 화면/오작동이 없게 */}
+            <button
+              className="tenant-primary-button"
+              type="button"
+              onClick={() => setIsContractSheetOpen(true)}
+              disabled={tenancy === "loading"}
+            >
               <FileText size={18} strokeWidth={2.5} aria-hidden="true" />
               임대차 계약서 보기
             </button>
@@ -1774,7 +1793,7 @@ export default function TenantMyPage({
               className="tenant-secondary-button"
               type="button"
               onClick={() => void openLandlordConversation()}
-              disabled={isLandlordConversationLoading}
+              disabled={tenancy === "loading" || isLandlordConversationLoading}
               aria-label={landlordInquiryLabel}
             >
               <MessageCircle size={18} strokeWidth={2.5} aria-hidden="true" />
@@ -1901,7 +1920,7 @@ export default function TenantMyPage({
         <Bot size={30} strokeWidth={2.3} aria-hidden="true" />
       </button>
 
-      {landlordChatThread ? (
+      {isLandlordChatOpen ? (
         <TenantLandlordChatModal
           thread={landlordChatThread}
           draft={landlordChatDraft}
@@ -2079,6 +2098,7 @@ export default function TenantMyPage({
       {isRequestSheetOpen ? (
         <div className="notification-sheet-backdrop" role="presentation" onClick={() => closeRequestSheet()}>
           <section
+            ref={requestSheetRef}
             className="notification-sheet tenant-request-sheet"
             role="dialog"
             aria-modal="true"
@@ -2096,6 +2116,8 @@ export default function TenantMyPage({
             </header>
 
             <form className="tenant-request-form" onSubmit={handleRequestSubmit}>
+              {/* 오류는 폼 상단에 — 접수 실패 시 헤더·요청 유형과 함께 바로 보인다(하단이면 시트가 아래로 밀림) */}
+              {requestError ? <p className="tenant-request-error" role="alert">{requestError}</p> : null}
               {tenantAiSession.draftFormOpen ? (
                 <div className="tenant-ai-draft-banner">
                   <span>
@@ -2207,7 +2229,6 @@ export default function TenantMyPage({
                   <div className="tenant-request-image-placeholder" key={`request-placeholder-${index}`} aria-hidden="true" />
                 ))}
               </div>
-              {requestError ? <p className="tenant-request-error" role="alert">{requestError}</p> : null}
               <div className="tenant-request-actions">
                 <button type="button" onClick={() => void handleRequestCancel()} disabled={isLoadingRequestDraft || isSavingRequestDraft || isSubmittingRequest}>
                   취소

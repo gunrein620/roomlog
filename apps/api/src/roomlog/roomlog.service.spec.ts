@@ -5056,7 +5056,7 @@ describe("RoomlogService", () => {
     );
   });
 
-  it("opens a tenant landlord messaging thread before the first message is typed", () => {
+  it("rejects creating a tenant landlord messaging thread without a first message", () => {
     const service = new RoomlogService();
     const manager = service.signup({
       email: "empty-thread-manager@roomlog.test",
@@ -5082,19 +5082,26 @@ describe("RoomlogService", () => {
       address: "서울시 강동구 빈스레드로 18"
     } as any);
 
+    // 문의창을 열기만 한 상태(빈 본문·첨부 없음)에서는 스레드가 만들어지면 안 된다 —
+    // 관리인 소통 허브에 빈 대화가 생기는 것을 서버에서 막는다.
+    assert.throws(
+      () =>
+        service.createTenantMessagingThread(tenant.userId, {
+          context: "general",
+          contextLabel: "일반 문의"
+        }),
+      /메시지 내용을 입력해주세요/
+    );
+    assert.equal(service.getTenantLandlordConversation(tenant.userId).threadId, undefined);
+    assert.equal(service.listManagerMessagingThreads(manager.userId).length, 0);
+
     const thread = service.createTenantMessagingThread(tenant.userId, {
       context: "general",
-      contextLabel: "일반 문의"
+      contextLabel: "일반 문의",
+      body: "첫 메시지와 함께 문의를 시작합니다."
     });
-
-    assert.equal(thread.tenantId, tenant.userId);
-    assert.equal(thread.messages?.length, 0);
-    assert.equal(thread.lastMessage, "대화가 시작되었습니다.");
+    assert.equal(thread.messages?.length, 1);
     assert.equal(service.getTenantLandlordConversation(tenant.userId).threadId, thread.id);
-    assert.equal(
-      service.listManagerMessagingThreads(manager.userId).some((item) => item.id === thread.id),
-      true
-    );
   });
 
   it("lets tenants and managers delete only scoped messaging threads", () => {

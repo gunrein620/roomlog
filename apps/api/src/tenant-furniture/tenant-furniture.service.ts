@@ -46,6 +46,17 @@ export interface TenantFurnitureUpdateInput {
   sizeMm?: FurnitureDimensionsMm;
 }
 
+/** multer FileInterceptor 산출 — roomlog.controller.ts의 동명 로컬 타입과 형태 동일. */
+export interface UploadedImageFile {
+  buffer: Buffer;
+  originalName: string;
+  mimeType: string;
+}
+
+// ─── 가구 썸네일 업로드 ──────────────────────────────────────────────────
+const THUMBNAIL_ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
+
 // ─── Object Capture(iOS) → S3 직접 업로드 (C-2) ────────────────────────────
 const OBJECT_CAPTURE_EXTENSION = ".usdz";
 // "수십 MB" 스캔치고 넉넉한 상한 — splat-asset의 직접업로드 한도(2GB)보다 훨씬 보수적으로 잡는다.
@@ -174,6 +185,16 @@ function parseUpdateInput(input: TenantFurnitureUpdateInput): TenantFurnitureUpd
   return parsed;
 }
 
+const THUMBNAIL_EXTENSION_BY_MIME: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp"
+};
+
+function extensionForThumbnailMime(mimeType: string): string {
+  return THUMBNAIL_EXTENSION_BY_MIME[mimeType] ?? ".img";
+}
+
 function requireUsdzFileName(fileName: string): void {
   if (extname(fileName).toLowerCase() !== OBJECT_CAPTURE_EXTENSION) {
     throw new BadRequestException("Object Capture 업로드는 .usdz 파일만 접수할 수 있습니다.");
@@ -235,6 +256,7 @@ function furnitureView(row: PrismaTenantFurniture): TenantFurniture {
     meshUrl: row.meshUrl,
     usdzUrl: row.usdzUrl,
     meshJobState: row.meshJobState as TenantFurnitureMeshJobState | null,
+    thumbnailUrl: row.thumbnailUrl ?? null,
     createdAt: row.createdAt.toISOString()
   };
 }
@@ -346,6 +368,43 @@ export class TenantFurnitureService {
             }
           : {})
       }
+    });
+    return furnitureView(row);
+  }
+
+  /**
+   * 정사각 썸네일 이미지를 업로드하고 thumbnailUrl에 기록한다. 같은 가구에 다시 호출하면
+   * thumbnailUrl만 새 값으로 교체된다 — 이전 저장 객체 정리(스토리지에서 삭제)는 스코프 밖.
+   */
+  async uploadThumbnail(
+    ownerTenantId: string,
+    furnitureId: string,
+    file: UploadedImageFile
+  ): Promise<TenantFurniture> {
+    await this.requireOwner(furnitureId, ownerTenantId);
+
+    if (!THUMBNAIL_ALLOWED_MIME_TYPES.has(file.mimeType)) {
+      throw new BadRequestException("썸네일은 jpeg, png, webp 이미지만 업로드할 수 있습니다.");
+    }
+    if (!file.buffer.length) {
+      throw new BadRequestException("업로드할 썸네일 이미지가 비어 있습니다.");
+    }
+    if (file.buffer.length > MAX_THUMBNAIL_BYTES) {
+      throw new BadRequestException("썸네일 이미지는 5MB 이하만 업로드할 수 있습니다.");
+    }
+
+    const extension = extensionForThumbnailMime(file.mimeType);
+    const fileName = `furniture-thumbnail-${furnitureId}-${randomUUID().slice(0, 8)}${extension}`;
+    const storedFile = await this.storageAdapter.save({
+      buffer: file.buffer,
+      fileName,
+      mimeType: file.mimeType,
+      keyPrefix: "tenant-furniture-thumbnails"
+    });
+
+    const row = await this.getPrisma().tenantFurniture.update({
+      where: { id: furnitureId },
+      data: { thumbnailUrl: storedFile.fileUrl }
     });
     return furnitureView(row);
   }
@@ -475,9 +534,14 @@ export class TenantFurnitureService {
     const prisma = this.getPrisma();
     let row: PrismaTenantFurniture;
     if (input.furnitureId) {
+      // iOS 캡처 플로우는 항상 furnitureId를 채워 이 분기로 들어온다 — 이름 화면에서 입력한
+      // label도 여기서 반영해야 한다(건너뛰기 시 필드 자체가 안 오므로 undefined면 보존).
       row = await prisma.tenantFurniture.update({
         where: { id: input.furnitureId },
-        data: { usdzUrl }
+        data: {
+          usdzUrl,
+          ...(input.label !== undefined ? { label: input.label.trim() || null } : {})
+        }
       });
     } else {
       row = await prisma.tenantFurniture.create({

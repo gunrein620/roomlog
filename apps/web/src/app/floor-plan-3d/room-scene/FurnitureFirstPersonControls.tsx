@@ -7,12 +7,18 @@ import { Box3, Object3D, Raycaster, Vector2, Vector3 } from "three";
 import type { FurniturePlacementHit } from "../furniture-placement";
 import { resolveWalkInputCode, type WalkAction } from "../walk/walk-input";
 import {
-  furnitureFirstPersonMovementDelta,
+  FURNITURE_ROTATE_HOLD_THRESHOLD_MS,
+  FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND,
+  furnitureFlyMovementDelta,
   resolveFurnitureShortcut,
+  rotateKeyDirection,
   type FurnitureInteractionMode
 } from "./furniture-first-person-input";
 
 const FURNITURE_EYE_HEIGHT_METERS = 1.45;
+// 자유시점(비행) 이동 가능 높이 — 바닥 아래로 꺼지거나 도면에서 너무 멀어지지 않게만 막는다.
+const FURNITURE_MIN_EYE_HEIGHT_METERS = 0.35;
+const FURNITURE_MAX_EYE_HEIGHT_METERS = 8;
 const FURNITURE_INITIAL_LOOK_DROP_METERS = 0.28;
 const LOOK_SENSITIVITY = 0.002;
 const CENTER_SCREEN = new Vector2(0, 0);
@@ -34,6 +40,7 @@ export type FurnitureFirstPersonControlsProps = {
   onPlacementHit?: (hit: FurniturePlacementHit) => void;
   onPlacementPoint: (point: { x: number; z: number }) => void;
   onRemove?: () => void;
+  onRotateBy?: (angleDelta: number) => void;
   onRotateLeft: () => void;
   onRotateRight: () => void;
   onStatusChange: (status: FurnitureFirstPersonStatus) => void;
@@ -53,6 +60,8 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
   const modeRef = useRef(props.interactionMode);
   const aimedFurnitureIdRef = useRef(props.aimedFurnitureId);
   const keysRef = useRef(new Set<WalkAction>());
+  // 1/3 키 홀드 추적 — 짧은 탭은 keyup에서 90도 스냅, 임계 시간을 넘기면 useFrame에서 연속 회전.
+  const rotateHoldRef = useRef<{ direction: -1 | 1; heldSince: number; smoothing: boolean } | null>(null);
   const positionRef = useRef(new Vector3());
   const targetRef = useRef(new Vector3());
   const forwardRef = useRef(new Vector3());
@@ -104,14 +113,27 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
     }
 
     function handleCanvasClick(event: MouseEvent) {
-      if (event.button !== 0 || document.pointerLockElement === canvas) return;
+      if (event.button !== 0) return;
+      if (document.pointerLockElement === canvas) {
+        // 포인터록 중 좌클릭은 비어 있는 입력이었다 — 조준한 가구 잡기(탐색)와
+        // 배치 고정(운반)에 쓴다. E/Q 단축키도 그대로 동작한다.
+        if (modeRef.current === "explore" && aimedFurnitureIdRef.current) {
+          callbacksRef.current.onPickupAimed(aimedFurnitureIdRef.current);
+        } else if (modeRef.current === "carry") {
+          callbacksRef.current.onConfirm();
+        }
+        return;
+      }
       if (modeRef.current === "select") callbacksRef.current.onCloseSelect();
       requestPointerLock();
     }
 
     function handlePointerLockChange() {
       const locked = document.pointerLockElement === canvas;
-      if (!locked) keysRef.current.clear();
+      if (!locked) {
+        keysRef.current.clear();
+        rotateHoldRef.current = null;
+      }
       callbacksRef.current.onStatusChange(locked ? "locked" : "ready");
     }
 
@@ -155,10 +177,14 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
           callbacksRef.current.onCancel();
         } else if (shortcut === "remove") {
           callbacksRef.current.onRemove?.();
-        } else if (shortcut === "rotate-left") {
-          callbacksRef.current.onRotateLeft();
-        } else if (shortcut === "rotate-right") {
-          callbacksRef.current.onRotateRight();
+        } else if (shortcut === "rotate-left" || shortcut === "rotate-right") {
+          // 즉시 90도 돌리지 않고 홀드를 추적한다 — 짧은 탭이면 keyup에서 90도 스냅,
+          // 임계 시간을 넘기면 useFrame이 연속 회전으로 전환한다.
+          rotateHoldRef.current = {
+            direction: shortcut === "rotate-left" ? -1 : 1,
+            heldSince: performance.now(),
+            smoothing: false
+          };
         }
         return;
       }
@@ -171,6 +197,19 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
     }
 
     function handleKeyUp(event: KeyboardEvent) {
+      const rotateDirection = rotateKeyDirection(event.code);
+      if (rotateDirection !== null) {
+        const hold = rotateHoldRef.current;
+        // 다른 방향 키의 홀드가 진행 중이면(1↔3 겹침) 그 홀드는 건드리지 않는다.
+        if (hold && hold.direction === rotateDirection) {
+          rotateHoldRef.current = null;
+          if (!hold.smoothing && modeRef.current === "carry") {
+            if (rotateDirection === -1) callbacksRef.current.onRotateLeft();
+            else callbacksRef.current.onRotateRight();
+          }
+        }
+        return;
+      }
       const action = resolveWalkInputCode(event.code);
       if (!action) return;
       keysRef.current.delete(action);
@@ -178,6 +217,7 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
 
     function clearPressedKeys() {
       keysRef.current.clear();
+      rotateHoldRef.current = null;
     }
 
     props.pointerLockRequestRef.current = requestPointerLock;
@@ -191,6 +231,7 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
 
     return () => {
       keysRef.current.clear();
+      rotateHoldRef.current = null;
       props.pointerLockRequestRef.current = null;
       canvas.removeEventListener("click", handleCanvasClick);
       document.removeEventListener("pointerlockchange", handlePointerLockChange);
@@ -212,26 +253,44 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
       const position = controls.getPosition(positionRef.current, false);
       const target = controls.getTarget(targetRef.current, false);
       forwardRef.current.copy(target).sub(position);
-      const movement = furnitureFirstPersonMovementDelta(
+      // 자유시점(비행) — 바라보는 방향 그대로 이동한다. 위를 보고 W면 상승, 아래를 보고 W면 하강.
+      const movement = furnitureFlyMovementDelta(
         keysRef.current,
-        { x: forwardRef.current.x, z: forwardRef.current.z },
+        { x: forwardRef.current.x, y: forwardRef.current.y, z: forwardRef.current.z },
         delta
       );
 
-      if (movement.x !== 0 || movement.z !== 0) {
+      if (movement.x !== 0 || movement.y !== 0 || movement.z !== 0) {
         const targetOffset = target.clone().sub(position);
+        const nextY = Math.min(
+          FURNITURE_MAX_EYE_HEIGHT_METERS,
+          Math.max(FURNITURE_MIN_EYE_HEIGHT_METERS, position.y + movement.y)
+        );
         void controls.setLookAt(
           position.x + movement.x,
-          FURNITURE_EYE_HEIGHT_METERS,
+          nextY,
           position.z + movement.z,
           position.x + movement.x + targetOffset.x,
-          FURNITURE_EYE_HEIGHT_METERS + targetOffset.y,
+          nextY + targetOffset.y,
           position.z + movement.z + targetOffset.z,
           false
         );
         controls.update(0);
         invalidate();
       }
+    }
+
+    // 1/3 키를 임계 시간 이상 누르고 있으면 90도 스냅 대신 천천히 연속 회전한다.
+    const rotateHold = rotateHoldRef.current;
+    if (rotateHold && modeRef.current === "carry") {
+      if (performance.now() - rotateHold.heldSince >= FURNITURE_ROTATE_HOLD_THRESHOLD_MS) {
+        rotateHold.smoothing = true;
+        callbacksRef.current.onRotateBy?.(
+          rotateHold.direction * FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND * Math.min(delta, 0.1)
+        );
+      }
+    } else if (rotateHold) {
+      rotateHoldRef.current = null;
     }
 
     const raycaster = raycasterRef.current;

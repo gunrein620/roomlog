@@ -51,10 +51,11 @@ async function confirmContractAction(formData: FormData) {
   "use server";
 
   const contractId = String(formData.get("contractId") ?? "");
+  const confirmNeedsCheck = formData.get("confirmNeedsCheck") === "1";
   let failure: { message: string } | undefined;
 
   try {
-    await confirmManagerContract(contractId);
+    await confirmManagerContract(contractId, confirmNeedsCheck);
   } catch (error) {
     const message = error instanceof ApiError && error.message.trim()
       ? error.message
@@ -202,8 +203,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               <div style={captionStyle}>수정 저장 후 검토 확정을 누르면 보증금·특약 검토값으로 사용됩니다.</div>
             </div>
           </div>
-          <form action={confirmContractAction}>
+          <form action={confirmContractAction} style={confirmFormStyle}>
             <input type="hidden" name="contractId" value={detail.row.contract.id} />
+            {needsCheckCount ? (
+              // 확인 필요 항목이 남아 있으면 명시적 대조 확인 없이는 제출되지 않는다(required) —
+              // 서버도 confirmNeedsCheck 없이는 확정을 거부한다.
+              <label style={confirmAckLabelStyle}>
+                <input type="checkbox" name="confirmNeedsCheck" value="1" required />
+                <span>확인 필요 {needsCheckCount}건을 계약서 원문과 대조해 확인했습니다</span>
+              </label>
+            ) : null}
             <StaticButton type="submit" style={{ gap: "var(--space-xs)" }}>
               <ShieldCheck size={16} strokeWidth={2.5} aria-hidden="true" />
               <span>검토 확정</span>
@@ -1289,6 +1298,23 @@ const correctionTextareaStyle = {
 const manualSubmitRowStyle = {
   display: "flex",
   justifyContent: "flex-end",
+} as const;
+
+const confirmFormStyle = {
+  display: "flex",
+  gap: "var(--space-md)",
+  alignItems: "center",
+  flexWrap: "wrap",
+} as const;
+
+const confirmAckLabelStyle = {
+  display: "flex",
+  gap: "var(--space-xs)",
+  alignItems: "center",
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  cursor: "pointer",
 } as const;
 
 const footerCardStyle = {

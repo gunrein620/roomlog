@@ -17,6 +17,7 @@ import {
   moveAttachedFurniture,
   reopenFurnitureDraft,
   resolveFurniturePlacement,
+  rotateFurnitureBy,
   rotateFurnitureForPlacement,
   rotateFurnitureQuarterTurn
 } from "../floor-plan-3d/furniture-placement";
@@ -506,7 +507,7 @@ export default function ListingTourRoom3D({
     }
     pendingFurniturePlacedOnceRef.current = true;
     if (!sameFurnitureTransform(pendingFurniture, placement.furniture)) setPendingFurniture(placement.furniture);
-    setSaveMessage(`${placement.furniture.name} 위치를 잡았습니다. Q로 배치를 확정하세요.`);
+    setSaveMessage(`${placement.furniture.name} 위치를 잡았습니다. 클릭 또는 Q로 배치를 확정하세요.`);
   }
 
   function placePendingFurniture(point: { x: number; z: number }) {
@@ -567,7 +568,7 @@ export default function ListingTourRoom3D({
   function confirmPendingFurniturePlacement() {
     if (!pendingFurniture) return;
     if (!pendingFurniturePlacementRef.current?.valid) {
-      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 Q를 눌러주세요.");
+      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 클릭하거나 Q를 눌러주세요.");
       return;
     }
     // 재편집이면 원본 분류(source)를 보존한다 — 임대인 옵션 가구가 세입자 배치로 둔갑하지 않게.
@@ -598,7 +599,7 @@ export default function ListingTourRoom3D({
 
   function confirmPendingFurnitureFromShortcut() {
     if (!pendingFurniturePlacementRef.current?.valid) {
-      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 Q를 눌러주세요.");
+      setSaveMessage(pendingFurniturePlacementRef.current?.reason ?? "초록색 조준선이 보이는 위치에서 클릭하거나 Q를 눌러주세요.");
       return;
     }
     confirmPendingFurniturePlacement();
@@ -670,6 +671,23 @@ export default function ListingTourRoom3D({
       setPendingFurniture(rotated);
     }
     setSaveMessage(`집고 있는 가구를 ${direction === -1 ? "왼쪽" : "오른쪽"}으로 90도 회전했습니다.`);
+  }
+
+  // 1/3 키 홀드 연속 회전 — 매 프레임 작은 각도씩 돌린다. 벽걸이 가구는 90도 스냅만 지원(rotateFurnitureBy가 무시).
+  function rotatePendingFurnitureBy(angleDelta: number) {
+    if (!pendingFurniture) return;
+    const rotated = rotateFurnitureBy(pendingFurniture, angleDelta);
+    if (rotated === pendingFurniture) return;
+    const hit = lastFurniturePlacementHitRef.current;
+    if (hit) {
+      const placement = resolveFurniturePlacement({ draft: rotated, hit, placed: placedFurnitures, walls: wallsData });
+      pendingFurniturePlacementRef.current = placement;
+      updateFurniturePlacementFeedback(placement);
+      setPendingFurniture(placement.valid ? placement.furniture : rotated);
+    } else {
+      setPendingFurniture(rotated);
+    }
+    setSaveMessage("집고 있는 가구를 천천히 회전하는 중입니다. 키에서 손을 떼면 멈춥니다.");
   }
 
   function beginFurnitureMoveById(furnitureId: string) {
@@ -820,6 +838,7 @@ export default function ListingTourRoom3D({
         onFurniturePlacementPoint={placePendingFurniture}
         onFurniturePlacementHit={placePendingFurnitureAtHit}
         onFurnitureRemove={removePendingFurnitureFromShortcut}
+        onFurnitureRotateBy={rotatePendingFurnitureBy}
         onFurnitureRotateLeft={() => rotatePendingFurniture(-1)}
         onFurnitureRotateRight={() => rotatePendingFurniture(1)}
         onFurniturePointerDown={handleFurniturePointerDown}
@@ -948,7 +967,11 @@ export default function ListingTourRoom3D({
                               className="listing-tour-furniture-thumb"
                               style={{ backgroundColor: "var(--surface-container-high)" }}
                             >
-                              {TENANT_FURNITURE_CATEGORY_ICONS[furniture.category] ?? "◇"}
+                              {furniture.thumbnailUrl ? (
+                                <img alt="" decoding="async" loading="lazy" src={furniture.thumbnailUrl} />
+                              ) : (
+                                TENANT_FURNITURE_CATEGORY_ICONS[furniture.category] ?? "◇"
+                              )}
                             </span>
                             <strong>{item.name}</strong>
                             <small>{furniture.sizeMm.width} × {furniture.sizeMm.depth} mm</small>

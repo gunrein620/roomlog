@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   FURNITURE_MOVE_SPEED_METERS_PER_SECOND,
-  furnitureFirstPersonMovementDelta,
-  resolveFurnitureShortcut
+  FURNITURE_ROTATE_HOLD_THRESHOLD_MS,
+  FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND,
+  furnitureFlyMovementDelta,
+  resolveFurnitureShortcut,
+  rotateKeyDirection
 } from "./furniture-first-person-input";
 
 describe("furniture first-person input", () => {
@@ -154,8 +157,35 @@ describe("furniture first-person input", () => {
   it("moves at exactly six metres per second with bounded delta", () => {
     assert.equal(FURNITURE_MOVE_SPEED_METERS_PER_SECOND, 6);
     assert.deepEqual(
-      furnitureFirstPersonMovementDelta(new Set(["forward"]), { x: 0, z: -1 }, 1),
-      { x: 0, z: -0.6000000000000001 }
+      furnitureFlyMovementDelta(new Set(["forward"]), { x: 0, y: 0, z: -1 }, 1),
+      { x: 0, y: 0, z: -0.6000000000000001 }
     );
+  });
+
+  it("flies along the full look direction so looking up and pressing W ascends", () => {
+    // 45도 위를 보고 전진 — 수평·수직으로 같은 비율로 이동한다.
+    const up45 = furnitureFlyMovementDelta(new Set(["forward"]), { x: 0, y: 1, z: -1 }, 0.1);
+    assert.ok(up45.y > 0);
+    assert.ok(up45.z < 0);
+    assert.ok(Math.abs(up45.y - Math.abs(up45.z)) < 1e-9);
+
+    // 아래를 보고 전진하면 하강한다.
+    const down = furnitureFlyMovementDelta(new Set(["forward"]), { x: 0, y: -1, z: -1 }, 0.1);
+    assert.ok(down.y < 0);
+
+    // 스트레이프는 수평 성분만 갖는다 — 위를 보고 옆걸음해도 떠오르지 않는다.
+    const strafe = furnitureFlyMovementDelta(new Set(["right"]), { x: 0, y: 1, z: -1 }, 0.1);
+    assert.equal(strafe.y, 0);
+    assert.ok(strafe.x > 0);
+  });
+
+  it("maps 1/3 keys to hold-rotation directions with a snap threshold", () => {
+    assert.equal(rotateKeyDirection("Digit1"), -1);
+    assert.equal(rotateKeyDirection("Numpad1"), -1);
+    assert.equal(rotateKeyDirection("Digit3"), 1);
+    assert.equal(rotateKeyDirection("Numpad3"), 1);
+    assert.equal(rotateKeyDirection("KeyW"), null);
+    assert.equal(FURNITURE_ROTATE_HOLD_THRESHOLD_MS, 250);
+    assert.equal(FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND, Math.PI / 2);
   });
 });

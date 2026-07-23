@@ -55,6 +55,8 @@ export interface TenantFurniture {
   usdzUrl: string | null;
   /** USDZ→GLB 변환 진행 상태. null = 변환 파이프라인 무관(roomplan/manual/catalog 등). */
   meshJobState: TenantFurnitureMeshJobState | null;
+  /** 정사각 썸네일 이미지 URL. 없으면 카테고리 아이콘으로 폴백. */
+  thumbnailUrl: string | null;
   createdAt: string;
 }
 

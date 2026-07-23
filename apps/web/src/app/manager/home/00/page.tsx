@@ -30,10 +30,13 @@ export default async function Page({
     expiring: dashboard.briefingInput.expiringContractCount,
     unanswered: dashboard.briefingInput.unansweredThreadCount
   };
-  const occupancy = {
-    contracted: dashboard.homeCards.length,
-    total: dashboard.homeCards.length + dashboard.uncontractedListings.length
-  };
+  // 입주율은 임대 현황 리포트와 같은 산식(월말 유효 계약 호실 / 관리 호실)의 최신 월 값을 쓴다 —
+  // 상단 링과 하단 리포트가 다른 숫자를 보여주지 않도록 원천을 하나로 묶는다.
+  const latestReportPoint = rentalReport?.points.at(-1);
+  const occupancy =
+    latestReportPoint && latestReportPoint.totalRoomCount > 0
+      ? { contracted: latestReportPoint.occupiedRoomCount, total: latestReportPoint.totalRoomCount }
+      : { contracted: 0, total: 0 };
 
   return (
     // 워크스페이스 셸(글로벌 사이드바)을 따른다. AI 진입은 다른 관리 화면과 동일하게

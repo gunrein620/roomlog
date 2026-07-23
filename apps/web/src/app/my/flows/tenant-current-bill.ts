@@ -75,7 +75,7 @@ function upcomingCard(summary: TenantBillSummary): TenantBillingUpcomingCardMode
     rentAmount: itemAmount(summary, "rent"),
     maintenanceAmount: itemAmount(summary, "maintenance"),
     monthLabel: billingMonthLabel(bill.billingMonth),
-    amountLabel: `${bill.totalAmount.toLocaleString("ko-KR")} KRW`,
+    amountLabel: `${bill.totalAmount.toLocaleString("ko-KR")}원`,
     availabilityLabel: paymentDateLabel(bill.dueDate),
     actionHref: `/tenant/payment/01?id=${encodeURIComponent(bill.id)}`,
   };

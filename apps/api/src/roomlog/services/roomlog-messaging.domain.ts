@@ -70,7 +70,9 @@ export class RoomlogMessagingDomain {
       return this.presentThread(existing, true);
     }
 
-    if (!body && !isGeneralLandlordThread) {
+    // 새 스레드는 첫 메시지(본문 또는 첨부)가 있어야 만든다 —
+    // 문의창을 열기만 해도 관리인 소통 허브에 빈 대화가 생기는 것을 서버에서 막는다.
+    if (!body && !input.attachmentUrls?.length) {
       throw new BadRequestException("메시지 내용을 입력해주세요.");
     }
 

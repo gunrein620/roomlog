@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -491,6 +492,20 @@ private struct FurnitureCabinetView: View {
     @State private var deletingTargetID: String?
     @State private var deletionErrorMessage: String?
 
+    // 기존 가구 항목에 썸네일을 나중에 붙이는 플로우 — ObjectCaptureScanView(신규 촬영 직후)와
+    // 별개로, 이미 등록된 가구를 목록에서 골라 촬영한다.
+    @State private var thumbnailTarget: FurnitureCabinetItem?
+    @State private var showsThumbnailCamera = false
+    @State private var uploadingThumbnailID: String?
+    @State private var thumbnailErrorMessage: String?
+
+    // 이름 수정 — completeObjectCapture가 한동안 label을 버려서 label=null(카테고리명 표시)인
+    // 기존 가구가 있다. 재스캔 없이 이름만 고칠 수 있게 한다.
+    @State private var renameTarget: FurnitureCabinetItem?
+    @State private var renameDraft = ""
+    @State private var renamingTargetID: String?
+    @State private var renameErrorMessage: String?
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -564,6 +579,41 @@ private struct FurnitureCabinetView: View {
             }
         } message: {
             Text(deletionErrorMessage ?? "알 수 없는 오류가 발생했습니다.")
+        }
+        .fullScreenCover(isPresented: $showsThumbnailCamera) {
+            SquareThumbnailCamera { image in
+                showsThumbnailCamera = false
+                let target = thumbnailTarget
+                thumbnailTarget = nil
+                guard let target else { return }
+                Task {
+                    await uploadThumbnail(image?.squareThumbnail(), for: target)
+                }
+            }
+            .ignoresSafeArea()
+        }
+        .alert("썸네일 저장 실패", isPresented: thumbnailErrorIsPresented) {
+            Button("확인", role: .cancel) {
+                thumbnailErrorMessage = nil
+            }
+        } message: {
+            Text(thumbnailErrorMessage ?? "알 수 없는 오류가 발생했습니다.")
+        }
+        .alert("이름 수정", isPresented: renameDialogIsPresented) {
+            TextField("예: 거실 소파", text: $renameDraft)
+            Button("확인", action: confirmRename)
+            Button("취소", role: .cancel) {
+                renameTarget = nil
+            }
+        } message: {
+            Text("가구의 이름을 입력하세요.")
+        }
+        .alert("이름을 저장하지 못했습니다", isPresented: renameErrorIsPresented) {
+            Button("확인", role: .cancel) {
+                renameErrorMessage = nil
+            }
+        } message: {
+            Text(renameErrorMessage ?? "알 수 없는 오류가 발생했습니다.")
         }
     }
 
@@ -810,12 +860,7 @@ private struct FurnitureCabinetView: View {
 
     private func furnitureRow(_ item: FurnitureCabinetItem) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: item.hasMesh ? "cube.fill" : "cube")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(item.hasMesh ? Woozu.surfaceMuted : Woozu.secondarySoft)
-                .frame(width: 34, height: 34)
-                .background(Woozu.secondary.opacity(0.24), in: Circle())
-                .accessibilityHidden(true)
+            furnitureThumbnail(item)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(item.displayName)
@@ -836,6 +881,48 @@ private struct FurnitureCabinetView: View {
             }
 
             Spacer(minLength: 8)
+
+            if uploadingThumbnailID == item.id {
+                ProgressView()
+                    .tint(Woozu.secondarySoft)
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("썸네일 업로드 중")
+            } else {
+                Button {
+                    thumbnailTarget = item
+                    showsThumbnailCamera = true
+                } label: {
+                    Image(systemName: "camera")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Woozu.secondarySoft)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(deletingTargetID != nil || isRefreshing || uploadingThumbnailID != nil || renamingTargetID != nil)
+                .accessibilityLabel("\(item.displayName) 썸네일 촬영")
+            }
+
+            if renamingTargetID == item.id {
+                ProgressView()
+                    .tint(Woozu.secondarySoft)
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("이름 저장 중")
+            } else {
+                Button {
+                    renameDraft = item.displayName
+                    renameTarget = item
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Woozu.secondarySoft)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(deletingTargetID != nil || isRefreshing || uploadingThumbnailID != nil || renamingTargetID != nil)
+                .accessibilityLabel("\(item.displayName) 이름 수정")
+            }
 
             if deletingTargetID == FurnitureDeletionTarget.item(item).id {
                 ProgressView()
@@ -865,6 +952,35 @@ private struct FurnitureCabinetView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Woozu.secondary.opacity(0.25), lineWidth: 1)
+        }
+    }
+
+    /// 좌측 아이콘 — 썸네일이 있으면 사진을, 없으면 메시 유무에 따른 큐브 아이콘을 보여준다.
+    @ViewBuilder
+    private func furnitureThumbnail(_ item: FurnitureCabinetItem) -> some View {
+        if let thumbnailUrl = item.thumbnailUrl, let url = URL(string: thumbnailUrl) {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: item.hasMesh ? "cube.fill" : "cube")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(item.hasMesh ? Woozu.surfaceMuted : Woozu.secondarySoft)
+                }
+            }
+            .frame(width: 34, height: 34)
+            .background(Woozu.secondary.opacity(0.24))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityHidden(true)
+        } else {
+            Image(systemName: item.hasMesh ? "cube.fill" : "cube")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(item.hasMesh ? Woozu.surfaceMuted : Woozu.secondarySoft)
+                .frame(width: 34, height: 34)
+                .background(Woozu.secondary.opacity(0.24), in: Circle())
+                .accessibilityHidden(true)
         }
     }
 
@@ -898,6 +1014,97 @@ private struct FurnitureCabinetView: View {
                 }
             }
         )
+    }
+
+    private var thumbnailErrorIsPresented: Binding<Bool> {
+        Binding(
+            get: { thumbnailErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    thumbnailErrorMessage = nil
+                }
+            }
+        )
+    }
+
+    private var renameDialogIsPresented: Binding<Bool> {
+        Binding(
+            get: { renameTarget != nil },
+            set: { isPresented in
+                if !isPresented {
+                    renameTarget = nil
+                }
+            }
+        )
+    }
+
+    private var renameErrorIsPresented: Binding<Bool> {
+        Binding(
+            get: { renameErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    renameErrorMessage = nil
+                }
+            }
+        )
+    }
+
+    /// 기존 가구 항목에 썸네일을 붙인다 — USDZ 접수와 무관한 부가 기능이라 실패해도 목록 자체는
+    /// 그대로 두고 안내만 띄운다. 성공하면 서버가 채운 thumbnailUrl을 보려고 목록을 새로고침한다.
+    @MainActor
+    private func uploadThumbnail(_ image: UIImage?, for target: FurnitureCabinetItem) async {
+        guard let image else { return }
+        guard let token = account.accessToken else {
+            thumbnailErrorMessage = FurnitureCabinetAPIError.sessionExpired.localizedDescription
+            return
+        }
+        uploadingThumbnailID = target.id
+        defer { uploadingThumbnailID = nil }
+        do {
+            _ = try await TenantFurnitureThumbnailUploader.upload(
+                furnitureId: target.id,
+                image: image,
+                baseURLString: account.baseURLString,
+                token: token
+            )
+            await loadFurniture(showLoading: false)
+        } catch {
+            thumbnailErrorMessage = error.localizedDescription
+        }
+    }
+
+    /// alert의 "확인" 버튼 액션 — 빈 입력이거나 기존 이름과 같으면 요청 자체를 생략한다.
+    private func confirmRename() {
+        guard let target = renameTarget else { return }
+        renameTarget = nil
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != target.displayName else { return }
+        Task {
+            await rename(target, to: trimmed)
+        }
+    }
+
+    /// 기존 가구의 이름(label)만 고친다 — 재스캔 없이 `PATCH tenant-furniture/{id}`로 label을
+    /// 갱신한다. 성공하면 목록을 새로고침해 반영한다.
+    @MainActor
+    private func rename(_ target: FurnitureCabinetItem, to label: String) async {
+        guard let token = account.accessToken else {
+            renameErrorMessage = FurnitureCabinetAPIError.sessionExpired.localizedDescription
+            return
+        }
+        renamingTargetID = target.id
+        defer { renamingTargetID = nil }
+        do {
+            _ = try await TenantFurnitureRenamer.rename(
+                furnitureId: target.id,
+                label: label,
+                baseURLString: account.baseURLString,
+                token: token
+            )
+            await loadFurniture(showLoading: false)
+        } catch {
+            renameErrorMessage = error.localizedDescription
+        }
     }
 
     @MainActor
@@ -1019,6 +1226,7 @@ private struct FurnitureCabinetItem: Decodable, Identifiable, Equatable {
     let label: String?
     let sizeMm: FurnitureCabinetSizeMm
     let meshUrl: String?
+    let thumbnailUrl: String?
     let importBatchId: String?
     let createdAt: String?
 

@@ -78,8 +78,12 @@ test("tenant my page opens landlord inquiries through roomlog messaging", () => 
   assert.match(source, /tenant-landlord-unread-badge/);
   assert.match(source, /landlordInquiryLabel/);
   assert.doesNotMatch(source, /submitLandlordMessage/);
-  assert.doesNotMatch(source, /setIsLandlordChatOpen/);
   assert.doesNotMatch(source, /TradeChatCenter/);
+
+  // 스레드 생성은 문의창을 여는 시점이 아니라 첫 메시지 전송 시점에만 일어난다 —
+  // 열기만 해도 관리인 소통 허브에 빈 대화가 생기는 회귀 방지.
+  assert.match(source, /tenantLandlordThreadInput\(body, tenancy\.roomId\)/);
+  assert.doesNotMatch(source, /tenantLandlordThreadInput\(""/);
 });
 
 test("tenant my page refreshes the open landlord chat and complaint history from realtime activity", () => {

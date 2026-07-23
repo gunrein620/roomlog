@@ -277,6 +277,17 @@ a.count:hover {
   height: 100% !important;
 }
 
+/* thumbnailUrl 있을 때 preview3d 대신 그리는 정사각 썸네일 — 프레임 크기는 동일하게 맞춘다. */
+.thumbnailImage {
+  overflow: hidden;
+  width: var(--control-secondary-size);
+  height: var(--control-secondary-size);
+  flex: none;
+  border-radius: var(--radius);
+  background: var(--wz-surface-muted);
+  object-fit: cover;
+}
+
 .itemName {
   margin: 0;
   overflow: hidden;

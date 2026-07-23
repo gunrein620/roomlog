@@ -734,6 +734,7 @@ export function RoomlogThreeFloorPlanView({
   onFurniturePlacementHit,
   onFurniturePlacementPoint,
   onFurnitureRemove,
+  onFurnitureRotateBy,
   onFurnitureRotateLeft,
   onFurnitureRotateRight,
   onFurniturePointerDown,
@@ -799,6 +800,7 @@ export function RoomlogThreeFloorPlanView({
   onFurniturePlacementHit?: (hit: FurniturePlacementHit) => void;
   onFurniturePlacementPoint?: (point: { x: number; z: number }) => void;
   onFurnitureRemove?: () => void;
+  onFurnitureRotateBy?: (angleDelta: number) => void;
   onFurnitureRotateLeft?: () => void;
   onFurnitureRotateRight?: () => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
@@ -1055,6 +1057,7 @@ export function RoomlogThreeFloorPlanView({
             onPlacementHit={onFurniturePlacementHit}
             onPlacementPoint={(point) => onFurniturePlacementPoint?.(point)}
             onRemove={onFurnitureRemove}
+            onRotateBy={onFurnitureRotateBy}
             onRotateLeft={() => onFurnitureRotateLeft?.()}
             onRotateRight={() => onFurnitureRotateRight?.()}
             onStatusChange={setFurnitureFirstPersonStatus}
@@ -1101,11 +1104,11 @@ export function RoomlogThreeFloorPlanView({
           )}
           <span className="floor-3d-hint">
             {furnitureInteractionMode === "carry"
-              ? "1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전 · Q 고정 · R 제거/취소"
+              ? "1 왼쪽 회전 · 2 다시 선택 · 3 오른쪽 회전(길게 누르면 천천히) · 클릭/Q 고정 · R 제거/취소"
               : furnitureInteractionMode === "select"
                 ? "가구를 선택하세요 · 2 또는 Esc 닫기"
                 : aimedFurnitureId
-                  ? "E 기존 가구 이동 · 2 가구 선택"
+                  ? "클릭/E 가구 잡기 · 2 가구 선택"
                   : "2 가구 선택 · WASD 이동 · 마우스 시점"}
           </span>
         </>

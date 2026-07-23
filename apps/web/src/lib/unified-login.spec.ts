@@ -72,13 +72,17 @@ describe("post-login destination (capability, not identity)", () => {
   it("sends a capability-less account straight to the relation entry point (no interstitial)", () => {
     assert.equal(resolvePostLoginDestination(multiRoleUser, "vendor"), "/vendor/activate");
     const seekerOnly = { role: "SEEKER", roles: ["SEEKER"] };
-    assert.equal(resolvePostLoginDestination(seekerOnly, "landlord"), "/sell");
+    // 임대인 연결이 없는 계정의 /sell 우회에는 도착 화면이 이유를 설명할 notice가 붙는다.
+    assert.equal(resolvePostLoginDestination(seekerOnly, "landlord"), "/sell?notice=landlord-onboarding");
     assert.equal(resolvePostLoginDestination(seekerOnly, "tenant"), "/");
   });
 
   it("ignores redirectTo when capability is missing (protected-path loop guard)", () => {
     const seekerOnly = { role: "SEEKER", roles: ["SEEKER"] };
-    assert.equal(resolvePostLoginDestination(seekerOnly, "landlord", "/manager/home/00"), "/sell");
+    assert.equal(
+      resolvePostLoginDestination(seekerOnly, "landlord", "/manager/home/00"),
+      "/sell?notice=landlord-onboarding"
+    );
   });
 
   it("falls back to the legacy single role when roles[] is absent", () => {

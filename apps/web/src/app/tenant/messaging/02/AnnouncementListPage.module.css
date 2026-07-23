@@ -546,6 +546,20 @@
   color: var(--on-surface);
 }
 
+/* 이미 읽음/확인된 공지 — 버튼이 아니라 상태 표시(클릭 대상 아님) */
+.stateDoneBadge {
+  min-height: var(--control-secondary-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-lg);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-btn);
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-weight: var(--fw-header);
+}
+
 .primaryAction:disabled,
 .secondaryAction:disabled {
   border-color: var(--outline-variant);

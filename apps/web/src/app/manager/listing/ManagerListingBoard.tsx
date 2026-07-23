@@ -297,6 +297,12 @@ export function ManagerListingBoard({
         </Card>
       ) : (
         <>
+          {activeStatus === "contracted" ? (
+            <p className={styles.tabCriteriaNote}>
+              매물 등록을 거쳐 체결된 계약만 표시됩니다. 매물 없이 등록한 계약을 포함한 전체 계약은{" "}
+              <Link href="/manager/contract/00">계약 관리</Link>에서 확인할 수 있어요.
+            </p>
+          ) : null}
           <div className={styles.viewToggle} role="group" aria-label="매물 보기 방식">
             <button
               type="button"
