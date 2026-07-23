@@ -75,7 +75,10 @@ type FurnitureSourceTab = "mine" | "catalog";
 export type OwnerFurnitureSaveDestination = "listing" | "original" | "3d" | "floor";
 
 type ListingTourRoom3DProps = {
-  floorPlan: ListingFloorPlan3D;
+  /** 임대인이 등록한 도면 — 캡처 도면(captureFloorPlanLayout)만 있고 이게 없는 매물(예: 영상/zip만
+   * 올린 직접등록)도 있다. 그 경우 mitunet/walls3D 파생값은 전부 빈 배열/undefined로 폴백하고
+   * 렌더는 captureFloorPlanLayout이 전담한다(아래 각 사용처 주석 참고). */
+  floorPlan?: ListingFloorPlan3D;
   /** 매물에 연결된 splat 자산의 캡처 도면(RoomPlan)을 뷰어 레이아웃으로 미리 변환해 넘긴다.
    * 있으면 floorPlan.mitunet/walls3D보다 우선(실측·splat과 좌표계 항등) — 없으면(null/undefined)
    * 기존 mitunet/walls3D 경로가 무변경으로 그대로 동작한다. */
@@ -178,7 +181,9 @@ export default function ListingTourRoom3D({
   ownerSaveRequestRef,
   variant = "sheet"
 }: ListingTourRoom3DProps) {
-  const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
+  // floorPlan 없음(캡처 도면만 있는 매물) → 벽 없음. 가구 배치 계산(resolveFurniturePlacement)도
+  // 이 빈 배열을 받아 벽 스냅 없이 바닥 배치만 허용한다 — 원래도 없는 벽이라 손실이 아니다.
+  const wallsData = (floorPlan?.walls3D ?? []) as unknown as WheretoputWall3D[];
   // 캡처 도면이 있으면 도면 렌더는 그것이 전담한다 — walls3D 박스 벽을 같이 그리면 이중으로
   // 겹친다(furniture-placement 계산용 wallsData 자체는 아래에서 그대로 유지). 캡처가 없으면
   // 기존 렌더 경로(mitunetPlan에서 파생하는 폴리곤 + wallsData 박스 벽)가 그대로 동작한다.
@@ -285,14 +290,14 @@ export default function ListingTourRoom3D({
     try {
       const savedFurnitures = experience === "owner" ? null : readSavedFurnitures(listingId);
       setPlacedFurnitures(
-        ((savedFurnitures ?? floorPlan.furnitures) as unknown as PlacedFurniture[]).map((furniture) =>
-          normalizeMitunetListingFurniture(furniture, floorPlan.mitunet)
+        ((savedFurnitures ?? floorPlan?.furnitures ?? []) as unknown as PlacedFurniture[]).map((furniture) =>
+          normalizeMitunetListingFurniture(furniture, floorPlan?.mitunet)
         )
       );
       setHasSavedFurnitureLayout(savedFurnitures !== null);
       setSaveMessage(savedFurnitures ? "저장된 가구 배치를 불러왔습니다." : "가구 배치 편집을 열어 옵션 위치를 확인할 수 있습니다.");
     } catch {
-      setPlacedFurnitures(floorPlan.furnitures as unknown as PlacedFurniture[]);
+      setPlacedFurnitures((floorPlan?.furnitures ?? []) as unknown as PlacedFurniture[]);
       // 손상된 값도 사용자가 버튼으로 지울 수 있어야 하므로 복원 동작은 열어 둔다.
       setHasSavedFurnitureLayout(true);
       setSaveMessage("저장된 가구 배치를 불러오지 못해 원래 배치를 표시합니다.");
@@ -455,7 +460,7 @@ export default function ListingTourRoom3D({
     pendingTenantFurnitureSourceRef.current = null;
     setIsPendingFurnitureEditing(false);
     const draft =
-      floorPlan.mitunet
+      floorPlan?.mitunet
         ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
         : createFurnitureModel(item);
     startCatalogFurnitureCarry(draft);
@@ -467,7 +472,7 @@ export default function ListingTourRoom3D({
     restorePendingFurnitureOrigin();
     pendingTenantFurnitureSourceRef.current = furniture.source;
     const draft = {
-      ...(floorPlan.mitunet
+      ...(floorPlan?.mitunet
         ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
         : createFurnitureModel(item)),
       sizeMm: furniture.sizeMm,
@@ -788,7 +793,7 @@ export default function ListingTourRoom3D({
       pendingTenantFurnitureSourceRef.current = null;
       pendingFurniturePlacedOnceRef.current = false;
       setIsPendingFurnitureEditing(false);
-      setPlacedFurnitures(floorPlan.furnitures as unknown as PlacedFurniture[]);
+      setPlacedFurnitures((floorPlan?.furnitures ?? []) as unknown as PlacedFurniture[]);
       setPendingFurniture(null);
       setSelectedFurnitureId(null);
       setFurnitureInteractionMode("explore");
@@ -817,7 +822,7 @@ export default function ListingTourRoom3D({
         furniturePlacementFeedback={furniturePlacementFeedback}
         hideHint
         mitunetLayout={captureFloorPlanLayout ?? undefined}
-        mitunetPlan={captureFloorPlanLayout ? undefined : floorPlan.mitunet}
+        mitunetPlan={captureFloorPlanLayout ? undefined : floorPlan?.mitunet}
         moveInputRef={walkMoveInputRef}
         orbitMinDistance={1.6}
         fitDistanceScale={0.9}
