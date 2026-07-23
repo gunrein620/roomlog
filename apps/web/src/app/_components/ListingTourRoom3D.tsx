@@ -8,12 +8,15 @@ import {
   createMitunetFloorFurnitureDraft,
   createFurnitureModel,
   finalizeFurnitureDraft,
+  type FurnitureCatalogSource,
   FURNITURE_CATALOG,
   furnitureCategoryLabel,
   furnitureImageUrl,
   hasAttachedFurniture,
+  isLargeFurnitureAsset,
   listFurnitureCategoryFilters,
   loadGlbDatasetCatalog,
+  loadPolyhavenCatalog,
   moveAttachedFurniture,
   reopenFurnitureDraft,
   resolveFurniturePlacement,
@@ -71,7 +74,6 @@ export type ListingFloorPlan3D = {
 };
 
 type SimulationMode = "overview" | "walk" | "furniture";
-type FurnitureSourceTab = "mine" | "catalog";
 export type OwnerFurnitureSaveDestination = "listing" | "original" | "3d";
 
 type ListingTourRoom3DProps = {
@@ -122,7 +124,7 @@ function readSavedFurnitures(listingId: string) {
 }
 
 function catalogSearchText(item: FurnitureCatalogItem) {
-  return `${item.name} ${item.brand} ${item.category ?? ""} ${item.furniture_id}`.toLowerCase();
+  return `${item.name} ${item.brand} ${item.category ?? ""} ${item.furniture_id} ${(item.tags ?? []).join(" ")}`.toLowerCase();
 }
 
 function tenantFurnitureCatalogItem(furniture: TenantFurniture): FurnitureCatalogItem {
@@ -192,10 +194,14 @@ export default function ListingTourRoom3D({
   // hero 패널 접기 — 우상단 "가구 편집" 버튼으로 여닫고, 도면을 가리지 않도록 기본은 닫아 둔다.
   const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(initialSimulationMode === "furniture");
   const [catalogQuery, setCatalogQuery] = useState("");
-  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureSourceTab>(experience === "owner" ? "mine" : "catalog");
+  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureCatalogSource>(experience === "owner" ? "mine" : "catalog");
   const [furnitureCategoryFilter, setFurnitureCategoryFilter] = useState("전체");
   const [furnitureLimit, setFurnitureLimit] = useState(30);
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
+  const [polyCatalog, setPolyCatalog] = useState<FurnitureCatalogItem[]>([]);
+  const [polyCatalogError, setPolyCatalogError] = useState<string | null>(null);
+  const [polyCatalogLoading, setPolyCatalogLoading] = useState(false);
+  const [polyCatalogRetry, setPolyCatalogRetry] = useState(0);
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
   const [furniturePlacementFeedback, setFurniturePlacementFeedback] = useState<Pick<FurniturePlacementResult, "reason" | "valid"> & { mode: FurniturePlacementAttachment["mode"] } | null>(null);
@@ -219,26 +225,27 @@ export default function ListingTourRoom3D({
   const lastFurniturePlacementPointRef = useRef<{ x: number; z: number } | null>(null);
   const furnitureCategoryTabsRef = useRef<HTMLDivElement>(null);
   const [furnitureCategoryScroll, setFurnitureCategoryScroll] = useState({ left: 0, max: 0 });
+  const activeFurnitureCatalog = furnitureSourceTab === "poly" ? polyCatalog : furnitureCatalog;
   const furnitureCategoryCounts = useMemo(
     () =>
-      furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
+      activeFurnitureCatalog.reduce<Record<string, number>>((counts, item) => {
         const category = furnitureCategoryLabel(item);
         counts[category] = (counts[category] ?? 0) + 1;
         return counts;
       }, {}),
-    [furnitureCatalog]
+    [activeFurnitureCatalog]
   );
-  const furnitureCategoryFilters = useMemo(() => listFurnitureCategoryFilters(furnitureCatalog), [furnitureCatalog]);
+  const furnitureCategoryFilters = useMemo(() => listFurnitureCategoryFilters(activeFurnitureCatalog), [activeFurnitureCatalog]);
   const filteredCatalog = useMemo(() => {
     const normalizedQuery = catalogQuery.trim().toLowerCase();
-    const catalog = furnitureCatalog.filter((item) => {
+    const catalog = activeFurnitureCatalog.filter((item) => {
       const matchesCategory = furnitureCategoryFilter === "전체" || furnitureCategoryLabel(item) === furnitureCategoryFilter;
       const matchesQuery = !normalizedQuery || catalogSearchText(item).includes(normalizedQuery);
       return matchesCategory && matchesQuery;
     });
 
     return catalog;
-  }, [catalogQuery, furnitureCatalog, furnitureCategoryFilter]);
+  }, [activeFurnitureCatalog, catalogQuery, furnitureCategoryFilter]);
   const visibleFurnitureCatalog = useMemo(() => filteredCatalog.slice(0, furnitureLimit), [filteredCatalog, furnitureLimit]);
   const selectedFurniture = pendingFurniture ?? placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null;
 
@@ -281,6 +288,26 @@ export default function ListingTourRoom3D({
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (furnitureSourceTab !== "poly" || polyCatalog.length > 0) return;
+    let active = true;
+    setPolyCatalogLoading(true);
+    setPolyCatalogError(null);
+    void loadPolyhavenCatalog()
+      .then((items) => {
+        if (active) setPolyCatalog(items);
+      })
+      .catch(() => {
+        if (active) setPolyCatalogError("폴리 가구를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (active) setPolyCatalogLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [furnitureSourceTab, polyCatalog.length, polyCatalogRetry]);
 
   useEffect(() => {
     try {
@@ -449,6 +476,13 @@ export default function ListingTourRoom3D({
   const handleWalkJoystickChange = useCallback((vector: TourJoystickVector | null) => {
     walkMoveInputRef.current = vector ?? { forward: 0, strafe: 0 };
   }, []);
+
+  function selectFurnitureSource(source: FurnitureCatalogSource) {
+    setFurnitureSourceTab(source);
+    setCatalogQuery("");
+    setFurnitureCategoryFilter("전체");
+    setFurnitureLimit(30);
+  }
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
     // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
@@ -929,20 +963,29 @@ export default function ListingTourRoom3D({
               <button
                 aria-selected={furnitureSourceTab === "mine"}
                 className={furnitureSourceTab === "mine" ? "active" : ""}
-                onClick={() => setFurnitureSourceTab("mine")}
+                onClick={() => selectFurnitureSource("mine")}
                 role="tab"
                 type="button"
               >
-                내 가구 <small>{tenantFurnitures.length}</small>
+                내가구 <small>{tenantFurnitures.length}</small>
               </button>
               <button
                 aria-selected={furnitureSourceTab === "catalog"}
                 className={furnitureSourceTab === "catalog" ? "active" : ""}
-                onClick={() => setFurnitureSourceTab("catalog")}
+                onClick={() => selectFurnitureSource("catalog")}
                 role="tab"
                 type="button"
               >
-                등록 가구 <small>{furnitureCatalog.length}</small>
+                등록된 가구 <small>{furnitureCatalog.length}</small>
+              </button>
+              <button
+                aria-selected={furnitureSourceTab === "poly"}
+                className={furnitureSourceTab === "poly" ? "active" : ""}
+                onClick={() => selectFurnitureSource("poly")}
+                role="tab"
+                type="button"
+              >
+                폴리 <small>{polyCatalog.length || 519}</small>
               </button>
             </div>
 
@@ -983,14 +1026,24 @@ export default function ListingTourRoom3D({
                 ) : (
                   <div className="listing-tour-furniture-source-empty">
                     <p>등록한 내 가구가 없습니다.</p>
-                    <button onClick={() => setFurnitureSourceTab("catalog")} type="button">
-                      등록 가구 보기
+                    <button onClick={() => selectFurnitureSource("catalog")} type="button">
+                      등록된 가구 보기
                     </button>
                   </div>
                 )}
               </section>
             ) : (
-              <section className="listing-tour-furniture-source-panel" aria-label="등록 가구">
+              <section className="listing-tour-furniture-source-panel" aria-label={furnitureSourceTab === "poly" ? "폴리" : "등록된 가구"}>
+                {furnitureSourceTab === "poly" ? (
+                  <p className="listing-tour-furniture-source-copy">Poly Haven · CC0</p>
+                ) : null}
+                {polyCatalogLoading ? <p className="listing-tour-furniture-source-copy" role="status">폴리 가구를 불러오는 중입니다.</p> : null}
+                {polyCatalogError ? (
+                  <div className="listing-tour-furniture-source-empty">
+                    <p>{polyCatalogError}</p>
+                    <button onClick={() => setPolyCatalogRetry((value) => value + 1)} type="button">다시 시도</button>
+                  </div>
+                ) : null}
                 <div className="listing-tour-furniture-search">
                   <input
                     aria-label="가구 검색"
@@ -1017,7 +1070,7 @@ export default function ListingTourRoom3D({
                       type="button"
                     >
                       {category}
-                      <small>{category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}</small>
+                      <small>{category === "전체" ? activeFurnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}</small>
                     </button>
                   ))}
                 </div>
@@ -1046,6 +1099,7 @@ export default function ListingTourRoom3D({
                           type="button"
                         >
                           <span className="listing-tour-furniture-thumb" style={{ backgroundColor: item.color }}>
+                            <span aria-hidden="true" className="furniture-thumb-fallback">{item.name.slice(0, 1)}</span>
                             {imageUrl ? (
                               <img
                                 alt=""
@@ -1059,7 +1113,10 @@ export default function ListingTourRoom3D({
                             ) : null}
                           </span>
                           <strong>{item.name}</strong>
-                          <small>{item.brand}</small>
+                          <small>
+                            {item.brand}
+                            {isLargeFurnitureAsset(item) ? ` · 대용량 ${Math.round((item.assetBytes ?? 0) / 1024 / 1024)}MB` : ""}
+                          </small>
                         </button>
                       );
                     })}

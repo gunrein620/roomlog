@@ -4,6 +4,7 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
+import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
 import { Armchair, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -39,13 +40,18 @@ import { TourMinimap } from "./tour-minimap";
 import { normalizeWorldToMinimap } from "./tour-minimap-geometry";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset, resolveAssetFileUrl, updateSplatAssetSpawnView } from "@/lib/splat-asset-api";
+import { fetchTenantFurniture } from "@/lib/tenant-furniture-api";
+import { tenantFurnitureName } from "../tenant/furniture/furniture-labels";
 import { resolveTourSpawnView } from "./tour-spawn-view";
 import {
   FURNITURE_CATALOG,
+  type FurnitureCatalogSource,
   furnitureCategoryLabel,
   furnitureImageUrl,
+  isLargeFurnitureAsset,
   listFurnitureCategoryFilters,
-  loadGlbDatasetCatalog
+  loadGlbDatasetCatalog,
+  loadPolyhavenCatalog
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture } from "../floor-plan-3d/room-model/types";
 import type { SpawnView, SplatTransform } from "./tour-types";
@@ -55,6 +61,20 @@ import type { SpawnView, SplatTransform } from "./tour-types";
 // 원점을 못 믿어 bbox 자동 센터링·스케일), rotX 0(이 캡처는 이미 Y-up이라 기본 180° 플립을 끈다),
 // rotY 180(방을 yaw 180° 돌려세움). 축·각도 미세조정은 리빌드 없이 ?splatFit/?splatRotX/?splatRotY로 덮어쓴다.
 const SPLAT_SRC = "/samples/cap2_sharp.spz";
+
+function tenantFurnitureCatalogItem(furniture: TenantFurniture): FurnitureCatalogItem {
+  return {
+    brand: "내 가구",
+    category: furniture.category,
+    color: "lightgray",
+    furniture_id: furniture.id,
+    length: [furniture.sizeMm.width, furniture.sizeMm.height, furniture.sizeMm.depth],
+    modelUrl: furniture.meshUrl ?? undefined,
+    name: tenantFurnitureName(furniture),
+    price: 0,
+    source: furniture.source
+  };
+}
 
 // 투어가 열릴 때의 초기 시점(방 안쪽 소파 구역). 프리셋 버튼(현관/방중앙/창가)과 별개이며,
 // cap2_sharp 배치에서 실측한 카메라 포즈다(라이브 컨트롤에서 getPosition/getTarget으로 캡처).
@@ -117,6 +137,12 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
   const [isFurnitureCatalogOpen, setIsFurnitureCatalogOpen] = useState(false);
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
   const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("가구 카탈로그를 불러오는 중입니다.");
+  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureCatalogSource>("catalog");
+  const [tenantFurnitures, setTenantFurnitures] = useState<TenantFurniture[]>([]);
+  const [polyCatalog, setPolyCatalog] = useState<FurnitureCatalogItem[]>([]);
+  const [polyCatalogLoading, setPolyCatalogLoading] = useState(false);
+  const [polyCatalogError, setPolyCatalogError] = useState<string | null>(null);
+  const [polyCatalogRetry, setPolyCatalogRetry] = useState(0);
   const [furnitureCategory, setFurnitureCategory] = useState("전체");
   const [furnitureQuery, setFurnitureQuery] = useState("");
   const [furnitureLimit, setFurnitureLimit] = useState(30);
@@ -183,19 +209,28 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
       maxZ: SPLAT_CLIP_ROOM.depth / 2
     };
   }, [planBounds]);
-  const furnitureCategories = useMemo(() => listFurnitureCategoryFilters(furnitureCatalog), [furnitureCatalog]);
+  const activeFurnitureCatalog = useMemo(
+    () =>
+      furnitureSourceTab === "mine"
+        ? tenantFurnitures.map(tenantFurnitureCatalogItem)
+        : furnitureSourceTab === "poly"
+          ? polyCatalog
+          : furnitureCatalog,
+    [furnitureCatalog, furnitureSourceTab, polyCatalog, tenantFurnitures]
+  );
+  const furnitureCategories = useMemo(() => listFurnitureCategoryFilters(activeFurnitureCatalog), [activeFurnitureCatalog]);
   const furnitureCategoryCounts = useMemo(
     () =>
-      furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
+      activeFurnitureCatalog.reduce<Record<string, number>>((counts, item) => {
         const category = furnitureCategoryLabel(item);
         counts[category] = (counts[category] ?? 0) + 1;
         return counts;
       }, {}),
-    [furnitureCatalog]
+    [activeFurnitureCatalog]
   );
   const filteredFurnitureCatalog = useMemo(
-    () => filterTourFurnitureCatalog(furnitureCatalog, furnitureCategory, furnitureQuery),
-    [furnitureCatalog, furnitureCategory, furnitureQuery]
+    () => filterTourFurnitureCatalog(activeFurnitureCatalog, furnitureCategory, furnitureQuery),
+    [activeFurnitureCatalog, furnitureCategory, furnitureQuery]
   );
   const visibleFurnitureCatalog = useMemo(
     () => filteredFurnitureCatalog.slice(0, furnitureLimit),
@@ -384,8 +419,42 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void fetchTenantFurniture()
+      .then((items) => {
+        if (active) setTenantFurnitures(items.filter((item) => item.meshJobState === "DONE"));
+      })
+      .catch(() => {
+        if (active) setTenantFurnitures([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (furnitureSourceTab !== "poly" || polyCatalog.length > 0) return;
+    let active = true;
+    setPolyCatalogLoading(true);
+    setPolyCatalogError(null);
+    void loadPolyhavenCatalog()
+      .then((items) => {
+        if (active) setPolyCatalog(items);
+      })
+      .catch(() => {
+        if (active) setPolyCatalogError("폴리 가구를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (active) setPolyCatalogLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [furnitureSourceTab, polyCatalog.length, polyCatalogRetry]);
+
+  useEffect(() => {
     setFurnitureLimit(30);
-  }, [furnitureCategory, furnitureQuery]);
+  }, [furnitureCategory, furnitureQuery, furnitureSourceTab]);
 
   // 터치/coarse pointer 감지(마운트 후). 하이브리드 기기 대응으로 maxTouchPoints도 함께 본다.
   useEffect(() => {
@@ -838,7 +907,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             display: grid;
             width: min(390px, calc(100% - 32px));
             height: min(620px, calc(100% - 110px));
-            grid-template-rows: auto auto auto auto minmax(0, 1fr) auto minmax(0, auto) auto auto;
+            grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto minmax(0, auto) auto auto;
             gap: 12px;
             overflow: hidden;
             padding: 16px;
@@ -876,9 +945,15 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             line-height: 1.45;
           }
 
+          .tour-furniture-source-status {
+            display: grid;
+            gap: 6px;
+          }
+
           .tour-furniture-close,
           .tour-furniture-action,
           .tour-furniture-category,
+          .tour-furniture-source-tabs button,
           .tour-furniture-more,
           .tour-furniture-item {
             border: 1px solid var(--line);
@@ -901,6 +976,25 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             border-color: var(--blue);
             background: var(--blue);
             color: var(--paper);
+          }
+
+          .tour-furniture-source-tabs {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+          }
+
+          .tour-furniture-source-tabs button {
+            min-height: 36px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 800;
+          }
+
+          .tour-furniture-source-tabs button.is-active {
+            border-color: var(--blue);
+            background: var(--blue-soft);
+            color: var(--blue);
           }
 
           .tour-furniture-search {
@@ -1072,6 +1166,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
           }
 
           .tour-furniture-thumb {
+            position: relative;
             display: grid;
             width: 42px;
             height: 42px;
@@ -1081,9 +1176,11 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
           }
 
           .tour-furniture-thumb img {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
           }
 
           .tour-furniture-copy {
@@ -1393,7 +1490,39 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
               닫기
             </button>
           </div>
-          <p className="tour-furniture-status" role="status">{furnitureCatalogStatus}</p>
+          <div className="tour-furniture-source-status">
+            <p className="tour-furniture-status" role="status">
+              {furnitureSourceTab === "poly" ? "Poly Haven · CC0" : furnitureSourceTab === "mine" ? "내 가구" : furnitureCatalogStatus}
+            </p>
+            {furnitureSourceTab === "poly" && polyCatalogLoading ? <p className="tour-furniture-help">폴리 가구를 불러오는 중입니다.</p> : null}
+            {furnitureSourceTab === "poly" && polyCatalogError ? (
+              <button className="tour-furniture-more" onClick={() => setPolyCatalogRetry((value) => value + 1)} type="button">
+                {polyCatalogError} 다시 시도
+              </button>
+            ) : null}
+          </div>
+          <div className="tour-furniture-source-tabs" role="tablist" aria-label="가구 목록 종류">
+            {([
+              ["mine", "내가구"],
+              ["catalog", "등록된 가구"],
+              ["poly", "폴리"]
+            ] as const).map(([source, label]) => (
+              <button
+                aria-selected={furnitureSourceTab === source}
+                className={furnitureSourceTab === source ? "is-active" : ""}
+                key={source}
+                onClick={() => {
+                  setFurnitureSourceTab(source);
+                  setFurnitureCategory("전체");
+                  setFurnitureQuery("");
+                }}
+                role="tab"
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <input
             aria-label="가구 검색"
             className="tour-furniture-search"
@@ -1419,7 +1548,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
                   role="tab"
                   type="button"
                 >
-                  {category} {category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}
+                  {category} {category === "전체" ? activeFurnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}
                 </button>
               ))}
             </div>
@@ -1460,6 +1589,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
               return (
                 <button className="tour-furniture-item" key={item.furniture_id} onClick={() => handleFurnitureCatalogSelect(item)} type="button">
                   <span className="tour-furniture-thumb" style={{ backgroundColor: item.color }}>
+                    <span aria-hidden>{item.name.slice(0, 1)}</span>
                     {imageUrl ? (
                       <img
                         alt=""
@@ -1474,6 +1604,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
                   <span className="tour-furniture-copy">
                     <strong>{item.name}</strong>
                     <small>{item.brand}</small>
+                    {isLargeFurnitureAsset(item) ? <small>대용량 {Math.ceil((item.assetBytes ?? 0) / 1024 / 1024)}MB</small> : null}
                   </span>
                 </button>
               );

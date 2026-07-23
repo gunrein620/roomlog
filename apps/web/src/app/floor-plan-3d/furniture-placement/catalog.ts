@@ -71,6 +71,7 @@ export function normalizeCatalogItem(item: FurnitureCatalogItem, index: number):
   const modelUrl = item.modelUrl || modelUrlForCatalogItem(item) || fallback.modelUrl;
 
   return {
+    assetBytes: item.assetBytes,
     brand: item.brand || fallback.brand,
     category: item.category,
     color: item.color || fallback.color,
@@ -86,6 +87,7 @@ export function normalizeCatalogItem(item: FurnitureCatalogItem, index: number):
     price: Number.isFinite(Number(item.price)) ? Number(item.price) : fallback.price,
     source: item.source,
     sourceUrl: item.sourceUrl,
+    tags: item.tags,
     thumbnailUrl: item.thumbnailUrl
   };
 }

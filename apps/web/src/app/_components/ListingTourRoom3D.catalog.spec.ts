@@ -22,6 +22,14 @@ test("loads the 3D rendering GLB furniture catalog for the listing tour", () => 
   assert.match(tourSource, /const matchesQuery = !normalizedQuery \|\| catalogSearchText\(item\)\.includes\(normalizedQuery\)/);
 });
 
+test("lazy-loads the independent Poly Haven catalog", () => {
+  assert.match(tourSource, /const \[polyCatalog, setPolyCatalog\] = useState<FurnitureCatalogItem\[\]>\(\[\]\)/);
+  assert.match(tourSource, /furnitureSourceTab !== "poly"/);
+  assert.match(tourSource, /loadPolyhavenCatalog\(\)/);
+  assert.match(tourSource, /setPolyCatalog\(items\)/);
+  assert.match(tourSource, /Poly Haven · CC0/);
+});
+
 test("uses the same furniture categories as the 3D rendering editor", () => {
   assert.match(editorSource, /listFurnitureCategoryFilters/);
   assert.match(editorSource, /furnitureCategoryLabel,\s*\n\s*furnitureImageUrl/);
@@ -36,13 +44,14 @@ test("opens the 500-item furniture editor from the 3D simulation request", () =>
   assert.match(tourSource, /const \[furnitureLimit, setFurnitureLimit\] = useState\(30\)/);
   assert.match(tourSource, /const visibleFurnitureCatalog = useMemo/);
   assert.match(tourSource, /simulationOpen\?: boolean/);
-  assert.match(tourSource, /if \(simulationOpen\)[\s\S]*setSimulationMode\("walk"\)/);
+  assert.match(tourSource, /if \(simulationOpen\)[\s\S]*setSimulationMode\(initialSimulationMode\)/);
   assert.match(tourSource, /가구 더 보기 \(\{visibleFurnitureCatalog\.length\}\/\{filteredCatalog\.length\}\)/);
 });
 
-test("defaults the fullscreen simulation to walk and switches explicitly to furniture placement", () => {
-  assert.match(tourSource, /type SimulationMode = "walk" \| "furniture"/);
-  assert.match(tourSource, /const \[simulationMode, setSimulationMode\] = useState<SimulationMode>\("walk"\)/);
+test("supports owner overview while defaulting the fullscreen simulation to walk", () => {
+  assert.match(tourSource, /type SimulationMode = "overview" \| "walk" \| "furniture"/);
+  assert.match(tourSource, /initialSimulationMode = "walk"/);
+  assert.match(tourSource, /const \[simulationMode, setSimulationMode\] = useState<SimulationMode>\(initialSimulationMode\)/);
   assert.match(tourSource, /role="tablist"[\s\S]*워킹뷰[\s\S]*가구 배치/);
   assert.match(tourSource, /controlMode=\{simulationOpen && simulationMode === "walk" \? "walk" : "orbit"\}/);
   assert.match(tourSource, /simulationMode === "furniture"/);
@@ -51,7 +60,7 @@ test("defaults the fullscreen simulation to walk and switches explicitly to furn
 test("cancels an unconfirmed furniture draft before entering walk mode", () => {
   assert.match(
     tourSource,
-    /function selectSimulationMode\(nextMode: SimulationMode\)[\s\S]*nextMode === "walk" && pendingFurniture[\s\S]*cancelPendingFurniturePlacement\(\)/
+    /function selectSimulationMode\(nextMode: SimulationMode\)[\s\S]*nextMode !== "furniture" && pendingFurniture[\s\S]*cancelPendingFurniturePlacement\(\)/
   );
   assert.match(tourSource, /restorePendingFurnitureOrigin\(\)/);
 });

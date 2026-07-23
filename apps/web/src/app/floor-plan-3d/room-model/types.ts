@@ -60,6 +60,7 @@ export type FurniturePlacementAttachment = {
 };
 
 export type FurnitureCatalogItem = {
+  assetBytes?: number;
   brand: string;
   category?: string;
   color: string;
@@ -72,6 +73,7 @@ export type FurnitureCatalogItem = {
   price: number;
   source?: string;
   sourceUrl?: string;
+  tags?: string[];
   thumbnailUrl?: string;
 };
 

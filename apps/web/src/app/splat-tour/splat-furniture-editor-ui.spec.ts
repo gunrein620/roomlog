@@ -5,6 +5,13 @@ import { describe, it } from "node:test";
 const source = readFileSync("src/app/splat-tour/tour-viewer.tsx", "utf8");
 
 describe("splat tour furniture catalog drawer", () => {
+  it("shows the same three furniture source tabs", () => {
+    assert.match(source, /aria-label="가구 목록 종류"[\s\S]*내가구[\s\S]*등록된 가구[\s\S]*폴리/);
+    assert.match(source, /loadPolyhavenCatalog/);
+    assert.match(source, /fetchTenantFurniture/);
+    assert.match(source, /대용량/);
+  });
+
   it("opens the shared 500-item catalog from the furniture control", () => {
     assert.match(source, /loadGlbDatasetCatalog/);
     assert.match(source, /isFurnitureCatalogOpen/);
