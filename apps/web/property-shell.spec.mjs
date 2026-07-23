@@ -31,6 +31,10 @@ const spaSource = [
   .join("\n");
 const listingDetailViewSource = readFileSync(new URL("./src/app/_components/ListingDetailView.tsx", import.meta.url), "utf8");
 const naverMapPreviewSource = readFileSync(new URL("./src/app/_components/NaverMapPreview.tsx", import.meta.url), "utf8");
+const instrumentPanelSource = readFileSync(
+  new URL("./src/app/manager/home/00/InstrumentPanel.tsx", import.meta.url),
+  "utf8"
+);
 const listingCatalogSource = readFileSync(new URL("./src/lib/listing-catalog.ts", import.meta.url), "utf8");
 const listingRoutePageSource = readFileSync(new URL("./src/app/listing/[id]/page.tsx", import.meta.url), "utf8");
 const listingRouteClientSource = readFileSync(new URL("./src/app/listing/[id]/ListingDetailRoute.tsx", import.meta.url), "utf8");
@@ -42,6 +46,11 @@ const pageSource = [
   listingRoutePageSource,
   listingRouteClientSource
 ].join("\n");
+
+test("통합 대시보드는 티켓 처리율을 민원 처리율로 표시한다", () => {
+  assert.match(instrumentPanelSource, /label="민원 처리율"/);
+  assert.doesNotMatch(instrumentPanelSource, /label="티켓 처리율"/);
+});
 
 test("tenant complaint modal persists, restores, and clears the authenticated room draft", () => {
   assert.match(tenantMyPageSource, /loadTenantComplaintDraft\(selectedTenantRoomId\)/);
