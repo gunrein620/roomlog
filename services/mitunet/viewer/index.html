@@ -180,6 +180,25 @@
     transition: opacity 400ms ease;
   }
   body.upload-empty #shooting-stars { opacity: 1; }
+  #roomlog-restore-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    place-items: center;
+    pointer-events: none;
+  }
+  body.roomlog-resuming #roomlog-restore-loader { display: grid; }
+  #roomlog-restore-loader span {
+    padding: 12px 18px;
+    border: 1px solid rgba(196, 180, 255, .28);
+    border-radius: 999px;
+    background: rgba(20, 15, 52, .84);
+    box-shadow: 0 12px 30px rgba(4, 8, 22, .32);
+    color: #e8e4f7;
+    font-size: 14px;
+    font-weight: 700;
+  }
   #shooting-stars i {
     position: absolute;
     top: var(--sy);
@@ -1686,6 +1705,26 @@
 </script>
 </head>
 <body class="view-3d upload-empty">
+<script>
+  {
+    const resumeUrl = new URL(window.location.href);
+    const search = resumeUrl.searchParams;
+    const resumeStorageKey = `roomlogOwnerFurnitureResume:${search.get("requestId") ?? ""}`;
+    const hasRoomLogResumeView = ["original", "3d", "floor"].includes(search.get("resumeView") ?? "");
+    const isRoomLogResume = search.get("integration") === "roomlog"
+      && Boolean(search.get("requestId"))
+      && hasRoomLogResumeView;
+    if (isRoomLogResume) {
+      window.__roomLogResumeView = search.get("resumeView");
+      window.sessionStorage.removeItem(resumeStorageKey);
+      search.delete("resumeView");
+      window.history.replaceState(window.history.state, "", `${resumeUrl.pathname}${resumeUrl.search}${resumeUrl.hash}`);
+      document.body.classList.remove("upload-empty");
+      document.body.classList.add("roomlog-resuming");
+    }
+  }
+</script>
+<div id="roomlog-restore-loader" aria-live="polite" role="status"><span>3D 도면 불러오는 중…</span></div>
 
 <header id="workspace-header">
   <div id="workspace-brand" aria-label="RoomLog">RoomLog</div>
@@ -1762,7 +1801,7 @@
   <div class="segmented" id="view-switch" role="tablist" aria-label="Plan view">
     <button class="segment active" data-view="original" role="tab" aria-selected="true" disabled>2D</button>
     <button class="segment" data-view="3d" role="tab" aria-selected="false" disabled>3D</button>
-    <button class="segment" id="furnish-btn" data-view="furnishing" role="tab" aria-selected="false" disabled>가구 배치</button>
+    <button class="segment" id="floor-btn" data-view="floor" role="tab" aria-selected="false" disabled>Floor</button>
   </div>
 </div>
 
@@ -2951,7 +2990,7 @@ const startSampleButton = document.getElementById("start-sample-btn");
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
 const roomLogSaveHint = document.getElementById("roomlog-save-hint");
-const furnishButton = document.getElementById("furnish-btn");
+const floorButton = document.getElementById("floor-btn");
 const furniturePanel = document.getElementById("furniture-panel");
 const furniturePanelOpenButton = document.getElementById("furniture-panel-open");
 const furniturePanelCloseButton = document.getElementById("furniture-panel-close");
@@ -3269,6 +3308,76 @@ async function loadFurnitureTemplate(item) {
   return cloneFurnitureInstance(await templatePromise);
 }
 
+function restoredFurnitureItem(savedFurniture) {
+  const modelUrl = typeof savedFurniture?.modelUrl === "string" ? savedFurniture.modelUrl.trim() : "";
+  const sizeMm = savedFurniture?.sizeMm ?? {};
+  const length = Array.isArray(savedFurniture?.length) ? savedFurniture.length : [];
+  const width = Number(sizeMm.width ?? length[0]);
+  const height = Number(sizeMm.height ?? length[1]);
+  const depth = Number(sizeMm.depth ?? length[2]);
+
+  if (
+    !modelUrl
+    || !Number.isFinite(width) || width <= 0
+    || !Number.isFinite(height) || height <= 0
+    || !Number.isFinite(depth) || depth <= 0
+  ) return null;
+
+  const relativePath = modelUrl.startsWith(FURNITURE_ASSET_BASE_URL)
+    ? modelUrl.slice(FURNITURE_ASSET_BASE_URL.length)
+    : modelUrl;
+  return {
+    category: typeof savedFurniture?.category === "string" ? savedFurniture.category : "saved",
+    displayName: typeof savedFurniture?.name === "string" && savedFurniture.name.trim()
+      ? savedFurniture.name
+      : "Saved furniture",
+    fileName: typeof savedFurniture?.furniture_id === "string" ? savedFurniture.furniture_id : relativePath,
+    modelUrl,
+    relativePath,
+    sizeMm: { width, height, depth },
+    sizeMeters: { width: width / 1000, height: height / 1000, depth: depth / 1000 },
+  };
+}
+
+async function restoreSavedFurniturePlacements(savedFurnitures) {
+  if (!Array.isArray(savedFurnitures)) return;
+
+  for (const savedFurniture of savedFurnitures) {
+    const item = restoredFurnitureItem(savedFurniture);
+    const position = Array.isArray(savedFurniture?.position)
+      ? savedFurniture.position.slice(0, 3).map(Number)
+      : [];
+    const rotationY = Number(savedFurniture?.rotation?.[1]);
+    if (
+      !item
+      || position.length !== 3
+      || position.some(value => !Number.isFinite(value))
+      || !Number.isFinite(rotationY)
+    ) continue;
+
+    try {
+      const object = normalizeFurnitureObject(await loadFurnitureTemplate(item), item);
+      object.position.set(position[0], position[1], position[2]);
+      object.rotation.y = rotationY;
+      const placement = {
+        id: typeof savedFurniture?.id === "string" && savedFurniture.id
+          ? savedFurniture.id
+          : crypto.randomUUID(),
+        relativePath: item.relativePath,
+        position: [position[0], position[1], position[2]],
+        rotationY,
+        sizeMm: { ...item.sizeMm },
+      };
+      object.userData.placementId = placement.id;
+      furnitureGroup.add(object);
+      placedFurnitures.push({ item, object, placement });
+    } catch (error) {
+      console.warn("saved furniture failed to restore:", error);
+    }
+  }
+  updateFurnitureInteractionUi();
+}
+
 function normalizeFurnitureObject(source, item) {
   const furnitureSceneScale = floorPlacementState?.furnitureSceneScale
     ?? WALL_HEIGHT / PHYSICAL_WALL_HEIGHT;
@@ -3522,7 +3631,11 @@ function footprintWithinSupport(position, item, rotationY, supportEntry) {
 }
 
 function isFurniturePlacementView() {
-  return currentView === "3d" || currentView === "furnishing";
+  return currentView === "furnishing";
+}
+
+function canOpenFurniturePlacement() {
+  return ["3d", "floor", "furnishing"].includes(currentView);
 }
 
 function updateFurnitureInteractionUi() {
@@ -3995,7 +4108,7 @@ function updateScaleControls() {
 }
 
 function updateCameraPresetControls() {
-  const showingThreeDimensional = ["3d", "furnishing"].includes(currentView);
+  const showingThreeDimensional = ["3d", "floor", "furnishing"].includes(currentView);
   const hasRenderedPlan = Boolean(currentFraming && currentComposedPlan);
   cameraViewControls.hidden = !hasRenderedPlan || !showingThreeDimensional;
   cameraViewButtons.forEach(button => {
@@ -4021,7 +4134,7 @@ function roomLogSaveBlockReason() {
   if (!currentComposedPlan || reviewEditor?.document?.needsCompose()) {
     return "도면을 렌더링한 뒤 저장할 수 있어요.";
   }
-  if (!["3d", "furnishing"].includes(currentView)) {
+  if (!["3d", "floor", "furnishing"].includes(currentView)) {
     return "3D 보기에서 렌더링 결과를 확인한 뒤 저장할 수 있어요.";
   }
   if (pendingFurniture) return "배치 중인 가구를 확정하거나 취소한 뒤 저장할 수 있어요.";
@@ -4057,10 +4170,8 @@ function updateEditorControls() {
   typeButton.disabled = !hasSelection || inFlight;
   resetButton.disabled = !hasDocument || inFlight;
   uploadButton.disabled = !liveUploadAvailable || inFlight;
-  const canFurnish = Boolean(currentComposedPlan) && !reviewDocument?.needsCompose();
-  const furnishing = currentView === "furnishing";
-  furnishButton.hidden = false;
-  const canSave = ["3d", "furnishing"].includes(currentView) &&
+  floorButton.hidden = false;
+  const canSave = ["3d", "floor", "furnishing"].includes(currentView) &&
     Boolean(currentComposedPlan) &&
     !reviewDocument?.needsCompose();
   const roomLogSaveReason = roomLogSaveBlockReason();
@@ -4092,15 +4203,15 @@ function setFurniturePlacementVisibility(visible) {
   document.body.classList.toggle("view-furnishing", visible);
 }
 
-function setFurnishingVisibility(furnishing) {
-  setPlanFloorSurfaceVisible(furnishing);
+function setFurnishingVisibility(furnishing, showFloorFinish = furnishing) {
+  setPlanFloorSurfaceVisible(furnishing && showFloorFinish);
   setFurniturePlacementVisibility(furnishing);
 }
 
 function setFurniturePanelOpen(open) {
   clearTimeout(furniturePanelCloseTimer);
   furniturePanelCloseTimer = null;
-  const canPlaceFurniture = isFurniturePlacementView();
+  const canPlaceFurniture = canOpenFurniturePlacement();
   furniturePanelOpenButton.hidden = open || !canPlaceFurniture;
   furniturePanelOpenButton.setAttribute("aria-expanded", String(open && canPlaceFurniture));
   if (!canPlaceFurniture) {
@@ -4168,7 +4279,8 @@ async function buildRoomLogEditorSnapshot() {
 }
 
 async function enterFurnishingStage() {
-  const entering = currentView === "3d";
+  const entering = ["3d", "floor"].includes(currentView);
+  const enteringFromFloor = currentView === "floor";
   let roomMaterialWarning = "";
   if (!currentComposedPlan || inFlight || (!entering && currentView !== "furnishing")) return;
   if (roomLogFlowRequested && roomLogContext) {
@@ -4181,8 +4293,8 @@ async function enterFurnishingStage() {
         currentComposedPlan,
         currentSourceName,
         currentFurniturePlacements(),
-        "floor",
-        undefined,
+        enteringFromFloor ? "floor" : "source",
+        enteringFromFloor ? undefined : await buildRoomLogPreviewImage(currentComposedPlan.input_image_b64),
         editorSnapshot,
       );
     } catch (error) {
@@ -4193,7 +4305,7 @@ async function enterFurnishingStage() {
     }
     return;
   }
-  if (entering) {
+  if (enteringFromFloor) {
     inFlight = true;
     updateEditorControls();
     setStatus("방별 바닥재를 만드는 중입니다.");
@@ -4206,9 +4318,11 @@ async function enterFurnishingStage() {
     } finally {
       inFlight = false;
     }
+  }
+  if (entering) {
     currentView = "furnishing";
     setCanvasViewState("furnishing");
-    setFurnishingVisibility(true);
+    setFurnishingVisibility(true, enteringFromFloor);
     setFurniturePanelOpen(false);
     controls.enabled = true;
     controls.enableRotate = true;
@@ -4259,13 +4373,18 @@ cameraViewButtons.forEach(button => button.addEventListener("click", () => {
   if (view === "auto") toggleAutoOrbit();
   else void applyCameraPreset(view);
 }));
-furniturePanelOpenButton.addEventListener("click", () => {
+async function openFurniturePlacement() {
   if (roomLogFlowRequested) {
-    void enterFurnishingStage();
+    await enterFurnishingStage();
     return;
   }
+  await enterFurnishingStage();
+  if (currentView !== "furnishing") return;
   setFurniturePanelOpen(true);
-  void loadFurnitureCatalogForPlacement();
+}
+
+furniturePanelOpenButton.addEventListener("click", () => {
+  void openFurniturePlacement();
 });
 furniturePanelCloseButton.addEventListener("click", () => setFurniturePanelOpen(false));
 furnitureSearch.addEventListener("input", () => {
@@ -4460,11 +4579,15 @@ function updateViewButtons(view) {
 }
 
 function setView(view) {
-  if (!["original", "3d", "furnishing"].includes(view)) {
+  if (!["original", "3d", "floor", "furnishing"].includes(view)) {
     throw new RangeError(`Unknown plan view: ${view}`);
   }
   if (view === "furnishing") {
-    showFloorView();
+    void openFurniturePlacement();
+    return;
+  }
+  if (view === "floor") {
+    void showFloorView();
     return;
   }
   if (view === "original" && !reviewEditor?.document) return;
@@ -4661,10 +4784,48 @@ async function showThreeDimensionalView() {
 
 async function showFloorView() {
   if (currentView === "furnishing") {
+    cancelFurnitureInteraction({ clearSelection: true, silent: true });
+    currentView = "floor";
+    setCanvasViewState("floor");
+    setPlanFloorSurfaceVisible(true);
+    setFurniturePlacementVisibility(true);
+    setFurniturePanelOpen(false);
+    controls.enabled = true;
+    controls.enableRotate = true;
+    updateViewButtons("floor");
+    assertViewState("floor");
+    updateEditorControls();
     return;
   }
   if (currentView === "original") await showThreeDimensionalView();
-  if (currentView === "3d") await enterFurnishingStage();
+  if (currentView !== "3d" || inFlight || !currentComposedPlan) return;
+
+  inFlight = true;
+  updateEditorControls();
+  try {
+    let roomMaterialWarning = "";
+    try {
+      await ensureRoomFloorMaterials();
+    } catch (error) {
+      rebuildFloorFinish(currentComposedPlan, floorFinishLayout);
+      roomMaterialWarning = `바닥 마감을 적용하지 못해 기본 마루를 사용합니다: ${error.message}`;
+    }
+    currentView = "floor";
+    setCanvasViewState("floor");
+    setPlanFloorSurfaceVisible(true);
+    setFurniturePlacementVisibility(true);
+    setFurniturePanelOpen(false);
+    controls.enabled = true;
+    controls.enableRotate = true;
+    updateViewButtons("floor");
+    assertViewState("floor");
+    if (roomMaterialWarning) {
+      setStatus(roomMaterialWarning, "warning");
+    }
+  } finally {
+    inFlight = false;
+    updateEditorControls();
+  }
 }
 
 // Retained for static demo JSON callers; editable fields are not required.
@@ -4722,7 +4883,7 @@ function wireReviewControls() {
     try {
       inFlight = true;
       updateEditorControls();
-      const previewMode = currentView === "furnishing" ? "floor" : "source";
+      const previewMode = ["floor", "furnishing"].includes(currentView) ? "floor" : "source";
       const previewImageB64 = previewMode === "source"
         ? await buildRoomLogPreviewImage(currentComposedPlan?.input_image_b64)
         : undefined;
@@ -4782,7 +4943,7 @@ function wireReviewControls() {
   }));
   viewButtons.forEach(button => button.addEventListener("click", () => {
     if (button.dataset.view === "original") showOriginalView();
-    else if (button.dataset.view === "furnishing") showFloorView();
+    else if (button.dataset.view === "floor") showFloorView();
     else showThreeDimensionalView();
   }));
   for (const eventName of ["pointerdown", "pointerup", "pointercancel"]) {
@@ -4866,8 +5027,8 @@ async function initializeRoomLogIntegration() {
 }
 
 async function restoreRoomLogEditorSnapshot() {
-  const resumeView = new URLSearchParams(window.location.search).get("resumeView");
-  if (!roomLogContext || (resumeView !== "original" && resumeView !== "3d")) return false;
+  const resumeView = window.__roomLogResumeView ?? new URLSearchParams(window.location.search).get("resumeView");
+  if (!roomLogContext || (resumeView !== "original" && resumeView !== "3d" && resumeView !== "floor")) return false;
   try {
     const draft = readRoomLogFurnitureDraft(window.localStorage, roomLogContext.requestId);
     const snapshot = draft?.editorSnapshot;
@@ -4883,13 +5044,20 @@ async function restoreRoomLogEditorSnapshot() {
     const rendered = await loadPlan(composedPlan);
     if (!rendered) throw new Error("저장된 3D 도면을 복원할 수 없습니다.");
 
+    const savedFurnitures = draft?.floorPlan?.furnitures;
+    await restoreSavedFurniturePlacements(savedFurnitures);
+
     currentExtraction = snapshot.review;
     currentComposedPlan = composedPlan;
     currentSourceName = typeof snapshot.sourceName === "string" ? snapshot.sourceName : "";
     reviewEditor.document.markRendered();
     document.body.classList.remove("upload-empty");
-    const targetView = resumeView === "original" ? "original" : "3d";
-    setView(targetView);
+    if (resumeView === "floor") {
+      await showFloorView();
+    } else {
+      const targetView = resumeView === "original" ? "original" : "3d";
+      setView(targetView);
+    }
     setStatus(summarize(currentComposedPlan));
     updateEditorControls();
     return true;
@@ -4929,20 +5097,25 @@ async function enableStaticDemoMode() {
 }
 
 async function initializeViewer() {
-  const liveModeEnabled = await enableLiveMode();
-  if (liveModeEnabled) {
-    await initializeRoomLogIntegration();
-    await restoreRoomLogEditorSnapshot();
-  } else {
-    uploadButton.hidden = false;
-    uploadButton.disabled = true;
-    uploadButton.setAttribute("aria-busy", "false");
-    uploadButton.title = "도면 분석 서버에 연결할 수 없습니다. 샘플로 확인해 주세요.";
-    const uploadCta = uploadButton.querySelector(".upload-cta");
-    if (uploadCta) uploadCta.textContent = "도면 분석 서버에 연결할 수 없습니다";
-    await enableStaticDemoMode();
-    roomLogIntegrationReady = true;
-    updateEditorControls();
+  try {
+    const liveModeEnabled = await enableLiveMode();
+    if (liveModeEnabled) {
+      await initializeRoomLogIntegration();
+      const restored = await restoreRoomLogEditorSnapshot();
+      if (!restored) document.body.classList.add("upload-empty");
+    } else {
+      uploadButton.hidden = false;
+      uploadButton.disabled = true;
+      uploadButton.setAttribute("aria-busy", "false");
+      uploadButton.title = "도면 분석 서버에 연결할 수 없습니다. 샘플로 확인해 주세요.";
+      const uploadCta = uploadButton.querySelector(".upload-cta");
+      if (uploadCta) uploadCta.textContent = "도면 분석 서버에 연결할 수 없습니다";
+      await enableStaticDemoMode();
+      roomLogIntegrationReady = true;
+      updateEditorControls();
+    }
+  } finally {
+    document.body.classList.remove("roomlog-resuming");
   }
 }
 

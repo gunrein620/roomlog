@@ -72,7 +72,7 @@ export type ListingFloorPlan3D = {
 
 type SimulationMode = "overview" | "walk" | "furniture";
 type FurnitureSourceTab = "mine" | "catalog";
-export type OwnerFurnitureSaveDestination = "listing" | "original" | "3d";
+export type OwnerFurnitureSaveDestination = "listing" | "original" | "3d" | "floor";
 
 type ListingTourRoom3DProps = {
   floorPlan: ListingFloorPlan3D;
@@ -187,7 +187,6 @@ export default function ListingTourRoom3D({
   const [furnitureInteractionMode, setFurnitureInteractionMode] = useState<FurnitureInteractionMode>("explore");
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const walkMoveInputRef = useRef<TourJoystickVector>({ forward: 0, strafe: 0 });
-  const furniturePointerLockRequestRef = useRef<(() => void) | null>(null);
   const [isPlacementOpen, setIsPlacementOpen] = useState(initialSimulationMode === "furniture");
   // hero 패널 접기 — 우상단 "가구 편집" 버튼으로 여닫고, 도면을 가리지 않도록 기본은 닫아 둔다.
   const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(initialSimulationMode === "furniture");
@@ -492,7 +491,6 @@ export default function ListingTourRoom3D({
     setSelectedFurnitureId(null);
     setIsPlacementOpen(true);
     setFurnitureInteractionMode("carry");
-    furniturePointerLockRequestRef.current?.();
   }
 
   function placePendingFurnitureAtHit(hit: FurniturePlacementHit) {
@@ -706,7 +704,6 @@ export default function ListingTourRoom3D({
     setIsFurnitureDragging(false);
     setFurnitureInteractionMode("carry");
     setSaveMessage(`${furniture.name} 이동 중 — 바닥을 눌러 위치를 잡고 ✓로 확정하세요.`);
-    furniturePointerLockRequestRef.current?.();
   }
 
   function beginSelectedFurnitureMove() {
@@ -818,7 +815,6 @@ export default function ListingTourRoom3D({
         furnitureFirstPersonEnabled={simulationOpen && simulationMode === "furniture" && !isCoarsePointer}
         furnitureInteractionMode={furnitureInteractionMode}
         furniturePlacementFeedback={furniturePlacementFeedback}
-        furniturePointerLockRequestRef={furniturePointerLockRequestRef}
         hideHint
         mitunetLayout={captureFloorPlanLayout ?? undefined}
         mitunetPlan={captureFloorPlanLayout ? undefined : floorPlan.mitunet}

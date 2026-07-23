@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildOwnerFloorPlanResumePath,
   ownerFurnitureDraftStorageKey,
   readOwnerFurnitureDraft,
   writeOwnerFurnitureDraft,
@@ -63,4 +64,13 @@ test("owner furniture draft rejects a mismatched request id", () => {
   const storage = memoryStorage();
   storage.setItem(ownerFurnitureDraftStorageKey("request-2"), JSON.stringify(draft));
   assert.throws(() => readOwnerFurnitureDraft(storage, "request-2"), /요청 정보/);
+});
+
+test("owner furniture return URL preserves the selected Floor surface", () => {
+  const url = new URL(buildOwnerFloorPlanResumePath("https://www.woo-zu.com", "request-1", "floor"));
+
+  assert.equal(url.pathname, "/floor-plan-3d/mitunet");
+  assert.equal(url.searchParams.get("integration"), "roomlog");
+  assert.equal(url.searchParams.get("requestId"), "request-1");
+  assert.equal(url.searchParams.get("resumeView"), "floor");
 });

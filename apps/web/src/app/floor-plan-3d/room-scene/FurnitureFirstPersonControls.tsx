@@ -2,7 +2,7 @@
 
 import { CameraControls, CameraControlsImpl } from "@react-three/drei/core/CameraControls.js";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef, type ComponentRef, type MutableRefObject } from "react";
+import { useEffect, useRef, type ComponentRef } from "react";
 import { Box3, Object3D, Raycaster, Vector2, Vector3 } from "three";
 import type { FurniturePlacementHit } from "../furniture-placement";
 import { resolveWalkInputCode, type WalkAction } from "../walk/walk-input";
@@ -43,7 +43,6 @@ export type FurnitureFirstPersonControlsProps = {
   onRotateLeft: () => void;
   onRotateRight: () => void;
   onStatusChange: (status: FurnitureFirstPersonStatus) => void;
-  pointerLockRequestRef: MutableRefObject<(() => void) | null>;
   preferredSpawn: { x: number; z: number };
 };
 
@@ -169,7 +168,6 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
           callbacksRef.current.onOpenSelect();
         } else if (shortcut === "close-select") {
           callbacksRef.current.onCloseSelect();
-          requestPointerLock();
         } else if (shortcut === "cancel") {
           callbacksRef.current.onCancel();
         } else if (shortcut === "remove") {
@@ -213,7 +211,6 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
       fineRotateKeysRef.current.clear();
     }
 
-    props.pointerLockRequestRef.current = requestPointerLock;
     canvas.addEventListener("click", handleCanvasClick);
     document.addEventListener("pointerlockchange", handlePointerLockChange);
     document.addEventListener("pointerlockerror", handlePointerLockError);
@@ -225,7 +222,6 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
     return () => {
       keysRef.current.clear();
       fineRotateKeysRef.current.clear();
-      props.pointerLockRequestRef.current = null;
       canvas.removeEventListener("click", handleCanvasClick);
       document.removeEventListener("pointerlockchange", handlePointerLockChange);
       document.removeEventListener("pointerlockerror", handlePointerLockError);
@@ -235,7 +231,7 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
       window.removeEventListener("blur", clearPressedKeys);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
     };
-  }, [gl, invalidate, props.enabled, props.pointerLockRequestRef]);
+  }, [gl, invalidate, props.enabled]);
 
   useFrame((_, delta) => {
     if (!props.enabled) return;

@@ -40,7 +40,7 @@ export function readRoomLogFurnitureDraft(storage, requestId) {
 }
 
 export function buildRoomLogEditorResumeUrl(context, view) {
-  if (view !== "original" && view !== "3d") {
+  if (view !== "original" && view !== "3d" && view !== "floor") {
     throw new RangeError(`Unknown RoomLog resume view: ${view}`);
   }
   const editorUrl = new URL("/floor-plan-3d/mitunet", context.returnOrigin);
@@ -78,7 +78,6 @@ function cloneFloorMaterials(value) {
 }
 
 function previewSurface(plan, mode, previewImageB64) {
-  if (mode !== "source") return { surfaceMode: "floor" };
   const sourceImageB64 = previewImageB64 ?? plan?.input_image_b64;
   if (
     typeof sourceImageB64 !== "string"
@@ -88,7 +87,7 @@ function previewSurface(plan, mode, previewImageB64) {
   ) {
     return { surfaceMode: "floor" };
   }
-  return { sourceImageB64, surfaceMode: "source" };
+  return { sourceImageB64, surfaceMode: mode === "source" ? "source" : "floor" };
 }
 
 function copyTuple(value, length, fallback) {

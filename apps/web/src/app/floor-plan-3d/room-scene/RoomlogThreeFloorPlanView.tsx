@@ -7,7 +7,7 @@ import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Check, Move, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
-import { type ComponentRef, type MutableRefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentRef, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
@@ -342,7 +342,7 @@ function MitunetDecorativeFloor({
   useEffect(() => () => concreteTexture?.dispose(), [concreteTexture]);
   useEffect(() => () => woodTexture?.dispose(), [woodTexture]);
   useEffect(() => () => sourceTexture?.dispose(), [sourceTexture]);
-  const activeFloorTexture = plan.surfaceMode === "source" ? sourceTexture : woodTexture;
+  const activeFloorTexture = plan.surfaceMode === "source" ? sourceTexture ?? woodTexture : woodTexture;
 
   return (
     <>
@@ -709,7 +709,6 @@ export function RoomlogThreeFloorPlanView({
   furnitureFirstPersonEnabled = false,
   furnitureInteractionMode = "explore",
   furniturePlacementFeedback = null,
-  furniturePointerLockRequestRef,
   furnitureVerticalScale = 1,
   hideHint = false,
   horizontalScale = 1,
@@ -769,7 +768,6 @@ export function RoomlogThreeFloorPlanView({
   furnitureFirstPersonEnabled?: boolean;
   furnitureInteractionMode?: FurnitureInteractionMode;
   furniturePlacementFeedback?: (Pick<FurniturePlacementResult, "reason" | "valid"> & { mode: "floor" | "surface" | "wall" }) | null;
-  furniturePointerLockRequestRef?: MutableRefObject<(() => void) | null>;
   furnitureVerticalScale?: number;
   hideHint?: boolean;
   horizontalScale?: number;
@@ -855,8 +853,6 @@ export function RoomlogThreeFloorPlanView({
   const [walkStatus, setWalkStatus] = useState<FloorPlanWalkStatus>("ready");
   const [furnitureFirstPersonStatus, setFurnitureFirstPersonStatus] = useState<FurnitureFirstPersonStatus>("ready");
   const [aimedFurnitureId, setAimedFurnitureId] = useState<string | null>(null);
-  const fallbackFurniturePointerLockRequestRef = useRef<(() => void) | null>(null);
-  const activeFurniturePointerLockRequestRef = furniturePointerLockRequestRef ?? fallbackFurniturePointerLockRequestRef;
 
   useEffect(() => {
     if (!furnitureFirstPersonEnabled) setAimedFurnitureId(null);
@@ -1061,7 +1057,6 @@ export function RoomlogThreeFloorPlanView({
             onRotateLeft={() => onFurnitureRotateLeft?.()}
             onRotateRight={() => onFurnitureRotateRight?.()}
             onStatusChange={setFurnitureFirstPersonStatus}
-            pointerLockRequestRef={activeFurniturePointerLockRequestRef}
             preferredSpawn={walkPreferredSpawn}
           />
         ) : (

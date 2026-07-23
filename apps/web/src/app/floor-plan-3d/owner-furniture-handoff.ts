@@ -39,7 +39,7 @@ export function writeOwnerFurnitureDraft(storage: DraftStorage, draft: OwnerFurn
 export function buildOwnerFloorPlanResumePath(
   returnOrigin: string,
   requestId: string,
-  destination: "original" | "3d"
+  destination: "original" | "3d" | "floor"
 ) {
   const url = new URL("/floor-plan-3d/mitunet", returnOrigin);
   url.searchParams.set("integration", "roomlog");

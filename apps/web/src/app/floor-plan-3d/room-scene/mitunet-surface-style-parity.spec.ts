@@ -29,4 +29,11 @@ describe("MitUNet saved-view surface parity", () => {
     assert.match(source, /raycast=\{\(\) => null\}/);
     assert.match(source, /RoomFloor/);
   });
+
+  it("keeps a visible floor when an older saved source image is unavailable", () => {
+    assert.match(
+      source,
+      /const activeFloorTexture = plan\.surfaceMode === "source" \? sourceTexture \?\? woodTexture : woodTexture;/,
+    );
+  });
 });

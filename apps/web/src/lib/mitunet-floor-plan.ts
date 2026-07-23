@@ -256,7 +256,7 @@ export function normalizeMitunetPayload(value: unknown): MitunetFloorPlan | null
     polygons: { wall, door, window },
     surfaceMode,
     ...(floorMaterials ? { floorMaterials } : {}),
-    ...(sourceImageB64 && surfaceMode === "source" ? { sourceImageB64 } : {}),
+    ...(sourceImageB64 ? { sourceImageB64 } : {}),
   };
 }
 
