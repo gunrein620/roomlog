@@ -4600,7 +4600,8 @@ function setView(view) {
   }
 
   const showingReview = view === "original";
-  const viewChanged = currentView !== view;
+  const previousView = currentView;
+  const viewChanged = previousView !== view;
   if (showingReview) {
     cameraPresetTransitionActive = false;
     stopAutoOrbit();
@@ -4615,7 +4616,7 @@ function setView(view) {
   controls.enableRotate = !showingReview;
   updateViewButtons(view);
 
-  if (viewChanged && !showingReview) {
+  if (viewChanged && !showingReview && previousView !== "floor") {
     const reducedMotion = reducedMotionQuery.matches;
     setPlanGeometryVisible(true);
     if (currentFraming) {
@@ -4820,8 +4821,6 @@ async function showFloorView() {
     controls.enabled = true;
     controls.enableRotate = true;
     updateViewButtons("floor");
-    const reducedMotion = reducedMotionQuery.matches;
-    replayRiseAnimations(animations, performance.now(), reducedMotion);
     assertViewState("floor");
     if (roomMaterialWarning) {
       setStatus(roomMaterialWarning, "warning");

@@ -211,10 +211,10 @@ test("uses the bottom Floor view only for floor finish while the 3D toolbar star
   assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{\s*void openFurniturePlacement\(\);\s*\}\);/);
 });
 
-test("animates the 3D-to-Floor switch with the same scene rise used when returning to 3D", () => {
+test("returns from Floor to 3D without replaying the 3D entry animation", () => {
   assert.match(
     viewerSource,
-    /async function showFloorView\(\)\s*\{[\s\S]*?const reducedMotion = reducedMotionQuery\.matches;[\s\S]*?replayRiseAnimations\(animations, performance\.now\(\), reducedMotion\);/,
+    /const previousView = currentView;[\s\S]*?if \(viewChanged && !showingReview && previousView !== "floor"\) \{[\s\S]*?replayRiseAnimations\(animations, performance\.now\(\), reducedMotion\);/,
   );
 });
 
