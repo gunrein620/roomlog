@@ -7,11 +7,10 @@ import { Box3, Object3D, Raycaster, Vector2, Vector3 } from "three";
 import type { FurniturePlacementHit } from "../furniture-placement";
 import { resolveWalkInputCode, type WalkAction } from "../walk/walk-input";
 import {
-  FURNITURE_ROTATE_HOLD_THRESHOLD_MS,
   FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND,
+  fineRotateKeyDirection,
   furnitureFlyMovementDelta,
   resolveFurnitureShortcut,
-  rotateKeyDirection,
   type FurnitureInteractionMode
 } from "./furniture-first-person-input";
 
@@ -60,8 +59,8 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
   const modeRef = useRef(props.interactionMode);
   const aimedFurnitureIdRef = useRef(props.aimedFurnitureId);
   const keysRef = useRef(new Set<WalkAction>());
-  // 1/3 키 홀드 추적 — 짧은 탭은 keyup에서 90도 스냅, 임계 시간을 넘기면 useFrame에서 연속 회전.
-  const rotateHoldRef = useRef<{ direction: -1 | 1; heldSince: number; smoothing: boolean } | null>(null);
+  // Q/E 섬세 회전 — 누르고 있는 동안 useFrame에서 연속 회전(-1=Q 왼쪽, 1=E 오른쪽).
+  const fineRotateKeysRef = useRef(new Set<-1 | 1>());
   const positionRef = useRef(new Vector3());
   const targetRef = useRef(new Vector3());
   const forwardRef = useRef(new Vector3());
@@ -132,7 +131,7 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
       const locked = document.pointerLockElement === canvas;
       if (!locked) {
         keysRef.current.clear();
-        rotateHoldRef.current = null;
+        fineRotateKeysRef.current.clear();
       }
       callbacksRef.current.onStatusChange(locked ? "locked" : "ready");
     }
@@ -171,25 +170,27 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
         } else if (shortcut === "close-select") {
           callbacksRef.current.onCloseSelect();
           requestPointerLock();
-        } else if (shortcut === "confirm") {
-          callbacksRef.current.onConfirm();
         } else if (shortcut === "cancel") {
           callbacksRef.current.onCancel();
         } else if (shortcut === "remove") {
           callbacksRef.current.onRemove?.();
-        } else if (shortcut === "rotate-left" || shortcut === "rotate-right") {
-          // 즉시 90도 돌리지 않고 홀드를 추적한다 — 짧은 탭이면 keyup에서 90도 스냅,
-          // 임계 시간을 넘기면 useFrame이 연속 회전으로 전환한다.
-          rotateHoldRef.current = {
-            direction: shortcut === "rotate-left" ? -1 : 1,
-            heldSince: performance.now(),
-            smoothing: false
-          };
+        } else if (shortcut === "rotate-left") {
+          // 1/3 = 90도 스냅 회전(즉시). 섬세 회전은 Q/E가 담당한다.
+          callbacksRef.current.onRotateLeft();
+        } else if (shortcut === "rotate-right") {
+          callbacksRef.current.onRotateRight();
         }
         return;
       }
 
       if (modeRef.current === "select") return;
+      // Q/E 섬세 회전 — 운반 중에만. 누르고 있는 동안 useFrame이 연속으로 돌린다.
+      const fineDirection = fineRotateKeyDirection(event.code);
+      if (fineDirection !== null && modeRef.current === "carry") {
+        event.preventDefault();
+        if (!event.repeat) fineRotateKeysRef.current.add(fineDirection);
+        return;
+      }
       const action = resolveWalkInputCode(event.code);
       if (!action) return;
       event.preventDefault();
@@ -197,17 +198,9 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
     }
 
     function handleKeyUp(event: KeyboardEvent) {
-      const rotateDirection = rotateKeyDirection(event.code);
-      if (rotateDirection !== null) {
-        const hold = rotateHoldRef.current;
-        // 다른 방향 키의 홀드가 진행 중이면(1↔3 겹침) 그 홀드는 건드리지 않는다.
-        if (hold && hold.direction === rotateDirection) {
-          rotateHoldRef.current = null;
-          if (!hold.smoothing && modeRef.current === "carry") {
-            if (rotateDirection === -1) callbacksRef.current.onRotateLeft();
-            else callbacksRef.current.onRotateRight();
-          }
-        }
+      const fineDirection = fineRotateKeyDirection(event.code);
+      if (fineDirection !== null) {
+        fineRotateKeysRef.current.delete(fineDirection);
         return;
       }
       const action = resolveWalkInputCode(event.code);
@@ -217,7 +210,7 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
 
     function clearPressedKeys() {
       keysRef.current.clear();
-      rotateHoldRef.current = null;
+      fineRotateKeysRef.current.clear();
     }
 
     props.pointerLockRequestRef.current = requestPointerLock;
@@ -231,7 +224,7 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
 
     return () => {
       keysRef.current.clear();
-      rotateHoldRef.current = null;
+      fineRotateKeysRef.current.clear();
       props.pointerLockRequestRef.current = null;
       canvas.removeEventListener("click", handleCanvasClick);
       document.removeEventListener("pointerlockchange", handlePointerLockChange);
@@ -280,17 +273,15 @@ export function FurnitureFirstPersonControls(props: FurnitureFirstPersonControls
       }
     }
 
-    // 1/3 키를 임계 시간 이상 누르고 있으면 90도 스냅 대신 천천히 연속 회전한다.
-    const rotateHold = rotateHoldRef.current;
-    if (rotateHold && modeRef.current === "carry") {
-      if (performance.now() - rotateHold.heldSince >= FURNITURE_ROTATE_HOLD_THRESHOLD_MS) {
-        rotateHold.smoothing = true;
+    // Q/E 섬세 회전 — 누르고 있는 동안 매 프레임 작은 각도씩 돌린다(Q+E 동시엔 상쇄).
+    if (fineRotateKeysRef.current.size > 0 && modeRef.current === "carry") {
+      let fineDirection = 0;
+      for (const direction of fineRotateKeysRef.current) fineDirection += direction;
+      if (fineDirection !== 0) {
         callbacksRef.current.onRotateBy?.(
-          rotateHold.direction * FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND * Math.min(delta, 0.1)
+          fineDirection * FURNITURE_ROTATE_SPEED_RADIANS_PER_SECOND * Math.min(delta, 0.1)
         );
       }
-    } else if (rotateHold) {
-      rotateHoldRef.current = null;
     }
 
     const raycaster = raycasterRef.current;

@@ -99,7 +99,7 @@ export default function OwnerFurnitureSimulation() {
           <strong>등록 가구 배치</strong>
         </div>
         <div className="owner-furniture-header-actions">
-          <span>2 가구 선택 · 클릭/E 집기 · 1/3 회전(길게 천천히) · 클릭/Q 고정 · R 제거</span>
+          <span>2 가구 선택 · 클릭/E 집기 · 1/3 90도 · Q/E 섬세 회전 · 클릭 고정 · R 제거</span>
           <button className="owner-furniture-save" onClick={() => ownerSaveRequestRef.current?.()} type="button">저장하고 나오기</button>
         </div>
       </header>

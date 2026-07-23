@@ -128,6 +128,20 @@ describe("automatic furniture surface placement", () => {
     assert.equal(wall.rotation[2], Math.PI / 2);
   });
 
+  it("snaps quarter turns to the absolute 90-degree grid after fine rotation", () => {
+    // 섬세 회전으로 13도쯤 틀어진 상태 — 90도 버튼은 상대 가산(103도)이 아니라 절대 그리드로 맞춘다.
+    const thirteenDegrees = (13 * Math.PI) / 180;
+    const right = rotateFurnitureForPlacement(furniture({ rotation: [0, thirteenDegrees, 0] }), 1);
+    const left = rotateFurnitureForPlacement(furniture({ rotation: [0, thirteenDegrees, 0] }), -1);
+
+    assert.ok(Math.abs(right.rotation[1] - Math.PI / 2) < 1e-9);
+    assert.ok(Math.abs(left.rotation[1]) < 1e-9);
+
+    // 이미 그리드 위(90도)면 한 칸씩 이동한다.
+    const onGrid = rotateFurnitureForPlacement(furniture({ rotation: [0, Math.PI / 2, 0] }), 1);
+    assert.ok(Math.abs(onGrid.rotation[1] - Math.PI) < 1e-9);
+  });
+
   it("moves direct children with a translated and rotated support", () => {
     const before = furniture({ id: "table", position: [0, 0, 0] });
     const after = furniture({ id: "table", position: [2, 0, 3], rotation: [0, Math.PI / 2, 0] });
