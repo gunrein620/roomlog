@@ -10,6 +10,7 @@
 // (mitunet-to-walls.ts / mitunet-floor-plan-walls.ts의 기존 OBB 변환기와는 무관 — 건드리지 않음.)
 
 import type { MetricOpening, MetricWall, RoomPlanCaptureFloorPlan } from "@roomlog/types";
+import { captureFloorPolygons } from "./capture-floor-polygons";
 import type { MitunetSceneLayout, MitunetScenePolygon } from "./mitunet-geometry";
 
 /** 실측 벽 두께가 0(실데이터가 전부 그렇다)일 때 렌더용으로 합성하는 최소 두께. 없으면 폴리곤이 선으로 퇴화한다. */
@@ -165,6 +166,11 @@ export function captureFloorPlanToSceneLayout(plan: unknown): MitunetSceneLayout
   const minZ = Math.min(...zs);
   const maxZ = Math.max(...zs);
 
+  // 바닥 = 벽 중심선(두께 오프셋 전, 원본 walls)으로 닫힌 루프를 찾은 결과. 스캔이 안 닫히면
+  // (개구부·캡처 누락) 빈 배열 — captureFloorPolygons 헤더의 정직 원칙대로 추정 사각형을
+  // 만들지 않는다. 좌표는 원점 보존 그대로(위 헤더 주석과 동일 규약) 통과시킨다.
+  const floor: MitunetScenePolygon[] = captureFloorPolygons(walls).map((outer) => ({ outer, holes: [] }));
+
   return {
     bounds: {
       centerX: (minX + maxX) / 2,
@@ -176,6 +182,7 @@ export function captureFloorPlanToSceneLayout(plan: unknown): MitunetSceneLayout
     hasPhysicalScale: true,
     wall: resolvedWalls.map((wall) => wall.polygon),
     door: doorPolygons,
-    window: windowPolygons
+    window: windowPolygons,
+    floor
   };
 }
