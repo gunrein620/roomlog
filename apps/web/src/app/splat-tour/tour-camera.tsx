@@ -290,8 +290,16 @@ export function TourCamera({
     const limits = calculateTourCameraRigLimits(spawnView.position, spawnView.target);
     configureControls(controls, limits);
     void applyLookAt(controls, spawnView, false);
+    // 걷기 앵커도 스폰 위치로 옮긴다 — 카메라를 옮기는 경로(프리셋 전환·걷기 재설정)는 모두
+    // walkAnchorRef를 함께 갱신하는데 여기만 빠져 있었다. 앵커를 안 옮기면 매 프레임 드리프트
+    // 보정(useFrame의 hasPositionDrift)이 "입력 없는 이탈"로 판정해 카메라를 옛 앵커(폴백
+    // 스폰 위치)로 한 프레임 만에 되돌린다 — 저장된 spawnView가 화면에 전혀 반영되지 않던 버그.
+    walkAnchorRef.current = clampTourCameraPositionToClipBox(
+      [spawnView.position[0], WALK_EYE_HEIGHT_METERS, spawnView.position[2]],
+      walkClipBox
+    );
     controls.update(0);
-  }, [spawnView, presets, activeId]);
+  }, [spawnView, presets, activeId, walkClipBox]);
 
   return <CameraControls makeDefault ref={controlsRef} />;
 }
