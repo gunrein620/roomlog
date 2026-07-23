@@ -3065,6 +3065,21 @@ p {
   background: #cbd0de;
 }
 
+/* 손잡이 드래그 히트존 — 시트 전체 폭, 레이아웃 변화 없이(상하 패딩=음수 마진) 터치 영역만 키운다.
+   touch-action: none으로 이 영역의 터치가 페이지 스크롤로 새지 않게 한다. */
+.sheet-drag-zone {
+  padding: 10px 0 6px;
+  margin: -10px 0 -6px;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sheet-drag-zone:active {
+  cursor: grabbing;
+}
+
 .sheet-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -31,9 +31,11 @@ import {
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
 import { TenantAiAssistantPanel } from "./TenantAiAssistantPanel";
+import { SheetDragHandle } from "../../_components/SheetDragHandle";
 import {
   activateTenantAiAssistantScope,
   closeTenantAiAssistant,
+  getTenantAiAssistantState,
   markTenantAiDraftFormOpen,
   openTenantAiAssistant,
   useTenantAiAssistantStore,
@@ -1038,6 +1040,14 @@ export default function TenantMyPage({
     };
   }, [selectedTenantRoomId]);
 
+  // 리마운트 안전망 — 초안 폼 플래그(모듈 스토어)는 살아 있는데 요청 시트(로컬 상태)는 닫힌 채
+  // 시작하면, 모바일 CSS(--open --draft)가 AI 패널·AI 버튼·바텀탭을 전부 숨겨 복귀 불가가 된다.
+  // 탭 전환으로 이 컴포넌트만 리마운트된 경우가 여기에 해당한다(새로고침은 스토어 복원이 막는다).
+  useEffect(() => {
+    if (getTenantAiAssistantState().draftFormOpen) markTenantAiDraftFormOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 1회 정리
+  }, []);
+
   // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
   const ai = useTenantAiAssistant({
     roomId: tenantAiScope?.roomId,
@@ -1941,7 +1951,7 @@ export default function TenantMyPage({
             aria-labelledby="contract-sheet-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sheet-handle" aria-hidden="true" />
+            <SheetDragHandle onDismiss={() => setIsContractSheetOpen(false)} />
             <header>
               <div>
                 <span>전자 계약서</span>
@@ -1984,7 +1994,7 @@ export default function TenantMyPage({
             aria-labelledby="tenant-request-detail-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sheet-handle" aria-hidden="true" />
+            <SheetDragHandle onDismiss={closeRepairDetailSheet} />
             <header>
               <div>
                 <span>민원/하자 접수 내용</span>
@@ -2105,7 +2115,7 @@ export default function TenantMyPage({
             aria-labelledby="tenant-request-sheet-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sheet-handle" aria-hidden="true" />
+            <SheetDragHandle onDismiss={() => closeRequestSheet()} />
             <header>
               <div>
                 <span>민원/하자 신규 요청</span>
