@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 import {
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException
 } from "@nestjs/common";
@@ -291,6 +292,130 @@ describe("TenantFurnitureService ownership", () => {
       ForbiddenException
     );
     assert.equal(deleteCalled, false);
+  });
+});
+
+describe("TenantFurnitureService.uploadThumbnail", () => {
+  function furnitureRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "tf-1",
+      ownerTenantId: "tenant-owner",
+      category: "chair",
+      label: null,
+      widthMm: 500,
+      depthMm: 500,
+      heightMm: 500,
+      source: "manual",
+      meshUrl: null,
+      usdzUrl: null,
+      meshJobState: null,
+      thumbnailUrl: null,
+      createdAt: new Date("2026-07-22T00:00:00.000Z"),
+      ...overrides
+    };
+  }
+
+  it("rejects a furniture owned by someone else with 403", async () => {
+    const service = serviceWithFakes(
+      { tenantFurniture: { findUnique: async () => furnitureRow() } },
+      { save: async () => assert.fail("소유자가 아니면 저장하면 안 됩니다.") }
+    );
+
+    await assert.rejects(
+      () =>
+        service.uploadThumbnail("tenant-other", "tf-1", {
+          buffer: Buffer.from("fake-image"),
+          originalName: "thumb.jpg",
+          mimeType: "image/jpeg"
+        }),
+      ForbiddenException
+    );
+  });
+
+  it("404s for a furniture that does not exist", async () => {
+    const service = serviceWithFakes(
+      { tenantFurniture: { findUnique: async () => null } },
+      { save: async () => assert.fail("존재하지 않는 가구에 저장하면 안 됩니다.") }
+    );
+
+    await assert.rejects(
+      () =>
+        service.uploadThumbnail("tenant-owner", "missing", {
+          buffer: Buffer.from("fake-image"),
+          originalName: "thumb.jpg",
+          mimeType: "image/jpeg"
+        }),
+      NotFoundException
+    );
+  });
+
+  it("rejects an unsupported mime type", async () => {
+    const service = serviceWithFakes(
+      { tenantFurniture: { findUnique: async () => furnitureRow() } },
+      { save: async () => assert.fail("잘못된 mime을 저장하면 안 됩니다.") }
+    );
+
+    await assert.rejects(
+      () =>
+        service.uploadThumbnail("tenant-owner", "tf-1", {
+          buffer: Buffer.from("fake-image"),
+          originalName: "thumb.gif",
+          mimeType: "image/gif"
+        }),
+      BadRequestException
+    );
+  });
+
+  it("rejects an empty file", async () => {
+    const service = serviceWithFakes(
+      { tenantFurniture: { findUnique: async () => furnitureRow() } },
+      { save: async () => assert.fail("빈 파일을 저장하면 안 됩니다.") }
+    );
+
+    await assert.rejects(
+      () =>
+        service.uploadThumbnail("tenant-owner", "tf-1", {
+          buffer: Buffer.alloc(0),
+          originalName: "thumb.jpg",
+          mimeType: "image/jpeg"
+        }),
+      BadRequestException
+    );
+  });
+
+  it("saves the thumbnail and replaces thumbnailUrl, returning the updated view", async () => {
+    const row = furnitureRow();
+    const updates: Array<Record<string, unknown>> = [];
+    const service = serviceWithFakes(
+      {
+        tenantFurniture: {
+          findUnique: async () => row,
+          update: async ({ data }: { data: Record<string, unknown> }) => {
+            updates.push(data);
+            return { ...row, ...data };
+          }
+        }
+      },
+      {
+        save: async (input: { fileName: string }) => ({
+          fileName: input.fileName,
+          fileUrl: `https://cdn.example/tenant-furniture-thumbnails/${input.fileName}`
+        })
+      }
+    );
+
+    const result = await service.uploadThumbnail("tenant-owner", "tf-1", {
+      buffer: Buffer.from("fake-image"),
+      originalName: "thumb.png",
+      mimeType: "image/png"
+    });
+
+    assert.equal(updates.length, 1);
+    assert.match(
+      String(updates[0].thumbnailUrl),
+      /^https:\/\/cdn\.example\/tenant-furniture-thumbnails\/furniture-thumbnail-tf-1-[0-9a-f]{8}\.png$/
+    );
+    assert.equal(result.thumbnailUrl, updates[0].thumbnailUrl);
   });
 });
 

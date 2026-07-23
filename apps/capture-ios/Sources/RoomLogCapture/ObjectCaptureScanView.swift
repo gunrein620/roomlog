@@ -1,6 +1,7 @@
 import Foundation
 import RealityKit
 import SwiftUI
+import UIKit
 
 /// 감지된 가구 1점을 정밀 스캔(Object Capture)해 실제 모습의 3D 모델로 바꾼다(C-2).
 /// RoomScanView가 RoomPlan으로 만든 가구 항목을 "업그레이드"하는 흐름이다 — furnitureId를
@@ -24,6 +25,12 @@ struct ObjectCaptureScanView: View {
     @State private var flow: Flow = .checkingSupport
     @State private var nameDraft = ""
 
+    // 썸네일(선택) — 정사각 사진 1장을 별도로 찍어 가구함 목록 미리보기용으로 올린다.
+    // USDZ 접수와는 독립된 부가 기능이라 실패해도 flow(3D 변환)를 막지 않는다.
+    @State private var thumbnailImage: UIImage?
+    @State private var showsThumbnailCamera = false
+    @State private var thumbnailNotice: String?
+
     var body: some View {
         NavigationStack {
             content
@@ -46,6 +53,15 @@ struct ObjectCaptureScanView: View {
         .onAppear(perform: evaluateEntry)
         .onChange(of: uploader.phase) { _, newPhase in
             syncUploadPhase(newPhase)
+        }
+        .fullScreenCover(isPresented: $showsThumbnailCamera) {
+            SquareThumbnailCamera { image in
+                showsThumbnailCamera = false
+                if let image {
+                    thumbnailImage = image.squareThumbnail()
+                }
+            }
+            .ignoresSafeArea()
         }
     }
 
@@ -216,6 +232,27 @@ struct ObjectCaptureScanView: View {
             baseURLString: account.baseURLString,
             token: token
         ))
+        uploadThumbnailIfNeeded(token: token)
+    }
+
+    /// USDZ 업로드와 병행해 썸네일을 올린다. 실패해도 3D 변환 접수 자체는 이미 시작됐으니 막지 않고,
+    /// 안내 문구만 남겨 성공 화면에 보여준다.
+    private func uploadThumbnailIfNeeded(token: String) {
+        guard let thumbnailImage else { return }
+        Task {
+            do {
+                _ = try await TenantFurnitureThumbnailUploader.upload(
+                    furnitureId: furniture.id,
+                    image: thumbnailImage,
+                    baseURLString: account.baseURLString,
+                    token: token
+                )
+            } catch {
+                await MainActor.run {
+                    thumbnailNotice = "썸네일 저장 실패: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     private func syncUploadPhase(_ phase: ObjectCaptureUploadPhase?) {
@@ -282,6 +319,20 @@ struct ObjectCaptureScanView: View {
                                 .accessibilityLabel("촬영한 대상 이름")
                         }
 
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("썸네일 (선택)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Woozu.secondarySoft)
+                            HStack(spacing: 12) {
+                                thumbnailPreview
+                                Button(thumbnailImage == nil ? "썸네일 촬영" : "다시 촬영") {
+                                    showsThumbnailCamera = true
+                                }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Woozu.secondarySoft)
+                            }
+                        }
+
                         VStack(spacing: 8) {
                             Button("확인") { confirmName(usdzURL: usdzURL) }
                                 .buttonStyle(WoozuPrimaryButtonStyle())
@@ -304,6 +355,25 @@ struct ObjectCaptureScanView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnailPreview: some View {
+        if let thumbnailImage {
+            Image(uiImage: thumbnailImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Woozu.surfaceMuted.opacity(0.16))
+                .frame(width: 56, height: 56)
+                .overlay {
+                    Image(systemName: "camera")
+                        .foregroundStyle(Woozu.secondarySoft)
+                }
         }
     }
 
@@ -362,6 +432,13 @@ struct ObjectCaptureScanView: View {
                     .foregroundStyle(Woozu.secondarySoft)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
+                if let thumbnailNotice {
+                    Text(thumbnailNotice)
+                        .font(.caption)
+                        .foregroundStyle(Woozu.accent)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
                 Button("닫기") { dismiss() }
                     .buttonStyle(WoozuPrimaryButtonStyle())
                     .padding(.horizontal, 40)

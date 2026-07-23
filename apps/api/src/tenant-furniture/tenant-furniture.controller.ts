@@ -10,8 +10,11 @@ import {
   Param,
   Patch,
   Post,
-  Put
+  Put,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 // API tsconfig의 node10 해석은 package.json exports를 읽지 못한다. 동결 계약의 정확한
 // 서브패스를 유지하며, 이 type-only import는 런타임 require로 emit되지 않는다.
 import type * as TenantFurnitureContract from "@roomlog/types/tenant-furniture";
@@ -22,6 +25,14 @@ import {
   TenantFurnitureService,
   type TenantFurnitureUpdateInput
 } from "./tenant-furniture.service";
+
+// multer FileInterceptor 산출 원시 형태 — roomlog.controller.ts의 동명 로컬 타입과 동일.
+type MulterUploadedFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+};
 
 @Controller("tenant-furniture")
 export class TenantFurnitureController {
@@ -72,6 +83,24 @@ export class TenantFurnitureController {
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
     return this.tenantFurnitureService.update(id, user.id, body);
+  }
+
+  @Post(":furnitureId/thumbnail")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async uploadThumbnail(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("furnitureId") furnitureId: string,
+    @UploadedFile() file: MulterUploadedFile | undefined
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    if (!file?.buffer) {
+      throw new BadRequestException("업로드할 썸네일 이미지가 필요합니다.");
+    }
+    return this.tenantFurnitureService.uploadThumbnail(user.id, furnitureId, {
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mimeType: file.mimetype
+    });
   }
 
   @Delete("batches/:batchId")

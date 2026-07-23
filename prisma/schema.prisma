@@ -2313,6 +2313,7 @@ model TenantFurniture {
   meshUrl       String? // Object Capture GLB(C-2). null이면 회색 박스 렌더
   usdzUrl       String? // 업로드된 원본 USDZ(S3) — 변환 전/실패 상태에서도 원본 참조용
   meshJobState  String? // TenantFurnitureMeshJobState: CONVERTING|DONE|FAILED. null=변환 파이프라인 무관
+  thumbnailUrl  String? // 정사각 썸네일 이미지 URL. null이면 카테고리 아이콘 폴백
   createdAt     DateTime @default(now())
 
   @@index([ownerTenantId])
