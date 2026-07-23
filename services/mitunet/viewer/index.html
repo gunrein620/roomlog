@@ -1948,6 +1948,7 @@ import {
 } from "/viewer-assets/floor-finishes.mjs";
 import { buildRoomFloorMaterialMap } from "/viewer-assets/room-floor-zones.mjs";
 import {
+  FURNITURE_ASSET_BASE_URL,
   FURNITURE_MANIFEST_URL,
   cloneFurniturePlacements,
   createFurniturePlacement,
@@ -4258,9 +4259,10 @@ async function blobToBase64(blob) {
 }
 
 async function buildRoomLogEditorSnapshot() {
-  if (!reviewEditor?.document || !currentExtraction || !currentComposedPlan) {
+  if (!currentComposedPlan) {
     throw new Error("도면 편집 상태를 저장할 수 없습니다.");
   }
+  if (!reviewEditor?.document || !currentExtraction) return undefined;
   const wallMaskBlob = await reviewEditor.toWallMaskBlob();
   return {
     composedPlan: {
@@ -5026,31 +5028,80 @@ async function initializeRoomLogIntegration() {
   }
 }
 
+function planFromRoomLogFurnitureDraft(draft) {
+  const mitunet = draft?.floorPlan?.mitunet;
+  const polygons = mitunet?.polygons;
+  if (!Array.isArray(polygons?.wall) || polygons.wall.length === 0) return null;
+
+  const canvasSize = Array.isArray(mitunet.canvasSize) && mitunet.canvasSize.length >= 2
+    ? mitunet.canvasSize.slice(0, 2)
+    : [1024, 1024];
+  const contentRect = Array.isArray(mitunet.contentRect) && mitunet.contentRect.length >= 4
+    ? mitunet.contentRect.slice(0, 4)
+    : [0, 0, canvasSize[0], canvasSize[1]];
+  const millimetersPerPixel = Number(mitunet.millimetersPerPixel);
+  const sourceImageB64 = typeof mitunet.sourceImageB64 === "string" && mitunet.sourceImageB64.length > 0
+    ? mitunet.sourceImageB64
+    : undefined;
+
+  return {
+    composedPlan: {
+      canvas_size: canvasSize,
+      content_rect: contentRect,
+      polygons,
+      ...(sourceImageB64 ? {
+        input_image_b64: sourceImageB64,
+        analysis_image_b64: sourceImageB64,
+      } : {}),
+      ...(Number.isFinite(millimetersPerPixel) && millimetersPerPixel > 0
+        ? { calibration: { millimetersPerPixel } }
+        : {}),
+      ...(mitunet.floorMaterials ? { floor_materials: mitunet.floorMaterials } : {}),
+    },
+    sourceName: typeof draft?.floorPlan?.name === "string" ? draft.floorPlan.name : "",
+  };
+}
+
 async function restoreRoomLogEditorSnapshot() {
   const resumeView = window.__roomLogResumeView ?? new URLSearchParams(window.location.search).get("resumeView");
   if (!roomLogContext || (resumeView !== "original" && resumeView !== "3d" && resumeView !== "floor")) return false;
   try {
     const draft = readRoomLogFurnitureDraft(window.localStorage, roomLogContext.requestId);
     const snapshot = draft?.editorSnapshot;
-    if (!snapshot?.review || !snapshot?.composedPlan) return false;
+    const fallbackPlan = planFromRoomLogFurnitureDraft(draft);
+    const hasRestorableEditorSnapshot = Boolean(snapshot?.review && snapshot?.composedPlan)
+      && typeof snapshot.review.input_image_b64 === "string"
+      && typeof snapshot.review.wall_mask_b64 === "string";
+    const restorePayload = hasRestorableEditorSnapshot
+      ? {
+          composedPlan: {
+            ...snapshot.composedPlan,
+            input_image_b64: snapshot.review.input_image_b64,
+            analysis_image_b64: snapshot.review.analysis_image_b64,
+          },
+          review: snapshot.review,
+          sourceName: typeof snapshot.sourceName === "string" ? snapshot.sourceName : "",
+        }
+      : fallbackPlan;
+    if (!restorePayload) {
+      setStatus("저장된 가구 배치 도면을 찾지 못했습니다. 도면을 다시 열어주세요.", "error");
+      return false;
+    }
 
-    await reviewEditor.load(snapshot.review);
-    reviewEditor.calibration = snapshot.review.calibration ?? reviewEditor.getCalibration();
-    const composedPlan = {
-      ...snapshot.composedPlan,
-      input_image_b64: snapshot.review.input_image_b64,
-      analysis_image_b64: snapshot.review.analysis_image_b64,
-    };
-    const rendered = await loadPlan(composedPlan);
+    if (restorePayload.review) {
+      await reviewEditor.load(restorePayload.review);
+      reviewEditor.calibration = restorePayload.review.calibration ?? reviewEditor.getCalibration();
+    }
+    const rendered = await loadPlan(restorePayload.composedPlan);
     if (!rendered) throw new Error("저장된 3D 도면을 복원할 수 없습니다.");
 
     const savedFurnitures = draft?.floorPlan?.furnitures;
     await restoreSavedFurniturePlacements(savedFurnitures);
 
-    currentExtraction = snapshot.review;
-    currentComposedPlan = composedPlan;
-    currentSourceName = typeof snapshot.sourceName === "string" ? snapshot.sourceName : "";
-    reviewEditor.document.markRendered();
+    currentExtraction = restorePayload.review ?? null;
+    currentComposedPlan = restorePayload.composedPlan;
+    currentSourceName = restorePayload.sourceName;
+    if (restorePayload.review) reviewEditor.document.markRendered();
     document.body.classList.remove("upload-empty");
     if (resumeView === "floor") {
       await showFloorView();

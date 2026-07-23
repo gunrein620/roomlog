@@ -320,7 +320,27 @@ test("passes a restorable editor snapshot into the RoomLog owner furniture hando
   assert.match(viewerSource, /input_image_b64:\s*snapshot\.review\.input_image_b64/);
 });
 
+test("returns to the saved 3D plan when an owner furniture draft has no editor snapshot", () => {
+  assert.match(viewerSource, /function planFromRoomLogFurnitureDraft\(draft\)/);
+  assert.match(viewerSource, /const mitunet = draft\?\.floorPlan\?\.mitunet;/);
+  assert.match(viewerSource, /if \(!Array\.isArray\(polygons\?\.wall\) \|\| polygons\.wall\.length === 0\) return null;/);
+  assert.match(viewerSource, /const fallbackPlan = planFromRoomLogFurnitureDraft\(draft\);/);
+  assert.match(viewerSource, /const hasRestorableEditorSnapshot = Boolean\(snapshot\?\.review && snapshot\?\.composedPlan\)/);
+  assert.match(viewerSource, /const restorePayload = hasRestorableEditorSnapshot[\s\S]*?fallbackPlan/);
+  assert.match(viewerSource, /const rendered = await loadPlan\(restorePayload\.composedPlan\);/);
+});
+
+test("keeps owner furniture available after a fallback 3D return", () => {
+  assert.match(viewerSource, /if \(!currentComposedPlan\) \{[\s\S]*?throw new Error/);
+  assert.match(viewerSource, /if \(!reviewEditor\?\.document \|\| !currentExtraction\) return undefined;/);
+  assert.match(viewerSource, /const editorSnapshot = await buildRoomLogEditorSnapshot\(\);[\s\S]*?beginRoomLogFurnitureSimulation\([\s\S]*?editorSnapshot,/);
+});
+
 test("restores saved owner furniture into the editor scene before returning to 3D or Floor", () => {
+  assert.match(
+    viewerSource,
+    /import \{[\s\S]*?FURNITURE_ASSET_BASE_URL,[\s\S]*?\} from "\/viewer-assets\/furniture-placement\.mjs";/,
+  );
   assert.match(viewerSource, /function restoredFurnitureItem\(savedFurniture\)/);
   assert.match(viewerSource, /async function restoreSavedFurniturePlacements\(savedFurnitures\)/);
   assert.match(viewerSource, /const savedFurnitures = draft\?\.floorPlan\?\.furnitures;/);

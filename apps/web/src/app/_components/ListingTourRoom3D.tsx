@@ -187,6 +187,13 @@ export default function ListingTourRoom3D({
   const [isFurnitureDragging, setIsFurnitureDragging] = useState(false);
   // 카탈로그에서 새로 고른 가구가 아니라, 이미 배치된 가구를 다시 집어든 상태인지.
   const [isPendingFurnitureEditing, setIsPendingFurnitureEditing] = useState(false);
+  // 표면(3D/Floor) 전환은 같은 도면의 렌더링만 바꾼다. 가구 배열이 바뀌지 않았다면
+  // 이 컴포넌트의 배치 상태를 다시 초안 값으로 덮어쓰면 안 된다.
+  const furnitureHydrationRef = useRef<{
+    experience: "listing" | "owner";
+    listingId: string;
+    furnitureSeed: ListingFloorPlanFurniture[] | undefined;
+  } | null>(null);
   // 배치된 가구를 다시 집어들 때(재편집) 취소하면 되돌릴 원래 상태 + 원본 분류(source) 보존용.
   const pendingFurnitureOriginRef = useRef<PlacedFurniture | null>(null);
   // 내 가구 신규 배치의 원본 source 보존용. finalizeFurnitureDraft의 RESIDENT_DESIGN 덮어쓰기를 막는다.
@@ -221,6 +228,19 @@ export default function ListingTourRoom3D({
   }, []);
 
   useEffect(() => {
+    const furnitureSeed = floorPlan?.furnitures;
+    const previousHydration = furnitureHydrationRef.current;
+    const previousFurnitureSeed = previousHydration?.furnitureSeed;
+    const sameFurnitureSeed = previousFurnitureSeed === furnitureSeed;
+    const shouldHydrateFurniture = !(
+      previousHydration
+      && previousHydration.experience === experience
+      && previousHydration.listingId === listingId
+      && sameFurnitureSeed
+    );
+
+    if (!shouldHydrateFurniture) return;
+
     try {
       const savedFurnitures = experience === "owner" ? null : readSavedFurnitures(listingId);
       setPlacedFurnitures(
@@ -236,6 +256,7 @@ export default function ListingTourRoom3D({
       setHasSavedFurnitureLayout(true);
       setSaveMessage("저장된 가구 배치를 불러오지 못해 원래 배치를 표시합니다.");
     }
+    furnitureHydrationRef.current = { experience, listingId, furnitureSeed };
     pendingFurnitureOriginRef.current = null;
     pendingTenantFurnitureSourceRef.current = null;
     setPendingFurniture(null);
