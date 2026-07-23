@@ -4185,7 +4185,9 @@ function updateEditorControls() {
   roomLogSaveHint.hidden = !roomLogFlowRequested || !roomLogSaveReason;
   roomLogSaveHint.textContent = roomLogSaveReason;
   viewButtons.forEach(button => {
-    const canUseView = button.dataset.view === "original" ? hasDocument : Boolean(currentComposedPlan);
+    const canUseView = button.dataset.view === "original"
+      ? hasDocument
+      : hasDocument || Boolean(currentComposedPlan);
     button.disabled = !canUseView || inFlight;
   });
   document.body.classList.toggle("is-busy", inFlight);
@@ -4742,12 +4744,12 @@ async function showThreeDimensionalView() {
     return;
   }
   const reviewDocument = reviewEditor?.document;
-  if (!reviewDocument || inFlight) return;
+  if (inFlight || (!reviewDocument && !currentComposedPlan)) return;
 
   inFlight = true;
   updateEditorControls();
   try {
-    if (reviewDocument.needsCompose()) {
+    if (reviewDocument?.needsCompose()) {
       const requestedRevision = reviewDocument.revision;
       setStatus("Composing 3D…");
       const form = new FormData();

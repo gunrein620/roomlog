@@ -200,7 +200,7 @@ test("uses the bottom Floor view only for floor finish while the 3D toolbar star
   assert.doesNotMatch(viewerSource, /구조 확인/);
   assert.match(
     viewerSource,
-    /viewButtons\.forEach\(button => \{\s*const canUseView = button\.dataset\.view === "original" \? hasDocument : Boolean\(currentComposedPlan\);\s*button\.disabled = !canUseView \|\| inFlight;/,
+    /viewButtons\.forEach\(button => \{\s*const canUseView = button\.dataset\.view === "original"\s*\? hasDocument\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);\s*button\.disabled = !canUseView \|\| inFlight;/,
   );
   assert.match(
     viewerSource,
@@ -358,6 +358,14 @@ test("falls back to the saved 3D plan when restoring an editor snapshot fails", 
 test("keeps the view switch visible after restoring a 3D plan without an editor snapshot", () => {
   assert.match(viewerSource, /const hasViewControls = hasDocument \|\| Boolean\(currentComposedPlan\);/);
   assert.match(viewerSource, /viewControls\.hidden = !hasViewControls;/);
+  assert.match(
+    viewerSource,
+    /const canUseView = button\.dataset\.view === "original"\s*\? hasDocument\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);/,
+  );
+  assert.match(
+    viewerSource,
+    /async function showThreeDimensionalView\(\) \{[\s\S]*?if \(inFlight \|\| \(!reviewDocument && !currentComposedPlan\)\) return;/,
+  );
 });
 
 test("keeps owner furniture available after a fallback 3D return", () => {
