@@ -77,7 +77,7 @@ describe("TradeController public listings", () => {
     assert.equal(controller.listPublicListings(), publicListings);
   });
 
-  it("returns all listings by default but scopes to the owner with ?mine=1", () => {
+  it("returns all listings by default but scopes to the owner with ?mine=1", async () => {
     const calls: string[] = [];
     const ownerListings = [
       {
@@ -110,6 +110,9 @@ describe("TradeController public listings", () => {
         ensureRoomFromTradeListing: (_ownerId: string, listing: TradeListing) => {
           calls.push(`room:${listing.title}`);
           return { id: "room-mine-1" };
+        },
+        ensurePersistenceDurability: async () => {
+          calls.push("room-durable");
         }
       } as any,
       { notifyUsers: () => undefined } as any,
@@ -117,13 +120,15 @@ describe("TradeController public listings", () => {
     );
 
     // 기본(브라우징) — 전체 반환, 인증 불필요
-    assert.equal(controller.listListings(undefined, undefined), allListings);
+    assert.equal(await controller.listListings(undefined, undefined), allListings);
     // ?mine=1 — 소유자 스코프
-    assert.deepEqual(controller.listListings("Bearer owner", "1"), ownerListingsWithRoom);
-    assert.deepEqual(calls, ["all", "owner:owner-1", "room:내 매물", "attach:owner-1:mine-1:room-mine-1"]);
+    assert.deepEqual(await controller.listListings("Bearer owner", "1"), ownerListingsWithRoom);
+    // Room의 DB 반영(room-durable)이 roomId 연결(attach)보다 반드시 먼저다 —
+    // TradeListing upsert가 Room insert를 앞질러 FK(P2003)로 실패하던 경쟁 회귀 방지.
+    assert.deepEqual(calls, ["all", "owner:owner-1", "room:내 매물", "room-durable", "attach:owner-1:mine-1:room-mine-1"]);
   });
 
-  it("links a newly created owner listing to a managed Room", () => {
+  it("links a newly created owner listing to a managed Room", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-trade-listing-room-"));
     const tradeService = new TradeService(join(dir, "trade.json"));
     const roomlogService = new RoomlogService({ seedDemoData: false, storeFilePath: join(dir, "roomlog.json") });
@@ -136,7 +141,7 @@ describe("TradeController public listings", () => {
       { ensure: () => undefined } as any,
     );
 
-    const listing = controller.createListing("Bearer owner", {
+    const listing = await controller.createListing("Bearer owner", {
       title: "복수 매물 테스트",
       roomType: "원룸",
       tradeType: "월세",
