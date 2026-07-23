@@ -1297,6 +1297,12 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
         <SplatScene
+          // 캡처 도면(RoomPlan)이 벽 출처일 때 splat 배치도 native(항등)로 맞춘다. 캡처 자산은
+          // 정합 transform이 영원히 없어서(같은 ARSession = 정합 불필요가 설계) 기본 "auto" fit이
+          // splat을 bbox 기준으로 임의 축소·재중앙화해버리는데, 미니맵·걷기 경계·가구는 전부
+          // ARKit 실측 좌표(planBounds)를 쓰므로 좌표계가 갈라진다 — register/page.tsx가
+          // defaultFitMode="native"를 쓰는 것과 같은 이유. URL ?fit= 명시는 여전히 이긴다.
+          defaultFitMode={planWallsState.source === "capture" ? "native" : undefined}
           key={src}
           onLoaded={() => setIsLoaded(true)}
           planWalls={planWalls}
