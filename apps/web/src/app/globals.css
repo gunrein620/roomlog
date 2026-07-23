@@ -9484,6 +9484,177 @@ p {
   line-height: 1;
 }
 
+.tenant-payment-history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: grid;
+  place-items: center;
+  padding: var(--space-xl);
+  background: color-mix(in srgb, var(--inverse-surface) 42%, transparent);
+}
+
+.tenant-payment-history-modal {
+  width: min(100%, var(--content-narrow-max));
+  max-height: min(78dvh, var(--phone-h));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow);
+}
+
+.tenant-payment-history-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  border-bottom: 1px solid var(--border);
+}
+
+.tenant-payment-history-head span,
+.tenant-payment-history-list small {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.tenant-payment-history-head h2 {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+}
+
+.tenant-payment-history-head button {
+  display: inline-grid;
+  width: var(--control-secondary-size);
+  height: var(--control-secondary-size);
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.tenant-payment-history-body {
+  max-height: calc(78dvh - var(--header-height));
+  overflow: auto;
+  padding: var(--space-xl);
+}
+
+.tenant-payment-history-body > p,
+.tenant-payment-history-body > div {
+  margin: 0;
+  padding: var(--space-xxl) var(--space-lg);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.tenant-payment-history-list {
+  display: grid;
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tenant-payment-history-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+}
+
+.tenant-payment-history-list strong,
+.tenant-payment-history-list small {
+  display: block;
+}
+
+.tenant-payment-history-list b {
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tenant-payment-history-icon {
+  display: inline-grid;
+  width: var(--control-secondary-size);
+  height: var(--control-secondary-size);
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--primary-container);
+  color: var(--primary);
+}
+
+.tenant-payment-history-icon svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.tenant-payment-history-retry {
+  min-height: var(--touch-target);
+  margin-top: var(--space-md);
+  padding: 0 var(--space-xl);
+  border: 0;
+  border-radius: var(--radius-btn);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+}
+
+.tenant-payment-history-head button:focus-visible,
+.tenant-payment-history-retry:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tenant-payment-history-button {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  min-height: var(--header-height);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-title);
+}
+
+.tenant-payment-history-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 560px) {
+  .tenant-payment-history-backdrop {
+    place-items: end center;
+    padding: 0;
+  }
+
+  .tenant-payment-history-modal {
+    width: 100%;
+    max-height: calc(100dvh - var(--space-xl));
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .tenant-payment-history-body {
+    max-height: calc(100dvh - var(--header-height) - var(--space-xl));
+  }
+}
+
 .tenant-section-head {
   display: flex;
   align-items: center;

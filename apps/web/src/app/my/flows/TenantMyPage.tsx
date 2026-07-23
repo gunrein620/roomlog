@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
-import { Bath, Bot, ChevronRight, FileText, ImagePlus, Megaphone, MessageCircle, Snowflake, X } from "lucide-react";
+import { Bath, Bot, ChevronRight, CreditCard, FileText, ImagePlus, Megaphone, MessageCircle, Snowflake, X } from "lucide-react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import {
   resolveTicketChatAttachmentUrl,
@@ -38,6 +38,7 @@ import {
   openTenantAiAssistant,
   useTenantAiAssistantStore,
 } from "./tenant-ai-assistant-store";
+import { TenantPaymentHistoryModal } from "./TenantPaymentHistoryModal";
 import {
   createTenantComplaintDraftMutationGuard,
   deleteTenantComplaintDraft,
@@ -931,6 +932,8 @@ export default function TenantMyPage({
   const [isBillLoading, setIsBillLoading] = useState(true);
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
+  const [isPaymentHistoryOpen, setIsPaymentHistoryOpen] = useState(false);
+  const paymentHistoryButtonRef = useRef<HTMLButtonElement>(null);
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
   const [landlordUnreadCount, setLandlordUnreadCount] = useState(0);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
@@ -964,6 +967,11 @@ export default function TenantMyPage({
   const showToast = (message: string) => {
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
+  };
+
+  const closePaymentHistory = () => {
+    setIsPaymentHistoryOpen(false);
+    window.requestAnimationFrame(() => paymentHistoryButtonRef.current?.focus());
   };
 
   const loadLandlordUnreadCount = useCallback(async (roomId: string): Promise<number> => {
@@ -1804,6 +1812,17 @@ export default function TenantMyPage({
                 </span>
               ) : null}
             </button>
+            <button
+              ref={paymentHistoryButtonRef}
+              className="tenant-payment-history-button"
+              type="button"
+              onClick={() => setIsPaymentHistoryOpen(true)}
+              aria-haspopup="dialog"
+              aria-controls="tenant-payment-history-dialog"
+            >
+              <CreditCard size={18} strokeWidth={2.5} aria-hidden="true" />
+              납부 내역
+            </button>
           </div>
         </div>
       </section>
@@ -1930,6 +1949,10 @@ export default function TenantMyPage({
           onClose={closeLandlordChat}
           onSubmit={handleLandlordMessageSubmit}
         />
+      ) : null}
+
+      {isPaymentHistoryOpen ? (
+        <TenantPaymentHistoryModal onClose={closePaymentHistory} />
       ) : null}
 
       {isContractSheetOpen ? (
