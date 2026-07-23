@@ -470,7 +470,15 @@ function DepositDetail({ row }: { row: ManagerTransactionLedgerRow }) {
             <DetailField label="청구월">{formatMonth(bill.billingMonth)}</DetailField>
             <DetailField label="청구 내역">
               {bill.items.length > 0
-                ? bill.items.map(formatBillItem).join(" · ")
+                ? (
+                  <span className={styles.billItems}>
+                    {bill.items.map((item, index) => (
+                      <span key={`${item.label}-${index}`} className={styles.billItem}>
+                        {formatBillItem(item)}
+                      </span>
+                    ))}
+                  </span>
+                )
                 : "항목 정보 없음"}
             </DetailField>
             <DetailField label="납부기한">{formatBillingDate(bill.dueDate)}</DetailField>
