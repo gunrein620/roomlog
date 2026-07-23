@@ -188,7 +188,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
       <div className="manager-messaging-summary-grid" aria-label="대화 요약">
         <SummaryTile label="전체 대화" value={searchedThreads.length} />
-        <SummaryTile label="답장 필요" value={needsReply} emphasis />
+        <SummaryTile label="답장 필요" value={needsReply} />
         <SummaryTile label="오늘 업데이트" value={todayCount} />
         <SummaryTile label="계약·공지" value={contractOrNoticeCount} />
       </div>
@@ -243,17 +243,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   );
 }
 
-function SummaryTile({
-  label,
-  value,
-  emphasis = false,
-}: {
-  label: string;
-  value: number;
-  emphasis?: boolean;
-}) {
+function SummaryTile({ label, value }: { label: string; value: number }) {
   return (
-    <section className={`manager-messaging-summary-tile${emphasis ? " is-emphasis" : ""}`}>
+    <section className="manager-messaging-summary-tile">
       <span>{label}</span>
       <strong>{value}건</strong>
     </section>

@@ -171,7 +171,10 @@ test("transaction deposit detail uses one plain-language bill summary and a date
   assert.doesNotMatch(transactionLedgerSource, /label="납부금액"/);
   assert.doesNotMatch(transactionLedgerSource, /\{bill\.dueDate\}/);
   assert.match(transactionLedgerSource, /formatBillingDate\(bill\.dueDate\)/);
-  assert.match(transactionLedgerSource, /bill\.items\.map\(formatBillItem\)\.join/);
+  assert.match(transactionLedgerSource, /className=\{styles\.billItems\}/);
+  assert.match(transactionLedgerSource, /className=\{styles\.billItem\}/);
+  assert.match(transactionLedgerSource, /bill\.items\.map\(\(item, index\) =>/);
+  assert.doesNotMatch(transactionLedgerSource, /\.join\(" · "\)/);
   assert.match(
     transactionStyleSource,
     /\.detailGroup\s*\{[\s\S]*?display:\s*grid;/,
@@ -179,6 +182,18 @@ test("transaction deposit detail uses one plain-language bill summary and a date
   assert.match(
     transactionStyleSource,
     /\.detailFields\[data-columns="6"\][\s\S]*?repeat\(6, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(
+    transactionStyleSource,
+    /\.detailField dd\s*\{[\s\S]*?white-space:\s*normal;/,
+  );
+  assert.match(
+    transactionStyleSource,
+    /\.billItems\s*\{[\s\S]*?display:\s*grid;/,
+  );
+  assert.match(
+    transactionStyleSource,
+    /\.billItem\s*\{[\s\S]*?white-space:\s*nowrap;/,
   );
 });
 

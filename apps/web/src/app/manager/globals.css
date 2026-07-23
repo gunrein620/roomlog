@@ -1788,16 +1788,6 @@ html:has(.manager-workspace) {
   line-height: 1;
 }
 
-.manager-messaging-summary-tile.is-emphasis {
-  border-color: var(--primary);
-  background: var(--primary-container);
-}
-
-.manager-messaging-summary-tile.is-emphasis strong,
-.manager-messaging-summary-tile.is-emphasis span {
-  color: var(--on-primary-container);
-}
-
 .manager-messaging-status-filters {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

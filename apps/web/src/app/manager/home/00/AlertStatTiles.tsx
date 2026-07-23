@@ -4,7 +4,7 @@ import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 
 const TILES = [
   { key: "overdue", label: "연체", href: MANAGER_CROSS.billing, Icon: ReceiptText },
-  { key: "urgent", label: "긴급 하자", href: MANAGER_CROSS.ticketDash, Icon: Wrench },
+  { key: "urgent", label: "민원·하자", href: MANAGER_CROSS.ticketDash, Icon: Wrench },
   { key: "expiring", label: "만기 임박", href: MANAGER_CROSS.contract, Icon: FileClock },
   { key: "unanswered", label: "답장 대기", href: MANAGER_CROSS.messaging, Icon: MessageSquareText }
 ] as const;
