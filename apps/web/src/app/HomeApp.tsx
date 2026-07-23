@@ -78,7 +78,7 @@ import TourUploadBanner from "./_components/TourUploadBanner";
 import { getRealtimeSocket, resetRealtimeSocket } from "@/lib/realtime-client";
 import { formatTenantLandlordUnreadCount } from "@/lib/tenant-landlord-conversation";
 import { tenantLandlordNavLabel } from "@/lib/tenant-landlord-nav-unread";
-import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
+import { hasWalkingTourAvailableAsset, intakeSplatAsset, listSplatAssetsByListing } from "@/lib/splat-asset-api";
 import { useTenantLandlordUnreadCount } from "@/lib/use-tenant-landlord-unread-count";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
 import {
@@ -234,10 +234,6 @@ const HOME_LISTINGS_PAGE_SIZE = 9;
 const DEAL_TYPE_TABS = ["월세", "전세", "매매", "단기"] as const;
 
 // 워킹뷰 딱지는 실제 1인칭 Splat 투어가 준비된 자산에만 노출한다.
-function hasWalkingTourAsset(assets: SplatAsset[]): boolean {
-  return assets.some((asset) => asset.status === "REGISTERED");
-}
-
 // 가격 게이지바 상한(만원) — 슬라이더 우측 끝 = 제한 없음.
 const PRICE_DEPOSIT_LIMIT = 50000; // 보증금 5억
 const PRICE_MONTHLY_LIMIT = 200; // 월세 200만
@@ -1901,7 +1897,7 @@ export default function HomeApp({
         const listingId = listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
         try {
           const assets = await listSplatAssetsByListing(listingId);
-          return [listingNo, hasWalkingTourAsset(assets)] as const;
+          return [listingNo, hasWalkingTourAvailableAsset(assets)] as const;
         } catch {
           return [listingNo, false] as const;
         }
