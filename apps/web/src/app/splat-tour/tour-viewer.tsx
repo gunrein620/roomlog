@@ -4,8 +4,7 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { Armchair, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
-import type { FormEvent } from "react";
+import { Armchair, Camera, Check, ChevronDown, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
 import { TourJoystick, type TourJoystickVector } from "./tour-joystick";
@@ -20,7 +19,6 @@ import {
   confirmTourFurnitureDraft,
   createTourFurnitureSavePayload,
   deleteTourFurnitureDraft,
-  filterTourFurnitureCatalog,
   reopenTourFurnitureDraft,
   rotateTourFurnitureDraft,
   type TourFurnitureBounds,
@@ -40,15 +38,15 @@ import { normalizeWorldToMinimap } from "./tour-minimap-geometry";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset, resolveAssetFileUrl, updateSplatAssetSpawnView } from "@/lib/splat-asset-api";
 import { resolveTourSpawnView } from "./tour-spawn-view";
-import {
-  FURNITURE_CATALOG,
-  furnitureCategoryLabel,
-  furnitureImageUrl,
-  listFurnitureCategoryFilters,
-  loadGlbDatasetCatalog
-} from "../floor-plan-3d/furniture-placement";
+import { FURNITURE_CATALOG, loadGlbDatasetCatalog } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture } from "../floor-plan-3d/room-model/types";
 import type { SpawnView, SplatTransform } from "./tour-types";
+import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
+import FurnitureCatalogPanel, {
+  tenantFurnitureCatalogItem,
+  useTenantFurnitureCatalog,
+  type FurnitureSourceTab
+} from "../_components/FurnitureCatalogPanel";
 
 // cap2_sharp.spz: 자체 캡처앱(capture-ios) 촬영본의 샤픈 산출 SPZ(756K 가우시안). 배치는 같은
 // basename의 cap2_sharp.tuning.json이 담당한다 — auto fit(폰 캡처는 미터 스케일 미보정이라 native
@@ -119,10 +117,10 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
   const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("가구 카탈로그를 불러오는 중입니다.");
   const [furnitureCategory, setFurnitureCategory] = useState("전체");
   const [furnitureQuery, setFurnitureQuery] = useState("");
-  const [furnitureLimit, setFurnitureLimit] = useState(30);
+  // ListingTourRoom3D와 통일한 가구 패널(FurnitureCatalogPanel)의 소스 탭 — 투어는 항상 "등록
+  // 가구" 탭으로 시작한다(owner 전용 흐름이 아니라 방문자 뷰가 기본이라).
+  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureSourceTab>("catalog");
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
-  const furnitureCategoryTabsRef = useRef<HTMLDivElement>(null);
-  const [furnitureCategoryScroll, setFurnitureCategoryScroll] = useState({ left: 0, max: 0 });
   const [furnitureState, setFurnitureState] = useState<SplatFurnitureState>({
     furnitures: [],
     source: "none"
@@ -183,45 +181,9 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
       maxZ: SPLAT_CLIP_ROOM.depth / 2
     };
   }, [planBounds]);
-  const furnitureCategories = useMemo(() => listFurnitureCategoryFilters(furnitureCatalog), [furnitureCatalog]);
-  const furnitureCategoryCounts = useMemo(
-    () =>
-      furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
-        const category = furnitureCategoryLabel(item);
-        counts[category] = (counts[category] ?? 0) + 1;
-        return counts;
-      }, {}),
-    [furnitureCatalog]
-  );
-  const filteredFurnitureCatalog = useMemo(
-    () => filterTourFurnitureCatalog(furnitureCatalog, furnitureCategory, furnitureQuery),
-    [furnitureCatalog, furnitureCategory, furnitureQuery]
-  );
-  const visibleFurnitureCatalog = useMemo(
-    () => filteredFurnitureCatalog.slice(0, furnitureLimit),
-    [filteredFurnitureCatalog, furnitureLimit]
-  );
-
-  const syncFurnitureCategoryScroll = useCallback(() => {
-    const tabList = furnitureCategoryTabsRef.current;
-    if (!tabList) return;
-    const max = Math.max(0, Math.round(tabList.scrollWidth - tabList.clientWidth));
-    const left = Math.max(0, Math.min(max, Math.round(tabList.scrollLeft)));
-    setFurnitureCategoryScroll((current) => (current.left === left && current.max === max ? current : { left, max }));
-  }, []);
-
-  useEffect(() => {
-    if (!isFurnitureCatalogOpen) return;
-    const tabList = furnitureCategoryTabsRef.current;
-    if (!tabList) return;
-
-    syncFurnitureCategoryScroll();
-    const resizeObserver = new ResizeObserver(syncFurnitureCategoryScroll);
-    resizeObserver.observe(tabList);
-    Array.from(tabList.children).forEach((child) => resizeObserver.observe(child));
-
-    return () => resizeObserver.disconnect();
-  }, [furnitureCategories, isFurnitureCatalogOpen, syncFurnitureCategoryScroll]);
+  // 내 가구 로딩·필터(meshJobState==="DONE")·401 무음 처리는 FurnitureCatalogPanel과 공유하는
+  // 훅으로 옮겼다(ListingTourRoom3D도 동일 로직을 쓰던 것을 중복 없이 합침).
+  const tenantFurnitures = useTenantFurnitureCatalog(setFurnitureCatalogStatus);
 
   const handleCameraMove = useCallback(
     (position: [number, number, number]) => {
@@ -260,25 +222,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
     }
   }
 
-  function handleFurnitureCategoryScroll() {
-    syncFurnitureCategoryScroll();
-  }
-
-  function handleFurnitureCategoryScrollInput(event: FormEvent<HTMLInputElement>) {
-    const tabList = furnitureCategoryTabsRef.current;
-    if (!tabList) return;
-    tabList.scrollLeft = Number(event.currentTarget.value);
-    syncFurnitureCategoryScroll();
-  }
-
-  function moveFurnitureCategoryScroll(direction: -1 | 1) {
-    const tabList = furnitureCategoryTabsRef.current;
-    if (!tabList) return;
-    const max = Math.max(0, tabList.scrollWidth - tabList.clientWidth);
-    tabList.scrollLeft = Math.max(0, Math.min(max, tabList.scrollLeft + direction * 180));
-    syncFurnitureCategoryScroll();
-  }
-
   function applyLoadedFurniture(state: SplatFurnitureState) {
     setFurnitureState(state);
     setFurnitureDraft({ placed: state.furnitures, pending: null, original: null });
@@ -310,6 +253,21 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
     const restored = cancelTourFurnitureDraft(furnitureDraft);
     const nextDraft = beginTourFurnitureDraft(item, restored.placed);
     setFurnitureDraft(nextDraft);
+    setSelectedFurnitureId(null);
+    setShowFurniture(true);
+    setFurnitureCatalogStatus(`${item.name}을(를) 선택했습니다. 방 바닥을 클릭해 위치를 정하세요.`);
+  }
+
+  function handleTenantFurnitureSelect(furniture: TenantFurniture) {
+    const restored = cancelTourFurnitureDraft(furnitureDraft);
+    const item = tenantFurnitureCatalogItem(furniture);
+    const nextDraft = beginTourFurnitureDraft(item, restored.placed);
+    setFurnitureDraft({
+      ...nextDraft,
+      // splat-furniture-layer가 GLB 실측 스케일을 furniture.sizeMm에서 직접 읽는다 — item.length에도
+      // 같은 값이 들어가지만 sizeMm 없이는 스케일 계산이 0으로 빠진다(레이어 쪽 폴백 규약).
+      pending: nextDraft.pending ? { ...nextDraft.pending, sizeMm: furniture.sizeMm, source: furniture.source } : nextDraft.pending
+    });
     setSelectedFurnitureId(null);
     setShowFurniture(true);
     setFurnitureCatalogStatus(`${item.name}을(를) 선택했습니다. 방 바닥을 클릭해 위치를 정하세요.`);
@@ -382,10 +340,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
       active = false;
     };
   }, []);
-
-  useEffect(() => {
-    setFurnitureLimit(30);
-  }, [furnitureCategory, furnitureQuery]);
 
   // 터치/coarse pointer 감지(마운트 후). 하이브리드 기기 대응으로 maxTouchPoints도 함께 본다.
   useEffect(() => {
@@ -674,11 +628,14 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             backdrop-filter: blur(12px);
           }
 
+          /* 좌상단으로 이동(사용자 결정) — 같은 모퉁이의 .tour-hint(안내 배지) 아래에 붙인다.
+             .tour-hint는 4.2초 후 사라지지만 자리는 고정폭으로 비워둔다(사라진다고 미니맵이
+             따라 올라오면 등장 타이밍마다 레이아웃이 튀는 게 더 산만하다). */
           .tour-minimap-dock {
             position: absolute;
             z-index: 2;
-            top: 16px;
-            right: 16px;
+            top: 64px;
+            left: 16px;
           }
 
           .tour-hint {
@@ -686,7 +643,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             z-index: 2;
             top: 18px;
             left: 18px;
-            max-width: min(420px, calc(100% - 184px));
+            max-width: calc(100% - 36px);
             overflow: hidden;
             margin: 0;
             border: 1px solid var(--line);
@@ -838,7 +795,9 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             display: grid;
             width: min(390px, calc(100% - 32px));
             height: min(620px, calc(100% - 110px));
-            grid-template-rows: auto auto auto auto minmax(0, 1fr) auto minmax(0, auto) auto auto;
+            /* FurnitureCatalogPanel은 Fragment라 DOM엔 자기 자식(소스탭 + 탭 패널)이 그대로 펼쳐져
+               붙는다 — 트랙 순서: 헤드·상태문구·소스탭·(스크롤 늘어나는)탭 패널·배치목록·안내/액션. */
+            grid-template-rows: auto auto auto minmax(0, 1fr) minmax(0, auto) auto auto;
             gap: 12px;
             overflow: hidden;
             padding: 16px;
@@ -877,20 +836,12 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
           }
 
           .tour-furniture-close,
-          .tour-furniture-action,
-          .tour-furniture-category,
-          .tour-furniture-more,
-          .tour-furniture-item {
+          .tour-furniture-action {
             border: 1px solid var(--line);
             background: color-mix(in srgb, var(--paper) 88%, transparent);
             color: var(--ink);
             cursor: pointer;
             font: inherit;
-          }
-
-          .tour-furniture-close,
-          .tour-furniture-action,
-          .tour-furniture-more {
             border-radius: 999px;
             padding: 8px 12px;
             font-size: 12px;
@@ -903,211 +854,31 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             color: var(--paper);
           }
 
-          .tour-furniture-search {
-            width: 100%;
-            min-height: 40px;
-            box-sizing: border-box;
-            border: 1px solid var(--line);
-            border-radius: 10px;
-            padding: 9px 11px;
-            background: color-mix(in srgb, var(--paper) 88%, transparent);
-            color: var(--ink);
-            font: inherit;
-          }
-
-          .tour-furniture-category-scroll-area {
-            display: grid;
-            gap: 4px;
-            min-width: 0;
-          }
-
-          .tour-furniture-categories {
-            display: flex;
-            gap: 6px;
-            overflow-x: auto;
-            min-width: 0;
-            padding-bottom: 0;
-            scrollbar-width: none;
-          }
-
-          .tour-furniture-categories::-webkit-scrollbar {
-            display: none;
-          }
-
-          .tour-furniture-category-scrollbar {
-            display: grid;
-            grid-template-columns: 28px minmax(0, 1fr) 28px;
-            align-items: center;
-            gap: 6px;
-            min-height: 30px;
-            padding: 3px 0;
-            border-top: 1px solid var(--tour-scrollbar-track);
-          }
-
-          .tour-furniture-category-scroll-button {
-            display: grid;
-            width: 28px;
-            height: 24px;
-            place-items: center;
-            border: 1px solid var(--tour-scrollbar-track);
-            border-radius: 7px;
-            background: var(--paper);
-            color: var(--tour-scrollbar-thumb);
-            cursor: pointer;
-          }
-
-          .tour-furniture-category-scroll-button:hover {
-            border-color: var(--tour-scrollbar-thumb);
-            background: #f1f1f1;
-          }
-
-          .tour-furniture-category-scroll-range {
-            width: 100%;
-            height: 14px;
-            margin: 0;
-            appearance: none;
-            background: transparent;
-            cursor: pointer;
-          }
-
-          .tour-furniture-category-scroll-range::-webkit-slider-runnable-track {
-            height: 8px;
-            border-radius: 999px;
-            background: var(--tour-scrollbar-track);
-            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-          }
-
-          .tour-furniture-category-scroll-range::-webkit-slider-thumb {
-            width: 44px;
-            height: 14px;
-            margin-top: -3px;
-            border: 0;
-            border-radius: 999px;
-            appearance: none;
-            background: var(--tour-scrollbar-thumb);
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
-          }
-
-          .tour-furniture-category-scroll-range::-moz-range-track {
-            height: 8px;
-            border-radius: 999px;
-            background: var(--tour-scrollbar-track);
-            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-          }
-
-          .tour-furniture-category-scroll-range::-moz-range-thumb {
-            width: 44px;
-            height: 14px;
-            border: 0;
-            border-radius: 999px;
-            background: var(--tour-scrollbar-thumb);
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
-          }
-
-          .tour-furniture-category {
-            flex: 0 0 auto;
-            border-radius: 999px;
-            padding: 7px 10px;
-            font-size: 12px;
-            font-weight: 800;
-          }
-
-          .tour-furniture-category.is-active {
-            border-color: var(--blue);
-            background: var(--blue-soft);
-            color: var(--blue);
-          }
-
-          .tour-furniture-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-auto-rows: 58px;
-            gap: 8px;
-            min-height: 0;
-            overflow: auto;
-            padding-right: 2px;
-          }
-
-          .tour-furniture-grid,
-          .tour-furniture-placed {
-            scrollbar-color: var(--tour-scrollbar-thumb) var(--tour-scrollbar-track);
-            scrollbar-width: thin;
-          }
-
-          .tour-furniture-grid::-webkit-scrollbar,
-          .tour-furniture-placed::-webkit-scrollbar {
-            width: 10px;
-          }
-
-          .tour-furniture-grid::-webkit-scrollbar-track,
-          .tour-furniture-placed::-webkit-scrollbar-track {
-            background: var(--tour-scrollbar-track);
-          }
-
-          .tour-furniture-grid::-webkit-scrollbar-thumb,
-          .tour-furniture-placed::-webkit-scrollbar-thumb {
-            border: 2px solid var(--tour-scrollbar-track);
-            border-radius: 999px;
-            background: var(--tour-scrollbar-thumb);
-          }
-
-          .tour-furniture-item {
-            display: grid;
-            grid-template-columns: 42px minmax(0, 1fr);
-            align-items: center;
-            gap: 8px;
-            min-width: 0;
-            overflow: hidden;
-            border-radius: 10px;
-            padding: 7px;
-            text-align: left;
-          }
-
-          .tour-furniture-item:hover,
-          .tour-furniture-more:hover,
           .tour-furniture-close:hover,
           .tour-furniture-action:hover {
             border-color: var(--blue);
             color: var(--blue);
           }
 
-          .tour-furniture-thumb {
-            display: grid;
-            width: 42px;
-            height: 42px;
-            overflow: hidden;
-            border-radius: 8px;
-            place-items: center;
+          /* 검색·카테고리·카탈로그 그리드는 FurnitureCatalogPanel(listing-tour-furniture-*, globals.css)로
+             옮겼다 — 이 파일엔 "배치된 가구" 목록 스크롤바 색상만 남는다. */
+          .tour-furniture-placed {
+            scrollbar-color: var(--tour-scrollbar-thumb) var(--tour-scrollbar-track);
+            scrollbar-width: thin;
           }
 
-          .tour-furniture-thumb img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+          .tour-furniture-placed::-webkit-scrollbar {
+            width: 10px;
           }
 
-          .tour-furniture-copy {
-            min-width: 0;
-            overflow: hidden;
+          .tour-furniture-placed::-webkit-scrollbar-track {
+            background: var(--tour-scrollbar-track);
           }
 
-          .tour-furniture-item strong,
-          .tour-furniture-item small {
-            display: block;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-
-          .tour-furniture-item strong {
-            font-size: 12px;
-          }
-
-          .tour-furniture-item small {
-            margin-top: 3px;
-            color: var(--muted);
-            font-size: 10px;
+          .tour-furniture-placed::-webkit-scrollbar-thumb {
+            border: 2px solid var(--tour-scrollbar-track);
+            border-radius: 999px;
+            background: var(--tour-scrollbar-thumb);
           }
 
           .tour-furniture-placement-actions {
@@ -1236,14 +1007,14 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             }
 
             .tour-minimap-dock {
-              top: 10px;
-              right: 10px;
+              top: 52px;
+              left: 10px;
             }
 
             .tour-hint {
               top: 12px;
               left: 10px;
-              max-width: calc(100% - 148px);
+              max-width: calc(100% - 20px);
               padding: 7px 10px;
               font-size: 12px;
             }
@@ -1394,97 +1165,19 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             </button>
           </div>
           <p className="tour-furniture-status" role="status">{furnitureCatalogStatus}</p>
-          <input
-            aria-label="가구 검색"
-            className="tour-furniture-search"
-            onChange={(event) => setFurnitureQuery(event.target.value)}
-            placeholder="침대, 책상, 의자 검색"
-            type="search"
-            value={furnitureQuery}
+          <FurnitureCatalogPanel
+            activeFurnitureId={furnitureDraft.pending?.furniture_id ?? null}
+            categoryFilter={furnitureCategory}
+            catalogItems={furnitureCatalog}
+            onCategoryChange={setFurnitureCategory}
+            onSearchChange={setFurnitureQuery}
+            onSelectCatalogItem={handleFurnitureCatalogSelect}
+            onSelectTenantFurniture={handleTenantFurnitureSelect}
+            onSourceTabChange={setFurnitureSourceTab}
+            searchQuery={furnitureQuery}
+            sourceTab={furnitureSourceTab}
+            tenantFurnitures={tenantFurnitures}
           />
-          <div className="tour-furniture-category-scroll-area">
-            <div
-              aria-label="가구 카테고리"
-              className="tour-furniture-categories"
-              onScroll={handleFurnitureCategoryScroll}
-              ref={furnitureCategoryTabsRef}
-              role="tablist"
-            >
-              {furnitureCategories.map((category) => (
-                <button
-                  aria-selected={furnitureCategory === category}
-                  className={`tour-furniture-category${furnitureCategory === category ? " is-active" : ""}`}
-                  key={category}
-                  onClick={() => setFurnitureCategory(category)}
-                  role="tab"
-                  type="button"
-                >
-                  {category} {category === "전체" ? furnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}
-                </button>
-              ))}
-            </div>
-            {furnitureCategoryScroll.max > 0 ? (
-              <div className="tour-furniture-category-scrollbar">
-                <button
-                  aria-label="카테고리 왼쪽으로 이동"
-                  className="tour-furniture-category-scroll-button"
-                  onClick={() => moveFurnitureCategoryScroll(-1)}
-                  type="button"
-                >
-                  <ChevronLeft aria-hidden size={15} strokeWidth={2.5} />
-                </button>
-                <input
-                  aria-label="가구 카테고리 가로 스크롤"
-                  className="tour-furniture-category-scroll-range"
-                  max={furnitureCategoryScroll.max}
-                  min={0}
-                  onInput={handleFurnitureCategoryScrollInput}
-                  step={1}
-                  type="range"
-                  value={furnitureCategoryScroll.left}
-                />
-                <button
-                  aria-label="카테고리 오른쪽으로 이동"
-                  className="tour-furniture-category-scroll-button"
-                  onClick={() => moveFurnitureCategoryScroll(1)}
-                  type="button"
-                >
-                  <ChevronRight aria-hidden size={15} strokeWidth={2.5} />
-                </button>
-              </div>
-            ) : null}
-          </div>
-          <div className="tour-furniture-grid">
-            {visibleFurnitureCatalog.map((item) => {
-              const imageUrl = furnitureImageUrl(item);
-              return (
-                <button className="tour-furniture-item" key={item.furniture_id} onClick={() => handleFurnitureCatalogSelect(item)} type="button">
-                  <span className="tour-furniture-thumb" style={{ backgroundColor: item.color }}>
-                    {imageUrl ? (
-                      <img
-                        alt=""
-                        loading="lazy"
-                        onError={(event) => {
-                          event.currentTarget.style.display = "none";
-                        }}
-                        src={imageUrl}
-                      />
-                    ) : null}
-                  </span>
-                  <span className="tour-furniture-copy">
-                    <strong>{item.name}</strong>
-                    <small>{item.brand}</small>
-                  </span>
-                </button>
-              );
-            })}
-            {visibleFurnitureCatalog.length === 0 ? <p className="tour-furniture-help">검색 결과가 없습니다.</p> : null}
-          </div>
-          {visibleFurnitureCatalog.length < filteredFurnitureCatalog.length ? (
-            <button className="tour-furniture-more" onClick={() => setFurnitureLimit((limit) => limit + 30)} type="button">
-              가구 더 보기 ({visibleFurnitureCatalog.length}/{filteredFurnitureCatalog.length})
-            </button>
-          ) : null}
           <div className="tour-furniture-placed">
             <h3>배치된 가구 {furnitureDraft.placed.length}</h3>
             {furnitureDraft.placed.map((furniture) => (
