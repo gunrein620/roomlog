@@ -200,7 +200,7 @@ test("uses the bottom Floor view only for floor finish while the 3D toolbar star
   assert.doesNotMatch(viewerSource, /구조 확인/);
   assert.match(
     viewerSource,
-    /viewButtons\.forEach\(button => \{\s*const canUseView = button\.dataset\.view === "original"\s*\? hasDocument\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);\s*button\.disabled = !canUseView \|\| inFlight;/,
+    /viewButtons\.forEach\(button => \{\s*const canUseView = button\.dataset\.view === "original"\s*\? canShowOriginalView\(\)\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);\s*button\.disabled = !canUseView \|\| inFlight;/,
   );
   assert.match(
     viewerSource,
@@ -360,7 +360,7 @@ test("keeps the view switch visible after restoring a 3D plan without an editor 
   assert.match(viewerSource, /viewControls\.hidden = !hasViewControls;/);
   assert.match(
     viewerSource,
-    /const canUseView = button\.dataset\.view === "original"\s*\? hasDocument\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);/,
+    /const canUseView = button\.dataset\.view === "original"\s*\? canShowOriginalView\(\)\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);/,
   );
   assert.match(
     viewerSource,
