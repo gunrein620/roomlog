@@ -790,19 +790,23 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             --tour-scrollbar-thumb: #8a8a8a;
             position: absolute;
             z-index: 6;
-            bottom: 78px;
-            left: 16px;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: auto;
             display: grid;
-            width: min(390px, calc(100% - 32px));
-            height: min(620px, calc(100% - 110px));
+            width: min(420px, calc(100% - 24px));
             /* FurnitureCatalogPanel은 Fragment라 DOM엔 자기 자식(소스탭 + 탭 패널)이 그대로 펼쳐져
                붙는다 — 트랙 순서: 헤드·상태문구·소스탭·(스크롤 늘어나는)탭 패널·배치목록·안내/액션. */
             grid-template-rows: auto auto auto minmax(0, 1fr) minmax(0, auto) auto auto;
             gap: 12px;
             overflow: hidden;
-            padding: 16px;
+            padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
             border: 1px solid var(--line);
-            border-radius: 16px;
+            border-top: 0;
+            border-right: 0;
+            border-bottom: 0;
+            border-radius: 0;
             background: color-mix(in srgb, var(--paper) 94%, transparent);
             box-shadow: var(--shadow);
             backdrop-filter: blur(16px);
@@ -933,6 +937,12 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             justify-items: end;
             gap: 8px;
             max-width: calc(100% - 32px);
+            transition: right 200ms ease;
+          }
+
+          /* 가구 드로어가 우측 풀하이트로 도킹되면 겹치므로 드로어 폭만큼 밀어낸다. */
+          .tour-dropzone-dock.is-furniture-open {
+            right: calc(min(420px, calc(100% - 24px)) + 16px);
           }
 
           .tour-dropzone-toggle {
@@ -1043,18 +1053,28 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
               font-size: 13px;
             }
 
+            /* 좁은 세로 화면에서는 우측 풀하이트 도킹 대신 기존 하단 시트로 되돌린다 —
+               데스크톱 규칙(top/right/border 0)과 충돌하지 않도록 전부 명시적으로 재정의. */
             .tour-furniture-drawer {
+              top: auto;
+              right: auto;
               bottom: 68px;
               left: 10px;
               width: calc(100% - 20px);
               max-height: min(560px, calc(100% - 86px));
               padding: 13px;
+              border: 1px solid var(--line);
+              border-radius: 16px;
             }
 
             .tour-dropzone-dock {
               right: 10px;
               bottom: 66px;
               max-width: calc(100% - 20px);
+            }
+
+            .tour-dropzone-dock.is-furniture-open {
+              right: 10px;
             }
 
             .tour-dropzone-toggle {
@@ -1222,7 +1242,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
         </aside>
       ) : null}
 
-      <div className="tour-dropzone-dock">
+      <div className={`tour-dropzone-dock${isFurnitureCatalogOpen ? " is-furniture-open" : ""}`}>
         <button
           aria-expanded={isDropzoneOpen}
           className={`tour-dropzone-toggle${isDropzoneOpen ? " is-open" : ""}`}
