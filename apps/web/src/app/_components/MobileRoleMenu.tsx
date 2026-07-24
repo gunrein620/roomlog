@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, House, UserRound } from "lucide-react";
+import { Building2, House, LogIn, LogOut, UserRound } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 export interface MobileRoleMenuProps {
@@ -8,13 +8,20 @@ export interface MobileRoleMenuProps {
   onSelectTenant: () => void;
   onSelectListing: () => void;
   onSelectManager: () => void;
+  /** 로그인 세션이 있으면 사용자 이름, 없으면 null — 데스크톱 상단바의 계정 영역을 모바일로 옮긴 것 */
+  userName: string | null;
+  onLogin: () => void;
+  onLogout: () => void;
 }
 
 export function MobileRoleMenu({
   activeTab,
   onSelectTenant,
   onSelectListing,
-  onSelectManager
+  onSelectManager,
+  userName,
+  onLogin,
+  onLogout
 }: MobileRoleMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -77,6 +84,18 @@ export function MobileRoleMenu({
             <Building2 size={22} strokeWidth={2.3} aria-hidden="true" />
             <span>관리</span>
           </button>
+          <div className="mobile-role-menu__divider" role="separator" />
+          {userName ? (
+            <button className="mobile-role-menu__item" type="button" onClick={() => selectRole(onLogout)}>
+              <LogOut size={22} strokeWidth={2.3} aria-hidden="true" />
+              <span>로그아웃</span>
+            </button>
+          ) : (
+            <button className="mobile-role-menu__item" type="button" onClick={() => selectRole(onLogin)}>
+              <LogIn size={22} strokeWidth={2.3} aria-hidden="true" />
+              <span>로그인</span>
+            </button>
+          )}
         </div>
       ) : null}
 

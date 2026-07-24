@@ -3371,6 +3371,9 @@ export default function HomeApp({
             onSelectTenant={() => activateTab("living")}
             onSelectListing={() => activateTab("sell")}
             onSelectManager={() => { window.location.href = "/manager/home/00"; }}
+            userName={viewer ? viewer.name : null}
+            onLogin={() => openAuthScreen("login")}
+            onLogout={logout}
           />
         </nav>
 

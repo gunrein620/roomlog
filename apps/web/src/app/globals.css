@@ -11473,6 +11473,13 @@ p {
   color: var(--primary);
 }
 
+/* 역할 이동(위)과 계정(로그인/로그아웃, 아래)을 시각적으로 가른다 */
+.mobile-role-menu__divider {
+  height: 1px;
+  margin: var(--space-xs) calc(-1 * var(--space-sm));
+  background: var(--border);
+}
+
 .floor-plan-page {
   min-height: 100dvh;
   padding: 18px;
