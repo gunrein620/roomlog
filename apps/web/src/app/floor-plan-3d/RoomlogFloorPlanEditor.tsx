@@ -1,8 +1,11 @@
 "use client";
 
 import type { ThreeEvent } from "@react-three/fiber";
+import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
 import { Armchair, DoorOpen, Eraser, EyeOff, Hand, MousePointer2, Pencil, Scissors, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchTenantFurniture } from "@/lib/tenant-furniture-api";
+import { tenantFurnitureName } from "../tenant/furniture/furniture-labels";
 import type {
   AiDimensionDetection,
   CandidateStatus,
@@ -47,12 +50,15 @@ import {
   judgeFurnitureFit,
   finalizeFurnitureDraft,
   FURNITURE_CATALOG,
+  type FurnitureCatalogSource,
   furnitureCategoryLabel,
   furnitureImageUrl,
   isFurnitureCatalogItem,
+  isLargeFurnitureAsset,
   isLandlordOptionFurniture,
   listFurnitureCategoryFilters,
   loadGlbDatasetCatalog,
+  loadPolyhavenCatalog,
   moveFurnitureDraftToPoint,
   normalizeCatalogItem,
   reopenFurnitureDraft,
@@ -158,6 +164,20 @@ function distributeFurnitureCategories(items: FurnitureCatalogItem[]) {
   }
 
   return distributed;
+}
+
+function tenantFurnitureCatalogItem(furniture: TenantFurniture): FurnitureCatalogItem {
+  return {
+    brand: "내 가구",
+    category: furniture.category,
+    color: "lightgray",
+    furniture_id: furniture.id,
+    length: [furniture.sizeMm.width, furniture.sizeMm.height, furniture.sizeMm.depth],
+    modelUrl: furniture.meshUrl ?? undefined,
+    name: tenantFurnitureName(furniture),
+    price: 0,
+    source: furniture.source
+  };
 }
 
 type RoboflowBoundingBox = { x: number; y: number; width: number; height: number; confidence?: number };
@@ -794,6 +814,12 @@ export default function RoomlogFloorPlanEditor() {
   const [hiddenWallIds, setHiddenWallIds] = useState<Set<string>>(() => new Set());
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
   const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("사용자 모드 배치 카탈로그");
+  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureCatalogSource>("catalog");
+  const [tenantFurnitures, setTenantFurnitures] = useState<TenantFurniture[]>([]);
+  const [polyCatalog, setPolyCatalog] = useState<FurnitureCatalogItem[]>([]);
+  const [polyCatalogLoading, setPolyCatalogLoading] = useState(false);
+  const [polyCatalogError, setPolyCatalogError] = useState<string | null>(null);
+  const [polyCatalogRetry, setPolyCatalogRetry] = useState(0);
   const [furnitureKindFilter, setFurnitureKindFilter] = useState<FurnitureKindFilter>("전체");
   const [furnitureSearchQuery, setFurnitureSearchQuery] = useState("");
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
@@ -1409,31 +1435,40 @@ export default function RoomlogFloorPlanEditor() {
 
   const hiddenWallCount = hiddenWallIds.size;
   const landlordOptionFurnitures = useMemo(() => placedFurnitures.filter(isLandlordOptionFurniture), [placedFurnitures]);
+  const activeFurnitureCatalog = useMemo(
+    () =>
+      furnitureSourceTab === "mine"
+        ? tenantFurnitures.map(tenantFurnitureCatalogItem)
+        : furnitureSourceTab === "poly"
+          ? polyCatalog
+          : furnitureCatalog,
+    [furnitureCatalog, furnitureSourceTab, polyCatalog, tenantFurnitures]
+  );
   const furnitureKindCounts = useMemo(
     () =>
-      furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
+      activeFurnitureCatalog.reduce<Record<string, number>>((counts, item) => {
         const kind = furnitureCategoryLabel(item);
         counts[kind] = (counts[kind] ?? 0) + 1;
 
         return counts;
       }, {}),
-    [furnitureCatalog]
+    [activeFurnitureCatalog]
   );
-  const furnitureKindFilters = useMemo(() => listFurnitureCategoryFilters(furnitureCatalog), [furnitureCatalog]);
+  const furnitureKindFilters = useMemo(() => listFurnitureCategoryFilters(activeFurnitureCatalog), [activeFurnitureCatalog]);
   const filteredFurnitureCatalog = useMemo(() => {
     const query = furnitureSearchQuery.trim().toLowerCase();
 
-    const matchingItems = furnitureCatalog.filter((item) => {
+    const matchingItems = activeFurnitureCatalog.filter((item) => {
       const kind = furnitureCategoryLabel(item);
       const matchesKind = furnitureKindFilter === "전체" || kind === furnitureKindFilter;
-      const searchableText = `${item.name} ${item.brand} ${item.category ?? ""} ${item.source ?? ""}`.toLowerCase();
+      const searchableText = `${item.name} ${item.brand} ${item.category ?? ""} ${item.source ?? ""} ${(item.tags ?? []).join(" ")}`.toLowerCase();
       const matchesQuery = !query || searchableText.includes(query);
 
       return matchesKind && matchesQuery;
     });
 
     return furnitureKindFilter === "전체" ? distributeFurnitureCategories(matchingItems) : matchingItems;
-  }, [furnitureCatalog, furnitureKindFilter, furnitureSearchQuery]);
+  }, [activeFurnitureCatalog, furnitureKindFilter, furnitureSearchQuery]);
 
   useEffect(() => {
     let isActive = true;
@@ -1476,6 +1511,40 @@ export default function RoomlogFloorPlanEditor() {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isActive = true;
+    void fetchTenantFurniture()
+      .then((items) => {
+        if (isActive) setTenantFurnitures(items.filter((item) => item.meshJobState === "DONE"));
+      })
+      .catch(() => {
+        if (isActive) setTenantFurnitures([]);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (furnitureSourceTab !== "poly" || polyCatalog.length > 0) return;
+    let isActive = true;
+    setPolyCatalogLoading(true);
+    setPolyCatalogError(null);
+    void loadPolyhavenCatalog()
+      .then((items) => {
+        if (isActive) setPolyCatalog(items);
+      })
+      .catch(() => {
+        if (isActive) setPolyCatalogError("폴리 가구를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (isActive) setPolyCatalogLoading(false);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [furnitureSourceTab, polyCatalog.length, polyCatalogRetry]);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -4608,8 +4677,37 @@ export default function RoomlogFloorPlanEditor() {
               <summary>임대인 옵션 가구</summary>
               <div className="floor-plan-drawer-section-body floor-plan-furniture-library">
               <code>
-                {furnitureCatalogStatus} {filteredFurnitureCatalog.length}/{furnitureCatalog.length} / 옵션 {landlordOptionFurnitures.length}
+                {furnitureSourceTab === "poly" ? "Poly Haven · CC0" : furnitureSourceTab === "mine" ? "내 가구" : furnitureCatalogStatus}{" "}
+                {filteredFurnitureCatalog.length}/{activeFurnitureCatalog.length} / 옵션 {landlordOptionFurnitures.length}
               </code>
+              <div className="floor-plan-furniture-kind-tabs" role="tablist" aria-label="가구 목록 종류">
+                {([
+                  ["mine", "내가구"],
+                  ["catalog", "등록된 가구"],
+                  ["poly", "폴리"]
+                ] as const).map(([source, label]) => (
+                  <button
+                    aria-selected={furnitureSourceTab === source}
+                    className={furnitureSourceTab === source ? "active" : ""}
+                    key={source}
+                    onClick={() => {
+                      setFurnitureSourceTab(source);
+                      setFurnitureKindFilter("전체");
+                      setFurnitureSearchQuery("");
+                    }}
+                    role="tab"
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {furnitureSourceTab === "poly" && polyCatalogLoading ? <small>폴리 가구를 불러오는 중입니다.</small> : null}
+              {furnitureSourceTab === "poly" && polyCatalogError ? (
+                <button onClick={() => setPolyCatalogRetry((value) => value + 1)} type="button">
+                  {polyCatalogError} 다시 시도
+                </button>
+              ) : null}
               <div className="floor-plan-furniture-search">
                 <input
                   aria-label="가구 검색" onChange={(event) => setFurnitureSearchQuery(event.target.value)}
@@ -4629,7 +4727,7 @@ export default function RoomlogFloorPlanEditor() {
                     type="button"
                   >
                     {kind}
-                    <small>{kind === "전체" ? furnitureCatalog.length : furnitureKindCounts[kind] ?? 0}</small>
+                    <small>{kind === "전체" ? activeFurnitureCatalog.length : furnitureKindCounts[kind] ?? 0}</small>
                   </button>
                 ))}
               </div>
@@ -4650,6 +4748,7 @@ export default function RoomlogFloorPlanEditor() {
                       type="button"
                     >
                       <span className="floor-plan-furniture-thumb" style={{ backgroundColor: item.color }}>
+                        <span aria-hidden>{item.name.slice(0, 1)}</span>
                         {imageUrl ? (
                           <img
                             alt=""
@@ -4667,6 +4766,7 @@ export default function RoomlogFloorPlanEditor() {
                         {furnitureCategoryLabel(item)} · {item.brand}
                       </small>
                       <em>{item.length.join("x")}mm</em>
+                      {isLargeFurnitureAsset(item) ? <small>대용량 {Math.ceil((item.assetBytes ?? 0) / 1024 / 1024)}MB</small> : null}
                       {fit.verdict !== "unknown" ? (
                         <small
                           style={{

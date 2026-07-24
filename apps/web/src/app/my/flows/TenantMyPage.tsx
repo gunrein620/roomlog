@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
-import { Bath, Bot, ChevronRight, FileText, ImagePlus, Megaphone, MessageCircle, Snowflake, X } from "lucide-react";
+import { Bath, Bot, ChevronRight, CreditCard, FileText, ImagePlus, Megaphone, MessageCircle, Snowflake, X } from "lucide-react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import {
   resolveTicketChatAttachmentUrl,
@@ -31,13 +31,20 @@ import {
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
 import { TenantAiAssistantPanel } from "./TenantAiAssistantPanel";
+import { SheetDragHandle } from "../../_components/SheetDragHandle";
 import {
   activateTenantAiAssistantScope,
   closeTenantAiAssistant,
+  getTenantAiAssistantState,
   markTenantAiDraftFormOpen,
   openTenantAiAssistant,
   useTenantAiAssistantStore,
 } from "./tenant-ai-assistant-store";
+import { TenantPaymentHistoryModal } from "./TenantPaymentHistoryModal";
+import {
+  findTenantContractListing,
+  tenantContractOptions,
+} from "./tenant-contract-options";
 import {
   createTenantComplaintDraftMutationGuard,
   deleteTenantComplaintDraft,
@@ -81,6 +88,7 @@ type TenantTenancy = {
   address: string;
   landlordId?: string;
   imageUrl?: string;
+  listingOptions: string[];
   contract: TenantContractSummary | null;
   leaseContract: Contract | null;
 };
@@ -105,6 +113,7 @@ type TenantListingPhotoSummary = {
   images?: string[];
   coverImage?: string;
   gallery?: string[];
+  options?: unknown;
 };
 
 type TenantRepairRequest = {
@@ -407,26 +416,6 @@ function firstListingImage(listing?: TenantListingPhotoSummary): string | undefi
   return candidates.find((image): image is string => typeof image === "string" && image.trim().length > 0);
 }
 
-function findTenantListingImage(
-  listings: TenantListingPhotoSummary[],
-  listingId: string | undefined,
-  room: { buildingName: string; roomNo: string; address: string }
-): string | undefined {
-  const listing =
-    listings.find((item) => item.id === listingId) ??
-    listings.find((item) => {
-      const detailAddress = item.detailAddress ?? "";
-      return (
-        item.title === room.buildingName ||
-        item.location === room.address ||
-        detailAddress.includes(room.roomNo) ||
-        `${item.location ?? ""} ${detailAddress}`.includes(room.address)
-      );
-    });
-
-  return firstListingImage(listing);
-}
-
 function TenantFloorPlanPreview({
   imageUrl,
   title
@@ -719,6 +708,7 @@ export default function TenantMyPage({
         let contract: TenantContractSummary | null = null;
         let leaseContract: Contract | null = null;
         let residenceImageUrl: string | undefined;
+        let listingOptions: string[] = [];
         let acceptedListingId: string | undefined;
         try {
           if (contractsSettled.status === "fulfilled" && contractsSettled.value.ok) {
@@ -759,8 +749,8 @@ export default function TenantMyPage({
 
         // 2단계: 방이 확정돼야 쏠 수 있는 두 요청 — 서로는 독립이라 병렬.
         // listings(매물 사진)는 기존처럼 accepted 계약이 있을 때만 요청한다(무의미한 전체 목록 당김 방지).
-        // 주의: listingId가 아니라 계약 존재로 게이트한다 — findTenantListingImage는 listingId가
-        // 없어도 방 정보(건물명·주소)로 폴백 매칭하므로 기존 동작을 좁히면 안 된다.
+        // 주의: listingId가 아니라 계약 존재로 게이트한다 — 매물 매칭은 listingId가 없어도
+        // 방 정보(건물명·주소)로 폴백하므로 사진과 옵션의 기존 조회 범위를 좁히면 안 된다.
         const [listingsSettled, leaseSettled] = await Promise.allSettled([
           contract
             ? fetch("/api/trade/listings", { cache: "no-store" })
@@ -774,11 +764,18 @@ export default function TenantMyPage({
           if (contract && listingsSettled.status === "fulfilled" && listingsSettled.value?.ok) {
             const listings = (await listingsSettled.value.json()) as TenantListingPhotoSummary[];
             if (Array.isArray(listings)) {
-              residenceImageUrl = findTenantListingImage(listings, acceptedListingId, selectedRoom);
+              const matchedListing = findTenantContractListing(
+                listings,
+                acceptedListingId,
+                selectedRoom,
+              );
+              residenceImageUrl = firstListingImage(matchedListing);
+              listingOptions = tenantContractOptions(matchedListing);
             }
           }
         } catch {
           residenceImageUrl = undefined;
+          listingOptions = [];
         }
 
         try {
@@ -797,6 +794,7 @@ export default function TenantMyPage({
             address: selectedRoom.address,
             landlordId: selectedRoom.landlordId,
             imageUrl: residenceImageUrl,
+            listingOptions,
             contract,
             leaseContract
           });
@@ -931,6 +929,8 @@ export default function TenantMyPage({
   const [isBillLoading, setIsBillLoading] = useState(true);
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
+  const [isPaymentHistoryOpen, setIsPaymentHistoryOpen] = useState(false);
+  const paymentHistoryButtonRef = useRef<HTMLButtonElement>(null);
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
   const [landlordUnreadCount, setLandlordUnreadCount] = useState(0);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
@@ -964,6 +964,11 @@ export default function TenantMyPage({
   const showToast = (message: string) => {
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
+  };
+
+  const closePaymentHistory = () => {
+    setIsPaymentHistoryOpen(false);
+    window.requestAnimationFrame(() => paymentHistoryButtonRef.current?.focus());
   };
 
   const loadLandlordUnreadCount = useCallback(async (roomId: string): Promise<number> => {
@@ -1037,6 +1042,14 @@ export default function TenantMyPage({
       cancelled = true;
     };
   }, [selectedTenantRoomId]);
+
+  // 리마운트 안전망 — 초안 폼 플래그(모듈 스토어)는 살아 있는데 요청 시트(로컬 상태)는 닫힌 채
+  // 시작하면, 모바일 CSS(--open --draft)가 AI 패널·AI 버튼·바텀탭을 전부 숨겨 복귀 불가가 된다.
+  // 탭 전환으로 이 컴포넌트만 리마운트된 경우가 여기에 해당한다(새로고침은 스토어 복원이 막는다).
+  useEffect(() => {
+    if (getTenantAiAssistantState().draftFormOpen) markTenantAiDraftFormOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 1회 정리
+  }, []);
 
   // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
   const ai = useTenantAiAssistant({
@@ -1804,6 +1817,17 @@ export default function TenantMyPage({
                 </span>
               ) : null}
             </button>
+            <button
+              ref={paymentHistoryButtonRef}
+              className="tenant-payment-history-button"
+              type="button"
+              onClick={() => setIsPaymentHistoryOpen(true)}
+              aria-haspopup="dialog"
+              aria-controls="tenant-payment-history-dialog"
+            >
+              <CreditCard size={18} strokeWidth={2.5} aria-hidden="true" />
+              납부 내역
+            </button>
           </div>
         </div>
       </section>
@@ -1932,6 +1956,10 @@ export default function TenantMyPage({
         />
       ) : null}
 
+      {isPaymentHistoryOpen ? (
+        <TenantPaymentHistoryModal onClose={closePaymentHistory} />
+      ) : null}
+
       {isContractSheetOpen ? (
         <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsContractSheetOpen(false)}>
           <section
@@ -1941,7 +1969,7 @@ export default function TenantMyPage({
             aria-labelledby="contract-sheet-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sheet-handle" aria-hidden="true" />
+            <SheetDragHandle onDismiss={() => setIsContractSheetOpen(false)} />
             <header>
               <div>
                 <span>전자 계약서</span>
@@ -1968,6 +1996,22 @@ export default function TenantMyPage({
               ))}
             </dl>
 
+            <section
+              className="tenant-contract-options"
+              aria-labelledby="tenant-contract-options-title"
+            >
+              <h3 id="tenant-contract-options-title">옵션 (선택)</h3>
+              {tenancy && tenancy !== "loading" && tenancy.listingOptions.length > 0 ? (
+                <ul className="tenant-contract-option-list" role="list">
+                  {tenancy.listingOptions.map((option) => (
+                    <li key={option}>{option}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="tenant-contract-options-empty">등록된 옵션이 없습니다.</p>
+              )}
+            </section>
+
             <button className="notification-action" type="button" onClick={() => setIsContractSheetOpen(false)}>
               확인
             </button>
@@ -1984,7 +2028,7 @@ export default function TenantMyPage({
             aria-labelledby="tenant-request-detail-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sheet-handle" aria-hidden="true" />
+            <SheetDragHandle onDismiss={closeRepairDetailSheet} />
             <header>
               <div>
                 <span>민원/하자 접수 내용</span>
@@ -2105,7 +2149,7 @@ export default function TenantMyPage({
             aria-labelledby="tenant-request-sheet-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sheet-handle" aria-hidden="true" />
+            <SheetDragHandle onDismiss={() => closeRequestSheet()} />
             <header>
               <div>
                 <span>민원/하자 신규 요청</span>

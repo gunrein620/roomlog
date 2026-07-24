@@ -33,7 +33,9 @@ test("RoomLog furnishing uses the shared owner simulation while standalone keeps
   assert.match(viewerSource, /beginRoomLogFurnitureSimulation/);
   assert.match(viewerSource, /if \(roomLogFlowRequested && roomLogContext\)/);
   assert.match(viewerSource, /currentFurniturePlacements\(\)/);
-  assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{[\s\S]*?roomLogFlowRequested[\s\S]*?enterFurnishingStage/);
+  // 클릭 핸들러는 openFurniturePlacement()로 감싸고, 그 안에서 roomLog 플로우면 enterFurnishingStage로 간다.
+  assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{[\s\S]*?openFurniturePlacement\(\)/);
+  assert.match(viewerSource, /async function openFurniturePlacement\(\)\s*\{[\s\S]*?roomLogFlowRequested[\s\S]*?enterFurnishingStage/);
   assert.match(viewerSource, /if \(!furnitureCatalog\.length \|\| !furnitureCatalogPromise\)/);
 });
 
@@ -45,8 +47,8 @@ test("RoomLog furnishing captures and restores a request-scoped editor snapshot"
   assert.match(viewerSource, /reviewEditor\.getCalibration\(\)/);
   assert.match(viewerSource, /async function restoreRoomLogEditorSnapshot\(\)/);
   assert.match(viewerSource, /readRoomLogFurnitureDraft\(window\.localStorage, roomLogContext\.requestId\)/);
-  assert.match(viewerSource, /await reviewEditor\.load\(snapshot\.review\)/);
-  assert.match(viewerSource, /await loadPlan\(composedPlan\)/);
+  assert.match(viewerSource, /await reviewEditor\.load\(restorePayload\.review\)/);
+  assert.match(viewerSource, /await loadPlan\(restorePayload\.composedPlan\)/);
   assert.match(viewerSource, /await restoreRoomLogEditorSnapshot\(\)/);
 });
 

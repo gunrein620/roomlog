@@ -80,6 +80,9 @@ export function parseTenantAiAssistantState(
       draft: typeof saved.draft === "string" ? saved.draft : "",
       sessionId: typeof saved.sessionId === "string" ? saved.sessionId : null,
       busy: false,
+      // 요청 시트는 복원 시 항상 닫힌 채 시작하므로 초안 폼 플래그도 항상 닫힘으로 맞춘다
+      // (구버전 저장본에 남아 있어도 무시 — 켜진 채 복원되면 모바일 복귀 불가 데드락).
+      draftFormOpen: false,
     };
   } catch {
     return initialTenantAiAssistantState;
@@ -108,7 +111,10 @@ function restoreState(storageKey: string) {
 function persistState(next: TenantAiAssistantStoreState) {
   if (typeof window === "undefined" || !activeStorageKey) return;
   try {
-    const { busy: _busy, ...persistable } = next;
+    // draftFormOpen은 저장하지 않는다 — 짝이 되는 요청 시트(isRequestSheetOpen)는 컴포넌트
+    // 로컬 상태라 새로고침이면 항상 닫힌 채 시작하는데, 이 플래그만 true로 복원되면 모바일에서
+    // AI 패널·AI 버튼·바텀탭이 전부 숨는 복귀 불가 상태가 된다.
+    const { busy: _busy, draftFormOpen: _draftFormOpen, ...persistable } = next;
     window.sessionStorage.setItem(activeStorageKey, JSON.stringify(persistable));
   } catch {
     // 저장할 수 없는 브라우저에서도 현재 메모리 세션은 유지한다.

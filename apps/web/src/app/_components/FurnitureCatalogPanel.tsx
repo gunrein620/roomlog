@@ -12,13 +12,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   furnitureCategoryLabel,
   furnitureImageUrl,
-  listFurnitureCategoryFilters
+  isLargeFurnitureAsset,
+  listFurnitureCategoryFilters,
+  loadPolyhavenCatalog
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem } from "../floor-plan-3d/room-model/types";
 import { fetchTenantFurniture, TenantFurnitureApiError } from "@/lib/tenant-furniture-api";
 import { TENANT_FURNITURE_CATEGORY_ICONS, tenantFurnitureName } from "../tenant/furniture/furniture-labels";
 
-export type FurnitureSourceTab = "mine" | "catalog";
+// poly = Poly Haven CC0 공개 카탈로그. mine/catalog는 호스트가 catalogItems로 주지만, poly는 두
+// 호스트가 동일하게 쓰는 공용 자산이라 이 패널이 내부에서 로딩·에러·재시도까지 소유한다.
+export type FurnitureSourceTab = "mine" | "catalog" | "poly";
 
 /** TenantFurniture(임차인 소유 가구 1점)를 FurnitureCatalogItem 형태로 변환 — 두 호스트가 각자의
  * 배치 초안 생성 함수(createFurnitureModel/createMitunetFloorFurnitureDraft)에 넘길 재료다. */
@@ -37,7 +41,7 @@ export function tenantFurnitureCatalogItem(furniture: TenantFurniture): Furnitur
 }
 
 function catalogSearchText(item: FurnitureCatalogItem) {
-  return `${item.name} ${item.brand} ${item.category ?? ""} ${item.furniture_id}`.toLowerCase();
+  return `${item.name} ${item.brand} ${item.category ?? ""} ${item.furniture_id} ${(item.tags ?? []).join(" ")}`.toLowerCase();
 }
 
 /** 내 가구 목록 로딩 — 두 호스트가 동일하게 필요로 하던 fetch+필터+에러 처리를 여기 하나로 묶는다.
@@ -121,24 +125,53 @@ export default function FurnitureCatalogPanel({
   const categoryTabsRef = useRef<HTMLDivElement>(null);
   const [categoryScroll, setCategoryScroll] = useState({ left: 0, max: 0 });
 
-  const categoryFilters = useMemo(() => listFurnitureCategoryFilters(catalogItems), [catalogItems]);
+  // Poly Haven 카탈로그 — poly 탭이 처음 열릴 때 한 번 로딩한다(공용 자산이라 패널이 소유).
+  const [polyCatalog, setPolyCatalog] = useState<FurnitureCatalogItem[]>([]);
+  const [polyLoading, setPolyLoading] = useState(false);
+  const [polyError, setPolyError] = useState<string | null>(null);
+  const [polyRetry, setPolyRetry] = useState(0);
+
+  useEffect(() => {
+    if (sourceTab !== "poly" || polyCatalog.length > 0) return;
+    let active = true;
+    setPolyLoading(true);
+    setPolyError(null);
+    void loadPolyhavenCatalog()
+      .then((items) => {
+        if (active) setPolyCatalog(items);
+      })
+      .catch(() => {
+        if (active) setPolyError("폴리 가구를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (active) setPolyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [sourceTab, polyCatalog.length, polyRetry]);
+
+  // catalog/poly 탭이 실제로 그릴 목록 — 검색·카테고리·그리드는 이 활성 목록을 대상으로 한다.
+  const activeCatalog = sourceTab === "poly" ? polyCatalog : catalogItems;
+
+  const categoryFilters = useMemo(() => listFurnitureCategoryFilters(activeCatalog), [activeCatalog]);
   const categoryCounts = useMemo(
     () =>
-      catalogItems.reduce<Record<string, number>>((counts, item) => {
+      activeCatalog.reduce<Record<string, number>>((counts, item) => {
         const category = furnitureCategoryLabel(item);
         counts[category] = (counts[category] ?? 0) + 1;
         return counts;
       }, {}),
-    [catalogItems]
+    [activeCatalog]
   );
   const filteredCatalog = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
-    return catalogItems.filter((item) => {
+    return activeCatalog.filter((item) => {
       const matchesCategory = categoryFilter === "전체" || furnitureCategoryLabel(item) === categoryFilter;
       const matchesQuery = !normalizedQuery || catalogSearchText(item).includes(normalizedQuery);
       return matchesCategory && matchesQuery;
     });
-  }, [catalogItems, categoryFilter, searchQuery]);
+  }, [activeCatalog, categoryFilter, searchQuery]);
   const visibleCatalog = useMemo(() => filteredCatalog.slice(0, catalogLimit), [filteredCatalog, catalogLimit]);
 
   // 검색어·카테고리가 바뀌면 "더 보기" 진행분을 리셋 — 안 그러면 새 필터 결과인데 이전 한도가
@@ -156,7 +189,7 @@ export default function FurnitureCatalogPanel({
   }, []);
 
   useEffect(() => {
-    if (sourceTab !== "catalog") return;
+    if (sourceTab === "mine") return;
     const tabList = categoryTabsRef.current;
     if (!tabList) return;
 
@@ -195,6 +228,15 @@ export default function FurnitureCatalogPanel({
           type="button"
         >
           등록 가구 <small>{catalogItems.length}</small>
+        </button>
+        <button
+          aria-selected={sourceTab === "poly"}
+          className={sourceTab === "poly" ? "active" : ""}
+          onClick={() => onSourceTabChange("poly")}
+          role="tab"
+          type="button"
+        >
+          폴리 <small>{polyCatalog.length || 519}</small>
         </button>
       </div>
 
@@ -244,7 +286,22 @@ export default function FurnitureCatalogPanel({
           )}
         </section>
       ) : (
-        <section aria-label="등록 가구" className="listing-tour-furniture-source-panel">
+        <section
+          aria-label={sourceTab === "poly" ? "폴리" : "등록 가구"}
+          className="listing-tour-furniture-source-panel"
+        >
+          {sourceTab === "poly" ? (
+            <p className="listing-tour-furniture-source-copy">Poly Haven · CC0</p>
+          ) : null}
+          {sourceTab === "poly" && polyLoading ? (
+            <p className="listing-tour-furniture-source-copy" role="status">폴리 가구를 불러오는 중입니다.</p>
+          ) : null}
+          {sourceTab === "poly" && polyError ? (
+            <div className="listing-tour-furniture-source-empty">
+              <p>{polyError}</p>
+              <button onClick={() => setPolyRetry((value) => value + 1)} type="button">다시 시도</button>
+            </div>
+          ) : null}
           <div className="listing-tour-furniture-search">
             <input
               aria-label="가구 검색"
@@ -271,7 +328,7 @@ export default function FurnitureCatalogPanel({
                 type="button"
               >
                 {category}
-                <small>{category === "전체" ? catalogItems.length : categoryCounts[category] ?? 0}</small>
+                <small>{category === "전체" ? activeCatalog.length : categoryCounts[category] ?? 0}</small>
               </button>
             ))}
           </div>
@@ -300,6 +357,7 @@ export default function FurnitureCatalogPanel({
                     type="button"
                   >
                     <span className="listing-tour-furniture-thumb" style={{ backgroundColor: item.color }}>
+                      <span aria-hidden="true" className="furniture-thumb-fallback">{item.name.slice(0, 1)}</span>
                       {imageUrl ? (
                         <img
                           alt=""
@@ -313,7 +371,10 @@ export default function FurnitureCatalogPanel({
                       ) : null}
                     </span>
                     <strong>{item.name}</strong>
-                    <small>{item.brand}</small>
+                    <small>
+                      {item.brand}
+                      {isLargeFurnitureAsset(item) ? ` · 대용량 ${Math.round((item.assetBytes ?? 0) / 1024 / 1024)}MB` : ""}
+                    </small>
                   </button>
                 );
               })}

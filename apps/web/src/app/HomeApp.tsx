@@ -75,6 +75,7 @@ import {
 import { MobileRoleMenu } from "./_components/MobileRoleMenu";
 import TourActionBell from "./_components/TourActionBell";
 import TourUploadBanner from "./_components/TourUploadBanner";
+import { SheetDragHandle } from "./_components/SheetDragHandle";
 import { getRealtimeSocket, resetRealtimeSocket } from "@/lib/realtime-client";
 import { formatTenantLandlordUnreadCount } from "@/lib/tenant-landlord-conversation";
 import { tenantLandlordNavLabel } from "@/lib/tenant-landlord-nav-unread";
@@ -1168,7 +1169,7 @@ function FilterBottomSheet({
   return (
     <div className="filter-sheet-backdrop" role="presentation" onClick={onClose}>
       <section className="filter-sheet" aria-modal="true" role="dialog" aria-labelledby="filter-sheet-title" onClick={(event) => event.stopPropagation()}>
-        <div className="sheet-handle" aria-hidden="true" />
+        <SheetDragHandle onDismiss={onClose} />
         <header>
           <div>
             <h2 id="filter-sheet-title">매물 유형</h2>
@@ -1278,7 +1279,7 @@ function SearchBottomSheet({
   return (
     <div className="search-sheet-backdrop" role="presentation" onClick={onClose}>
       <section className="search-sheet" role="dialog" aria-modal="true" aria-labelledby="search-sheet-title" onClick={(event) => event.stopPropagation()}>
-        <div className="sheet-handle" aria-hidden="true" />
+        <SheetDragHandle onDismiss={onClose} />
         <header>
           <div>
             <span>통합검색</span>
@@ -1413,7 +1414,7 @@ function SortBottomSheet({
   return (
     <div className="sort-sheet-backdrop" role="presentation" onClick={onClose}>
       <section className="sort-sheet" role="dialog" aria-modal="true" aria-labelledby="sort-sheet-title" onClick={(event) => event.stopPropagation()}>
-        <div className="sheet-handle" aria-hidden="true" />
+        <SheetDragHandle onDismiss={onClose} />
         <header>
           <div>
             <span>매물 정렬</span>
@@ -1462,7 +1463,7 @@ function PriceBottomSheet({
   return (
     <div className="filter-sheet-backdrop" role="presentation" onClick={onClose}>
       <section className="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="price-sheet-title" onClick={(event) => event.stopPropagation()}>
-        <div className="sheet-handle" aria-hidden="true" />
+        <SheetDragHandle onDismiss={onClose} />
         <header>
           <div>
             <h2 id="price-sheet-title">가격대</h2>
@@ -1565,7 +1566,7 @@ function NotificationSheet({
   return (
     <div className="notification-sheet-backdrop" role="presentation" onClick={onClose}>
       <section className="notification-sheet" role="dialog" aria-modal="true" aria-labelledby="notification-sheet-title" onClick={(event) => event.stopPropagation()}>
-        <div className="sheet-handle" aria-hidden="true" />
+        <SheetDragHandle onDismiss={onClose} />
         <header>
           <div>
             <span>알림센터</span>
