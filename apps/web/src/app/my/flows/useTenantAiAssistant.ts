@@ -152,10 +152,6 @@ export function useTenantAiAssistant({
     if (!trimmed || busy) return false;
 
     appendMessage("tenant", trimmed);
-    appendMessage(
-      "assistant",
-      "말씀해 주신 내용으로 접수 초안을 작성하겠습니다. 잠시만 기다려 주세요.",
-    );
     setTenantAiBusy(true);
     try {
       const sessionId = await ensureSessionId();
@@ -165,7 +161,14 @@ export function useTenantAiAssistant({
         announceComplaintFiled(result.autoFinalized);
         return true;
       }
-      if (result.session.draft.title.trim() && result.session.draft.summary.trim()) {
+      // 접수 폼은 세입자가 이번 발화로 접수를 요청했을 때만 띄운다. 초안 자체는
+      // 계약·납부 같은 일반 질문 턴에도 항상 만들어지므로 초안 존재 여부로 열면
+      // 모든 답변마다 신규 요청서가 뜬다.
+      if (
+        result.session.draft.filingIntent &&
+        result.session.draft.title.trim() &&
+        result.session.draft.summary.trim()
+      ) {
         setTenantAiDraftForRequest(result.session.draft);
         return true;
       }
@@ -345,6 +348,8 @@ export function useTenantAiAssistant({
       if (result.autoFinalized) {
         announceComplaintFiled(result.autoFinalized);
       } else if (
+        // 텍스트 경로와 동일 — 접수 의사가 확인된 턴에만 접수 폼을 띄운다.
+        result.session.draft.filingIntent &&
         result.session.draft.title.trim() &&
         result.session.draft.summary.trim()
       ) {

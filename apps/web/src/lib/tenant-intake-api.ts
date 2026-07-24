@@ -23,6 +23,8 @@ export type TenantIntakeDraft = {
   occurredAt?: string;
   availableTimes?: string;
   responsibilityHint?: TenantIntakeResponsibilityHint;
+  // 가장 최근 세입자 발화가 접수를 명시적으로 요청했는지 — 접수 폼을 띄울지 판단하는 게이트.
+  filingIntent?: boolean;
   readyToFinalize: boolean;
   requiredInfo: string[];
   nextQuestions: string[];

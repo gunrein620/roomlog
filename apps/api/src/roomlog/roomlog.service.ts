@@ -11771,6 +11771,14 @@ export class RoomlogService implements OnModuleDestroy {
     const text = tenantMessages
       .map((message) => [message.messageText, message.transcriptText].filter(Boolean).join(" "))
       .join(" ");
+    // 접수 의사는 스레드 누적이 아니라 마지막 발화로만 판정한다 — 누적 텍스트로 보면
+    // 한 번 "접수해줘"라고 한 뒤 모든 턴이 filingIntent=true가 되어 클라이언트가
+    // 매 턴 접수 폼을 다시 띄운다.
+    const latestTenantText = tenantMessages.length
+      ? [tenantMessages.at(-1)?.messageText, tenantMessages.at(-1)?.transcriptText]
+          .filter(Boolean)
+          .join(" ")
+      : "";
     const hasPhoto = tenantMessages.some((message) => message.attachmentUrls.length > 0);
     const room = this.store.rooms.find((item) => item.id === session.roomId);
     const location = this.extractLocation(text) || room?.roomNo;
@@ -11886,7 +11894,7 @@ export class RoomlogService implements OnModuleDestroy {
       requiredInfo,
       photoRequested,
       readyToFinalize: requiredInfo.length === 0,
-      filingIntent: this.detectFilingIntent(text),
+      filingIntent: this.detectFilingIntent(latestTenantText),
       location,
       occurredAt,
       availableTimes,
@@ -12343,7 +12351,7 @@ export class RoomlogService implements OnModuleDestroy {
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
       "- draft.readyToFinalize는 증상, 위치, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
       "- 긴급도(priority)와 안전 위험 여부는 세입자에게 묻지 않습니다. 대화 내용으로 시스템이 알아서 판단하는 값이니 질문도, 확인 요청도 하지 않습니다.",
-      "- draft.filingIntent는 세입자가 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했다면 false입니다.",
+      "- draft.filingIntent는 가장 최근 세입자 메시지에서 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했거나, 접수 요청이 이전 턴에만 있었다면 false입니다.",
       "- 세입자가 접수를 요청하면 그 턴에 바로 접수하지 말고 접수 초안을 한 번 보여줍니다: 제목, 내용 요약, 위치를 짧게 정리하고 '이대로 접수할까요? 수정할 부분이 있으면 말씀해 주세요'라고 묻습니다. 사진이나 부가 정보가 없어도 초안은 만들고, readyToFinalize는 true로 둡니다. 초안에 긴급도는 적지 않습니다.",
       "- 세입자가 초안의 특정 부분(제목, 내용, 위치, 방문 시간) 수정을 요청하면 그 부분만 반영해 초안을 갱신하고, 갱신된 초안을 다시 짧게 보여준 뒤 승인을 기다립니다.",
       "- 세입자가 '승인', '진행해', '접수해줘'처럼 짧게 동의한 턴에만 시스템이 자동 접수합니다. 그 턴에는 접수를 진행했다고 안내합니다.",

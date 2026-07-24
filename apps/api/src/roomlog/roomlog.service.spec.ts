@@ -3889,6 +3889,37 @@ describe("RoomlogService", () => {
     assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "FINALIZED");
   });
 
+  it("marks filing intent only on the turn where the tenant actually asks to file", async () => {
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    const describeReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "301호 거실 벽지에 곰팡이가 생긴 것 같아요.",
+      inputMode: "CHAT"
+    });
+
+    assert.equal(describeReply.session.draft.filingIntent, false);
+
+    // 25자 초과라 approval turn이 아니고, 초안 filingIntent만 true가 되어야 한다.
+    const fileReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "네 그러면 방금 말씀드린 곰팡이 문제로 민원 접수를 진행해 주시면 좋겠습니다.",
+      inputMode: "CHAT"
+    });
+
+    assert.equal(fileReply.autoFinalized, undefined);
+    assert.equal(fileReply.session.draft.filingIntent, true);
+
+    // 접수 요청이 이전 턴에만 있으면 filingIntent는 다시 false — 클라이언트가
+    // 매 턴 접수 폼을 다시 띄우지 않게 하는 계약이다.
+    const followUpReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "아 참고로 다음 주 화요일에는 제가 집에 없어서 방문이 어려워요. 다른 요일로 부탁드려요.",
+      inputMode: "CHAT"
+    });
+
+    assert.equal(followUpReply.autoFinalized, undefined);
+    assert.equal(followUpReply.session.draft.filingIntent, false);
+  });
+
   it("detects duplicate intake candidates and can attach a consultation to an existing ticket", async () => {
     const service = new RoomlogService();
     const original = service.createComplaint("tenant-demo", {

@@ -26,6 +26,12 @@
       "autoPort": false
     },
     {
+      "name": "web-attach-3200",
+      "url": "http://localhost:3200",
+      "port": 3200,
+      "autoPort": false
+    },
+    {
       "name": "web-local",
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/next-with-root-env.mjs", "dev", "-p", "3200"],
