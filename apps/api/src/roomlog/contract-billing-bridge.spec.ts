@@ -143,6 +143,34 @@ describe("trade contract billing bridge", () => {
     assert.equal(current?.paymentDay, 25);
   });
 
+  it("returns empty payment history before a future contract starts", () => {
+    const service = new RoomlogService();
+    const { contract } = createTradeDraft(service, "future-payment-history");
+    service.updateManagerContractManualValues("landlord-demo", contract.id, {
+      maintenanceFee: 200_000,
+      paymentDay: 1,
+      startDate: "2026-09-01",
+      endDate: "2028-09-01",
+    });
+    service.confirmManagerContractReview("landlord-demo", contract.id, {
+      confirmNeedsCheck: true,
+    });
+
+    const history = service.getTenantPaymentHistory(
+      "tenant-demo",
+      "2026-07-24",
+      "2026-07-24",
+      new Date("2026-07-24T00:00:00+09:00"),
+    );
+
+    assert.deepEqual(history.bounds, {
+      min: "2026-07-24",
+      max: "2026-07-24",
+      maxDays: 366,
+    });
+    assert.deepEqual(history.records, []);
+  });
+
   it("awaits manager confirmation projection and reprojects confirmed state on retry", async () => {
     let rejectConfirmedSnapshot = true;
     let targetContractId: string | undefined;
