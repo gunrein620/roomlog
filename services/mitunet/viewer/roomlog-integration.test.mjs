@@ -5,6 +5,7 @@ import {
   beginRoomLogFurnitureSimulation,
   buildRoomLogCompletion,
   buildRoomLogEditorResumeUrl,
+  furnitureRelativePathFromModelUrl,
   readRoomLogFurnitureDraft,
   sendRoomLogCompletion,
 } from "./roomlog-integration.mjs";
@@ -205,4 +206,45 @@ test("final RoomLog save keeps furniture auto-saved before returning through 2D 
   } finally {
     globalThis.window = originalWindow;
   }
+});
+
+test("normalizes owner catalog modelUrls back to relative nested GLB paths for re-entry", () => {
+  const s3Base = "https://woozu-static-file.s3.ap-northeast-2.amazonaws.com/furniture";
+
+  // 로컬 base는 인자 없이도 벗겨진다.
+  assert.equal(
+    furnitureRelativePathFromModelUrl("/floor-plan-3d/furniture-assets/sofa/nyhamn.glb"),
+    "sofa/nyhamn.glb",
+  );
+
+  // 등록 가구/폴리의 S3 절대 URL은 설정된 base로 상대경로가 된다 — 재진입 검증이 통과한다.
+  assert.equal(
+    furnitureRelativePathFromModelUrl(`${s3Base}/sofa/nyhamn.glb`, [s3Base]),
+    "sofa/nyhamn.glb",
+  );
+  assert.equal(
+    furnitureRelativePathFromModelUrl(`${s3Base}/polyhaven-cc0/chair.glb`, [`${s3Base}/`]),
+    "polyhaven-cc0/chair.glb",
+  );
+
+  // 정규화한 상대경로는 mapFurniturePlacements 검증을 통과한다(빈 세그먼트 없음).
+  const relativePath = furnitureRelativePathFromModelUrl(`${s3Base}/sofa/nyhamn.glb`, [s3Base]);
+  assert.doesNotThrow(() =>
+    buildRoomLogCompletion(context, plan, "plan", [
+      { id: "chair", relativePath, position: [1, 0, 1], rotationY: 0, sizeMm: { width: 300, height: 500, depth: 100 } },
+    ]),
+  );
+
+  // 재진입 실패를 재현: 정규화 전 절대 URL relativePath는 검증에서 throw 한다.
+  assert.throws(
+    () =>
+      buildRoomLogCompletion(context, plan, "plan", [
+        { id: "chair", relativePath: `${s3Base}/sofa/nyhamn.glb`, position: [1, 0, 1], rotationY: 0, sizeMm: { width: 300, height: 500, depth: 100 } },
+      ]),
+    /nested GLB asset/,
+  );
+
+  // 알 수 없는 base면 원본을 그대로 돌려준다(기존 동작 보존).
+  assert.equal(furnitureRelativePathFromModelUrl("chair.glb"), "chair.glb");
+  assert.equal(furnitureRelativePathFromModelUrl(""), "");
 });

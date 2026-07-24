@@ -9900,7 +9900,7 @@ export class RoomlogService implements OnModuleDestroy {
       .sort((left, right) => left.localeCompare(right))[0];
 
     if (contractStart) {
-      return contractStart;
+      return contractStart > today ? today : contractStart;
     }
 
     return (
