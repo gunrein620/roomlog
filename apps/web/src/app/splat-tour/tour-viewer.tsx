@@ -1,7 +1,7 @@
 "use client";
 
-// 조립 셸 — Canvas 안에 SplatScene+TourCamera, 밖에 TourMinimap과 프리셋 버튼 바를 둔다.
-// 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
+// 조립 셸 — Canvas 안에 SplatScene+TourCamera, 밖에 프리셋 버튼 바를 둔다.
+// 각 조각(SplatScene/TourCamera)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
 import { Armchair, Camera, Check, ChevronDown, RotateCcw, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
@@ -33,8 +33,6 @@ import {
 } from "./splat-plan-shape";
 import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
-import { TourMinimap } from "./tour-minimap";
-import { normalizeWorldToMinimap } from "./tour-minimap-geometry";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset, resolveAssetFileUrl, updateSplatAssetSpawnView } from "@/lib/splat-asset-api";
 import { resolveTourSpawnView } from "./tour-spawn-view";
@@ -63,28 +61,6 @@ const SPAWN_VIEW: SpawnView = {
   target: [0.22, 0.477, -2.505]
 };
 
-function clamp01to100(value: number): number {
-  return Math.min(100, Math.max(0, value));
-}
-
-// 월드(splat 배치) 바닥좌표 → 미니맵 정규화(%) 좌표. 실 도면 벽이 있으면 그 bbox(bounds)를
-// 기준으로 매핑하고, 없으면 데모의 원점 중심 고정 배치(SPLAT_CLIP_ROOM)로 매핑한다.
-//
-// 벽이 있을 땐 반드시 미니맵이 벽 발자국을 그릴 때 쓰는 것과 **같은** 규칙(normalizeWorldToMinimap:
-// 비율 유지 균등 스케일 + 6% 여백 + 짧은 변 중앙정렬)을 써야 한다. 여기서 축별 독립 스트레치를
-// 쓰면 정사각형이 아닌 방에서 카메라 점이 벽 바깥으로 벗어난다(3m×6m 방이면 벽은 28~72%만
-// 차지하는데 점은 0~100%를 훑는다).
-function worldToMinimapPercent(x: number, z: number, bounds: PlanBounds | null): { x: number; y: number } {
-  if (bounds && bounds.width > 0 && bounds.depth > 0) {
-    return normalizeWorldToMinimap(x, z, bounds);
-  }
-
-  return {
-    x: clamp01to100(((x + SPLAT_CLIP_ROOM.width / 2) / SPLAT_CLIP_ROOM.width) * 100),
-    y: clamp01to100(((z + SPLAT_CLIP_ROOM.depth / 2) / SPLAT_CLIP_ROOM.depth) * 100)
-  };
-}
-
 export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = {}) {
   const objectUrlRef = useRef<string | null>(null);
   const [src, setSrc] = useState(SPLAT_SRC);
@@ -110,7 +86,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
   // 조이스틱 아날로그 이동 입력. TourCamera가 매 프레임 ref.current를 읽어 WASD와 합산하므로
   // state가 아닌 ref로 들고 리렌더 없이 갱신한다(놓으면 0,0).
   const moveInputRef = useRef<TourMoveInput>({ forward: 0, strafe: 0 });
-  const [minimapPosition, setMinimapPosition] = useState<{ x: number; y: number } | null>(null);
   const [showFurniture, setShowFurniture] = useState(true);
   const [isFurnitureCatalogOpen, setIsFurnitureCatalogOpen] = useState(false);
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
@@ -184,13 +159,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
   // 내 가구 로딩·필터(meshJobState==="DONE")·401 무음 처리는 FurnitureCatalogPanel과 공유하는
   // 훅으로 옮겼다(ListingTourRoom3D도 동일 로직을 쓰던 것을 중복 없이 합침).
   const tenantFurnitures = useTenantFurnitureCatalog(setFurnitureCatalogStatus);
-
-  const handleCameraMove = useCallback(
-    (position: [number, number, number]) => {
-      setMinimapPosition(worldToMinimapPercent(position[0], position[2], planBounds));
-    },
-    [planBounds]
-  );
 
   // 조이스틱 → 아날로그 이동 ref. null(놓음)이면 정지(0,0). setState가 아니라 ref 갱신이라
   // 매 프레임 리렌더가 없다 — TourCamera의 RAF 루프가 값을 직접 읽는다.
@@ -628,16 +596,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             backdrop-filter: blur(12px);
           }
 
-          /* 좌상단으로 이동(사용자 결정) — 같은 모퉁이의 .tour-hint(안내 배지) 아래에 붙인다.
-             .tour-hint는 4.2초 후 사라지지만 자리는 고정폭으로 비워둔다(사라진다고 미니맵이
-             따라 올라오면 등장 타이밍마다 레이아웃이 튀는 게 더 산만하다). */
-          .tour-minimap-dock {
-            position: absolute;
-            z-index: 2;
-            top: 64px;
-            left: 16px;
-          }
-
           .tour-hint {
             position: absolute;
             z-index: 2;
@@ -790,19 +748,23 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             --tour-scrollbar-thumb: #8a8a8a;
             position: absolute;
             z-index: 6;
-            bottom: 78px;
-            left: 16px;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: auto;
             display: grid;
-            width: min(390px, calc(100% - 32px));
-            height: min(620px, calc(100% - 110px));
+            width: min(420px, calc(100% - 24px));
             /* FurnitureCatalogPanel은 Fragment라 DOM엔 자기 자식(소스탭 + 탭 패널)이 그대로 펼쳐져
                붙는다 — 트랙 순서: 헤드·상태문구·소스탭·(스크롤 늘어나는)탭 패널·배치목록·안내/액션. */
             grid-template-rows: auto auto auto minmax(0, 1fr) minmax(0, auto) auto auto;
             gap: 12px;
             overflow: hidden;
-            padding: 16px;
+            padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
             border: 1px solid var(--line);
-            border-radius: 16px;
+            border-top: 0;
+            border-right: 0;
+            border-bottom: 0;
+            border-radius: 0;
             background: color-mix(in srgb, var(--paper) 94%, transparent);
             box-shadow: var(--shadow);
             backdrop-filter: blur(16px);
@@ -933,6 +895,12 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
             justify-items: end;
             gap: 8px;
             max-width: calc(100% - 32px);
+            transition: right 200ms ease;
+          }
+
+          /* 가구 드로어가 우측 풀하이트로 도킹되면 겹치므로 드로어 폭만큼 밀어낸다. */
+          .tour-dropzone-dock.is-furniture-open {
+            right: calc(min(420px, calc(100% - 24px)) + 16px);
           }
 
           .tour-dropzone-toggle {
@@ -1006,11 +974,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
               border-radius: 8px;
             }
 
-            .tour-minimap-dock {
-              top: 52px;
-              left: 10px;
-            }
-
             .tour-hint {
               top: 12px;
               left: 10px;
@@ -1043,18 +1006,28 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
               font-size: 13px;
             }
 
+            /* 좁은 세로 화면에서는 우측 풀하이트 도킹 대신 기존 하단 시트로 되돌린다 —
+               데스크톱 규칙(top/right/border 0)과 충돌하지 않도록 전부 명시적으로 재정의. */
             .tour-furniture-drawer {
+              top: auto;
+              right: auto;
               bottom: 68px;
               left: 10px;
               width: calc(100% - 20px);
               max-height: min(560px, calc(100% - 86px));
               padding: 13px;
+              border: 1px solid var(--line);
+              border-radius: 16px;
             }
 
             .tour-dropzone-dock {
               right: 10px;
               bottom: 66px;
               max-width: calc(100% - 20px);
+            }
+
+            .tour-dropzone-dock.is-furniture-open {
+              right: 10px;
             }
 
             .tour-dropzone-toggle {
@@ -1095,7 +1068,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
           activeId={activeId}
           moveInputRef={moveInputRef}
           onArrive={setActiveId}
-          onCameraMove={handleCameraMove}
           onPoseChange={isOwner ? handlePoseChange : undefined}
           presets={[]}
           spawnView={spawnView}
@@ -1143,18 +1115,6 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
       </p>
 
       {isCoarsePointer ? <TourJoystick onChange={handleJoystickChange} /> : null}
-
-      <div className="tour-minimap-dock">
-        <TourMinimap
-          activeId={activeId}
-          livePosition={minimapPosition}
-          onSelect={setActiveId}
-          planIsPlaceholder={planWallsState.source === "placeholder"}
-          presets={[]}
-          walls={planWalls}
-          bounds={planBounds}
-        />
-      </div>
 
       {isFurnitureCatalogOpen ? (
         <aside aria-label="가구 카탈로그" className="tour-furniture-drawer">
@@ -1222,7 +1182,7 @@ export default function TourViewer({ isOwner = false }: { isOwner?: boolean } = 
         </aside>
       ) : null}
 
-      <div className="tour-dropzone-dock">
+      <div className={`tour-dropzone-dock${isFurnitureCatalogOpen ? " is-furniture-open" : ""}`}>
         <button
           aria-expanded={isDropzoneOpen}
           className={`tour-dropzone-toggle${isDropzoneOpen ? " is-open" : ""}`}

@@ -209,19 +209,27 @@ const categories = [
   { label: "투룸", Icon: Bed },
   { label: "오피스텔", Icon: BriefcaseBusiness },
   { label: "아파트", Icon: Building2 },
-  { label: "3D 투어", Icon: Layers3 }
+  { label: "3D 투어", Icon: Layers3 },
+  // 카드의 골드 버스트 스티커("1인칭 투어")와 같은 신호(walkingTourAvailability)로 걸러진다.
+  { label: "1인칭 투어", Icon: Footprints }
 ];
 
 // 카테고리 ↔ 매물 매칭 — 홈 피드 필터와 카테고리 카드의 실제 매물 수가 같은 규칙을 쓴다.
-const listingMatchesCategory = (label: string, listing: Listing): boolean => {
+// walkingTourAvailability는 컴포넌트 state(비동기로 채워짐)라 순수 함수 인자로 받는다 — "1인칭
+// 투어" 라벨은 카드 스티커와 정확히 같은 신호를 써야 칩 필터·카드 표식이 어긋나지 않는다.
+const listingMatchesCategory = (
+  label: string,
+  listing: Listing,
+  walkingTourAvailability: Record<string, boolean>
+): boolean => {
   if (label === "전체") return true;
   if (label === "원룸" || label === "오피스텔" || label === "아파트") {
     return listing.roomType === label;
   }
   if (label === "투룸") return listing.spec.includes("투룸") || listing.spec.includes("복층");
-  if (label === "3D 투어") {
-    return listing.badges.includes("3D 투어") || listing.tags.includes("3D") || listing.tags.includes("3D 투어");
-  }
+  // "3D 배치" pill 스티커와 같은 신호 — 배지·태그 문자열(데모 데이터) 매칭이 아니라 실제 도면 보유 여부.
+  if (label === "3D 투어") return listingHas3DPlacement(listing);
+  if (label === "1인칭 투어") return Boolean(walkingTourAvailability[listing.listingNo]);
   return false;
 };
 
@@ -1827,6 +1835,8 @@ export default function HomeApp({
   const allListings = tradeListingsStatus === "ready"
     ? sortedTradeListings.map(tradeListingToCard)
     : [];
+  // "1인칭 투어" 칩 필터가 이 값을 요구할 때 전체 매물 대상 조회 트리거로 쓴다(아래 useEffect).
+  const allListingNos = allListings.map((listing) => listing.listingNo).join("|");
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const mapTopbarDisplaySearchValue = mapTopbarInputValueForArea(mapTopbarSearchValue);
   const hasVisibleMapContext = hasResolvedMapContext && mapQueryStatus !== "fallback";
@@ -1840,7 +1850,7 @@ export default function HomeApp({
     ...(activePriceLabel !== "전체" ? [activePriceLabel] : [])
   ].join(" · ");
   const visibleHomeListings = allListings.filter((listing) => {
-    const categoryMatches = listingMatchesCategory(activeCategory, listing);
+    const categoryMatches = listingMatchesCategory(activeCategory, listing, walkingTourAvailability);
     // 거래유형(월세/전세/매매/단기)끼리는 OR — 둘 다 켜면 "월세 또는 전세"다 (QA: every()로 AND 되던 버그).
     const dealTypeFilters = activeQuickFilters.filter((filter) => ["월세", "전세", "매매", "단기"].includes(filter));
     const dealTypeMatches =
@@ -1874,6 +1884,12 @@ export default function HomeApp({
     return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches && priceMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
+  // "1인칭 투어" 칩은 비동기로 채워지는 walkingTourAvailability가 필요하다 — 아직 전체 매물의
+  // 가용성 확인이 끝나지 않았으면 "결과 없음"이 아니라 "확인 중"으로 정직하게 보여준다.
+  const isWalkingTourCategoryPending =
+    activeCategory === "1인칭 투어" &&
+    tradeListingsStatus === "ready" &&
+    allListings.some((listing) => !(listing.listingNo in walkingTourAvailability));
   // 홈 피드는 페이지 단위로 나누고, 카운트 표기는 전체 기준을 유지한다.
   const homeListingPageCount = Math.max(1, Math.ceil(visibleHomeCount / HOME_LISTINGS_PAGE_SIZE));
   const currentHomeListingPage = Math.min(homeListingPage, homeListingPageCount);
@@ -1887,9 +1903,15 @@ export default function HomeApp({
     setHomeListingPage(1);
   }, [activeCategory, activeQuickFilters, searchKeyword, priceRange]);
   useEffect(() => {
-    const listingNos = homeFeedListingNos
-      .split("|")
-      .filter((listingNo) => listingNo.startsWith(TRADE_LISTING_NO_PREFIX));
+    // 평소엔 현재 페이지에 보이는 카드만 확인한다(스티커 표시용, 불필요한 조회 최소화). 다만
+    // "1인칭 투어" 칩이 활성일 땐 전체 매물의 가용성이 필요하다 — 그렇지 않으면 아직 확인 안 된
+    // 매물은 영원히 필터 밖에 머무는 순환 문제가 생긴다(필터가 값을 요구 → 값은 필터링된 피드에서만
+    // 채워짐 → 채워지기 전엔 피드가 비어 값이 안 채워짐).
+    const feedListingNos = homeFeedListingNos.split("|").filter(Boolean);
+    const targetListingNos = activeCategory === "1인칭 투어"
+      ? Array.from(new Set([...feedListingNos, ...allListingNos.split("|").filter(Boolean)]))
+      : feedListingNos;
+    const listingNos = targetListingNos.filter((listingNo) => listingNo.startsWith(TRADE_LISTING_NO_PREFIX));
     if (listingNos.length === 0) return;
 
     let cancelled = false;
@@ -1917,7 +1939,7 @@ export default function HomeApp({
     return () => {
       cancelled = true;
     };
-  }, [homeFeedListingNos, tradeListings]);
+  }, [homeFeedListingNos, tradeListings, activeCategory, allListingNos]);
   useEffect(() => {
     if (homeListingPage > homeListingPageCount) setHomeListingPage(homeListingPageCount);
   }, [homeListingPage, homeListingPageCount]);
@@ -2954,16 +2976,20 @@ export default function HomeApp({
                     ? "매물을 불러오는 중입니다"
                     : tradeListingsStatus === "error"
                       ? "매물 목록을 불러오지 못했습니다"
-                      : "조건에 맞는 추천 매물이 없습니다"}
+                      : isWalkingTourCategoryPending
+                        ? "1인칭 투어 가능 매물을 확인하는 중입니다"
+                        : "조건에 맞는 추천 매물이 없습니다"}
                 </strong>
                 <p>
                   {tradeListingsStatus === "loading"
                     ? "잠시만 기다려 주세요."
                     : tradeListingsStatus === "error"
                       ? "잠시 후 다시 시도해 주세요."
-                      : "필터를 줄이거나 지도에서 주변 매물을 더 넓게 확인해보세요."}
+                      : isWalkingTourCategoryPending
+                        ? "잠시만 기다려 주세요."
+                        : "필터를 줄이거나 지도에서 주변 매물을 더 넓게 확인해보세요."}
                 </p>
-                {tradeListingsStatus === "ready" ? (
+                {tradeListingsStatus === "ready" && !isWalkingTourCategoryPending ? (
                   <button type="button" onClick={() => {
                     setActiveCategory("오피스텔");
                     setActiveQuickFilters(["월세"]);
