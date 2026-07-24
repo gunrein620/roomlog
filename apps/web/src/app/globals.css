@@ -9513,7 +9513,9 @@ p {
 .tenant-payment-history-backdrop {
   position: fixed;
   inset: 0;
-  z-index: var(--z-overlay);
+  /* aria-modal 다이얼로그 — 하단 탭바(.bottom-tabs, z-index:40) 위로 덮어야
+     바텀시트 하단이 탭바에 가려 잘리지 않는다. --z-overlay(30)는 탭바보다 낮음. */
+  z-index: var(--z-modal);
   display: grid;
   place-items: center;
   padding: var(--space-xl);
@@ -9521,6 +9523,8 @@ p {
 }
 
 .tenant-payment-history-modal {
+  display: flex;
+  flex-direction: column;
   width: min(100%, var(--content-narrow-max));
   max-height: min(78dvh, var(--phone-h));
   overflow: hidden;
@@ -9533,6 +9537,7 @@ p {
 
 .tenant-payment-history-head {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-md);
@@ -9565,7 +9570,10 @@ p {
 }
 
 .tenant-payment-history-body {
-  max-height: calc(78dvh - var(--header-height));
+  /* flex 컬럼 안에서 남는 공간을 채우고 스크롤 — max-height를 헤더 높이로
+     역산하지 않아야 마지막 항목이 잘리거나 스크롤이 끝까지 안 닿는 문제가 없다. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: var(--space-xl);
 }
@@ -9677,7 +9685,8 @@ p {
   }
 
   .tenant-payment-history-body {
-    max-height: calc(100dvh - var(--header-height) - var(--space-xl));
+    /* 바텀시트 하단이 홈 인디케이터에 닿지 않도록 안전영역만큼 여백 */
+    padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
   }
 }
 
