@@ -120,7 +120,7 @@ test("accepts a floor-plan file immediately and processes it once live analysis 
 test("saves the current 3D or Floor surface for the RoomLog preview", () => {
   assert.match(
     viewerSource,
-    /const previewMode = currentView === "furnishing" \? "floor" : "source"/,
+    /const previewMode = \["floor", "furnishing"\]\.includes\(currentView\) \? "floor" : "source"/,
   );
   assert.match(viewerSource, /await buildRoomLogPreviewImage\(currentComposedPlan\?\.input_image_b64\)/);
 });
@@ -187,10 +187,10 @@ test("renders the camera toolbar as labelled icon buttons without moving the edi
   assert.match(viewerSource, /body\.view-3d:not\(\.upload-empty\)\s+\.camera-preset-row\s*\{\s*padding-bottom:\s*0;/);
 });
 
-test("places the furniture action in the bottom view switch instead of the stage card", () => {
+test("uses the bottom Floor view only for floor finish while the 3D toolbar starts furniture placement", () => {
   assert.match(
     viewerSource,
-    /id="view-switch"[\s\S]*?<button class="segment" id="furnish-btn"[^>]*>가구 배치<\/button>/,
+    /id="view-switch"[\s\S]*?<button class="segment" id="floor-btn"[^>]*data-view="floor"[^>]*>Floor<\/button>/,
   );
   assert.match(viewerSource, /data-view="original"[^>]*>2D<\/button>/);
   assert.match(viewerSource, /data-view="3d"[^>]*>3D<\/button>/);
@@ -198,13 +198,44 @@ test("places the furniture action in the bottom view switch instead of the stage
   assert.doesNotMatch(viewerSource, /다음:\s*가구 배치/);
   assert.doesNotMatch(viewerSource, /id="structure-btn"/);
   assert.doesNotMatch(viewerSource, /구조 확인/);
-  assert.match(viewerSource, /furnishButton\.hidden\s*=\s*false;/);
-  assert.match(viewerSource, /viewButtons\.forEach\(button => \{\s*button\.disabled = !hasDocument \|\| inFlight;/);
   assert.match(
     viewerSource,
-    /async function showFloorView\(\)\s*\{[\s\S]*?await showThreeDimensionalView\(\);[\s\S]*?await enterFurnishingStage\(\);/,
+    /viewButtons\.forEach\(button => \{\s*const canUseView = button\.dataset\.view === "original"\s*\? canShowOriginalView\(\)\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);\s*button\.disabled = !canUseView \|\| inFlight;/,
   );
-  assert.match(viewerSource, /button\.dataset\.view === "furnishing"\) showFloorView\(\);/);
+  assert.match(
+    viewerSource,
+    /async function showFloorView\(\)\s*\{[\s\S]*?currentView = "floor";[\s\S]*?setPlanFloorSurfaceVisible\(true\);[\s\S]*?setFurniturePanelOpen\(false\);/,
+  );
+  assert.doesNotMatch(
+    viewerSource.match(/async function showFloorView\(\)\s*\{[\s\S]*?\n\}/)?.[0] ?? "",
+    /enterFurnishingStage\(/,
+  );
+  assert.match(viewerSource, /button\.dataset\.view === "floor"\) showFloorView\(\);/);
+  assert.match(viewerSource, /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{\s*void openFurniturePlacement\(\);\s*\}\);/);
+});
+
+test("returns from Floor to 3D without replaying the 3D entry animation", () => {
+  assert.match(
+    viewerSource,
+    /const previousView = currentView;[\s\S]*?if \(viewChanged && !showingReview && previousView !== "floor"\) \{[\s\S]*?replayRiseAnimations\(animations, performance\.now\(\), reducedMotion\);/,
+  );
+});
+
+test("preserves the floor surface used to open furniture placement", () => {
+  assert.match(viewerSource, /const enteringFromFloor = currentView === "floor";/);
+  assert.match(
+    viewerSource,
+    /if \(enteringFromFloor\) \{[\s\S]*?await ensureRoomFloorMaterials\(\);/,
+  );
+  assert.match(viewerSource, /setFurnishingVisibility\(true, enteringFromFloor\);/);
+  assert.match(
+    viewerSource,
+    /function setFurnishingVisibility\(furnishing, showFloorFinish = furnishing\) \{[\s\S]*?setPlanFloorSurfaceVisible\(furnishing && showFloorFinish\);/,
+  );
+  assert.match(
+    viewerSource,
+    /beginRoomLogFurnitureSimulation\([\s\S]*?enteringFromFloor \? "floor" : "source"/,
+  );
 });
 
 test("keeps the furniture catalog below the 3D toolbar with eight compact items per page", () => {
@@ -244,7 +275,7 @@ test("dismisses the furniture toolbar when the simulation is clicked outside the
   );
 });
 
-test("keeps furniture placement available in both 3D and Floor while the slide drawer starts closed", () => {
+test("keeps the furniture drawer closed until the top toolbar starts placement", () => {
   assert.match(
     viewerSource,
     /id="furniture-panel-open"[^>]*aria-label="가구 배치 열기"[^>]*>[\s\S]*?data-lucide="armchair"[\s\S]*?<span>가구 배치<\/span>/,
@@ -266,10 +297,7 @@ test("keeps furniture placement available in both 3D and Floor while the slide d
     /function setFurniturePanelOpen\(open\)\s*\{[\s\S]*?clearTimeout\(furniturePanelCloseTimer\);[\s\S]*?requestAnimationFrame\(\(\) => furniturePanel\.classList\.add\("is-open"\)\);[\s\S]*?furniturePanelCloseTimer = window\.setTimeout/,
   );
   assert.match(viewerSource, /furniturePanelCloseButton\.addEventListener\("click", \(\) => setFurniturePanelOpen\(false\)\);/);
-  assert.match(
-    viewerSource,
-    /furniturePanelOpenButton\.addEventListener\("click", \(\) => \{[\s\S]*?setFurniturePanelOpen\(true\);[\s\S]*?void loadFurnitureCatalogForPlacement\(\);[\s\S]*?\}\);/,
-  );
+  assert.match(viewerSource, /async function openFurniturePlacement\(\)\s*\{[\s\S]*?await enterFurnishingStage\(\);[\s\S]*?setFurniturePanelOpen\(true\);/);
   assert.match(
     viewerSource,
     /function setFurniturePlacementVisibility\(visible\)\s*\{[\s\S]*?furnitureGroup\.visible = visible;[\s\S]*?placementPreviewGroup\.visible = visible;[\s\S]*?document\.body\.classList\.toggle\("view-furnishing", visible\);/,
@@ -284,7 +312,7 @@ test("keeps furniture placement available in both 3D and Floor while the slide d
   );
   assert.match(
     viewerSource,
-    /function isFurniturePlacementView\(\)\s*\{\s*return currentView === "3d" \|\| currentView === "furnishing";\s*\}/,
+    /function isFurniturePlacementView\(\)\s*\{\s*return currentView === "furnishing";\s*\}/,
   );
   assert.match(viewerSource, /function updateFurniturePreview\([\s\S]*?if \(!isFurniturePlacementView\(\) \|\| !pendingFurniture/);
   assert.match(viewerSource, /sceneCanvas\.addEventListener\("click", event => \{\s*if \(!isFurniturePlacementView\(\)\) return;/);
@@ -297,9 +325,109 @@ test("passes a restorable editor snapshot into the RoomLog owner furniture hando
     /const editorSnapshot = await buildRoomLogEditorSnapshot\(\);[\s\S]*?beginRoomLogFurnitureSimulation\([\s\S]*?editorSnapshot,[\s\S]*?\);/,
   );
   assert.match(viewerSource, /wall_mask_b64:\s*await blobToBase64\(wallMaskBlob\)/);
-  assert.match(viewerSource, /resumeView === "original" \? "original" : "3d"/);
+  assert.match(viewerSource, /if \(resumeView === "floor"\) \{[\s\S]*?await showFloorView\(\);[\s\S]*?\} else \{[\s\S]*?resumeView === "original" \? "original" : "3d"/);
   assert.match(viewerSource, /input_image_b64:\s*undefined/);
   assert.match(viewerSource, /input_image_b64:\s*snapshot\.review\.input_image_b64/);
+});
+
+test("returns to the saved 3D plan when an owner furniture draft has no editor snapshot", () => {
+  assert.match(viewerSource, /function planFromRoomLogFurnitureDraft\(draft\)/);
+  assert.match(viewerSource, /const mitunet = draft\?\.floorPlan\?\.mitunet;/);
+  assert.match(viewerSource, /if \(!Array\.isArray\(polygons\?\.wall\) \|\| polygons\.wall\.length === 0\) return null;/);
+  assert.match(viewerSource, /const fallbackPlan = planFromRoomLogFurnitureDraft\(draft\);/);
+  assert.match(viewerSource, /const hasRestorableEditorSnapshot = Boolean\(snapshot\?\.review && snapshot\?\.composedPlan\)/);
+  assert.match(viewerSource, /const snapshotRestorePayload = hasRestorableEditorSnapshot[\s\S]*?: null;/);
+  assert.match(viewerSource, /const restoreCandidates = \[snapshotRestorePayload, fallbackPlan\]\.filter\(Boolean\);/);
+  assert.match(viewerSource, /const rendered = await loadPlan\(restorePayload\.composedPlan\);/);
+});
+
+test("falls back to the saved 3D plan when restoring an editor snapshot fails", () => {
+  const restoreBody = viewerSource.split("async function restoreRoomLogEditorSnapshot()", 2)[1]
+    ?.split("async function enableStaticDemoMode()", 1)[0] ?? "";
+
+  assert.match(
+    restoreBody,
+    /const restoreCandidates = \[snapshotRestorePayload, fallbackPlan\]\.filter\(Boolean\);/,
+  );
+  assert.match(
+    restoreBody,
+    /for \(const restorePayload of restoreCandidates\) \{[\s\S]*?catch \(error\) \{[\s\S]*?continue;/,
+  );
+});
+
+test("keeps the view switch visible after restoring a 3D plan without an editor snapshot", () => {
+  assert.match(viewerSource, /const hasViewControls = hasDocument \|\| Boolean\(currentComposedPlan\);/);
+  assert.match(viewerSource, /viewControls\.hidden = !hasViewControls;/);
+  assert.match(
+    viewerSource,
+    /const canUseView = button\.dataset\.view === "original"\s*\? canShowOriginalView\(\)\s*:\ hasDocument \|\| Boolean\(currentComposedPlan\);/,
+  );
+  assert.match(
+    viewerSource,
+    /async function showThreeDimensionalView\(\) \{[\s\S]*?if \(inFlight \|\| \(!reviewDocument && !currentComposedPlan\)\) return;/,
+  );
+});
+
+test("keeps owner furniture available after a fallback 3D return", () => {
+  assert.match(viewerSource, /if \(!currentComposedPlan\) \{[\s\S]*?throw new Error/);
+  assert.match(viewerSource, /if \(!reviewEditor\?\.document \|\| !currentExtraction\) return undefined;/);
+  assert.match(viewerSource, /const editorSnapshot = await buildRoomLogEditorSnapshot\(\);[\s\S]*?beginRoomLogFurnitureSimulation\([\s\S]*?editorSnapshot,/);
+});
+
+test("restores saved owner furniture into the editor scene before returning to 3D or Floor", () => {
+  assert.match(
+    viewerSource,
+    /import \{[\s\S]*?FURNITURE_ASSET_BASE_URL,[\s\S]*?\} from "\/viewer-assets\/furniture-placement\.mjs";/,
+  );
+  assert.match(viewerSource, /function restoredFurnitureItem\(savedFurniture\)/);
+  assert.match(viewerSource, /async function restoreSavedFurniturePlacements\(savedFurnitures\)/);
+  assert.match(viewerSource, /const savedFurnitures = draft\?\.floorPlan\?\.furnitures;/);
+  assert.match(viewerSource, /await restoreSavedFurniturePlacements\(savedFurnitures\);/);
+  assert.match(viewerSource, /object\.position\.set\(position\[0\], position\[1\], position\[2\]\);/);
+  assert.match(viewerSource, /object\.rotation\.y = rotationY;/);
+});
+
+test("hides the upload landing while a RoomLog 3D return is restoring", () => {
+  assert.match(
+    viewerSource,
+    /const isRoomLogResume = search\.get\("integration"\) === "roomlog"[\s\S]*?&& hasRoomLogResumeView;/,
+  );
+  assert.match(
+    viewerSource,
+    /document\.body\.classList\.remove\("upload-empty"\);[\s\S]*?document\.body\.classList\.add\("roomlog-resuming"\);/,
+  );
+  assert.match(viewerSource, /body\.roomlog-resuming #roomlog-restore-loader\s*\{\s*display:\s*grid;/);
+  assert.match(
+    viewerSource,
+    /await restoreRoomLogEditorSnapshot\(\);[\s\S]*?document\.body\.classList\.remove\("roomlog-resuming"\);/,
+  );
+});
+
+test("consumes the RoomLog resume view so a browser refresh starts a new upload", () => {
+  assert.match(
+    viewerSource,
+    /window\.__roomLogResumeView = search\.get\("resumeView"\);[\s\S]*?search\.delete\("resumeView"\);[\s\S]*?window\.history\.replaceState/,
+  );
+  assert.match(
+    viewerSource,
+    /const resumeView = window\.__roomLogResumeView \?\? new URLSearchParams\(window\.location\.search\)\.get\("resumeView"\);/,
+  );
+  assert.match(viewerSource, /window\.sessionStorage\.removeItem\(resumeStorageKey\);/);
+});
+
+test("restores a valid RoomLog return even when the transient session marker is unavailable", () => {
+  assert.match(
+    viewerSource,
+    /const hasRoomLogResumeView = \["original", "3d", "floor"\]\.includes\(search\.get\("resumeView"\) \?\? ""\);/,
+  );
+  assert.match(
+    viewerSource,
+    /const isRoomLogResume = search\.get\("integration"\) === "roomlog"[\s\S]*?&& hasRoomLogResumeView;/,
+  );
+  assert.doesNotMatch(
+    viewerSource,
+    /const isRoomLogResume =[\s\S]*?window\.sessionStorage\.getItem\(resumeStorageKey\)/,
+  );
 });
 
 test("keeps the original plan inside the walls while making its outer margin transparent in 3D", () => {
@@ -317,7 +445,7 @@ test("keeps the original plan inside the walls while making its outer margin tra
   );
   assert.match(
     viewerSource,
-    /function setFurnishingVisibility\(furnishing\)\s*\{[\s\S]*?setPlanFloorSurfaceVisible\(furnishing\);/,
+    /function setFurnishingVisibility\(furnishing, showFloorFinish = furnishing\)\s*\{[\s\S]*?setPlanFloorSurfaceVisible\(furnishing && showFloorFinish\);/,
   );
   assert.match(viewerSource, /setCanvasViewState\(view\);[\s\S]*?setPlanFloorSurfaceVisible\(false\);/);
 });

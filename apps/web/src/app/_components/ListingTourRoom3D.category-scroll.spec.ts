@@ -4,20 +4,21 @@ import { join } from "node:path";
 import test from "node:test";
 
 const globalsSource = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
-const componentSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
+// 카테고리 가로 스크롤 컨트롤은 PR #167에서 공유 패널(FurnitureCatalogPanel)로 이동했다.
+const panelSource = readFileSync(join(process.cwd(), "src/app/_components/FurnitureCatalogPanel.tsx"), "utf8");
 
 test("shows an always-visible custom horizontal control below the furniture category chips", () => {
   assert.match(
-    componentSource,
+    panelSource,
     /aria-label="가구 카테고리 가로 스크롤"[\s\S]*className="listing-tour-furniture-category-scrollbar"[\s\S]*type="range"/,
   );
   assert.match(
-    componentSource,
-    /onScroll=\{handleFurnitureCategoryScroll\}/,
+    panelSource,
+    /onScroll=\{syncCategoryScroll\}/,
   );
   assert.match(
-    componentSource,
-    /onInput=\{handleFurnitureCategoryScrollChange\}/,
+    panelSource,
+    /onInput=\{\(event\) => handleCategoryScrollInput/,
   );
   assert.match(
     globalsSource,

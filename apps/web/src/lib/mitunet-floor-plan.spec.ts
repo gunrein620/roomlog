@@ -133,6 +133,19 @@ test("keeps a saved source-plan surface for the listing preview", () => {
   assert.equal(parsed?.sourceImageB64, "cGxhbg==");
 });
 
+test("retains a source plan image while the floor finish is active", () => {
+  const parsed = normalizeMitunetPayload({
+    canvasSize: [2, 2],
+    contentRect: [0, 0, 2, 2],
+    polygons: smallPolygons,
+    sourceImageB64: "cGxhbg==",
+    surfaceMode: "floor",
+  });
+
+  assert.equal(parsed?.surfaceMode, "floor");
+  assert.equal(parsed?.sourceImageB64, "cGxhbg==");
+});
+
 test("uses the saved source plan in the preview even when an older handoff omitted its mode", () => {
   const parsed = normalizeMitunetPayload({
     canvasSize: [2, 2],

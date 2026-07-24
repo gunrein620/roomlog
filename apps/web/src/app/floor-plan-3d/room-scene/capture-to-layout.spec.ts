@@ -98,6 +98,27 @@ describe("captureFloorPlanToSceneLayout", () => {
     assert.equal(layout!.door.length, 0);
     assert.equal(layout!.window.length, 0);
   });
+
+  it("fills floor with the closed room polygon at the origin-preserved wall centerlines", () => {
+    const layout = captureFloorPlanToSceneLayout(pentagonRoom);
+    assert.ok(layout);
+    assert.equal(layout!.floor?.length, 1);
+    const [floorPolygon] = layout!.floor!;
+    assert.equal(floorPolygon.holes.length, 0);
+    // 바닥은 벽 중심선(두께 오프셋 전) 그대로라 첫 벽의 원본 시작점(0,0)이 정점에 그대로 있다 —
+    // 원점 보존 규약(위 헤더 주석)이 바닥에도 적용됨을 확인.
+    assert.ok(floorPolygon.outer.some(([x, z]) => x === 0 && z === 0));
+    assert.equal(round(extent(floorPolygon.outer, 0)), 4);
+    assert.equal(round(extent(floorPolygon.outer, 1)), 3);
+  });
+
+  it("leaves floor empty when the wall scan doesn't close, without dropping the walls themselves", () => {
+    const openPentagon = { ...pentagonRoom, walls: pentagonRoom.walls.slice(0, 4) }; // 마지막 벽 제거 = 트인 스캔
+    const layout = captureFloorPlanToSceneLayout(openPentagon);
+    assert.ok(layout);
+    assert.equal(layout!.wall.length, 4);
+    assert.deepEqual(layout!.floor, []);
+  });
 });
 
 const fixtureDir = join(process.cwd(), "public/dev-fixtures");

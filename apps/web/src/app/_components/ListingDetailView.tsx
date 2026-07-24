@@ -126,6 +126,12 @@ export function ListingDetailView({
     [splatAssetCaptureFloorPlan]
   );
 
+  // 임대인 도면(has3DHero) 없이도 splat 자산의 캡처 도면(RoomPlan)만 있는 매물(영상/zip만 올린
+  // 직접등록)이 있다 — 그 경우도 3D 히어로/패널 진입점을 열어야 한다. captureFloorPlanLayout은
+  // 클라 effect로 자산을 조회한 뒤 늦게 채워지므로 이 값도 초기 렌더에선 has3DHero 그대로였다가
+  // 도착 시 true로 바뀔 수 있다(사진 히어로 → 3D 히어로 전환, 허용된 트레이드오프).
+  const hasHeroPlan = has3DHero || captureFloorPlanLayout != null;
+
   // 직접등록 매물은 집주인이 등록 시 고른 옵션만, 데모 매물(options 없음)은 기존 고정 목록을 보여준다.
   const listingOptions = listing.options ?? optionItems;
 
@@ -138,7 +144,7 @@ export function ListingDetailView({
   return (
     /* has-3d 클래스는 이제 "무대 레이아웃" 스위치 — 도면 유무와 무관하게 항상 적용(레이아웃 통합).
        도면이 없으면 스테이지에 3D 대신 대표 사진이 뜬다. photo-hero는 라이트 무대(밤하늘 배경 제거 + 다크 헤더) 변형. */
-    <section className={`listing-detail-screen has-3d${has3DHero ? "" : " photo-hero"}`} aria-labelledby="clicked-detail-title">
+    <section className={`listing-detail-screen has-3d${hasHeroPlan ? "" : " photo-hero"}`} aria-labelledby="clicked-detail-title">
       <header className="detail-top-title">
         <button className="detail-back-button" type="button" onClick={onBack} aria-label="목록으로 돌아가기">
           <ArrowLeft size={24} strokeWidth={2.5} />
@@ -169,8 +175,10 @@ export function ListingDetailView({
       {/* 시안 구조 — 좌 스테이지 + 우 고정폭 패널이 한 행(데스크톱), 모바일은 자연 스택. */}
       <div className="detail-hero-row">
       <div className="detail-hero-stage">
-      {has3DHero && listing.floorPlan3D ? (
-        /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스). */
+      {hasHeroPlan ? (
+        /* 3D 히어로 스테이지 — 도면이 주인공, 사진은 하단 필름스트립(클릭 → 라이트박스).
+           owner 도면(listing.floorPlan3D)이 없어도 캡처 도면만으로 열 수 있다 — ListingTourRoom3D는
+           floorPlan이 undefined여도 captureFloorPlanLayout으로 렌더한다(mitunet/walls3D 우선순위와 동일). */
         <div
           aria-label={is3DSimulationOpen ? `${listing.title} 3D 시뮬레이션` : `${listing.title} 3D 도면 미리보기`}
           aria-modal={is3DSimulationOpen ? "true" : undefined}
@@ -272,11 +280,12 @@ export function ListingDetailView({
         </div>
       )}
 
-      {/* 사진 라이트박스 — 3D 히어로에선 먼저 무대(스테이지) 크기로 열리고(부모 .detail-hero-stage 기준),
-          헤더 확대 버튼으로 풀스크린 승격. 사진 히어로(도면 없음)는 무대가 곧 큰 사진이라 처음부터 풀스크린. */}
+      {/* 사진 라이트박스 — 3D 히어로(owner 도면 또는 캡처 도면)에선 먼저 무대(스테이지) 크기로
+          열리고(부모 .detail-hero-stage 기준), 헤더 확대 버튼으로 풀스크린 승격. 사진 히어로(도면
+          없음)는 무대가 곧 큰 사진이라 처음부터 풀스크린. 위 스테이지 분기와 같은 hasHeroPlan 기준. */}
       {lightboxIndex !== null ? (
         <div
-          className={`photo-lightbox-backdrop${!has3DHero || lightboxFullscreen ? " is-fullscreen" : ""}`}
+          className={`photo-lightbox-backdrop${!hasHeroPlan || lightboxFullscreen ? " is-fullscreen" : ""}`}
           role="presentation"
           onClick={() => {
             setLightboxIndex(null);
@@ -294,7 +303,7 @@ export function ListingDetailView({
             <header>
               <strong>{lightboxIndex + 1} / {listing.gallery.length}</strong>
               <div className="photo-lightbox-actions">
-                {has3DHero ? (
+                {hasHeroPlan ? (
                   <button
                     type="button"
                     aria-label={lightboxFullscreen ? "무대 크기로 줄이기" : "전체화면으로 크게 보기"}
@@ -412,7 +421,10 @@ export function ListingDetailView({
         )}
       </div>
 
-      {has3DHero ? (
+      {/* 게이트를 hasHeroPlan(owner 도면 또는 캡처 도면) 기준으로 완화 — splat 자산은 있는데
+          도면이 아직 없는 직접등록(isTradeDirectListing)도 1인칭 투어 진입점은 노출해야 정직하다
+          (자산 조회가 끝날 때까지는 "확인 중", 끝나도 없으면 "준비 안 됨"). */}
+      {hasHeroPlan || isTradeDirectListing ? (
         <div className="detail-panel-tour-actions" aria-label="3D 둘러보기">
           {splatAssetId ? (
             <a href={`/splat-tour?asset=${splatAssetId}`}>
@@ -430,13 +442,17 @@ export function ListingDetailView({
               1인칭 투어
             </a>
           )}
-          <button
-            type="button"
-            onClick={() => setIs3DSimulationOpen(true)}
-          >
-            <Armchair aria-hidden size={18} strokeWidth={2.4} />
-            3D 시뮬레이션
-          </button>
+          {/* 3D 시뮬레이션은 보여줄 도면이 있을 때만 — 영상/zip만 올리고 도면이 전혀 없는 매물은
+              버튼을 숨긴다(보여줄 3D가 없는데 열리는 건 정직하지 않다). */}
+          {hasHeroPlan ? (
+            <button
+              type="button"
+              onClick={() => setIs3DSimulationOpen(true)}
+            >
+              <Armchair aria-hidden size={18} strokeWidth={2.4} />
+              3D 시뮬레이션
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -522,9 +538,9 @@ export function ListingDetailView({
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
         </button>
-        {/* 3D가 히어로인 매물은 시트 버튼이 중복 — 히어로로 스크롤하는 앵커로 바꾼다.
-            히어로가 아니면 dev의 게이트를 따라 3D 투어가 있을 때만 시트 버튼을 노출한다. */}
-        {has3DHero ? (
+        {/* 3D가 히어로(owner 도면 또는 캡처 도면)인 매물은 시트 버튼이 중복 — 히어로로 스크롤하는
+            앵커로 바꾼다. 히어로가 아니면 dev의 게이트를 따라 3D 투어가 있을 때만 시트 버튼을 노출한다. */}
+        {hasHeroPlan ? (
           <a className="detail-contact-tour" href="#detail-3d-hero">
             <span>3D</span>
             <strong>도면 보기</strong>

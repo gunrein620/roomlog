@@ -81,9 +81,35 @@ test("RoomLog furniture handoff preserves a resumable editor snapshot per reques
   }
 });
 
+test("Floor furniture handoff retains the original plan image for a later 3D switch", () => {
+  const values = new Map();
+  const storage = {
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const originalWindow = globalThis.window;
+  globalThis.window = { localStorage: storage, location: { href: "" } };
+
+  try {
+    beginRoomLogFurnitureSimulation(
+      context,
+      { ...plan, input_image_b64: "c291cmNlLXBsYW4=" },
+      "plan",
+      [],
+      "floor",
+    );
+    const saved = readRoomLogFurnitureDraft(storage, context.requestId);
+    assert.equal(saved.floorPlan.mitunet.surfaceMode, "floor");
+    assert.equal(saved.floorPlan.mitunet.sourceImageB64, "c291cmNlLXBsYW4=");
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
 test("RoomLog editor resume URL carries the request and requested view", () => {
   const original = new URL(buildRoomLogEditorResumeUrl(context, "original"));
   const threeDimensional = new URL(buildRoomLogEditorResumeUrl(context, "3d"));
+  const floor = new URL(buildRoomLogEditorResumeUrl(context, "floor"));
 
   assert.equal(original.pathname, "/floor-plan-3d/mitunet");
   assert.equal(original.searchParams.get("integration"), "roomlog");
@@ -91,6 +117,7 @@ test("RoomLog editor resume URL carries the request and requested view", () => {
   assert.equal(original.searchParams.get("returnOrigin"), context.returnOrigin);
   assert.equal(original.searchParams.get("resumeView"), "original");
   assert.equal(threeDimensional.searchParams.get("resumeView"), "3d");
+  assert.equal(floor.searchParams.get("resumeView"), "floor");
   assert.throws(() => buildRoomLogEditorResumeUrl(context, "furnishing"), /resume view/i);
 });
 

@@ -3,15 +3,12 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const source = readFileSync("src/app/splat-tour/tour-viewer.tsx", "utf8");
+// 가구 카탈로그 UI(검색·카테고리·그리드·카드·Poly Haven 탭)는 PR #167에서 공유 패널로 추출됐다.
+// tour-viewer는 드로어 셸·놓인 가구·배치 컨트롤만 소유하고 카탈로그는 이 패널에 위임한다.
+const panelSource = readFileSync("src/app/_components/FurnitureCatalogPanel.tsx", "utf8");
+const styles = readFileSync("src/app/globals.css", "utf8");
 
 describe("splat tour furniture catalog drawer", () => {
-  it("shows the same three furniture source tabs", () => {
-    assert.match(source, /aria-label="가구 목록 종류"[\s\S]*내가구[\s\S]*등록된 가구[\s\S]*폴리/);
-    assert.match(source, /loadPolyhavenCatalog/);
-    assert.match(source, /fetchTenantFurniture/);
-    assert.match(source, /대용량/);
-  });
-
   it("opens the shared 500-item catalog from the furniture control", () => {
     assert.match(source, /loadGlbDatasetCatalog/);
     assert.match(source, /isFurnitureCatalogOpen/);
@@ -26,10 +23,15 @@ describe("splat tour furniture catalog drawer", () => {
     assert.match(source, /onFurniturePointerDown/);
   });
 
-  it("clips long furniture names inside each catalog card", () => {
-    assert.match(source, /className="tour-furniture-copy"/);
-    assert.match(source, /\.tour-furniture-copy\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;/);
-    assert.match(source, /\.tour-furniture-item strong,[\s\S]*?display:\s*block;[\s\S]*?text-overflow:\s*ellipsis;/);
+  it("delegates the catalog list UI to the shared FurnitureCatalogPanel", () => {
+    assert.match(source, /<FurnitureCatalogPanel/);
+    assert.match(source, /import FurnitureCatalogPanel/);
+    // 세 소스 탭(내 가구·등록 가구·폴리)은 패널이 그린다.
+    assert.match(panelSource, /내 가구[\s\S]*등록 가구[\s\S]*폴리/);
+  });
+
+  it("clips long furniture names inside each catalog card (shared panel styling)", () => {
+    assert.match(styles, /\.listing-tour-furniture-grid strong\s*\{[\s\S]*?text-overflow:\s*ellipsis;/);
   });
 
   it("uses the same placement controls as the 3D renderer", () => {
@@ -40,30 +42,14 @@ describe("splat tour furniture catalog drawer", () => {
     assert.match(source, /aria-label="배치완료"/);
   });
 
-  it("keeps the placement controls visible while only the catalog list scrolls", () => {
-    assert.match(source, /\.tour-furniture-drawer\s*\{[\s\S]*?height:\s*min\(620px, calc\(100% - 110px\)\);[\s\S]*?grid-template-rows:/);
-    assert.match(source, /\.tour-furniture-grid\s*\{[\s\S]*?min-height:\s*0;/);
-    assert.match(source, /\.tour-furniture-placed\s*\{[\s\S]*?max-height:[^;]+;[\s\S]*?overflow-y:\s*auto;/);
+  it("keeps the drawer shell and placed-furniture list owned by the tour viewer", () => {
+    assert.match(source, /className="tour-furniture-drawer"/);
+    assert.match(source, /tour-furniture-placed/);
   });
 
-  it("keeps every catalog card tall enough for its thumbnail when more items are shown", () => {
-    assert.match(source, /\.tour-furniture-grid\s*\{[\s\S]*?grid-auto-rows:\s*58px;/);
-  });
-
-  it("shows an explicit horizontal category scrollbar in the splat tour drawer", () => {
-    assert.match(source, /aria-label="가구 카테고리 가로 스크롤"/);
-    assert.match(source, /className="tour-furniture-category-scrollbar"/);
-    assert.match(source, /onInput=\{handleFurnitureCategoryScrollInput\}/);
-    assert.match(source, /aria-label="카테고리 왼쪽으로 이동"/);
-    assert.match(source, /aria-label="카테고리 오른쪽으로 이동"/);
-    assert.match(source, /\.tour-furniture-category-scrollbar\s*\{[\s\S]*?grid-template-columns:\s*28px minmax\(0, 1fr\) 28px;/);
-    assert.match(source, /\.tour-furniture-category-scroll-range::-webkit-slider-thumb\s*\{[\s\S]*?width:\s*44px;/);
-  });
-
-  it("matches the category scrollbar colors to the drawer's vertical scrollbars", () => {
-    assert.match(source, /\.tour-furniture-drawer\s*\{[\s\S]*?--tour-scrollbar-track:\s*#d8d8d8;[\s\S]*?--tour-scrollbar-thumb:\s*#8a8a8a;/);
-    assert.match(source, /\.tour-furniture-grid,\s*\.tour-furniture-placed\s*\{[\s\S]*?scrollbar-color:\s*var\(--tour-scrollbar-thumb\) var\(--tour-scrollbar-track\);/);
-    assert.match(source, /\.tour-furniture-category-scroll-range::-webkit-slider-runnable-track\s*\{[\s\S]*?background:\s*var\(--tour-scrollbar-track\);/);
-    assert.match(source, /\.tour-furniture-category-scroll-range::-webkit-slider-thumb\s*\{[\s\S]*?background:\s*var\(--tour-scrollbar-thumb\);/);
+  it("shows an explicit horizontal category scrollbar in the shared panel", () => {
+    assert.match(panelSource, /aria-label="가구 카테고리 가로 스크롤"/);
+    assert.match(panelSource, /className="listing-tour-furniture-category-scrollbar"/);
+    assert.match(styles, /\.listing-tour-furniture-category-scrollbar\s*\{/);
   });
 });

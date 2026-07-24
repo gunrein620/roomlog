@@ -29,4 +29,15 @@ describe("MitUNet saved-view surface parity", () => {
     assert.match(source, /raycast=\{\(\) => null\}/);
     assert.match(source, /RoomFloor/);
   });
+
+  it("waits for the source-plan texture before falling back to the wood floor", () => {
+    assert.match(
+      source,
+      /const sourceTexturePending = plan\.surfaceMode === "source" && loadedSourceTextureKey !== sourceTextureKey;/,
+    );
+    assert.match(
+      source,
+      /const activeFloorTexture = plan\.surfaceMode === "source"\s*\? sourceTexturePending \? null : sourceTexture \?\? woodTexture\s*:\ woodTexture;/,
+    );
+  });
 });

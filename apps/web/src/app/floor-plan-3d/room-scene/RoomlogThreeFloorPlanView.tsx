@@ -7,7 +7,7 @@ import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Check, Move, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
-import { type ComponentRef, type MutableRefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentRef, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
@@ -183,6 +183,35 @@ function MitunetExtrudedLayer({
   );
 }
 
+/** RoomPlan 캡처 경로 전용 바닥(layout.floor). mitunet 경로는 원본 도면 이미지 기반의
+ * 자체 바닥(MitunetDecorativeFloor)이 있어 이 컴포넌트를 쓰지 않는다 — 호출측(아래
+ * RoomlogThreeFloorPlanView)이 mitunetPlan 부재를 조건으로 걸어 이중 렌더를 막는다. */
+function CaptureFloorMesh({ polygons }: { polygons: MitunetScenePolygon[] }) {
+  const geometry = useMemo(() => new THREE.ShapeGeometry(polygons.map(mitunetShape)), [polygons]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  if (polygons.length === 0) return null;
+
+  return (
+    <mesh
+      geometry={geometry}
+      // y: 기존 MitunetDecorativeFloor의 텍스처 바닥(0.004)과 같은 높이 — 배치 상호작용용
+      // RoomFloor(y=0, 캡처 경로에선 투명)보다 살짝 위로 띄워 z-fighting을 피한다.
+      position={[0, 0.004, 0]}
+      // 가구 배치 픽킹은 RoomFloor의 투명 평면이 담당 — 이 메시는 순수 장식이라 레이캐스트를 끈다.
+      raycast={() => null}
+      receiveShadow
+      // mitunetShape와 동일한 좌표 변환 + 동일 rotation을 그대로 재사용하므로(아래 참고) 벽
+      // 폴리곤과 동일한 (x, z) → 월드 매핑이 보장된다 — 별도로 부호를 다시 유도하지 않음.
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
+      {/* 캡처 루프의 감김 방향(시계/반시계)은 보장되지 않는다 — Shape 삼각분할 결과에 따라
+          앞면 법선이 위/아래 어느 쪽으로 나올지 모르므로, FrontSide 컬링으로 바닥이 안 보이는
+          사고를 막기 위해 양면 렌더한다. */}
+      <meshStandardMaterial color="#c9a06a" metalness={0} roughness={0.86} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
 // Heights mirror the MitUNet viewer (viewer/index.html): an uncalibrated plan has
 // no real-world scale, so it renders as a low scaled-down model rather than
 // full-height walls. Keep both renderers in step.
@@ -321,28 +350,41 @@ function MitunetDecorativeFloor({
     }
   }, [plan]);
   const [sourceTexture, setSourceTexture] = useState<THREE.Texture | null>(null);
+  const sourceTextureKey = plan.sourceImageB64 ?? "";
+  const [loadedSourceTextureKey, setLoadedSourceTextureKey] = useState<string | null>(null);
 
   useEffect(() => {
     let disposed = false;
     if (plan.surfaceMode !== "source") {
       setSourceTexture(null);
+      setLoadedSourceTextureKey(null);
       return () => { disposed = true; };
     }
+    setSourceTexture(null);
     void createSourcePlanTexture(plan)
       .then((texture) => {
         if (disposed) texture?.dispose();
-        else setSourceTexture(texture);
+        else {
+          setSourceTexture(texture);
+          setLoadedSourceTextureKey(sourceTextureKey);
+        }
       })
       .catch(() => {
-        if (!disposed) setSourceTexture(null);
+        if (!disposed) {
+          setSourceTexture(null);
+          setLoadedSourceTextureKey(sourceTextureKey);
+        }
       });
     return () => { disposed = true; };
-  }, [plan]);
+  }, [plan, sourceTextureKey]);
 
   useEffect(() => () => concreteTexture?.dispose(), [concreteTexture]);
   useEffect(() => () => woodTexture?.dispose(), [woodTexture]);
   useEffect(() => () => sourceTexture?.dispose(), [sourceTexture]);
-  const activeFloorTexture = plan.surfaceMode === "source" ? sourceTexture : woodTexture;
+  const sourceTexturePending = plan.surfaceMode === "source" && loadedSourceTextureKey !== sourceTextureKey;
+  const activeFloorTexture = plan.surfaceMode === "source"
+    ? sourceTexturePending ? null : sourceTexture ?? woodTexture
+    : woodTexture;
 
   return (
     <>
@@ -709,7 +751,6 @@ export function RoomlogThreeFloorPlanView({
   furnitureFirstPersonEnabled = false,
   furnitureInteractionMode = "explore",
   furniturePlacementFeedback = null,
-  furniturePointerLockRequestRef,
   furnitureVerticalScale = 1,
   hideHint = false,
   horizontalScale = 1,
@@ -769,7 +810,6 @@ export function RoomlogThreeFloorPlanView({
   furnitureFirstPersonEnabled?: boolean;
   furnitureInteractionMode?: FurnitureInteractionMode;
   furniturePlacementFeedback?: (Pick<FurniturePlacementResult, "reason" | "valid"> & { mode: "floor" | "surface" | "wall" }) | null;
-  furniturePointerLockRequestRef?: MutableRefObject<(() => void) | null>;
   furnitureVerticalScale?: number;
   hideHint?: boolean;
   horizontalScale?: number;
@@ -855,8 +895,6 @@ export function RoomlogThreeFloorPlanView({
   const [walkStatus, setWalkStatus] = useState<FloorPlanWalkStatus>("ready");
   const [furnitureFirstPersonStatus, setFurnitureFirstPersonStatus] = useState<FurnitureFirstPersonStatus>("ready");
   const [aimedFurnitureId, setAimedFurnitureId] = useState<string | null>(null);
-  const fallbackFurniturePointerLockRequestRef = useRef<(() => void) | null>(null);
-  const activeFurniturePointerLockRequestRef = furniturePointerLockRequestRef ?? fallbackFurniturePointerLockRequestRef;
 
   useEffect(() => {
     if (!furnitureFirstPersonEnabled) setAimedFurnitureId(null);
@@ -932,6 +970,11 @@ export function RoomlogThreeFloorPlanView({
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
           {mitunetLayout && mitunetPlan ? (
             <MitunetDecorativeFloor layout={mitunetLayout} plan={mitunetPlan} showGround={!listingPreview} />
+          ) : null}
+          {/* 캡처 경로(mitunetPlan 없이 layout만 옴)에서만 그린다 — mitunet 경로는 위
+              MitunetDecorativeFloor가 이미 바닥을 담당하므로 이중 렌더를 피한다. */}
+          {mitunetLayout?.floor && mitunetLayout.floor.length > 0 && !mitunetPlan ? (
+            <CaptureFloorMesh polygons={mitunetLayout.floor} />
           ) : null}
           <RoomFloor
             boundsOverride={mitunetLayout ? wallBounds : undefined}
@@ -1061,7 +1104,6 @@ export function RoomlogThreeFloorPlanView({
             onRotateLeft={() => onFurnitureRotateLeft?.()}
             onRotateRight={() => onFurnitureRotateRight?.()}
             onStatusChange={setFurnitureFirstPersonStatus}
-            pointerLockRequestRef={activeFurniturePointerLockRequestRef}
             preferredSpawn={walkPreferredSpawn}
           />
         ) : (

@@ -2,21 +2,15 @@
 
 import type { ThreeEvent } from "@react-three/fiber";
 import type { TenantFurniture } from "@roomlog/types/tenant-furniture";
-import type { FormEvent, MutableRefObject } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createMitunetFloorFurnitureDraft,
   createFurnitureModel,
   finalizeFurnitureDraft,
-  type FurnitureCatalogSource,
   FURNITURE_CATALOG,
-  furnitureCategoryLabel,
-  furnitureImageUrl,
   hasAttachedFurniture,
-  isLargeFurnitureAsset,
-  listFurnitureCategoryFilters,
   loadGlbDatasetCatalog,
-  loadPolyhavenCatalog,
   moveAttachedFurniture,
   reopenFurnitureDraft,
   resolveFurniturePlacement,
@@ -37,11 +31,11 @@ import { resolveMitunetFurnitureSceneScale, type MitunetSceneLayout } from "../f
 import { listingTourFurnitureStorageKey } from "../splat-tour/splat-furniture";
 import { TourJoystick, type TourJoystickVector } from "../splat-tour/tour-joystick";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
-import { fetchTenantFurniture, TenantFurnitureApiError } from "@/lib/tenant-furniture-api";
-import {
-  TENANT_FURNITURE_CATEGORY_ICONS,
-  tenantFurnitureName
-} from "../tenant/furniture/furniture-labels";
+import FurnitureCatalogPanel, {
+  tenantFurnitureCatalogItem,
+  useTenantFurnitureCatalog,
+  type FurnitureSourceTab
+} from "./FurnitureCatalogPanel";
 
 export type ListingFloorPlanWall = {
   id: string;
@@ -74,10 +68,13 @@ export type ListingFloorPlan3D = {
 };
 
 type SimulationMode = "overview" | "walk" | "furniture";
-export type OwnerFurnitureSaveDestination = "listing" | "original" | "3d";
+export type OwnerFurnitureSaveDestination = "listing" | "original" | "3d" | "floor";
 
 type ListingTourRoom3DProps = {
-  floorPlan: ListingFloorPlan3D;
+  /** 임대인이 등록한 도면 — 캡처 도면(captureFloorPlanLayout)만 있고 이게 없는 매물(예: 영상/zip만
+   * 올린 직접등록)도 있다. 그 경우 mitunet/walls3D 파생값은 전부 빈 배열/undefined로 폴백하고
+   * 렌더는 captureFloorPlanLayout이 전담한다(아래 각 사용처 주석 참고). */
+  floorPlan?: ListingFloorPlan3D;
   /** 매물에 연결된 splat 자산의 캡처 도면(RoomPlan)을 뷰어 레이아웃으로 미리 변환해 넘긴다.
    * 있으면 floorPlan.mitunet/walls3D보다 우선(실측·splat과 좌표계 항등) — 없으면(null/undefined)
    * 기존 mitunet/walls3D 경로가 무변경으로 그대로 동작한다. */
@@ -123,24 +120,6 @@ function readSavedFurnitures(listingId: string) {
   return parsed.furnitures as ListingFloorPlanFurniture[];
 }
 
-function catalogSearchText(item: FurnitureCatalogItem) {
-  return `${item.name} ${item.brand} ${item.category ?? ""} ${item.furniture_id} ${(item.tags ?? []).join(" ")}`.toLowerCase();
-}
-
-function tenantFurnitureCatalogItem(furniture: TenantFurniture): FurnitureCatalogItem {
-  return {
-    brand: "내 가구",
-    category: furniture.category,
-    color: "lightgray",
-    furniture_id: furniture.id,
-    length: [furniture.sizeMm.width, furniture.sizeMm.height, furniture.sizeMm.depth],
-    modelUrl: furniture.meshUrl ?? undefined,
-    name: tenantFurnitureName(furniture),
-    price: 0,
-    source: furniture.source
-  };
-}
-
 function normalizeMitunetListingFurniture(
   furniture: PlacedFurniture,
   mitunetPlan: MitunetFloorPlan | undefined
@@ -180,7 +159,9 @@ export default function ListingTourRoom3D({
   ownerSaveRequestRef,
   variant = "sheet"
 }: ListingTourRoom3DProps) {
-  const wallsData = floorPlan.walls3D as unknown as WheretoputWall3D[];
+  // floorPlan 없음(캡처 도면만 있는 매물) → 벽 없음. 가구 배치 계산(resolveFurniturePlacement)도
+  // 이 빈 배열을 받아 벽 스냅 없이 바닥 배치만 허용한다 — 원래도 없는 벽이라 손실이 아니다.
+  const wallsData = (floorPlan?.walls3D ?? []) as unknown as WheretoputWall3D[];
   // 캡처 도면이 있으면 도면 렌더는 그것이 전담한다 — walls3D 박스 벽을 같이 그리면 이중으로
   // 겹친다(furniture-placement 계산용 wallsData 자체는 아래에서 그대로 유지). 캡처가 없으면
   // 기존 렌더 경로(mitunetPlan에서 파생하는 폴리곤 + wallsData 박스 벽)가 그대로 동작한다.
@@ -189,30 +170,30 @@ export default function ListingTourRoom3D({
   const [furnitureInteractionMode, setFurnitureInteractionMode] = useState<FurnitureInteractionMode>("explore");
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const walkMoveInputRef = useRef<TourJoystickVector>({ forward: 0, strafe: 0 });
-  const furniturePointerLockRequestRef = useRef<(() => void) | null>(null);
   const [isPlacementOpen, setIsPlacementOpen] = useState(initialSimulationMode === "furniture");
   // hero 패널 접기 — 우상단 "가구 편집" 버튼으로 여닫고, 도면을 가리지 않도록 기본은 닫아 둔다.
   const [isHeroPanelOpen, setIsHeroPanelOpen] = useState(initialSimulationMode === "furniture");
   const [catalogQuery, setCatalogQuery] = useState("");
-  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureCatalogSource>(experience === "owner" ? "mine" : "catalog");
+  const [furnitureSourceTab, setFurnitureSourceTab] = useState<FurnitureSourceTab>(experience === "owner" ? "mine" : "catalog");
   const [furnitureCategoryFilter, setFurnitureCategoryFilter] = useState("전체");
-  const [furnitureLimit, setFurnitureLimit] = useState(30);
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
-  const [polyCatalog, setPolyCatalog] = useState<FurnitureCatalogItem[]>([]);
-  const [polyCatalogError, setPolyCatalogError] = useState<string | null>(null);
-  const [polyCatalogLoading, setPolyCatalogLoading] = useState(false);
-  const [polyCatalogRetry, setPolyCatalogRetry] = useState(0);
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
   const [furniturePlacementFeedback, setFurniturePlacementFeedback] = useState<Pick<FurniturePlacementResult, "reason" | "valid"> & { mode: FurniturePlacementAttachment["mode"] } | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
-  const [tenantFurnitures, setTenantFurnitures] = useState<TenantFurniture[]>([]);
   const [hasSavedFurnitureLayout, setHasSavedFurnitureLayout] = useState(false);
   const [saveMessage, setSaveMessage] = useState("가구 배치 편집을 열어 옵션 위치를 확인할 수 있습니다.");
   // 가구 드래그 이동 — 좌클릭을 누른 채 끌면 커서를 따라오고, 떼면 그 자리에 멈춘다(확정은 ✓).
   const [isFurnitureDragging, setIsFurnitureDragging] = useState(false);
   // 카탈로그에서 새로 고른 가구가 아니라, 이미 배치된 가구를 다시 집어든 상태인지.
   const [isPendingFurnitureEditing, setIsPendingFurnitureEditing] = useState(false);
+  // 표면(3D/Floor) 전환은 같은 도면의 렌더링만 바꾼다. 가구 배열이 바뀌지 않았다면
+  // 이 컴포넌트의 배치 상태를 다시 초안 값으로 덮어쓰면 안 된다.
+  const furnitureHydrationRef = useRef<{
+    experience: "listing" | "owner";
+    listingId: string;
+    furnitureSeed: ListingFloorPlanFurniture[] | undefined;
+  } | null>(null);
   // 배치된 가구를 다시 집어들 때(재편집) 취소하면 되돌릴 원래 상태 + 원본 분류(source) 보존용.
   const pendingFurnitureOriginRef = useRef<PlacedFurniture | null>(null);
   // 내 가구 신규 배치의 원본 source 보존용. finalizeFurnitureDraft의 RESIDENT_DESIGN 덮어쓰기를 막는다.
@@ -223,50 +204,7 @@ export default function ListingTourRoom3D({
   const lastFurniturePlacementHitRef = useRef<FurniturePlacementHit | null>(null);
   // 기존 포인터 기반 배치를 위한 마지막 바닥점 호환 캐시.
   const lastFurniturePlacementPointRef = useRef<{ x: number; z: number } | null>(null);
-  const furnitureCategoryTabsRef = useRef<HTMLDivElement>(null);
-  const [furnitureCategoryScroll, setFurnitureCategoryScroll] = useState({ left: 0, max: 0 });
-  const activeFurnitureCatalog = furnitureSourceTab === "poly" ? polyCatalog : furnitureCatalog;
-  const furnitureCategoryCounts = useMemo(
-    () =>
-      activeFurnitureCatalog.reduce<Record<string, number>>((counts, item) => {
-        const category = furnitureCategoryLabel(item);
-        counts[category] = (counts[category] ?? 0) + 1;
-        return counts;
-      }, {}),
-    [activeFurnitureCatalog]
-  );
-  const furnitureCategoryFilters = useMemo(() => listFurnitureCategoryFilters(activeFurnitureCatalog), [activeFurnitureCatalog]);
-  const filteredCatalog = useMemo(() => {
-    const normalizedQuery = catalogQuery.trim().toLowerCase();
-    const catalog = activeFurnitureCatalog.filter((item) => {
-      const matchesCategory = furnitureCategoryFilter === "전체" || furnitureCategoryLabel(item) === furnitureCategoryFilter;
-      const matchesQuery = !normalizedQuery || catalogSearchText(item).includes(normalizedQuery);
-      return matchesCategory && matchesQuery;
-    });
-
-    return catalog;
-  }, [activeFurnitureCatalog, catalogQuery, furnitureCategoryFilter]);
-  const visibleFurnitureCatalog = useMemo(() => filteredCatalog.slice(0, furnitureLimit), [filteredCatalog, furnitureLimit]);
   const selectedFurniture = pendingFurniture ?? placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null;
-
-  useEffect(() => {
-    if (!isPlacementOpen) return;
-    const tabList = furnitureCategoryTabsRef.current;
-    if (!tabList) return;
-
-    const syncScroll = () => {
-      const max = Math.max(0, Math.round(tabList.scrollWidth - tabList.clientWidth));
-      const left = Math.max(0, Math.min(max, Math.round(tabList.scrollLeft)));
-      setFurnitureCategoryScroll((current) => (current.left === left && current.max === max ? current : { left, max }));
-    };
-
-    syncScroll();
-    const resizeObserver = new ResizeObserver(syncScroll);
-    resizeObserver.observe(tabList);
-    Array.from(tabList.children).forEach((child) => resizeObserver.observe(child));
-
-    return () => resizeObserver.disconnect();
-  }, [furnitureCategoryFilters, isPlacementOpen]);
 
   useEffect(() => {
     let isActive = true;
@@ -290,41 +228,35 @@ export default function ListingTourRoom3D({
   }, []);
 
   useEffect(() => {
-    if (furnitureSourceTab !== "poly" || polyCatalog.length > 0) return;
-    let active = true;
-    setPolyCatalogLoading(true);
-    setPolyCatalogError(null);
-    void loadPolyhavenCatalog()
-      .then((items) => {
-        if (active) setPolyCatalog(items);
-      })
-      .catch(() => {
-        if (active) setPolyCatalogError("폴리 가구를 불러오지 못했습니다.");
-      })
-      .finally(() => {
-        if (active) setPolyCatalogLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [furnitureSourceTab, polyCatalog.length, polyCatalogRetry]);
+    const furnitureSeed = floorPlan?.furnitures;
+    const previousHydration = furnitureHydrationRef.current;
+    const previousFurnitureSeed = previousHydration?.furnitureSeed;
+    const sameFurnitureSeed = previousFurnitureSeed === furnitureSeed;
+    const shouldHydrateFurniture = !(
+      previousHydration
+      && previousHydration.experience === experience
+      && previousHydration.listingId === listingId
+      && sameFurnitureSeed
+    );
 
-  useEffect(() => {
+    if (!shouldHydrateFurniture) return;
+
     try {
       const savedFurnitures = experience === "owner" ? null : readSavedFurnitures(listingId);
       setPlacedFurnitures(
-        ((savedFurnitures ?? floorPlan.furnitures) as unknown as PlacedFurniture[]).map((furniture) =>
-          normalizeMitunetListingFurniture(furniture, floorPlan.mitunet)
+        ((savedFurnitures ?? floorPlan?.furnitures ?? []) as unknown as PlacedFurniture[]).map((furniture) =>
+          normalizeMitunetListingFurniture(furniture, floorPlan?.mitunet)
         )
       );
       setHasSavedFurnitureLayout(savedFurnitures !== null);
       setSaveMessage(savedFurnitures ? "저장된 가구 배치를 불러왔습니다." : "가구 배치 편집을 열어 옵션 위치를 확인할 수 있습니다.");
     } catch {
-      setPlacedFurnitures(floorPlan.furnitures as unknown as PlacedFurniture[]);
+      setPlacedFurnitures((floorPlan?.furnitures ?? []) as unknown as PlacedFurniture[]);
       // 손상된 값도 사용자가 버튼으로 지울 수 있어야 하므로 복원 동작은 열어 둔다.
       setHasSavedFurnitureLayout(true);
       setSaveMessage("저장된 가구 배치를 불러오지 못해 원래 배치를 표시합니다.");
     }
+    furnitureHydrationRef.current = { experience, listingId, furnitureSeed };
     pendingFurnitureOriginRef.current = null;
     pendingTenantFurnitureSourceRef.current = null;
     setPendingFurniture(null);
@@ -333,27 +265,9 @@ export default function ListingTourRoom3D({
     setFurnitureInteractionMode("explore");
   }, [experience, floorPlan, listingId]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchTenantFurniture()
-      .then((furnitures) => {
-        // RoomPlan 스캔은 방 안 물체를 감지하는 즉시 meshUrl 없이 행을 만든다. Object Capture로
-        // 실물을 찍어 변환까지 끝난(meshJobState === "DONE") 것만 배치 가능한 실물 모델이 있다 —
-        // 그 전 단계 항목을 그대로 두면 회색 박스만 수십 개 나열된다.
-        if (!cancelled) setTenantFurnitures(furnitures.filter((furniture) => furniture.meshJobState === "DONE"));
-      })
-      .catch((reason: unknown) => {
-        if (cancelled) return;
-        setTenantFurnitures([]);
-        if (reason instanceof TenantFurnitureApiError && reason.status === 401) return;
-        setSaveMessage("내 가구를 불러오지 못했습니다. 기본 가구는 계속 이용할 수 있습니다.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // fetch+필터(meshJobState==="DONE")+401 무음 처리는 FurnitureCatalogPanel과 공유하는 훅으로
+  // 옮겼다(tour-viewer도 동일 로직이 필요해서 중복을 걷어냄).
+  const tenantFurnitures = useTenantFurnitureCatalog(setSaveMessage);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
@@ -384,26 +298,9 @@ export default function ListingTourRoom3D({
     return point;
   }
 
-  function handleFurnitureCategoryScroll() {
-    const tabList = furnitureCategoryTabsRef.current;
-    if (!tabList) return;
-    const max = Math.max(0, Math.round(tabList.scrollWidth - tabList.clientWidth));
-    const left = Math.max(0, Math.min(max, Math.round(tabList.scrollLeft)));
-    setFurnitureCategoryScroll((current) => (current.left === left && current.max === max ? current : { left, max }));
-  }
-
-  function handleFurnitureCategoryScrollChange(event: FormEvent<HTMLInputElement>) {
-    const tabList = furnitureCategoryTabsRef.current;
-    if (!tabList) return;
-    const left = Number(event.currentTarget.value);
-    tabList.scrollLeft = left;
-    setFurnitureCategoryScroll((current) => ({ ...current, left }));
-  }
-
   function openFurnitureEditor() {
     setIsHeroPanelOpen(true);
     setIsPlacementOpen(true);
-    setFurnitureLimit(30);
   }
 
   function openFurnitureSelection() {
@@ -477,20 +374,13 @@ export default function ListingTourRoom3D({
     walkMoveInputRef.current = vector ?? { forward: 0, strafe: 0 };
   }, []);
 
-  function selectFurnitureSource(source: FurnitureCatalogSource) {
-    setFurnitureSourceTab(source);
-    setCatalogQuery("");
-    setFurnitureCategoryFilter("전체");
-    setFurnitureLimit(30);
-  }
-
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
     // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
     restorePendingFurnitureOrigin();
     pendingTenantFurnitureSourceRef.current = null;
     setIsPendingFurnitureEditing(false);
     const draft =
-      floorPlan.mitunet
+      floorPlan?.mitunet
         ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
         : createFurnitureModel(item);
     startCatalogFurnitureCarry(draft);
@@ -502,7 +392,7 @@ export default function ListingTourRoom3D({
     restorePendingFurnitureOrigin();
     pendingTenantFurnitureSourceRef.current = furniture.source;
     const draft = {
-      ...(floorPlan.mitunet
+      ...(floorPlan?.mitunet
         ? createMitunetFloorFurnitureDraft(item, resolveMitunetFurnitureSceneScale(floorPlan.mitunet))
         : createFurnitureModel(item)),
       sizeMm: furniture.sizeMm,
@@ -526,7 +416,6 @@ export default function ListingTourRoom3D({
     setSelectedFurnitureId(null);
     setIsPlacementOpen(true);
     setFurnitureInteractionMode("carry");
-    furniturePointerLockRequestRef.current?.();
   }
 
   function placePendingFurnitureAtHit(hit: FurniturePlacementHit) {
@@ -740,7 +629,6 @@ export default function ListingTourRoom3D({
     setIsFurnitureDragging(false);
     setFurnitureInteractionMode("carry");
     setSaveMessage(`${furniture.name} 이동 중 — 바닥을 눌러 위치를 잡고 ✓로 확정하세요.`);
-    furniturePointerLockRequestRef.current?.();
   }
 
   function beginSelectedFurnitureMove() {
@@ -825,7 +713,7 @@ export default function ListingTourRoom3D({
       pendingTenantFurnitureSourceRef.current = null;
       pendingFurniturePlacedOnceRef.current = false;
       setIsPendingFurnitureEditing(false);
-      setPlacedFurnitures(floorPlan.furnitures as unknown as PlacedFurniture[]);
+      setPlacedFurnitures((floorPlan?.furnitures ?? []) as unknown as PlacedFurniture[]);
       setPendingFurniture(null);
       setSelectedFurnitureId(null);
       setFurnitureInteractionMode("explore");
@@ -852,10 +740,9 @@ export default function ListingTourRoom3D({
         furnitureFirstPersonEnabled={simulationOpen && simulationMode === "furniture" && !isCoarsePointer}
         furnitureInteractionMode={furnitureInteractionMode}
         furniturePlacementFeedback={furniturePlacementFeedback}
-        furniturePointerLockRequestRef={furniturePointerLockRequestRef}
         hideHint
         mitunetLayout={captureFloorPlanLayout ?? undefined}
-        mitunetPlan={captureFloorPlanLayout ? undefined : floorPlan.mitunet}
+        mitunetPlan={captureFloorPlanLayout ? undefined : floorPlan?.mitunet}
         moveInputRef={walkMoveInputRef}
         orbitMinDistance={1.6}
         fitDistanceScale={0.9}
@@ -959,187 +846,32 @@ export default function ListingTourRoom3D({
 
         {isPlacementOpen ? (
           <div className="listing-tour-furniture-body">
-            <div aria-label="가구 목록 종류" className="listing-tour-furniture-source-tabs" role="tablist">
-              <button
-                aria-selected={furnitureSourceTab === "mine"}
-                className={furnitureSourceTab === "mine" ? "active" : ""}
-                onClick={() => selectFurnitureSource("mine")}
-                role="tab"
-                type="button"
-              >
-                내가구 <small>{tenantFurnitures.length}</small>
-              </button>
-              <button
-                aria-selected={furnitureSourceTab === "catalog"}
-                className={furnitureSourceTab === "catalog" ? "active" : ""}
-                onClick={() => selectFurnitureSource("catalog")}
-                role="tab"
-                type="button"
-              >
-                등록된 가구 <small>{furnitureCatalog.length}</small>
-              </button>
-              <button
-                aria-selected={furnitureSourceTab === "poly"}
-                className={furnitureSourceTab === "poly" ? "active" : ""}
-                onClick={() => selectFurnitureSource("poly")}
-                role="tab"
-                type="button"
-              >
-                폴리 <small>{polyCatalog.length || 519}</small>
-              </button>
-            </div>
-
-            {furnitureSourceTab === "mine" ? (
-              <section className="listing-tour-furniture-source-panel" aria-label="내 가구">
-                <p className="listing-tour-furniture-source-copy">등록한 가구를 이 방에 놓아보세요.</p>
-                {tenantFurnitures.length > 0 ? (
-                  <div className="hero-furniture-catalog-scroll">
-                    <div className="listing-tour-furniture-grid">
-                      {tenantFurnitures.map((furniture) => {
-                        const item = tenantFurnitureCatalogItem(furniture);
-
-                        return (
-                          <button
-                            className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
-                            key={item.furniture_id}
-                            onClick={() => handleTenantFurnitureSelect(furniture)}
-                            type="button"
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="listing-tour-furniture-thumb"
-                              style={{ backgroundColor: "var(--surface-container-high)" }}
-                            >
-                              {furniture.thumbnailUrl ? (
-                                <img alt="" decoding="async" loading="lazy" src={furniture.thumbnailUrl} />
-                              ) : (
-                                TENANT_FURNITURE_CATEGORY_ICONS[furniture.category] ?? "◇"
-                              )}
-                            </span>
-                            <strong>{item.name}</strong>
-                            <small>{furniture.sizeMm.width} × {furniture.sizeMm.depth} mm</small>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="listing-tour-furniture-source-empty">
-                    <p>등록한 내 가구가 없습니다.</p>
-                    <button onClick={() => selectFurnitureSource("catalog")} type="button">
-                      등록된 가구 보기
-                    </button>
-                  </div>
-                )}
-              </section>
-            ) : (
-              <section className="listing-tour-furniture-source-panel" aria-label={furnitureSourceTab === "poly" ? "폴리" : "등록된 가구"}>
-                {furnitureSourceTab === "poly" ? (
-                  <p className="listing-tour-furniture-source-copy">Poly Haven · CC0</p>
-                ) : null}
-                {polyCatalogLoading ? <p className="listing-tour-furniture-source-copy" role="status">폴리 가구를 불러오는 중입니다.</p> : null}
-                {polyCatalogError ? (
-                  <div className="listing-tour-furniture-source-empty">
-                    <p>{polyCatalogError}</p>
-                    <button onClick={() => setPolyCatalogRetry((value) => value + 1)} type="button">다시 시도</button>
-                  </div>
-                ) : null}
-                <div className="listing-tour-furniture-search">
-                  <input
-                    aria-label="가구 검색"
-                    onChange={(event) => setCatalogQuery(event.target.value)}
-                    placeholder="침대, 책상, 의자 검색"
-                    type="search"
-                    value={catalogQuery}
-                  />
-                </div>
-                <div
-                  aria-label="가구 카테고리"
-                  className="listing-tour-furniture-category-tabs"
-                  onScroll={handleFurnitureCategoryScroll}
-                  ref={furnitureCategoryTabsRef}
-                  role="tablist"
-                >
-                  {furnitureCategoryFilters.map((category) => (
-                    <button
-                      aria-selected={furnitureCategoryFilter === category}
-                      className={furnitureCategoryFilter === category ? "active" : ""}
-                      key={category}
-                      onClick={() => setFurnitureCategoryFilter(category)}
-                      role="tab"
-                      type="button"
-                    >
-                      {category}
-                      <small>{category === "전체" ? activeFurnitureCatalog.length : furnitureCategoryCounts[category] ?? 0}</small>
-                    </button>
-                  ))}
-                </div>
-                {variant !== "hero" && furnitureCategoryScroll.max > 0 ? (
-                  <input
-                    aria-label="가구 카테고리 가로 스크롤"
-                    className="listing-tour-furniture-category-scrollbar"
-                    max={furnitureCategoryScroll.max}
-                    min={0}
-                    onInput={handleFurnitureCategoryScrollChange}
-                    step={1}
-                    type="range"
-                    value={furnitureCategoryScroll.left}
-                  />
-                ) : null}
-                <div className="hero-furniture-catalog-scroll">
-                  <div className="listing-tour-furniture-grid">
-                    {visibleFurnitureCatalog.map((item) => {
-                      const imageUrl = furnitureImageUrl(item);
-
-                      return (
-                        <button
-                          className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
-                          key={item.furniture_id}
-                          onClick={() => handleFurnitureSelect(item)}
-                          type="button"
-                        >
-                          <span className="listing-tour-furniture-thumb" style={{ backgroundColor: item.color }}>
-                            <span aria-hidden="true" className="furniture-thumb-fallback">{item.name.slice(0, 1)}</span>
-                            {imageUrl ? (
-                              <img
-                                alt=""
-                                decoding="async"
-                                loading="lazy"
-                                onError={(event) => {
-                                  event.currentTarget.style.display = "none";
-                                }}
-                                src={imageUrl}
-                              />
-                            ) : null}
-                          </span>
-                          <strong>{item.name}</strong>
-                          <small>
-                            {item.brand}
-                            {isLargeFurnitureAsset(item) ? ` · 대용량 ${Math.round((item.assetBytes ?? 0) / 1024 / 1024)}MB` : ""}
-                          </small>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {visibleFurnitureCatalog.length < filteredCatalog.length ? (
-                    <button className="listing-tour-furniture-more" onClick={() => setFurnitureLimit((limit) => limit + 30)} type="button">
-                      가구 더 보기 ({visibleFurnitureCatalog.length}/{filteredCatalog.length})
-                    </button>
-                  ) : null}
-                </div>
-              </section>
-            )}
-            {variant !== "hero" ? <p className="listing-tour-furniture-hint">
-              가구를 놓거나 배치된 가구를 클릭해 끌어서 옮기고, 가구 위 버튼으로 ✓확정·⟳회전·✕취소·🗑삭제하세요.
-            </p> : null}
-            <div className="listing-tour-furniture-actions">
-              <button onClick={() => saveFurnitureLayout()} type="button">
-                {experience === "owner" ? "3D 도면 저장하기" : "저장"}
-              </button>
-              <button disabled={!hasSavedFurnitureLayout} onClick={resetFurnitureLayout} type="button">
-                원래 배치로 되돌리기
-              </button>
-            </div>
+            <FurnitureCatalogPanel
+              activeFurnitureId={pendingFurniture?.furniture_id ?? null}
+              categoryFilter={furnitureCategoryFilter}
+              catalogItems={furnitureCatalog}
+              onCategoryChange={setFurnitureCategoryFilter}
+              onSearchChange={setCatalogQuery}
+              onSelectCatalogItem={handleFurnitureSelect}
+              onSelectTenantFurniture={handleTenantFurnitureSelect}
+              onSourceTabChange={setFurnitureSourceTab}
+              searchQuery={catalogQuery}
+              showCategoryScrollbar={variant !== "hero"}
+              sourceTab={furnitureSourceTab}
+              tenantFurnitures={tenantFurnitures}
+            >
+              {variant !== "hero" ? <p className="listing-tour-furniture-hint">
+                가구를 놓거나 배치된 가구를 클릭해 끌어서 옮기고, 가구 위 버튼으로 ✓확정·⟳회전·✕취소·🗑삭제하세요.
+              </p> : null}
+              <div className="listing-tour-furniture-actions">
+                <button onClick={() => saveFurnitureLayout()} type="button">
+                  {experience === "owner" ? "3D 도면 저장하기" : "저장"}
+                </button>
+                <button disabled={!hasSavedFurnitureLayout} onClick={resetFurnitureLayout} type="button">
+                  원래 배치로 되돌리기
+                </button>
+              </div>
+            </FurnitureCatalogPanel>
           </div>
         ) : null}
       </section>

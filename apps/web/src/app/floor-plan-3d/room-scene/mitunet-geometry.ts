@@ -16,6 +16,10 @@ export type MitunetSceneLayout = {
   wall: MitunetScenePolygon[];
   door: MitunetScenePolygon[];
   window: MitunetScenePolygon[];
+  /** RoomPlan 캡처 경로(capture-to-layout.ts)에서만 채워지는 바닥 폴리곤. mitunet 경로는
+   * 원본 도면 이미지 픽셀 기반의 자체 바닥(MitunetDecorativeFloor)이 있어 이 필드를 안 채운다 —
+   * createMitunetSceneLayout은 undefined로 둔다. */
+  floor?: MitunetScenePolygon[];
 };
 
 // Mirrors TARGET_PLAN_SIZE in the MitUNet viewer (viewer/index.html); both

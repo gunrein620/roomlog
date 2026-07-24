@@ -5,6 +5,8 @@ import test from "node:test";
 
 const source = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
 const styles = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+// 소스 탭(내 가구·등록 가구·폴리) UI와 타입은 PR #167에서 공유 패널로 추출됐다.
+const panelSource = readFileSync(join(process.cwd(), "src/app/_components/FurnitureCatalogPanel.tsx"), "utf8");
 
 test("shared 3D simulation exposes owner overview and persistence adapter", () => {
   assert.match(source, /experience\?: "listing" \| "owner"/);
@@ -31,13 +33,12 @@ test("owner overview uses orbit controls while furniture keeps first-person cont
 });
 
 test("owner furniture catalog uses horizontal source tabs and readable large cards", () => {
-  assert.match(source, /useState<FurnitureCatalogSource>\(experience === "owner" \? "mine" : "catalog"\)/);
-  assert.match(source, /aria-label="가구 목록 종류"[\s\S]*내가구[\s\S]*등록된 가구[\s\S]*폴리/);
-  assert.match(source, /furnitureSourceTab === "mine"/);
-  assert.match(source, /furnitureSourceTab === "catalog"/);
-  assert.match(source, /furnitureSourceTab === "poly"/);
-  assert.match(source, /loadPolyhavenCatalog/);
-  assert.match(source, /대용량/);
+  // 타입·소스탭 UI는 공유 패널이 소유(내 가구·등록 가구·폴리 3탭). 호스트는 상태만 들고 위임한다.
+  assert.match(panelSource, /export type FurnitureSourceTab = "mine" \| "catalog" \| "poly"/);
+  assert.match(source, /useState<FurnitureSourceTab>\(experience === "owner" \? "mine" : "catalog"\)/);
+  assert.match(panelSource, /aria-label="가구 목록 종류"[\s\S]*className="listing-tour-furniture-source-tabs"[\s\S]*내 가구[\s\S]*등록 가구[\s\S]*폴리/);
+  assert.match(panelSource, /sourceTab === "mine"/);
+  assert.match(panelSource, /sourceTab === "catalog"/);
   assert.match(styles, /\.is-3d-simulation-open \.hero-stage \.hero-furniture-drawer \{[\s\S]*width: min\(460px, calc\(100% - 24px\)\)/);
   assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-thumb \{[\s\S]*width: 82px;[\s\S]*height: 82px;/);
   assert.match(styles, /\.is-3d-simulation-open \.listing-tour-furniture-grid (?:strong|strong,)[\s\S]*text-overflow: clip;[\s\S]*white-space: normal;/);

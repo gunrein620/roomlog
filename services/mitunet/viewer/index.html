@@ -180,6 +180,25 @@
     transition: opacity 400ms ease;
   }
   body.upload-empty #shooting-stars { opacity: 1; }
+  #roomlog-restore-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    place-items: center;
+    pointer-events: none;
+  }
+  body.roomlog-resuming #roomlog-restore-loader { display: grid; }
+  #roomlog-restore-loader span {
+    padding: 12px 18px;
+    border: 1px solid rgba(196, 180, 255, .28);
+    border-radius: 999px;
+    background: rgba(20, 15, 52, .84);
+    box-shadow: 0 12px 30px rgba(4, 8, 22, .32);
+    color: #e8e4f7;
+    font-size: 14px;
+    font-weight: 700;
+  }
   #shooting-stars i {
     position: absolute;
     top: var(--sy);
@@ -261,6 +280,7 @@
   body:not(.upload-empty) #landing-intro,
   body:not(.upload-empty) #start-sample-btn,
   body:not(.upload-empty) .landing-feature-row { display: none; }
+  body:not(.upload-empty) #ui:has(#camera-view-controls[hidden]) { display: none; }
   body.view-original #ui { display: none !important; }
   #editor-tools {
     flex: 0 1 auto;
@@ -1686,6 +1706,26 @@
 </script>
 </head>
 <body class="view-3d upload-empty">
+<script>
+  {
+    const resumeUrl = new URL(window.location.href);
+    const search = resumeUrl.searchParams;
+    const resumeStorageKey = `roomlogOwnerFurnitureResume:${search.get("requestId") ?? ""}`;
+    const hasRoomLogResumeView = ["original", "3d", "floor"].includes(search.get("resumeView") ?? "");
+    const isRoomLogResume = search.get("integration") === "roomlog"
+      && Boolean(search.get("requestId"))
+      && hasRoomLogResumeView;
+    if (isRoomLogResume) {
+      window.__roomLogResumeView = search.get("resumeView");
+      window.sessionStorage.removeItem(resumeStorageKey);
+      search.delete("resumeView");
+      window.history.replaceState(window.history.state, "", `${resumeUrl.pathname}${resumeUrl.search}${resumeUrl.hash}`);
+      document.body.classList.remove("upload-empty");
+      document.body.classList.add("roomlog-resuming");
+    }
+  }
+</script>
+<div id="roomlog-restore-loader" aria-live="polite" role="status"><span>3D 도면 불러오는 중…</span></div>
 
 <header id="workspace-header">
   <div id="workspace-brand" aria-label="RoomLog">RoomLog</div>
@@ -1762,7 +1802,7 @@
   <div class="segmented" id="view-switch" role="tablist" aria-label="Plan view">
     <button class="segment active" data-view="original" role="tab" aria-selected="true" disabled>2D</button>
     <button class="segment" data-view="3d" role="tab" aria-selected="false" disabled>3D</button>
-    <button class="segment" id="furnish-btn" data-view="furnishing" role="tab" aria-selected="false" disabled>가구 배치</button>
+    <button class="segment" id="floor-btn" data-view="floor" role="tab" aria-selected="false" disabled>Floor</button>
   </div>
 </div>
 
@@ -1909,6 +1949,7 @@ import {
 } from "/viewer-assets/floor-finishes.mjs";
 import { buildRoomFloorMaterialMap } from "/viewer-assets/room-floor-zones.mjs";
 import {
+  FURNITURE_ASSET_BASE_URL,
   FURNITURE_MANIFEST_URL,
   cloneFurniturePlacements,
   createFurniturePlacement,
@@ -2948,10 +2989,11 @@ const zoomInButton = document.getElementById("zoom-in-btn");
 const uploadButton = document.getElementById("upload-btn");
 let liveUploadAvailable = false;
 const startSampleButton = document.getElementById("start-sample-btn");
+let startSampleActionWired = false;
 const saveJsonButton = document.getElementById("save-json-btn");
 const connectRoomLogButton = document.getElementById("connect-roomlog-btn");
 const roomLogSaveHint = document.getElementById("roomlog-save-hint");
-const furnishButton = document.getElementById("furnish-btn");
+const floorButton = document.getElementById("floor-btn");
 const furniturePanel = document.getElementById("furniture-panel");
 const furniturePanelOpenButton = document.getElementById("furniture-panel-open");
 const furniturePanelCloseButton = document.getElementById("furniture-panel-close");
@@ -3029,6 +3071,8 @@ let currentComposedPlan = null;
 let currentSourceName = "";
 let currentView = "3d";
 let inFlight = false;
+let originalPreviewImage = null;
+let originalPreviewImageB64Value = "";
 let roomLogContext = null;
 let roomLogIntegrationReady = false;
 const roomLogFlowRequested = new URLSearchParams(window.location.search).get("integration") === "roomlog";
@@ -3037,6 +3081,174 @@ let cameraPresetTransitionId = 0;
 let cameraPresetTransitionActive = false;
 const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)")
   ?? { matches: false };
+const REVIEW_CANVAS_SIZE = 1024;
+
+function originalPreviewImageB64() {
+  return [
+    currentComposedPlan?.input_image_b64,
+    currentComposedPlan?.analysis_image_b64,
+    currentExtraction?.input_image_b64,
+  ].find(value => typeof value === "string" && value.length > 0) ?? "";
+}
+
+function resetReviewState() {
+  currentExtraction = null;
+  originalPreviewImage = null;
+  originalPreviewImageB64Value = "";
+  reviewEditor?.clear();
+}
+
+function canShowOriginalView() {
+  return Boolean(reviewEditor?.document || originalPreviewImageB64());
+}
+
+function reviewCanvasDimensions(plan) {
+  const [width, height] = Array.isArray(plan?.canvas_size) ? plan.canvas_size : [];
+  return [
+    Number.isFinite(width) && width > 0 ? width : REVIEW_CANVAS_SIZE,
+    Number.isFinite(height) && height > 0 ? height : REVIEW_CANVAS_SIZE,
+  ];
+}
+
+function drawReviewMaskPolygon(context, polygon, scaleX, scaleY) {
+  const outer = polygon?.outer;
+  if (!Array.isArray(outer) || outer.length < 3) return;
+  const traceRing = ring => {
+    ring.forEach(([x, y], index) => {
+      const drawX = Number(x) * scaleX;
+      const drawY = Number(y) * scaleY;
+      if (index === 0) context.moveTo(drawX, drawY);
+      else context.lineTo(drawX, drawY);
+    });
+    context.closePath();
+  };
+
+  context.beginPath();
+  traceRing(outer);
+  for (const hole of polygon.holes ?? []) {
+    if (Array.isArray(hole) && hole.length >= 3) traceRing(hole);
+  }
+  context.fill("evenodd");
+}
+
+function scaleOpeningForReview(opening, scaleX, scaleY) {
+  const scaled = { ...opening };
+  for (const key of ["center_x", "width"]) {
+    if (Number.isFinite(Number(opening?.[key]))) scaled[key] = Number(opening[key]) * scaleX;
+  }
+  for (const key of ["center_y", "height"]) {
+    if (Number.isFinite(Number(opening?.[key]))) scaled[key] = Number(opening[key]) * scaleY;
+  }
+  if (Array.isArray(opening?.mask_polygon)) {
+    scaled.mask_polygon = opening.mask_polygon.map(([x, y]) => [Number(x) * scaleX, Number(y) * scaleY]);
+  }
+  return scaled;
+}
+
+function buildEditableReviewPayload(plan) {
+  const inputImageB64 = typeof plan?.input_image_b64 === "string" && plan.input_image_b64.length > 0
+    ? plan.input_image_b64
+    : plan?.analysis_image_b64;
+  const walls = plan?.polygons?.wall;
+  if (typeof inputImageB64 !== "string" || inputImageB64.length === 0 || !Array.isArray(walls) || walls.length === 0) {
+    return null;
+  }
+
+  const [sourceWidth, sourceHeight] = reviewCanvasDimensions(plan);
+  const scaleX = REVIEW_CANVAS_SIZE / sourceWidth;
+  const scaleY = REVIEW_CANVAS_SIZE / sourceHeight;
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = REVIEW_CANVAS_SIZE;
+  maskCanvas.height = REVIEW_CANVAS_SIZE;
+  const maskContext = maskCanvas.getContext("2d");
+  if (!maskContext) return null;
+  maskContext.fillStyle = "#fff";
+  walls.forEach(polygon => drawReviewMaskPolygon(maskContext, polygon, scaleX, scaleY));
+  const wallMaskB64 = maskCanvas.toDataURL("image/png").split(",", 2)[1] ?? "";
+  if (!wallMaskB64) return null;
+
+  const millimetersPerPixel = Number(plan?.calibration?.millimetersPerPixel);
+  const calibration = Number.isFinite(millimetersPerPixel) && millimetersPerPixel > 0
+    ? {
+        start: { x: 0, y: 0 },
+        end: { x: 1, y: 0 },
+        pixelDistance: 1,
+        actualMillimeters: millimetersPerPixel,
+        millimetersPerPixel,
+      }
+    : null;
+
+  return {
+    input_image_b64: inputImageB64,
+    analysis_image_b64: typeof plan?.analysis_image_b64 === "string" ? plan.analysis_image_b64 : inputImageB64,
+    wall_mask_b64: wallMaskB64,
+    openings: (plan.openings ?? []).map(opening => scaleOpeningForReview(opening, scaleX, scaleY)),
+    calibration,
+  };
+}
+
+async function prepareEditableReviewDocument() {
+  if (reviewEditor?.document) return true;
+  if (!reviewEditor) return false;
+  const editablePayload = buildEditableReviewPayload(currentComposedPlan);
+  if (!editablePayload) return false;
+
+  await reviewEditor.load(editablePayload);
+  reviewEditor.calibration = editablePayload.calibration ?? reviewEditor.getCalibration();
+  reviewEditor.document.markRendered();
+  reviewEditor.setTool("select");
+  reviewEditor.render();
+  toolButtons.forEach(button => button.classList.toggle("active", button.dataset.tool === "select"));
+  currentExtraction = editablePayload;
+  originalPreviewImage = null;
+  originalPreviewImageB64Value = "";
+  return true;
+}
+
+function drawOriginalPreview(image) {
+  const rect = reviewCanvas.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width || reviewCanvas.clientWidth || window.innerWidth));
+  const height = Math.max(1, Math.round(rect.height || reviewCanvas.clientHeight || window.innerHeight));
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  reviewCanvas.width = Math.round(width * pixelRatio);
+  reviewCanvas.height = Math.round(height * pixelRatio);
+
+  const context = reviewCanvas.getContext("2d");
+  if (!context) throw new Error("Unable to draw the original floor plan preview");
+
+  const imageWidth = image.naturalWidth || image.width;
+  const imageHeight = image.naturalHeight || image.height;
+  const scale = Math.min(width / imageWidth, height / imageHeight);
+  const drawWidth = imageWidth * scale;
+  const drawHeight = imageHeight * scale;
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.fillStyle = "#efecfa";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+
+async function renderOriginalPreview() {
+  if (reviewEditor?.document) {
+    reviewEditor.resize();
+    reviewEditor.render();
+    return true;
+  }
+
+  const base64 = originalPreviewImageB64();
+  if (!base64) return false;
+  if (originalPreviewImageB64Value !== base64 || !originalPreviewImage) {
+    originalPreviewImage = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Unable to decode the original floor plan image"));
+      image.src = base64.startsWith("data:") ? base64 : `data:image/png;base64,${base64}`;
+    });
+    originalPreviewImageB64Value = base64;
+  }
+
+  drawOriginalPreview(originalPreviewImage);
+  return true;
+}
 
 function furnitureCategoryLabel(category) {
   return category === "all" ? "전체" : FURNITURE_CATEGORY_LABELS[category] ?? category;
@@ -3267,6 +3479,76 @@ async function loadFurnitureTemplate(item) {
     });
   }
   return cloneFurnitureInstance(await templatePromise);
+}
+
+function restoredFurnitureItem(savedFurniture) {
+  const modelUrl = typeof savedFurniture?.modelUrl === "string" ? savedFurniture.modelUrl.trim() : "";
+  const sizeMm = savedFurniture?.sizeMm ?? {};
+  const length = Array.isArray(savedFurniture?.length) ? savedFurniture.length : [];
+  const width = Number(sizeMm.width ?? length[0]);
+  const height = Number(sizeMm.height ?? length[1]);
+  const depth = Number(sizeMm.depth ?? length[2]);
+
+  if (
+    !modelUrl
+    || !Number.isFinite(width) || width <= 0
+    || !Number.isFinite(height) || height <= 0
+    || !Number.isFinite(depth) || depth <= 0
+  ) return null;
+
+  const relativePath = modelUrl.startsWith(FURNITURE_ASSET_BASE_URL)
+    ? modelUrl.slice(FURNITURE_ASSET_BASE_URL.length)
+    : modelUrl;
+  return {
+    category: typeof savedFurniture?.category === "string" ? savedFurniture.category : "saved",
+    displayName: typeof savedFurniture?.name === "string" && savedFurniture.name.trim()
+      ? savedFurniture.name
+      : "Saved furniture",
+    fileName: typeof savedFurniture?.furniture_id === "string" ? savedFurniture.furniture_id : relativePath,
+    modelUrl,
+    relativePath,
+    sizeMm: { width, height, depth },
+    sizeMeters: { width: width / 1000, height: height / 1000, depth: depth / 1000 },
+  };
+}
+
+async function restoreSavedFurniturePlacements(savedFurnitures) {
+  if (!Array.isArray(savedFurnitures)) return;
+
+  for (const savedFurniture of savedFurnitures) {
+    const item = restoredFurnitureItem(savedFurniture);
+    const position = Array.isArray(savedFurniture?.position)
+      ? savedFurniture.position.slice(0, 3).map(Number)
+      : [];
+    const rotationY = Number(savedFurniture?.rotation?.[1]);
+    if (
+      !item
+      || position.length !== 3
+      || position.some(value => !Number.isFinite(value))
+      || !Number.isFinite(rotationY)
+    ) continue;
+
+    try {
+      const object = normalizeFurnitureObject(await loadFurnitureTemplate(item), item);
+      object.position.set(position[0], position[1], position[2]);
+      object.rotation.y = rotationY;
+      const placement = {
+        id: typeof savedFurniture?.id === "string" && savedFurniture.id
+          ? savedFurniture.id
+          : crypto.randomUUID(),
+        relativePath: item.relativePath,
+        position: [position[0], position[1], position[2]],
+        rotationY,
+        sizeMm: { ...item.sizeMm },
+      };
+      object.userData.placementId = placement.id;
+      furnitureGroup.add(object);
+      placedFurnitures.push({ item, object, placement });
+    } catch (error) {
+      console.warn("saved furniture failed to restore:", error);
+    }
+  }
+  updateFurnitureInteractionUi();
 }
 
 function normalizeFurnitureObject(source, item) {
@@ -3522,7 +3804,11 @@ function footprintWithinSupport(position, item, rotationY, supportEntry) {
 }
 
 function isFurniturePlacementView() {
-  return currentView === "3d" || currentView === "furnishing";
+  return currentView === "furnishing";
+}
+
+function canOpenFurniturePlacement() {
+  return ["3d", "floor", "furnishing"].includes(currentView);
 }
 
 function updateFurnitureInteractionUi() {
@@ -3995,7 +4281,7 @@ function updateScaleControls() {
 }
 
 function updateCameraPresetControls() {
-  const showingThreeDimensional = ["3d", "furnishing"].includes(currentView);
+  const showingThreeDimensional = ["3d", "floor", "furnishing"].includes(currentView);
   const hasRenderedPlan = Boolean(currentFraming && currentComposedPlan);
   cameraViewControls.hidden = !hasRenderedPlan || !showingThreeDimensional;
   cameraViewButtons.forEach(button => {
@@ -4021,7 +4307,7 @@ function roomLogSaveBlockReason() {
   if (!currentComposedPlan || reviewEditor?.document?.needsCompose()) {
     return "도면을 렌더링한 뒤 저장할 수 있어요.";
   }
-  if (!["3d", "furnishing"].includes(currentView)) {
+  if (!["3d", "floor", "furnishing"].includes(currentView)) {
     return "3D 보기에서 렌더링 결과를 확인한 뒤 저장할 수 있어요.";
   }
   if (pendingFurniture) return "배치 중인 가구를 확정하거나 취소한 뒤 저장할 수 있어요.";
@@ -4047,7 +4333,8 @@ function updateEditorControls() {
   document.querySelectorAll("[data-count]").forEach(node => {
     node.textContent = counts[node.dataset.count] ?? 0;
   });
-  viewControls.hidden = !hasDocument;
+  const hasViewControls = hasDocument || Boolean(currentComposedPlan);
+  viewControls.hidden = !hasViewControls;
   toolButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   navigationButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
   visibilityInputs.forEach(input => { input.disabled = !hasDocument || inFlight; });
@@ -4057,10 +4344,8 @@ function updateEditorControls() {
   typeButton.disabled = !hasSelection || inFlight;
   resetButton.disabled = !hasDocument || inFlight;
   uploadButton.disabled = !liveUploadAvailable || inFlight;
-  const canFurnish = Boolean(currentComposedPlan) && !reviewDocument?.needsCompose();
-  const furnishing = currentView === "furnishing";
-  furnishButton.hidden = false;
-  const canSave = ["3d", "furnishing"].includes(currentView) &&
+  floorButton.hidden = false;
+  const canSave = ["3d", "floor", "furnishing"].includes(currentView) &&
     Boolean(currentComposedPlan) &&
     !reviewDocument?.needsCompose();
   const roomLogSaveReason = roomLogSaveBlockReason();
@@ -4071,7 +4356,12 @@ function updateEditorControls() {
   connectRoomLogButton.title = roomLogSaveReason || "3D 도면을 저장하고 매물 등록으로 돌아가기";
   roomLogSaveHint.hidden = !roomLogFlowRequested || !roomLogSaveReason;
   roomLogSaveHint.textContent = roomLogSaveReason;
-  viewButtons.forEach(button => { button.disabled = !hasDocument || inFlight; });
+  viewButtons.forEach(button => {
+    const canUseView = button.dataset.view === "original"
+      ? canShowOriginalView()
+      : hasDocument || Boolean(currentComposedPlan);
+    button.disabled = !canUseView || inFlight;
+  });
   document.body.classList.toggle("is-busy", inFlight);
   reviewCanvas.setAttribute("aria-busy", String(inFlight));
   updateCameraPresetControls();
@@ -4092,15 +4382,15 @@ function setFurniturePlacementVisibility(visible) {
   document.body.classList.toggle("view-furnishing", visible);
 }
 
-function setFurnishingVisibility(furnishing) {
-  setPlanFloorSurfaceVisible(furnishing);
+function setFurnishingVisibility(furnishing, showFloorFinish = furnishing) {
+  setPlanFloorSurfaceVisible(furnishing && showFloorFinish);
   setFurniturePlacementVisibility(furnishing);
 }
 
 function setFurniturePanelOpen(open) {
   clearTimeout(furniturePanelCloseTimer);
   furniturePanelCloseTimer = null;
-  const canPlaceFurniture = isFurniturePlacementView();
+  const canPlaceFurniture = canOpenFurniturePlacement();
   furniturePanelOpenButton.hidden = open || !canPlaceFurniture;
   furniturePanelOpenButton.setAttribute("aria-expanded", String(open && canPlaceFurniture));
   if (!canPlaceFurniture) {
@@ -4147,9 +4437,10 @@ async function blobToBase64(blob) {
 }
 
 async function buildRoomLogEditorSnapshot() {
-  if (!reviewEditor?.document || !currentExtraction || !currentComposedPlan) {
+  if (!currentComposedPlan) {
     throw new Error("도면 편집 상태를 저장할 수 없습니다.");
   }
+  if (!reviewEditor?.document || !currentExtraction) return undefined;
   const wallMaskBlob = await reviewEditor.toWallMaskBlob();
   return {
     composedPlan: {
@@ -4168,7 +4459,8 @@ async function buildRoomLogEditorSnapshot() {
 }
 
 async function enterFurnishingStage() {
-  const entering = currentView === "3d";
+  const entering = ["3d", "floor"].includes(currentView);
+  const enteringFromFloor = currentView === "floor";
   let roomMaterialWarning = "";
   if (!currentComposedPlan || inFlight || (!entering && currentView !== "furnishing")) return;
   if (roomLogFlowRequested && roomLogContext) {
@@ -4181,8 +4473,8 @@ async function enterFurnishingStage() {
         currentComposedPlan,
         currentSourceName,
         currentFurniturePlacements(),
-        "floor",
-        undefined,
+        enteringFromFloor ? "floor" : "source",
+        enteringFromFloor ? undefined : await buildRoomLogPreviewImage(currentComposedPlan.input_image_b64),
         editorSnapshot,
       );
     } catch (error) {
@@ -4193,7 +4485,7 @@ async function enterFurnishingStage() {
     }
     return;
   }
-  if (entering) {
+  if (enteringFromFloor) {
     inFlight = true;
     updateEditorControls();
     setStatus("방별 바닥재를 만드는 중입니다.");
@@ -4206,9 +4498,11 @@ async function enterFurnishingStage() {
     } finally {
       inFlight = false;
     }
+  }
+  if (entering) {
     currentView = "furnishing";
     setCanvasViewState("furnishing");
-    setFurnishingVisibility(true);
+    setFurnishingVisibility(true, enteringFromFloor);
     setFurniturePanelOpen(false);
     controls.enabled = true;
     controls.enableRotate = true;
@@ -4259,13 +4553,18 @@ cameraViewButtons.forEach(button => button.addEventListener("click", () => {
   if (view === "auto") toggleAutoOrbit();
   else void applyCameraPreset(view);
 }));
-furniturePanelOpenButton.addEventListener("click", () => {
+async function openFurniturePlacement() {
   if (roomLogFlowRequested) {
-    void enterFurnishingStage();
+    await enterFurnishingStage();
     return;
   }
+  await enterFurnishingStage();
+  if (currentView !== "furnishing") return;
   setFurniturePanelOpen(true);
-  void loadFurnitureCatalogForPlacement();
+}
+
+furniturePanelOpenButton.addEventListener("click", () => {
+  void openFurniturePlacement();
 });
 furniturePanelCloseButton.addEventListener("click", () => setFurniturePanelOpen(false));
 furnitureSearch.addEventListener("input", () => {
@@ -4460,14 +4759,18 @@ function updateViewButtons(view) {
 }
 
 function setView(view) {
-  if (!["original", "3d", "furnishing"].includes(view)) {
+  if (!["original", "3d", "floor", "furnishing"].includes(view)) {
     throw new RangeError(`Unknown plan view: ${view}`);
   }
   if (view === "furnishing") {
-    showFloorView();
+    void openFurniturePlacement();
     return;
   }
-  if (view === "original" && !reviewEditor?.document) return;
+  if (view === "floor") {
+    void showFloorView();
+    return;
+  }
+  if (view === "original" && !canShowOriginalView()) return;
 
   if (currentView === "furnishing") {
     cancelFurnitureInteraction({ clearSelection: true, silent: true });
@@ -4475,7 +4778,8 @@ function setView(view) {
   }
 
   const showingReview = view === "original";
-  const viewChanged = currentView !== view;
+  const previousView = currentView;
+  const viewChanged = previousView !== view;
   if (showingReview) {
     cameraPresetTransitionActive = false;
     stopAutoOrbit();
@@ -4490,7 +4794,7 @@ function setView(view) {
   controls.enableRotate = !showingReview;
   updateViewButtons(view);
 
-  if (viewChanged && !showingReview) {
+  if (viewChanged && !showingReview && previousView !== "floor") {
     const reducedMotion = reducedMotionQuery.matches;
     setPlanGeometryVisible(true);
     if (currentFraming) {
@@ -4509,8 +4813,7 @@ function setView(view) {
 
   if (showingReview) {
     requestAnimationFrame(() => {
-      reviewEditor.resize();
-      reviewEditor.render();
+      void renderOriginalPreview();
     });
   }
   assertViewState(view);
@@ -4518,23 +4821,24 @@ function setView(view) {
 }
 
 async function showOriginalView() {
-  if (currentView === "original" || inFlight || !reviewEditor?.document) return;
+  if (currentView === "original" || inFlight || !canShowOriginalView()) return;
   cameraPresetTransitionId += 1;
   cameraPresetTransitionActive = false;
   stopAutoOrbit();
-  if (!currentFraming) {
-    await transitionCanvasView("original");
-    return;
-  }
-
   inFlight = true;
-  updateViewButtons("original");
   updateEditorControls();
-  controls.enabled = false;
-  controls.enableRotate = false;
-  setPlanGeometryVisible(false);
 
   try {
+    const previewReady = await prepareEditableReviewDocument();
+    if (!previewReady) return;
+    await renderOriginalPreview();
+    controls.enabled = false;
+    controls.enableRotate = false;
+    setPlanGeometryVisible(false);
+    if (!currentFraming) {
+      await transitionCanvasView("original");
+      return;
+    }
     const { center, radius } = currentFraming;
     if (reducedMotionQuery.matches) {
       moveCameraImmediately(overheadPosition(center, radius), center);
@@ -4542,7 +4846,14 @@ async function showOriginalView() {
       await tweenCamera(overheadPosition(center, radius), center, CAMERA_TWEEN_MS);
     }
     await transitionCanvasView("original");
+  } catch (error) {
+    setStatus(`원본 도면을 열지 못했습니다: ${error.message}`, "error");
   } finally {
+    if (currentView !== "original") {
+      controls.enabled = true;
+      controls.enableRotate = true;
+      updateViewButtons(currentView);
+    }
     inFlight = false;
     updateEditorControls();
   }
@@ -4612,12 +4923,12 @@ async function showThreeDimensionalView() {
     return;
   }
   const reviewDocument = reviewEditor?.document;
-  if (!reviewDocument || inFlight) return;
+  if (inFlight || (!reviewDocument && !currentComposedPlan)) return;
 
   inFlight = true;
   updateEditorControls();
   try {
-    if (reviewDocument.needsCompose()) {
+    if (reviewDocument?.needsCompose()) {
       const requestedRevision = reviewDocument.revision;
       setStatus("Composing 3D…");
       const form = new FormData();
@@ -4661,10 +4972,48 @@ async function showThreeDimensionalView() {
 
 async function showFloorView() {
   if (currentView === "furnishing") {
+    cancelFurnitureInteraction({ clearSelection: true, silent: true });
+    currentView = "floor";
+    setCanvasViewState("floor");
+    setPlanFloorSurfaceVisible(true);
+    setFurniturePlacementVisibility(true);
+    setFurniturePanelOpen(false);
+    controls.enabled = true;
+    controls.enableRotate = true;
+    updateViewButtons("floor");
+    assertViewState("floor");
+    updateEditorControls();
     return;
   }
   if (currentView === "original") await showThreeDimensionalView();
-  if (currentView === "3d") await enterFurnishingStage();
+  if (currentView !== "3d" || inFlight || !currentComposedPlan) return;
+
+  inFlight = true;
+  updateEditorControls();
+  try {
+    let roomMaterialWarning = "";
+    try {
+      await ensureRoomFloorMaterials();
+    } catch (error) {
+      rebuildFloorFinish(currentComposedPlan, floorFinishLayout);
+      roomMaterialWarning = `바닥 마감을 적용하지 못해 기본 마루를 사용합니다: ${error.message}`;
+    }
+    currentView = "floor";
+    setCanvasViewState("floor");
+    setPlanFloorSurfaceVisible(true);
+    setFurniturePlacementVisibility(true);
+    setFurniturePanelOpen(false);
+    controls.enabled = true;
+    controls.enableRotate = true;
+    updateViewButtons("floor");
+    assertViewState("floor");
+    if (roomMaterialWarning) {
+      setStatus(roomMaterialWarning, "warning");
+    }
+  } finally {
+    inFlight = false;
+    updateEditorControls();
+  }
 }
 
 // Retained for static demo JSON callers; editable fields are not required.
@@ -4684,6 +5033,7 @@ async function fetchAndLoad(url, init) {
       setStatus("This sample has no renderable polygons. Choose another sample to retry.", "error");
       return false;
     }
+    resetReviewState();
     currentComposedPlan = data;
     setStatus(summarize(data));
     return true;
@@ -4704,6 +5054,12 @@ async function startLandingSample() {
   setView("3d");
 }
 
+function wireStartSampleAction() {
+  if (startSampleActionWired) return;
+  startSampleActionWired = true;
+  startSampleButton.addEventListener("click", startLandingSample);
+}
+
 function wireReviewControls() {
   saveJsonButton.addEventListener("click", () => {
     try {
@@ -4722,7 +5078,7 @@ function wireReviewControls() {
     try {
       inFlight = true;
       updateEditorControls();
-      const previewMode = currentView === "furnishing" ? "floor" : "source";
+      const previewMode = ["floor", "furnishing"].includes(currentView) ? "floor" : "source";
       const previewImageB64 = previewMode === "source"
         ? await buildRoomLogPreviewImage(currentComposedPlan?.input_image_b64)
         : undefined;
@@ -4782,7 +5138,7 @@ function wireReviewControls() {
   }));
   viewButtons.forEach(button => button.addEventListener("click", () => {
     if (button.dataset.view === "original") showOriginalView();
-    else if (button.dataset.view === "furnishing") showFloorView();
+    else if (button.dataset.view === "floor") showFloorView();
     else showThreeDimensionalView();
   }));
   for (const eventName of ["pointerdown", "pointerup", "pointercancel"]) {
@@ -4817,6 +5173,11 @@ async function enableLiveMode() {
   try {
     const { ReviewEditor } = await import("/viewer-assets/review-editor.mjs");
     reviewEditor = new ReviewEditor(reviewCanvas, { onChange: updateEditorControls });
+    window.addEventListener("resize", () => {
+      if (currentView === "original" && !reviewEditor?.document) {
+        void renderOriginalPreview();
+      }
+    });
   } catch (error) {
     setStatus(`Editor unavailable: ${error.message}`, "error");
     return false;
@@ -4832,7 +5193,6 @@ async function enableLiveMode() {
   uploadButton.title = "도면 이미지 올리기";
   renderIcons();
   updateEditorControls();
-  startSampleButton.addEventListener("click", startLandingSample);
   window.dispatchEvent(new Event("mitunet-upload-ready"));
 
   let dragDepth = 0;
@@ -4865,34 +5225,101 @@ async function initializeRoomLogIntegration() {
   }
 }
 
+function planFromRoomLogFurnitureDraft(draft) {
+  const mitunet = draft?.floorPlan?.mitunet;
+  const polygons = mitunet?.polygons;
+  if (!Array.isArray(polygons?.wall) || polygons.wall.length === 0) return null;
+
+  const canvasSize = Array.isArray(mitunet.canvasSize) && mitunet.canvasSize.length >= 2
+    ? mitunet.canvasSize.slice(0, 2)
+    : [1024, 1024];
+  const contentRect = Array.isArray(mitunet.contentRect) && mitunet.contentRect.length >= 4
+    ? mitunet.contentRect.slice(0, 4)
+    : [0, 0, canvasSize[0], canvasSize[1]];
+  const millimetersPerPixel = Number(mitunet.millimetersPerPixel);
+  const sourceImageB64 = typeof mitunet.sourceImageB64 === "string" && mitunet.sourceImageB64.length > 0
+    ? mitunet.sourceImageB64
+    : undefined;
+
+  return {
+    composedPlan: {
+      canvas_size: canvasSize,
+      content_rect: contentRect,
+      polygons,
+      ...(sourceImageB64 ? {
+        input_image_b64: sourceImageB64,
+        analysis_image_b64: sourceImageB64,
+      } : {}),
+      ...(Number.isFinite(millimetersPerPixel) && millimetersPerPixel > 0
+        ? { calibration: { millimetersPerPixel } }
+        : {}),
+      ...(mitunet.floorMaterials ? { floor_materials: mitunet.floorMaterials } : {}),
+    },
+    sourceName: typeof draft?.floorPlan?.name === "string" ? draft.floorPlan.name : "",
+  };
+}
+
 async function restoreRoomLogEditorSnapshot() {
-  const resumeView = new URLSearchParams(window.location.search).get("resumeView");
-  if (!roomLogContext || (resumeView !== "original" && resumeView !== "3d")) return false;
+  const resumeView = window.__roomLogResumeView ?? new URLSearchParams(window.location.search).get("resumeView");
+  if (!roomLogContext || (resumeView !== "original" && resumeView !== "3d" && resumeView !== "floor")) return false;
   try {
     const draft = readRoomLogFurnitureDraft(window.localStorage, roomLogContext.requestId);
     const snapshot = draft?.editorSnapshot;
-    if (!snapshot?.review || !snapshot?.composedPlan) return false;
+    const fallbackPlan = planFromRoomLogFurnitureDraft(draft);
+    const hasRestorableEditorSnapshot = Boolean(snapshot?.review && snapshot?.composedPlan)
+      && typeof snapshot.review.input_image_b64 === "string"
+      && typeof snapshot.review.wall_mask_b64 === "string";
+    const snapshotRestorePayload = hasRestorableEditorSnapshot
+      ? {
+          composedPlan: {
+            ...snapshot.composedPlan,
+            input_image_b64: snapshot.review.input_image_b64,
+            analysis_image_b64: snapshot.review.analysis_image_b64,
+          },
+          review: snapshot.review,
+          sourceName: typeof snapshot.sourceName === "string" ? snapshot.sourceName : "",
+        }
+      : null;
+    const restoreCandidates = [snapshotRestorePayload, fallbackPlan].filter(Boolean);
+    if (restoreCandidates.length === 0) {
+      setStatus("저장된 가구 배치 도면을 찾지 못했습니다. 도면을 다시 열어주세요.", "error");
+      return false;
+    }
 
-    await reviewEditor.load(snapshot.review);
-    reviewEditor.calibration = snapshot.review.calibration ?? reviewEditor.getCalibration();
-    const composedPlan = {
-      ...snapshot.composedPlan,
-      input_image_b64: snapshot.review.input_image_b64,
-      analysis_image_b64: snapshot.review.analysis_image_b64,
-    };
-    const rendered = await loadPlan(composedPlan);
-    if (!rendered) throw new Error("저장된 3D 도면을 복원할 수 없습니다.");
+    const savedFurnitures = draft?.floorPlan?.furnitures;
+    let lastRestoreError = null;
+    for (const restorePayload of restoreCandidates) {
+      try {
+        if (restorePayload.review && reviewEditor) {
+          await reviewEditor.load(restorePayload.review);
+          reviewEditor.calibration = restorePayload.review.calibration ?? reviewEditor.getCalibration();
+        }
+        const rendered = await loadPlan(restorePayload.composedPlan);
+        if (!rendered) throw new Error("저장된 3D 도면을 복원할 수 없습니다.");
 
-    currentExtraction = snapshot.review;
-    currentComposedPlan = composedPlan;
-    currentSourceName = typeof snapshot.sourceName === "string" ? snapshot.sourceName : "";
-    reviewEditor.document.markRendered();
-    document.body.classList.remove("upload-empty");
-    const targetView = resumeView === "original" ? "original" : "3d";
-    setView(targetView);
-    setStatus(summarize(currentComposedPlan));
-    updateEditorControls();
-    return true;
+        await restoreSavedFurniturePlacements(savedFurnitures);
+
+        currentExtraction = restorePayload.review ?? null;
+        currentComposedPlan = restorePayload.composedPlan;
+        currentSourceName = restorePayload.sourceName;
+        if (restorePayload.review && reviewEditor?.document) reviewEditor.document.markRendered();
+        document.body.classList.remove("upload-empty");
+        if (resumeView === "floor") {
+          await showFloorView();
+        } else {
+          const targetView = resumeView === "original" ? "original" : "3d";
+          if (targetView === "original") await showOriginalView();
+          else setView(targetView);
+        }
+        setStatus(summarize(currentComposedPlan));
+        updateEditorControls();
+        return true;
+      } catch (error) {
+        lastRestoreError = error;
+        continue;
+      }
+    }
+    throw lastRestoreError ?? new Error("Saved 3D floor plan could not be restored.");
   } catch (error) {
     setStatus(`저장된 도면을 복원하지 못했습니다: ${error.message}`, "error");
     return false;
@@ -4929,20 +5356,27 @@ async function enableStaticDemoMode() {
 }
 
 async function initializeViewer() {
-  const liveModeEnabled = await enableLiveMode();
-  if (liveModeEnabled) {
+  try {
+    wireStartSampleAction();
     await initializeRoomLogIntegration();
-    await restoreRoomLogEditorSnapshot();
-  } else {
-    uploadButton.hidden = false;
-    uploadButton.disabled = true;
-    uploadButton.setAttribute("aria-busy", "false");
-    uploadButton.title = "도면 분석 서버에 연결할 수 없습니다. 샘플로 확인해 주세요.";
-    const uploadCta = uploadButton.querySelector(".upload-cta");
-    if (uploadCta) uploadCta.textContent = "도면 분석 서버에 연결할 수 없습니다";
-    await enableStaticDemoMode();
-    roomLogIntegrationReady = true;
-    updateEditorControls();
+    const liveModeEnabled = await enableLiveMode();
+    const restored = await restoreRoomLogEditorSnapshot();
+    if (restored) return;
+    if (liveModeEnabled) {
+      document.body.classList.add("upload-empty");
+    } else {
+      uploadButton.hidden = false;
+      uploadButton.disabled = true;
+      uploadButton.setAttribute("aria-busy", "false");
+      uploadButton.title = "도면 분석 서버에 연결할 수 없습니다. 샘플로 확인해 주세요.";
+      const uploadCta = uploadButton.querySelector(".upload-cta");
+      if (uploadCta) uploadCta.textContent = "도면 분석 서버에 연결할 수 없습니다";
+      await enableStaticDemoMode();
+      roomLogIntegrationReady = true;
+      updateEditorControls();
+    }
+  } finally {
+    document.body.classList.remove("roomlog-resuming");
   }
 }
 

@@ -2907,12 +2907,14 @@ export default function HomeApp({
                     <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
                       <div className="listing-photo">
                         <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />
-                        {/* 워킹뷰 스티커(시안) — 실제 기능이 있는 매물에만: 골드 버스트=1인칭 투어, pill=3D 가구 배치.
-                            텍스트 신뢰 배지(확인매물 등)는 계속 상세 전용 — 여기 스티커는 3D 차별점 표식만. */}
+                        {/* 1인칭 투어 스티커(시안) — 실제 기능이 있는 매물에만: 골드 버스트=1인칭 투어, pill=3D 가구 배치.
+                            텍스트 신뢰 배지(확인매물 등)는 계속 상세 전용 — 여기 스티커는 3D 차별점 표식만.
+                            56px 버스트의 클립 안에 들어가도록 두 줄로 쌓는다("1인칭 투어" 한 줄은 잘림). */}
                         {walkingTourAvailability[listing.listingNo] ? (
-                          <span className="thumb-sticker-walk" aria-label="1인칭 워킹뷰 가능">
+                          <span className="thumb-sticker-walk" aria-label="1인칭 투어 가능">
                             <Footprints size={17} strokeWidth={2.2} aria-hidden="true" />
-                            워킹뷰
+                            <span>1인칭</span>
+                            <span>투어</span>
                           </span>
                         ) : null}
                         {listingHas3DPlacement(listing) ? (

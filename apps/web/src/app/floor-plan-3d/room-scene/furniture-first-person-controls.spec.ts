@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 const sceneDir = join(process.cwd(), "src/app/floor-plan-3d/room-scene");
 const controllerPath = join(sceneDir, "FurnitureFirstPersonControls.tsx");
+const controllerSource = readFileSync(controllerPath, "utf8");
 const viewerSource = readFileSync(join(sceneDir, "RoomlogThreeFloorPlanView.tsx"), "utf8");
 const listingSource = readFileSync(join(process.cwd(), "src/app/_components/ListingTourRoom3D.tsx"), "utf8");
 const styles = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
@@ -15,8 +16,6 @@ const mitunetExtrudedLayerSource = viewerSource.slice(
 
 describe("furniture first-person controls", () => {
   it("owns pointer lock, mouse look, keyboard movement, and center raycasting", () => {
-    const controllerSource = readFileSync(controllerPath, "utf8");
-
     assert.match(controllerSource, /document\.addEventListener\("pointerlockchange"/);
     assert.match(controllerSource, /document\.addEventListener\("mousemove"/);
     assert.match(controllerSource, /resolveFurnitureShortcut/);
@@ -104,6 +103,15 @@ describe("furniture first-person controls", () => {
     assert.match(listingSource, /onFurnitureRotateLeft=\{\(\) => rotatePendingFurniture\(-1\)\}/);
     assert.match(listingSource, /onFurnitureRotateRight=\{\(\) => rotatePendingFurniture\(1\)\}/);
     assert.match(listingSource, /onFurnitureRotateBy=\{rotatePendingFurnitureBy\}/);
-    assert.match(listingSource, /furniturePointerLockRequestRef\.current\?\.\(\)/);
+    assert.doesNotMatch(
+      listingSource,
+      /furniturePointerLockRequestRef\.current\?\.\(\)/,
+      "가구 선택/이동 버튼은 포인터 락 해제 직후 자동으로 다시 잠그면 안 된다"
+    );
+    assert.doesNotMatch(
+      controllerSource,
+      /shortcut === "close-select"\) \{[\s\S]{0,120}onCloseSelect\(\);\s*requestPointerLock\(\);/,
+      "선택 모드를 닫는 키 입력은 다음 캔버스 클릭 전에 포인터 락을 재요청하면 안 된다"
+    );
   });
 });
