@@ -82,9 +82,18 @@ export function versionMitunetViewerAssetUrls(source: string, version = MITUNET_
     .replaceAll("`/viewer-assets/", `\`${assetRoot}`);
 }
 
+// 소유자 가구 카탈로그(등록 가구/폴리)는 NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL(S3 프리픽스)로
+// modelUrl을 만든다. 뷰어는 이 값을 알아야 저장된 가구의 절대 URL을 상대 relativePath로 되돌려
+// 재진입(mapFurniturePlacements 검증)이 깨지지 않는다. NEXT_PUBLIC_*는 빌드타임 인라인이지만
+// 뷰어 HTML은 요청 시 프록시가 만들므로 여기서 서버 런타임 env를 읽어 주입한다.
+const ROOMLOG_FURNITURE_ASSET_BASE_SCRIPT = () =>
+  `<script>window.__ROOMLOG_FURNITURE_ASSET_BASE_URL=${JSON.stringify(
+    process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL?.trim() ?? "",
+  )};</script>`;
+
 export function transformMitunetViewerHtml(html: string) {
   return versionMitunetViewerAssetUrls(html
-    .replace("<title>", `${PRETENDARD_LINK_TAGS}<title>`)
+    .replace("<title>", `${PRETENDARD_LINK_TAGS}${ROOMLOG_FURNITURE_ASSET_BASE_SCRIPT()}<title>`)
     // 뷰어는 ./demos/…를 쓰지만 이 페이지는 /floor-plan-3d/mitunet(디렉토리 아님)에서
     // 서빙되므로 상대경로가 /floor-plan-3d/demos/…로 풀려 404가 난다.
     .replaceAll('"./demos/', '"/viewer-assets/demos/')

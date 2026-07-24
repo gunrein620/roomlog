@@ -39,6 +39,26 @@ export function readRoomLogFurnitureDraft(storage, requestId) {
   return draft;
 }
 
+// 저장된 가구의 modelUrl은 소유자(가구 배치) 화면 카탈로그가 붙인 절대 URL일 수 있다
+// (등록 가구/폴리는 NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL = S3 프리픽스로 만든다). 뷰어가 아는
+// 로컬 base(`/floor-plan-3d/furniture-assets/`) 하나만으로는 상대경로를 못 뽑아 절대 URL이
+// 그대로 relativePath로 남고, 재진입 시 mapFurniturePlacements의 중첩 GLB 검증에서 throw 나
+// "가구 배치"로 다시 못 들어간다. 설정된 asset base들을 모두 후보로 벗겨 항상 상대 중첩 경로로
+// 정규화한다 — 어느 base에도 안 걸리면 원본을 그대로 돌려준다(기존 동작 보존).
+export function furnitureRelativePathFromModelUrl(modelUrl, assetBaseUrls = []) {
+  if (typeof modelUrl !== "string") return "";
+  const value = modelUrl.trim();
+  if (!value) return "";
+  const extraBases = Array.isArray(assetBaseUrls) ? assetBaseUrls : [assetBaseUrls];
+  const bases = [FURNITURE_ASSET_BASE_URL, ...extraBases]
+    .filter((base) => typeof base === "string" && base.trim())
+    .map((base) => `${base.trim().replace(/\/+$/, "")}/`);
+  for (const base of bases) {
+    if (value.startsWith(base)) return value.slice(base.length);
+  }
+  return value;
+}
+
 export function buildRoomLogEditorResumeUrl(context, view) {
   if (view !== "original" && view !== "3d" && view !== "floor") {
     throw new RangeError(`Unknown RoomLog resume view: ${view}`);

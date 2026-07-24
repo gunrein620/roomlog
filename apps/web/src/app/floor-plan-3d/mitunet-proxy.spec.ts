@@ -25,6 +25,33 @@ test("keeps 3D plan saving available in the RoomLog flow", () => {
   assert.doesNotMatch(transformed, /saveJsonButton\.hidden = !canSave \|\| Boolean\(roomLogContext\);/);
 });
 
+test("injects the furniture asset base so the viewer can normalize saved modelUrls", () => {
+  const previous = process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL;
+  process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL =
+    "https://woozu-static-file.s3.ap-northeast-2.amazonaws.com/furniture";
+  try {
+    const transformed = transformMitunetViewerHtml("<title>MitUNet</title>");
+    assert.match(
+      transformed,
+      /window\.__ROOMLOG_FURNITURE_ASSET_BASE_URL="https:\/\/woozu-static-file\.s3\.ap-northeast-2\.amazonaws\.com\/furniture"/,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL;
+    else process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL = previous;
+  }
+});
+
+test("defaults the injected furniture asset base to an empty string when unset", () => {
+  const previous = process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL;
+  delete process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL;
+  try {
+    const transformed = transformMitunetViewerHtml("<title>MitUNet</title>");
+    assert.match(transformed, /window\.__ROOMLOG_FURNITURE_ASSET_BASE_URL=""/);
+  } finally {
+    if (previous !== undefined) process.env.NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL = previous;
+  }
+});
+
 test("rewrites relative demo sample paths to the mitunet-assets route", () => {
   const transformed = transformMitunetViewerHtml(`
     <script>

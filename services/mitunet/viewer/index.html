@@ -1937,6 +1937,7 @@ import {
 } from "/viewer-assets/plan-export.mjs";
 import {
   beginRoomLogFurnitureSimulation,
+  furnitureRelativePathFromModelUrl,
   readRoomLogContext,
   readRoomLogFurnitureDraft,
   sendRoomLogCompletion,
@@ -3076,6 +3077,11 @@ let originalPreviewImageB64Value = "";
 let roomLogContext = null;
 let roomLogIntegrationReady = false;
 const roomLogFlowRequested = new URLSearchParams(window.location.search).get("integration") === "roomlog";
+// 소유자 가구 카탈로그가 절대 URL(S3)로 modelUrl을 만들 때, 저장된 가구를 상대 relativePath로
+// 되돌리기 위한 base 후보. 프록시(transformMitunetViewerHtml)가 NEXT_PUBLIC_FURNITURE_ASSET_BASE_URL을
+// window에 주입한다 — 없으면 빈 배열이라 기존(로컬 base) 동작 그대로다.
+const ROOMLOG_FURNITURE_ASSET_BASE_URLS = [window.__ROOMLOG_FURNITURE_ASSET_BASE_URL]
+  .filter((value) => typeof value === "string" && value.trim());
 let activeCameraView = "perspective";
 let cameraPresetTransitionId = 0;
 let cameraPresetTransitionActive = false;
@@ -3496,9 +3502,7 @@ function restoredFurnitureItem(savedFurniture) {
     || !Number.isFinite(depth) || depth <= 0
   ) return null;
 
-  const relativePath = modelUrl.startsWith(FURNITURE_ASSET_BASE_URL)
-    ? modelUrl.slice(FURNITURE_ASSET_BASE_URL.length)
-    : modelUrl;
+  const relativePath = furnitureRelativePathFromModelUrl(modelUrl, ROOMLOG_FURNITURE_ASSET_BASE_URLS);
   return {
     category: typeof savedFurniture?.category === "string" ? savedFurniture.category : "saved",
     displayName: typeof savedFurniture?.name === "string" && savedFurniture.name.trim()
