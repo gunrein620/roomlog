@@ -2857,7 +2857,7 @@ describe("RoomlogService", () => {
     }
   });
 
-  it("keeps defect intake open until occurrence and safety risk are confirmed", async () => {
+  it("keeps defect intake open until occurrence is confirmed without asking about safety risk", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
     const service = new RoomlogService();
@@ -2875,25 +2875,32 @@ describe("RoomlogService", () => {
 
       assert.equal(first.session.draft.readyToFinalize, false);
       assert.equal(first.session.draft.requiredInfo.includes("발생 시점"), true);
-      assert.equal(first.session.draft.requiredInfo.includes("안전 위험 여부"), true);
+      // 안전 위험 여부는 접수 필수 항목이 아니고, 먼저 묻지도 않는다.
+      assert.equal(first.session.draft.requiredInfo.includes("안전 위험 여부"), false);
       assert.equal(
         first.session.draft.nextQuestions.some((question) => /언제부터|시작|계속/.test(question)),
         true
       );
       assert.equal(
-        first.session.draft.nextQuestions.some((question) => /전기|가스|침수|잠김|위험/.test(question)),
-        true
+        first.session.draft.nextQuestions.some((question) =>
+          /전기|가스|침수|잠김|위험/.test(question)
+        ),
+        false
+      );
+      assert.equal(
+        first.session.draft.intakeSlots.find((slot) => slot.key === "risk")?.status,
+        "OPTIONAL"
       );
 
       const second = await service.sendIntakeMessage("tenant-demo", session.id, {
-        messageText: "어제부터 시작됐고 지금도 헐겁습니다. 전기나 가스 같은 위험은 없습니다.",
+        messageText: "어제부터 시작됐고 지금도 헐겁습니다.",
         inputMode: "CHAT"
       });
 
       assert.equal(second.session.draft.readyToFinalize, true);
       assert.equal(second.session.draft.requiredInfo.includes("발생 시점"), false);
-      assert.equal(second.session.draft.requiredInfo.includes("안전 위험 여부"), false);
-      assert.match(second.assistantMessage.messageText, /접수 초안|접수 확정/);
+      assert.match(second.assistantMessage.messageText, /접수 준비|접수 초안|이대로 접수할까요/);
+      assert.doesNotMatch(second.assistantMessage.messageText, /위험한 상황은 없나요/);
     } finally {
       if (originalApiKey) {
         process.env.OPENAI_API_KEY = originalApiKey;

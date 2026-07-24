@@ -11557,9 +11557,8 @@ export class RoomlogService implements OnModuleDestroy {
         {
           key: "risk",
           label: "위험 여부",
-          status: "NEEDS_INFO",
-          evidence: "안전 위험 여부를 확인해야 합니다.",
-          action: "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
+          status: "OPTIONAL",
+          evidence: "세입자가 위험을 언급하면 안내하고, 먼저 묻지는 않습니다."
         },
         {
           key: "photo",
@@ -11687,20 +11686,16 @@ export class RoomlogService implements OnModuleDestroy {
             : undefined
       },
       {
+        // 위험 슬롯은 세입자가 스스로 말했을 때만 COLLECTED로 채운다. NEEDS_INFO로 두면
+        // 이 슬롯 상태가 프롬프트에 실려 모델이 매 턴 안전 위험을 되묻는다.
         key: "risk",
         label: "위험 여부",
-        status: riskInfo ? "COLLECTED" : input.category === "하자" ? "NEEDS_INFO" : "OPTIONAL",
+        status: riskInfo ? "COLLECTED" : "OPTIONAL",
         value: riskInfo,
         evidence: riskInfo
           ? "안전 위험 판단에 필요한 단서를 확인했습니다."
-          : input.category === "하자"
-            ? "안전 위험 여부를 확인해야 합니다."
-            : "일반 문의라 위험 확인은 선택 사항입니다.",
-        action: riskInfo
-          ? undefined
-          : input.category === "하자"
-            ? "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
-            : undefined
+          : "세입자가 위험을 언급하면 안내하고, 먼저 묻지는 않습니다.",
+        action: undefined
       },
       {
         key: "photo",
@@ -11784,7 +11779,6 @@ export class RoomlogService implements OnModuleDestroy {
     const category = this.detectMainCategory(text, detailCategory);
     const priority = this.detectPriority(text, detailCategory);
     const occurredAt = this.detectOccurrenceInfo(text);
-    const safetyRiskInfo = this.detectSafetyRiskInfo(text, category, priority);
     const photoRequested = category === "하자" && ["누수", "곰팡이", "벽지", "바닥", "에어컨"].includes(detailCategory) && !hasPhoto;
     const requiredInfo: string[] = [];
 
@@ -11804,9 +11798,8 @@ export class RoomlogService implements OnModuleDestroy {
       requiredInfo.push("발생 시점");
     }
 
-    if (!safetyRiskInfo && category === "하자") {
-      requiredInfo.push("안전 위험 여부");
-    }
+    // 안전 위험 여부는 접수 필수 항목이 아니다 — 여기에 넣으면 readyToFinalize가 막혀
+    // 세입자가 "위험 없다"고 답할 때까지 같은 질문을 반복하게 된다.
 
     if (!availableTimes && category === "하자") {
       requiredInfo.push("방문 가능 시간");
@@ -11922,7 +11915,6 @@ export class RoomlogService implements OnModuleDestroy {
   }) {
     const questions: string[] = [];
     const occurrenceInfo = this.detectOccurrenceInfo(input.text);
-    const safetyRiskInfo = this.detectSafetyRiskInfo(input.text, input.category, input.priority);
 
     if (!input.location) {
       questions.push("문제가 보이는 정확한 공간과 부위를 알려주실 수 있나요?");
@@ -11937,9 +11929,8 @@ export class RoomlogService implements OnModuleDestroy {
       questions.push("언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?");
     }
 
-    if (!safetyRiskInfo && input.category === "하자") {
-      questions.push("전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?");
-    }
+    // 안전 위험 여부는 먼저 캐묻지 않는다 — 세입자가 직접 말한 위험만 safetyGuidance로 다룬다.
+    // (매 턴 "전기/가스/침수 위험 없나요?"를 되묻는 게 접수 흐름을 늘리기만 했다.)
 
     if (
       input.category === "하자" &&
@@ -12341,19 +12332,20 @@ export class RoomlogService implements OnModuleDestroy {
       "- 이전 스레드가 아닌 현재 스레드의 대화와 첨부만 근거로 답합니다.",
       "- 같은 호실 과거 기록은 반복 가능성, 과거 조치, 관리자 확인 포인트를 잡기 위한 참고 자료입니다. 현재 세입자가 말하지 않은 내용을 단정하지 않습니다.",
       "- 법적 책임, 비용 부담, 과실을 확정하지 말고 가능성/관리자 검토 필요로 표현합니다.",
-      "- 가스 냄새, 누전, 화재, 침수, 문 잠김 실패, 천장 누수처럼 안전 위험이 있으면 먼저 안전 행동을 안내합니다. 단, 안전 안내는 세입자가 현재 스레드에서 직접 말한 위험에만 붙이고, 이번 이슈와 관련 없는 위험(예: 쓰레기 민원에 가스 안내)은 절대 넣지 않습니다.",
+      "- 세입자가 가스 냄새, 누전, 화재, 침수, 문 잠김 실패, 천장 누수처럼 위험 상황을 직접 말했을 때만 안전 행동을 먼저 안내합니다. 세입자가 말하지 않았다면 안전 위험이 있는지 먼저 묻지 않고, 이번 이슈와 관련 없는 위험(예: 쓰레기 민원에 가스 안내)도 절대 넣지 않습니다.",
       "- 질문은 한 번에 1-3개만 하고, 이미 답한 내용을 반복해서 묻지 않습니다.",
       "- assistantMessage는 짧고 자연스럽게 씁니다: 핵심 확인 1-2문장과 꼭 필요한 질문 최대 2개면 충분합니다. '제가 이해한 내용', '지금 할 일' 같은 고정 목차를 쓰지 말고, 사진 요청이나 스레드 저장 안내 같은 같은 말을 매 턴 반복하지 않습니다.",
       "- 세입자의 말이 최근 접수한 민원과 같은 주제로 이어지는 것 같으면 새 민원으로 오해하지 말고 그 건의 후속 이야기로 이해합니다. 이미 접수된 건임을 자연스럽게 짚어주고(예: '아까 접수한 쓰레기 투기 건 말씀이시죠'), 새로 알려준 내용은 관리자 확인에 참고되도록 정리합니다. 인사말을 다시 하지 않습니다.",
       "- draft.nextQuestions에는 세입자에게 바로 물을 1-3개의 구체 질문만 넣습니다.",
       "- draft.tenantGuidance에는 안전 행동, 사진 촬영 방법, 방문 준비처럼 세입자가 지금 할 일을 1-4개 넣습니다.",
-      "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
+      "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다. risk 슬롯은 세입자가 위험을 직접 말했을 때만 COLLECTED로 채우고, 말하지 않았으면 OPTIONAL로 두며 절대 NEEDS_INFO로 만들어 되묻지 않습니다.",
       "- 사진이 있으면 사진 URL을 관리자 검토 자료로 연결하고, 사진이 부족하면 근접/전체 사진을 구분해서 요청합니다.",
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
-      "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
+      "- draft.readyToFinalize는 증상, 위치, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
+      "- 긴급도(priority)와 안전 위험 여부는 세입자에게 묻지 않습니다. 대화 내용으로 시스템이 알아서 판단하는 값이니 질문도, 확인 요청도 하지 않습니다.",
       "- draft.filingIntent는 세입자가 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했다면 false입니다.",
-      "- 세입자가 접수를 요청하면 그 턴에 바로 접수하지 말고 접수 초안을 한 번 보여줍니다: 제목, 내용 요약, 위치, 긴급도를 짧게 정리하고 '이대로 접수할까요? 수정할 부분이 있으면 말씀해 주세요'라고 묻습니다. 사진이나 부가 정보가 없어도 초안은 만들고, readyToFinalize는 true로 둡니다.",
-      "- 세입자가 초안의 특정 부분(제목, 내용, 위치, 긴급도, 방문 시간) 수정을 요청하면 그 부분만 반영해 초안을 갱신하고, 갱신된 초안을 다시 짧게 보여준 뒤 승인을 기다립니다.",
+      "- 세입자가 접수를 요청하면 그 턴에 바로 접수하지 말고 접수 초안을 한 번 보여줍니다: 제목, 내용 요약, 위치를 짧게 정리하고 '이대로 접수할까요? 수정할 부분이 있으면 말씀해 주세요'라고 묻습니다. 사진이나 부가 정보가 없어도 초안은 만들고, readyToFinalize는 true로 둡니다. 초안에 긴급도는 적지 않습니다.",
+      "- 세입자가 초안의 특정 부분(제목, 내용, 위치, 방문 시간) 수정을 요청하면 그 부분만 반영해 초안을 갱신하고, 갱신된 초안을 다시 짧게 보여준 뒤 승인을 기다립니다.",
       "- 세입자가 '승인', '진행해', '접수해줘'처럼 짧게 동의한 턴에만 시스템이 자동 접수합니다. 그 턴에는 접수를 진행했다고 안내합니다.",
       "- 세입자가 접수 여부를 물으면(예: '넣었어?', '접수됐어?') 첫 문장에서 접수 완료/미완료를 명확히 답합니다. 아직이면 '아직 접수 전입니다'라고 말하고 초안을 보여주며 바로 접수할지 묻습니다."
     ].join("\n");
@@ -13182,7 +13174,7 @@ export class RoomlogService implements OnModuleDestroy {
       `제목: ${draft.title || "미정"}`,
       `요약: ${draft.summary || "미정"}`,
       `분류: ${draft.category} / ${draft.detailCategory}`,
-      `긴급도: P${draft.priority}`,
+      // 긴급도는 시스템이 판단하는 값이라 상담사 컨텍스트에 넣지 않는다(모델이 되묻거나 읊는 것 방지).
       `위치: ${draft.location || "미확인"}`,
       `방문 가능 시간: ${draft.availableTimes || "미확인"}`,
       `사진 상태: ${draft.photoAnalysis.summary}`,
@@ -13206,14 +13198,14 @@ export class RoomlogService implements OnModuleDestroy {
       "",
       "# 대화 흐름",
       "1. 증상과 위치를 자연스럽게 확인합니다.",
-      "2. 발생 시점, 현재도 반복되는지, 안전 위험 여부를 확인합니다.",
+      "2. 발생 시점과 지금도 반복되는지를 확인합니다.",
       "3. 사진이 없고 하자 판단에 필요하면 근접 사진 1장과 공간 전체 사진 1장을 요청합니다.",
       "4. 관리자나 업체 방문 가능 시간대를 확인합니다.",
-      "5. 충분한 정보가 모이면 접수 초안 제목, 요약, 위치, 긴급도, 추가 필요 정보를 짧게 정리합니다.",
+      "5. 충분한 정보가 모이면 접수 초안 제목, 요약, 위치, 추가 필요 정보를 짧게 정리합니다.",
       "",
-      "# 안전 분류",
-      "- 누수, 가스 냄새, 누전, 문 잠김 실패, 침수, 화재, 천장 물샘은 긴급 후보로 봅니다.",
-      "- 전기 설비 근처 물고임, 가스 냄새, 문이 잠기지 않는 상황은 즉시 안전한 행동을 먼저 안내합니다.",
+      "# 안전과 책임",
+      "- 세입자가 가스 냄새, 누전, 침수, 문 잠김 실패처럼 위험 상황을 직접 말했을 때만 안전한 행동을 먼저 안내합니다.",
+      "- 세입자가 말하지 않았다면 위험 여부나 긴급도를 먼저 묻지 않습니다. 두 값 모두 시스템이 대화 내용으로 판단합니다.",
       "- 책임 소재를 확정하지 말고, 비용 부담도 '관리자 확인 필요' 또는 가능성으로만 표현합니다.",
       "",
       "# 사진과 기록",
@@ -13226,7 +13218,7 @@ export class RoomlogService implements OnModuleDestroy {
       "- 숫자, 호실, 시간처럼 중요한 값은 들은 값을 다시 확인합니다.",
       "",
       "# 완료 기준",
-      "- 증상, 위치, 위험 여부, 사진 필요 여부, 방문 가능 시간이 확인되면 접수 초안을 정리합니다.",
+      "- 증상, 위치, 사진 필요 여부, 방문 가능 시간이 확인되면 접수 초안을 정리합니다.",
       "- 정보가 부족하면 누락된 항목 중 가장 중요한 하나만 질문합니다.",
       "- 접수 초안이 준비되면 세입자가 화면에서 수정 후 확정할 수 있다고 안내합니다.",
       input.instructions ? `추가 운영 지침: ${input.instructions}` : "",

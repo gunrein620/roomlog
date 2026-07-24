@@ -14,12 +14,12 @@ describe("question reply prompts", () => {
     assert.equal(
       appendQuestionReplyPrompt(
         "사진은 지금 바로 올릴 수 있습니다.",
-        "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?"
+        "관리자나 업체가 확인할 수 있는 방문 가능 시간대가 언제인가요?"
       ),
       [
         "사진은 지금 바로 올릴 수 있습니다.",
         "",
-        "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?",
+        "관리자나 업체가 확인할 수 있는 방문 가능 시간대가 언제인가요?",
         "답변: "
       ].join("\n")
     );
@@ -27,14 +27,14 @@ describe("question reply prompts", () => {
 
   it("does not duplicate the same question prompt in the composer", () => {
     const current = [
-      "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?",
+      "관리자나 업체가 확인할 수 있는 방문 가능 시간대가 언제인가요?",
       "답변: 없습니다."
     ].join("\n");
 
     assert.equal(
       appendQuestionReplyPrompt(
         current,
-        "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?"
+        "관리자나 업체가 확인할 수 있는 방문 가능 시간대가 언제인가요?"
       ),
       current
     );
